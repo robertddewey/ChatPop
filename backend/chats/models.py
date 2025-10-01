@@ -190,6 +190,32 @@ class BackRoomMember(models.Model):
         return f"{self.username} in {self.back_room}"
 
 
+class AnonymousUserFingerprint(models.Model):
+    """Track anonymous user browser fingerprints for username persistence"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    chat_room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='fingerprints')
+
+    # Fingerprint from FingerprintJS
+    fingerprint = models.CharField(max_length=255, db_index=True, help_text="Browser fingerprint hash")
+    username = models.CharField(max_length=100, help_text="Username associated with this fingerprint")
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_seen = models.DateTimeField(auto_now=True, help_text="Last time this fingerprint was used")
+
+    class Meta:
+        ordering = ['-last_seen']
+        unique_together = ['chat_room', 'fingerprint']
+        indexes = [
+            models.Index(fields=['fingerprint', 'chat_room']),
+            models.Index(fields=['chat_room', '-last_seen']),
+        ]
+
+    def __str__(self):
+        return f"{self.username} ({self.fingerprint[:8]}...) in {self.chat_room.code}"
+
+
 class Transaction(models.Model):
     """Track all payments in the system"""
     TRANSACTION_PIN = 'pin'

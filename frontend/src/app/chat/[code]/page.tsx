@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { chatApi, messageApi, authApi, type ChatRoom, type Message } from '@/lib/api';
 import Header from '@/components/Header';
@@ -37,6 +37,20 @@ export default function ChatPage() {
   const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom when filter mode changes
+  useEffect(() => {
+    // Mark that we should auto-scroll
+    shouldAutoScrollRef.current = true;
+    // Use requestAnimationFrame to ensure DOM has updated with filtered messages
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current;
+      if (container) {
+        // Instant scroll to bottom (no animation)
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+  }, [filterMode]);
 
   // Load chat room details
   useEffect(() => {
@@ -178,19 +192,32 @@ export default function ChatPage() {
       })
     : messages;
 
-  // Filter messages for sticky section
-  const allStickyHostMessages = filteredMessages
-    .filter(m => m.is_from_host)
-    .slice(-1)  // Get 1 most recent
-    .reverse(); // Show newest first
+  // Filter messages for sticky section (useMemo to prevent infinite loops)
+  const allStickyHostMessages = React.useMemo(() => {
+    return filteredMessages
+      .filter(m => m.is_from_host)
+      .slice(-1)  // Get 1 most recent
+      .reverse(); // Show newest first
+  }, [filteredMessages]);
+
+  const topPinnedMessage = React.useMemo(() => {
+    return filteredMessages
+      .filter(m => m.is_pinned && !m.is_from_host)
+      .sort((a, b) => parseFloat(b.pin_amount_paid) - parseFloat(a.pin_amount_paid))
+      [0]; // Get highest paid
+  }, [filteredMessages]);
+
+  // Get IDs to observe (useMemo to prevent infinite loops)
+  const idsToObserve = React.useMemo(() => {
+    const hostIds = allStickyHostMessages.map(m => m.id);
+    const pinnedId = topPinnedMessage?.id;
+    const ids = [...hostIds];
+    if (pinnedId) ids.push(pinnedId);
+    return ids;
+  }, [allStickyHostMessages, topPinnedMessage]);
 
   // Only show in sticky if not visible in scroll area
   const stickyHostMessages = allStickyHostMessages.filter(m => !visibleMessageIds.has(m.id));
-
-  const topPinnedMessage = filteredMessages
-    .filter(m => m.is_pinned && !m.is_from_host)
-    .sort((a, b) => parseFloat(b.pin_amount_paid) - parseFloat(a.pin_amount_paid))
-    [0]; // Get highest paid
 
   // Only show pinned in sticky if not visible in scroll area
   const stickyPinnedMessage = topPinnedMessage && !visibleMessageIds.has(topPinnedMessage.id) ? topPinnedMessage : null;
@@ -231,38 +258,66 @@ export default function ChatPage() {
   // IntersectionObserver to track when sticky host messages are visible in scroll
   useEffect(() => {
     const container = messagesContainerRef.current;
-    if (!container || messages.length === 0) return;
+    if (!container || filteredMessages.length === 0) return;
+
+    // Check if we're scrolled to the very top
+    const checkScrollPosition = () => {
+      if (!container) return;
+      const isAtTop = container.scrollTop <= 50; // Within 50px of top
+
+      if (isAtTop && idsToObserve.length > 0) {
+        // When at top, mark all messages as visible
+        setVisibleMessageIds((prev) => {
+          const newSet = new Set(prev);
+          let hasChanges = false;
+          idsToObserve.forEach(id => {
+            if (!newSet.has(id)) {
+              newSet.add(id);
+              hasChanges = true;
+            }
+          });
+          return hasChanges ? newSet : prev;
+        });
+      }
+    };
 
     const observer = new IntersectionObserver(
       (entries) => {
         setVisibleMessageIds((prev) => {
           const newVisibleIds = new Set(prev);
+          let hasChanges = false;
           entries.forEach((entry) => {
             const messageId = entry.target.getAttribute('data-message-id');
             if (messageId) {
               if (entry.isIntersecting) {
-                newVisibleIds.add(messageId);
+                if (!newVisibleIds.has(messageId)) {
+                  newVisibleIds.add(messageId);
+                  hasChanges = true;
+                }
               } else {
-                newVisibleIds.delete(messageId);
+                // Only remove if we're not at the top (prevent overscroll issues)
+                if (container.scrollTop > 50 && newVisibleIds.has(messageId)) {
+                  newVisibleIds.delete(messageId);
+                  hasChanges = true;
+                }
               }
             }
           });
-          return newVisibleIds;
+          return hasChanges ? newVisibleIds : prev;
         });
       },
       {
         root: container,
-        threshold: 0.3, // Message must be 30% visible
+        threshold: 0.1, // Message must be 10% visible (more sensitive)
         rootMargin: '0px',
       }
     );
 
-    // Observe all sticky host messages and pinned messages in the scroll area
-    const stickyHostIds = allStickyHostMessages.map(m => m.id);
-    const pinnedId = topPinnedMessage?.id;
-    const idsToObserve = [...stickyHostIds];
-    if (pinnedId) idsToObserve.push(pinnedId);
+    // Check scroll position initially and on scroll
+    checkScrollPosition();
+    container.addEventListener('scroll', checkScrollPosition);
 
+    // Observe all sticky host messages and pinned messages in the scroll area
     const messageElements = container.querySelectorAll('[data-message-id]');
     messageElements.forEach((el) => {
       const messageId = el.getAttribute('data-message-id');
@@ -271,8 +326,11 @@ export default function ChatPage() {
       }
     });
 
-    return () => observer.disconnect();
-  }, [filteredMessages.length, allStickyHostMessages.length]);
+    return () => {
+      observer.disconnect();
+      container.removeEventListener('scroll', checkScrollPosition);
+    };
+  }, [filteredMessages.length, idsToObserve]);
 
   if (loading) {
     return (
@@ -436,14 +494,9 @@ export default function ChatPage() {
       {/* Chat Header */}
       <div className={currentDesign.header}>
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className={currentDesign.headerTitle}>
-              {chatRoom?.name}
-            </h1>
-            <p className={currentDesign.headerSubtitle}>
-              {chatRoom?.message_count} messages
-            </p>
-          </div>
+          <h1 className={currentDesign.headerTitle}>
+            {chatRoom?.name}
+          </h1>
           {/* Filter Toggle */}
           <button
             onClick={() => setFilterMode(filterMode === 'all' ? 'focus' : 'all')}
@@ -468,12 +521,12 @@ export default function ChatPage() {
               className={`${currentDesign.hostMessage} cursor-pointer hover:opacity-90 transition-opacity`}
               onClick={() => scrollToMessage(message.id)}
             >
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-1.5 mb-1">
                 <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
                   {message.username}
                 </span>
-                <span className={`text-xs px-2 py-0.5 rounded ${currentDesign.hostText} opacity-70`}>
-                  HOST
+                <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
+                  👑
                 </span>
               </div>
               <p className={`text-sm ${currentDesign.hostText}`}>
