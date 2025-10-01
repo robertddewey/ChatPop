@@ -181,7 +181,7 @@ export default function ChatPage() {
   // Filter messages for sticky section
   const allStickyHostMessages = filteredMessages
     .filter(m => m.is_from_host)
-    .slice(-2)  // Get 2 most recent
+    .slice(-1)  // Get 1 most recent
     .reverse(); // Show newest first
 
   // Only show in sticky if not visible in scroll area
@@ -370,7 +370,7 @@ export default function ChatPage() {
   // Design configurations
   const designs = {
     design1: {
-      container: "h-screen flex flex-col bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20",
+      container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20",
       header: "border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
       headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
       headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
@@ -386,7 +386,7 @@ export default function ChatPage() {
       filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700 w-[100px]",
     },
     design2: {
-      container: "h-screen flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
+      container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
       header: "border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
       headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
       headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
@@ -402,7 +402,7 @@ export default function ChatPage() {
       filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700 w-[100px]",
     },
     design3: {
-      container: "h-screen flex flex-col bg-zinc-950",
+      container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
       header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
       headerTitle: "text-lg font-bold text-zinc-100",
       headerSubtitle: "text-sm text-zinc-400",
@@ -510,45 +510,100 @@ export default function ChatPage() {
         onScroll={handleScroll}
         className={currentDesign.messagesArea}
       >
-        {filteredMessages.map((message) => (
-          <div
-            key={message.id}
-            data-message-id={message.id}
-            className={`flex ${message.is_from_host ? 'flex-col' : 'flex-row'} gap-2`}
-          >
-            <div
-              className={
-                message.is_from_host
-                  ? currentDesign.hostMessage + ' self-stretch'
-                  : message.is_pinned
-                  ? currentDesign.pinnedMessage
-                  : currentDesign.regularMessage
+        {filteredMessages.map((message, index) => {
+          const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
+          const isFirstInThread = !prevMessage || prevMessage.username !== message.username || prevMessage.is_from_host || message.is_from_host || message.is_pinned;
+          const nextMessage = index < filteredMessages.length - 1 ? filteredMessages[index + 1] : null;
+          const isLastInThread = !nextMessage || nextMessage.username !== message.username || nextMessage.is_from_host || message.is_from_host || message.is_pinned;
+
+          // Find the last message in this thread to get its timestamp
+          let lastMessageInThread = message;
+          if (isFirstInThread && !isLastInThread && !message.is_from_host && !message.is_pinned) {
+            for (let i = index + 1; i < filteredMessages.length; i++) {
+              const futureMsg = filteredMessages[i];
+              if (futureMsg.username === message.username && !futureMsg.is_from_host && !futureMsg.is_pinned) {
+                lastMessageInThread = futureMsg;
+              } else {
+                break;
               }
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className={`text-sm font-semibold ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
-                  {message.username}
-                </span>
-                {message.is_from_host && (
-                  <span className={`text-xs px-2 py-0.5 rounded ${currentDesign.hostText} opacity-70`}>
-                    HOST
+            }
+          }
+
+          return (
+            <div key={message.id} data-message-id={message.id}>
+              {/* Show username header for first message in thread */}
+              {isFirstInThread && !message.is_from_host && !message.is_pinned && (
+                <div className="text-xs mb-1 flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                  <span className="font-semibold">
+                    {message.username}
                   </span>
-                )}
-                {message.is_pinned && !message.is_from_host && (
-                  <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
-                    📌 Pinned ${message.pin_amount_paid}
+                  <span className="opacity-60">
+                    {new Date(lastMessageInThread.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                   </span>
+                </div>
+              )}
+
+              {/* Message with threading line */}
+              <div className="flex gap-0">
+                {/* Vertical thread line for consecutive messages */}
+                {!isFirstInThread && !message.is_from_host && !message.is_pinned && (
+                  <div className="w-0.5 mr-2 bg-gray-400 dark:bg-gray-600 opacity-30"></div>
                 )}
+
+                {/* Message bubble */}
+                <div
+                  className={
+                    message.is_from_host
+                      ? currentDesign.hostMessage + ' flex-1'
+                      : message.is_pinned
+                      ? currentDesign.pinnedMessage
+                      : currentDesign.regularMessage
+                  }
+                >
+                  {/* Host message header */}
+                  {message.is_from_host && (
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
+                          {message.username}
+                        </span>
+                        <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
+                          👑
+                        </span>
+                      </div>
+                      <span className={`text-xs ${currentDesign.hostText} opacity-60`}>
+                        {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Pinned message header */}
+                  {message.is_pinned && !message.is_from_host && (
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
+                          {message.username}
+                        </span>
+                        <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
+                          📌 ${message.pin_amount_paid}
+                        </span>
+                      </div>
+                      <span className={`text-xs ${currentDesign.pinnedText} opacity-60`}>
+                        {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Message content */}
+                  <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
+                    {message.content}
+                  </p>
+                </div>
               </div>
-              <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
-                {message.content}
-              </p>
-              <p className={`text-xs mt-1 ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText} opacity-60`}>
-                {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-              </p>
+
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
