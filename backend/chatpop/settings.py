@@ -30,7 +30,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-z2vf5na(z&i^73$f3=^
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.0.135").split(",")
 
 
 # Application definition
@@ -157,7 +157,7 @@ CHANNEL_LAYERS = {
 # CORS Settings
 CORS_ALLOWED_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000"
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002,http://10.0.0.135:3002"
 ).split(",")
 
 CORS_ALLOW_CREDENTIALS = True

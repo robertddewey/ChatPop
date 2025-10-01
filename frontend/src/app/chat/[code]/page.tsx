@@ -16,7 +16,7 @@ export default function ChatPage() {
     }
     return new URLSearchParams();
   });
-  const designVariant = searchParams.get('design') || 'default';
+  const designVariant = searchParams.get('design') || 'design1';
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -369,47 +369,37 @@ export default function ChatPage() {
 
   // Design configurations
   const designs = {
-    default: {
-      container: "h-screen flex flex-col bg-gray-50 dark:bg-gray-900",
-      header: "border-b bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
-      headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
-      headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
-      stickySection: "border-b bg-white dark:bg-gray-800 px-4 py-2 flex-shrink-0 space-y-2",
-      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-4",
-      hostMessage: "rounded-lg px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white border-2 border-purple-400",
-      hostText: "text-white",
-      pinnedMessage: "rounded-lg px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800",
-      pinnedText: "text-gray-900 dark:text-white",
-      regularMessage: "max-w-[80%] rounded-lg px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700",
-      regularText: "text-gray-700 dark:text-gray-300",
-    },
     design1: {
       container: "h-screen flex flex-col bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20",
       header: "border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
       headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
       headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
       stickySection: "border-b border-purple-200 dark:border-purple-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-lg px-4 py-2 flex-shrink-0 space-y-2",
-      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-3",
+      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMTYsIDE5MSwgMjE2LCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDE5MiwgMTMyLCAyNTIsIDAuMTUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI3BhdHRlcm4pIi8+PC9zdmc+')] bg-repeat",
       hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-white shadow-lg border-2 border-white/20",
       hostText: "text-white",
       pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
       pinnedText: "text-amber-900 dark:text-amber-200",
       regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-purple-100 dark:border-purple-800 shadow-sm",
       regularText: "text-gray-700 dark:text-gray-300",
+      filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30 w-[100px]",
+      filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700 w-[100px]",
     },
     design2: {
-      container: "h-screen flex flex-col bg-slate-50 dark:bg-slate-950",
-      header: "border-b-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-4 flex-shrink-0",
-      headerTitle: "text-lg font-bold text-slate-900 dark:text-slate-100",
-      headerSubtitle: "text-sm text-slate-500 dark:text-slate-400",
-      stickySection: "border-b-2 border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 px-6 py-3 flex-shrink-0 space-y-3",
-      messagesArea: "flex-1 overflow-y-auto px-6 py-6 space-y-4",
-      hostMessage: "rounded-none border-l-4 border-blue-600 px-6 py-4 bg-blue-50 dark:bg-blue-950/50",
-      hostText: "text-blue-900 dark:text-blue-100",
-      pinnedMessage: "rounded-none border-l-4 border-amber-600 px-6 py-4 bg-amber-50 dark:bg-amber-950/50",
-      pinnedText: "text-amber-900 dark:text-amber-100",
-      regularMessage: "max-w-[75%] rounded-none px-6 py-4 bg-white dark:bg-slate-800/50 border-l-4 border-slate-200 dark:border-slate-700",
-      regularText: "text-slate-700 dark:text-slate-200",
+      container: "h-screen flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
+      header: "border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
+      headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
+      headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
+      stickySection: "border-b border-blue-200 dark:border-blue-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-lg px-4 py-2 flex-shrink-0 space-y-2",
+      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMDAsIDIzMCwgMjUwLCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDU5LCAxMzAsIDI0NiwgMC4xNSkiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiLz48L3N2Zz4=')] bg-repeat",
+      hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500 text-white shadow-lg border-2 border-white/20",
+      hostText: "text-white",
+      pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
+      pinnedText: "text-amber-900 dark:text-amber-200",
+      regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-blue-100 dark:border-blue-800 shadow-sm",
+      regularText: "text-gray-700 dark:text-gray-300",
+      filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30 w-[100px]",
+      filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700 w-[100px]",
     },
     design3: {
       container: "h-screen flex flex-col bg-zinc-950",
@@ -424,10 +414,12 @@ export default function ChatPage() {
       pinnedText: "text-yellow-950",
       regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
       regularText: "text-zinc-100",
+      filterButtonActive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300 w-[100px]",
+      filterButtonInactive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700 w-[100px]",
     },
   };
 
-  const currentDesign = designs[designVariant as keyof typeof designs] || designs.default;
+  const currentDesign = designs[designVariant as keyof typeof designs] || designs.design1;
 
   // Main chat interface
   return (
@@ -435,7 +427,6 @@ export default function ChatPage() {
       {/* Design Switcher - Only show in dev */}
       {process.env.NODE_ENV === 'development' && (
         <div className="fixed bottom-4 left-4 z-50 flex gap-2 bg-black/80 text-white p-2 rounded-lg text-xs">
-          <a href={`?design=default`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Default</a>
           <a href={`?design=design1`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Design 1</a>
           <a href={`?design=design2`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Design 2</a>
           <a href={`?design=design3`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Design 3</a>
@@ -456,13 +447,13 @@ export default function ChatPage() {
           {/* Filter Toggle */}
           <button
             onClick={() => setFilterMode(filterMode === 'all' ? 'focus' : 'all')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`transition-all ${
               filterMode === 'focus'
-                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                ? currentDesign.filterButtonActive
+                : currentDesign.filterButtonInactive
             }`}
           >
-            {filterMode === 'all' ? '🎯 Focus' : '💬 All'}
+            {filterMode === 'focus' ? 'Focus On' : 'Focus Off'}
           </button>
         </div>
       </div>
