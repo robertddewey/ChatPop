@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 from .models import ChatRoom, Message, BackRoom, BackRoomMember, AnonymousUserFingerprint
 from .serializers import (
-    ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomJoinSerializer,
+    ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomUpdateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
     BackRoomSerializer, BackRoomMemberSerializer
 )
@@ -51,6 +51,24 @@ class ChatRoomDetailView(APIView):
         data.pop('access_code', None)
 
         return Response(data)
+
+
+class ChatRoomUpdateView(APIView):
+    """Update chat room settings (host only)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, code):
+        chat_room = get_object_or_404(ChatRoom, code=code)
+
+        # Verify user is the host
+        if request.user != chat_room.host:
+            raise PermissionDenied("Only the host can update chat settings")
+
+        serializer = ChatRoomUpdateSerializer(chat_room, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(ChatRoomSerializer(chat_room).data)
 
 
 class ChatRoomJoinView(APIView):

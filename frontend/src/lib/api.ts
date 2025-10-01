@@ -146,6 +146,20 @@ export const chatApi = {
     const response = await api.get('/api/chats/my-chats/');
     return response.data.results || response.data;
   },
+
+  updateChat: async (code: string, data: {
+    name?: string;
+    description?: string;
+    access_mode?: 'public' | 'private';
+    access_code?: string;
+    voice_enabled?: boolean;
+    video_enabled?: boolean;
+    photo_enabled?: boolean;
+    is_active?: boolean;
+  }): Promise<ChatRoom> => {
+    const response = await api.put(`/api/chats/${code}/update/`, data);
+    return response.data;
+  },
 };
 
 export const messageApi = {

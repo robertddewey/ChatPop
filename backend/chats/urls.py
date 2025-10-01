@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    ChatRoomCreateView, ChatRoomDetailView, ChatRoomJoinView, MyChatsView,
+    ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
     MessageListView, MessageCreateView, MessagePinView,
     BackRoomDetailView, BackRoomJoinView, FingerprintUsernameView
 )
@@ -12,6 +12,7 @@ urlpatterns = [
     path('create/', ChatRoomCreateView.as_view(), name='chat-create'),
     path('my-chats/', MyChatsView.as_view(), name='my-chats'),
     path('<str:code>/', ChatRoomDetailView.as_view(), name='chat-detail'),
+    path('<str:code>/update/', ChatRoomUpdateView.as_view(), name='chat-update'),
     path('<str:code>/join/', ChatRoomJoinView.as_view(), name='chat-join'),
 
     # Messages

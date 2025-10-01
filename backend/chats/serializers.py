@@ -49,6 +49,34 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+class ChatRoomUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating chat room settings (host only)"""
+    class Meta:
+        model = ChatRoom
+        fields = [
+            'name', 'description', 'access_mode', 'access_code',
+            'voice_enabled', 'video_enabled', 'photo_enabled', 'is_active'
+        ]
+
+    def validate_access_code(self, value):
+        """Ensure access code is provided for private rooms"""
+        access_mode = self.initial_data.get('access_mode', self.instance.access_mode if self.instance else None)
+        if access_mode == ChatRoom.ACCESS_PRIVATE and not value:
+            raise serializers.ValidationError("Access code is required for private rooms")
+        return value
+
+    def validate(self, attrs):
+        """Additional validation for room updates"""
+        # If changing to private mode, ensure access code is set
+        if 'access_mode' in attrs and attrs['access_mode'] == ChatRoom.ACCESS_PRIVATE:
+            access_code = attrs.get('access_code', self.instance.access_code if self.instance else None)
+            if not access_code:
+                raise serializers.ValidationError({
+                    'access_code': 'Access code is required for private rooms'
+                })
+        return attrs
+
+
 class ChatRoomJoinSerializer(serializers.Serializer):
     """Serializer for joining a chat room"""
     username = serializers.CharField(max_length=100, required=True)

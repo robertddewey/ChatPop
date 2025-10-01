@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { chatApi, messageApi, authApi, type ChatRoom, type Message } from '@/lib/api';
 import Header from '@/components/Header';
+import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import { UsernameStorage } from '@/lib/usernameStorage';
 
 export default function ChatPage() {
@@ -21,6 +22,7 @@ export default function ChatPage() {
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -68,6 +70,7 @@ export default function ChatPage() {
           try {
             const currentUser = await authApi.getCurrentUser();
             isLoggedIn = true;
+            setCurrentUserId(currentUser.id);
             const displayUsername = currentUser.display_name || currentUser.email.split('@')[0];
             setUsername(displayUsername);
             await UsernameStorage.saveUsername(code, displayUsername, true); // Skip fingerprinting for logged-in users
@@ -510,9 +513,17 @@ export default function ChatPage() {
       {/* Chat Header */}
       <div className={currentDesign.header}>
         <div className="flex items-center justify-between">
-          <h1 className={currentDesign.headerTitle}>
-            {chatRoom?.name}
-          </h1>
+          {chatRoom && (
+            <ChatSettingsSheet
+              chatRoom={chatRoom}
+              currentUserId={currentUserId}
+              onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
+            >
+              <h1 className={`${currentDesign.headerTitle} cursor-pointer hover:opacity-70 transition-opacity`}>
+                {chatRoom.name}
+              </h1>
+            </ChatSettingsSheet>
+          )}
           {/* Filter Toggle */}
           <button
             onClick={() => {
