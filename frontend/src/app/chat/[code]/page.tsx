@@ -9,6 +9,15 @@ export default function ChatPage() {
   const params = useParams();
   const code = params.code as string;
 
+  // Get design variant from URL query params
+  const [searchParams] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search);
+    }
+    return new URLSearchParams();
+  });
+  const designVariant = searchParams.get('design') || 'default';
+
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,6 +137,18 @@ export default function ChatPage() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const scrollToMessage = (messageId: string) => {
+    const element = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Add pulsating animation
+      element.classList.add('animate-pulse-scale');
+      setTimeout(() => {
+        element.classList.remove('animate-pulse-scale');
+      }, 2000);
+    }
   };
 
   // Track if user is near bottom
@@ -346,17 +367,89 @@ export default function ChatPage() {
     );
   }
 
+  // Design configurations
+  const designs = {
+    default: {
+      container: "h-screen flex flex-col bg-gray-50 dark:bg-gray-900",
+      header: "border-b bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
+      headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
+      headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
+      stickySection: "border-b bg-white dark:bg-gray-800 px-4 py-2 flex-shrink-0 space-y-2",
+      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-4",
+      hostMessage: "rounded-lg px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white border-2 border-purple-400",
+      hostText: "text-white",
+      pinnedMessage: "rounded-lg px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800",
+      pinnedText: "text-gray-900 dark:text-white",
+      regularMessage: "max-w-[80%] rounded-lg px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700",
+      regularText: "text-gray-700 dark:text-gray-300",
+    },
+    design1: {
+      container: "h-screen flex flex-col bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20",
+      header: "border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
+      headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
+      headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
+      stickySection: "border-b border-purple-200 dark:border-purple-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-lg px-4 py-2 flex-shrink-0 space-y-2",
+      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-3",
+      hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-white shadow-lg border-2 border-white/20",
+      hostText: "text-white",
+      pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
+      pinnedText: "text-amber-900 dark:text-amber-200",
+      regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-purple-100 dark:border-purple-800 shadow-sm",
+      regularText: "text-gray-700 dark:text-gray-300",
+    },
+    design2: {
+      container: "h-screen flex flex-col bg-slate-50 dark:bg-slate-950",
+      header: "border-b-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-4 flex-shrink-0",
+      headerTitle: "text-lg font-bold text-slate-900 dark:text-slate-100",
+      headerSubtitle: "text-sm text-slate-500 dark:text-slate-400",
+      stickySection: "border-b-2 border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 px-6 py-3 flex-shrink-0 space-y-3",
+      messagesArea: "flex-1 overflow-y-auto px-6 py-6 space-y-4",
+      hostMessage: "rounded-none border-l-4 border-blue-600 px-6 py-4 bg-blue-50 dark:bg-blue-950/50",
+      hostText: "text-blue-900 dark:text-blue-100",
+      pinnedMessage: "rounded-none border-l-4 border-amber-600 px-6 py-4 bg-amber-50 dark:bg-amber-950/50",
+      pinnedText: "text-amber-900 dark:text-amber-100",
+      regularMessage: "max-w-[75%] rounded-none px-6 py-4 bg-white dark:bg-slate-800/50 border-l-4 border-slate-200 dark:border-slate-700",
+      regularText: "text-slate-700 dark:text-slate-200",
+    },
+    design3: {
+      container: "h-screen flex flex-col bg-zinc-950",
+      header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
+      headerTitle: "text-lg font-bold text-zinc-100",
+      headerSubtitle: "text-sm text-zinc-400",
+      stickySection: "border-b border-zinc-800 bg-zinc-900/80 px-4 py-2 flex-shrink-0 space-y-2",
+      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-2",
+      hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
+      hostText: "text-cyan-950",
+      pinnedMessage: "rounded px-3 py-2 bg-yellow-400 font-medium",
+      pinnedText: "text-yellow-950",
+      regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
+      regularText: "text-zinc-100",
+    },
+  };
+
+  const currentDesign = designs[designVariant as keyof typeof designs] || designs.default;
+
   // Main chat interface
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className={currentDesign.container}>
+      {/* Design Switcher - Only show in dev */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 left-4 z-50 flex gap-2 bg-black/80 text-white p-2 rounded-lg text-xs">
+          <a href={`?design=default`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Default</a>
+          <a href={`?design=design1`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Design 1</a>
+          <a href={`?design=design2`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Design 2</a>
+          <a href={`?design=design3`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Design 3</a>
+        </div>
+      )}
+
       {/* Chat Header */}
-      <div className="border-b bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0">
+      <div className={currentDesign.header}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+            <h1 className={currentDesign.headerTitle}>
               {chatRoom?.name}
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className={currentDesign.headerSubtitle}>
               {chatRoom?.message_count} messages
             </p>
           </div>
@@ -376,19 +469,23 @@ export default function ChatPage() {
 
       {/* Sticky Section: Host + Pinned Messages */}
       {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
-        <div className="border-b bg-white dark:bg-gray-800 px-4 py-2 flex-shrink-0 space-y-2">
+        <div className={currentDesign.stickySection}>
           {/* Host Messages */}
           {stickyHostMessages.map((message) => (
-            <div key={`sticky-${message.id}`} className="rounded-lg px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+            <div
+              key={`sticky-${message.id}`}
+              className={`${currentDesign.hostMessage} cursor-pointer hover:opacity-90 transition-opacity`}
+              onClick={() => scrollToMessage(message.id)}
+            >
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-semibold text-white">
+                <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
                   {message.username}
                 </span>
-                <span className="text-xs bg-white/20 px-2 py-0.5 rounded">
+                <span className={`text-xs px-2 py-0.5 rounded ${currentDesign.hostText} opacity-70`}>
                   HOST
                 </span>
               </div>
-              <p className="text-sm text-white">
+              <p className={`text-sm ${currentDesign.hostText}`}>
                 {message.content}
               </p>
             </div>
@@ -396,16 +493,19 @@ export default function ChatPage() {
 
           {/* Pinned Message */}
           {stickyPinnedMessage && (
-            <div className="rounded-lg px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+            <div
+              className={`${currentDesign.pinnedMessage} cursor-pointer hover:opacity-90 transition-opacity`}
+              onClick={() => scrollToMessage(stickyPinnedMessage.id)}
+            >
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
                   {stickyPinnedMessage.username}
                 </span>
-                <span className="text-xs text-yellow-700 dark:text-yellow-400">
+                <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
                   📌 Pinned ${stickyPinnedMessage.pin_amount_paid}
                 </span>
               </div>
-              <p className="text-sm text-gray-700 dark:text-gray-300">
+              <p className={`text-sm ${currentDesign.pinnedText}`}>
                 {stickyPinnedMessage.content}
               </p>
             </div>
@@ -417,7 +517,7 @@ export default function ChatPage() {
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
+        className={currentDesign.messagesArea}
       >
         {filteredMessages.map((message) => (
           <div
@@ -426,34 +526,34 @@ export default function ChatPage() {
             className={`flex ${message.is_from_host ? 'flex-col' : 'flex-row'} gap-2`}
           >
             <div
-              className={`max-w-[80%] rounded-lg px-4 py-2 ${
+              className={
                 message.is_from_host
-                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white self-stretch border-2 border-purple-400'
+                  ? currentDesign.hostMessage + ' self-stretch'
                   : message.is_pinned
-                  ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'
-                  : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
-              }`}
+                  ? currentDesign.pinnedMessage
+                  : currentDesign.regularMessage
+              }
             >
               <div className="flex items-center gap-2 mb-1">
-                <span className={`text-sm font-semibold ${message.is_from_host ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
+                <span className={`text-sm font-semibold ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
                   {message.username}
                 </span>
                 {message.is_from_host && (
-                  <span className="text-xs bg-white/20 px-2 py-0.5 rounded">
+                  <span className={`text-xs px-2 py-0.5 rounded ${currentDesign.hostText} opacity-70`}>
                     HOST
                   </span>
                 )}
                 {message.is_pinned && !message.is_from_host && (
-                  <span className="text-xs text-yellow-700 dark:text-yellow-400">
-                    📌 Pinned
+                  <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
+                    📌 Pinned ${message.pin_amount_paid}
                   </span>
                 )}
               </div>
-              <p className={`text-sm ${message.is_from_host ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+              <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
                 {message.content}
               </p>
-              <p className={`text-xs mt-1 ${message.is_from_host ? 'text-white/70' : 'text-gray-500 dark:text-gray-500'}`}>
-                {new Date(message.created_at).toLocaleTimeString()}
+              <p className={`text-xs mt-1 ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText} opacity-60`}>
+                {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
               </p>
             </div>
           </div>
