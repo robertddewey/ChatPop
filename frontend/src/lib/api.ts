@@ -51,6 +51,13 @@ export interface ChatRoom {
   created_at: string;
 }
 
+export interface ReplyToMessage {
+  id: string;
+  username: string;
+  content: string;
+  is_from_host: boolean;
+}
+
 export interface Message {
   id: string;
   chat_room: string;
@@ -58,6 +65,8 @@ export interface Message {
   user: User | null;
   message_type: 'normal' | 'host' | 'system';
   content: string;
+  reply_to: string | null;
+  reply_to_message: ReplyToMessage | null;
   is_pinned: boolean;
   pinned_at: string | null;
   pinned_until: string | null;

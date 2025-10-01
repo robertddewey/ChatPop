@@ -24,6 +24,9 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
 
+  // Message filter
+  const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load chat room details
@@ -131,6 +134,46 @@ export default function ChatPage() {
   const shouldAutoScrollRef = useRef(true);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
+  // Track which sticky messages are visible in scroll area
+  const [visibleMessageIds, setVisibleMessageIds] = useState<Set<string>>(new Set());
+
+  // Filter messages based on mode
+  const filteredMessages = filterMode === 'focus'
+    ? messages.filter(msg => {
+        // Show host messages
+        if (msg.is_from_host) return true;
+
+        // Show my messages
+        const myUsername = localStorage.getItem(`chat_username_${code}`);
+        if (msg.username === myUsername) return true;
+
+        // Show messages that host replied to
+        const hostRepliedToThis = messages.some(
+          m => m.is_from_host && m.reply_to === msg.id
+        );
+        if (hostRepliedToThis) return true;
+
+        return false;
+      })
+    : messages;
+
+  // Filter messages for sticky section
+  const allStickyHostMessages = filteredMessages
+    .filter(m => m.is_from_host)
+    .slice(-2)  // Get 2 most recent
+    .reverse(); // Show newest first
+
+  // Only show in sticky if not visible in scroll area
+  const stickyHostMessages = allStickyHostMessages.filter(m => !visibleMessageIds.has(m.id));
+
+  const topPinnedMessage = filteredMessages
+    .filter(m => m.is_pinned && !m.is_from_host)
+    .sort((a, b) => parseFloat(b.pin_amount_paid) - parseFloat(a.pin_amount_paid))
+    [0]; // Get highest paid
+
+  // Only show pinned in sticky if not visible in scroll area
+  const stickyPinnedMessage = topPinnedMessage && !visibleMessageIds.has(topPinnedMessage.id) ? topPinnedMessage : null;
+
   // Check if user is scrolled near the bottom
   const checkIfNearBottom = () => {
     const container = messagesContainerRef.current;
@@ -163,6 +206,52 @@ export default function ChatPage() {
 
     return () => clearInterval(interval);
   }, [hasJoined, code]);
+
+  // IntersectionObserver to track when sticky host messages are visible in scroll
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || messages.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setVisibleMessageIds((prev) => {
+          const newVisibleIds = new Set(prev);
+          entries.forEach((entry) => {
+            const messageId = entry.target.getAttribute('data-message-id');
+            if (messageId) {
+              if (entry.isIntersecting) {
+                newVisibleIds.add(messageId);
+              } else {
+                newVisibleIds.delete(messageId);
+              }
+            }
+          });
+          return newVisibleIds;
+        });
+      },
+      {
+        root: container,
+        threshold: 0.3, // Message must be 30% visible
+        rootMargin: '0px',
+      }
+    );
+
+    // Observe all sticky host messages and pinned messages in the scroll area
+    const stickyHostIds = allStickyHostMessages.map(m => m.id);
+    const pinnedId = topPinnedMessage?.id;
+    const idsToObserve = [...stickyHostIds];
+    if (pinnedId) idsToObserve.push(pinnedId);
+
+    const messageElements = container.querySelectorAll('[data-message-id]');
+    messageElements.forEach((el) => {
+      const messageId = el.getAttribute('data-message-id');
+      if (messageId && idsToObserve.includes(messageId)) {
+        observer.observe(el);
+      }
+    });
+
+    return () => observer.disconnect();
+  }, [filteredMessages.length, allStickyHostMessages.length]);
 
   if (loading) {
     return (
@@ -262,13 +351,67 @@ export default function ChatPage() {
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Chat Header */}
       <div className="border-b bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0">
-        <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-          {chatRoom?.name}
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          {chatRoom?.message_count} messages
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+              {chatRoom?.name}
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {chatRoom?.message_count} messages
+            </p>
+          </div>
+          {/* Filter Toggle */}
+          <button
+            onClick={() => setFilterMode(filterMode === 'all' ? 'focus' : 'all')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              filterMode === 'focus'
+                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
+          >
+            {filterMode === 'all' ? '🎯 Focus' : '💬 All'}
+          </button>
+        </div>
       </div>
+
+      {/* Sticky Section: Host + Pinned Messages */}
+      {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
+        <div className="border-b bg-white dark:bg-gray-800 px-4 py-2 flex-shrink-0 space-y-2">
+          {/* Host Messages */}
+          {stickyHostMessages.map((message) => (
+            <div key={`sticky-${message.id}`} className="rounded-lg px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-semibold text-white">
+                  {message.username}
+                </span>
+                <span className="text-xs bg-white/20 px-2 py-0.5 rounded">
+                  HOST
+                </span>
+              </div>
+              <p className="text-sm text-white">
+                {message.content}
+              </p>
+            </div>
+          ))}
+
+          {/* Pinned Message */}
+          {stickyPinnedMessage && (
+            <div className="rounded-lg px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {stickyPinnedMessage.username}
+                </span>
+                <span className="text-xs text-yellow-700 dark:text-yellow-400">
+                  📌 Pinned ${stickyPinnedMessage.pin_amount_paid}
+                </span>
+              </div>
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                {stickyPinnedMessage.content}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Messages Area */}
       <div
@@ -276,15 +419,16 @@ export default function ChatPage() {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
       >
-        {messages.map((message) => (
+        {filteredMessages.map((message) => (
           <div
             key={message.id}
+            data-message-id={message.id}
             className={`flex ${message.is_from_host ? 'flex-col' : 'flex-row'} gap-2`}
           >
             <div
               className={`max-w-[80%] rounded-lg px-4 py-2 ${
                 message.is_from_host
-                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white self-stretch'
+                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white self-stretch border-2 border-purple-400'
                   : message.is_pinned
                   ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'
                   : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'

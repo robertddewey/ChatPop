@@ -65,11 +65,13 @@ class MessageSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     is_from_host = serializers.SerializerMethodField()
     time_until_unpin = serializers.SerializerMethodField()
+    reply_to_message = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
         fields = [
             'id', 'chat_room', 'username', 'user', 'message_type', 'content',
+            'reply_to', 'reply_to_message',
             'is_pinned', 'pinned_at', 'pinned_until', 'pin_amount_paid',
             'is_from_host', 'time_until_unpin', 'created_at', 'is_deleted'
         ]
@@ -87,12 +89,25 @@ class MessageSerializer(serializers.ModelSerializer):
             return max(0, int(remaining))
         return None
 
+    def get_reply_to_message(self, obj):
+        """Return basic info about the message being replied to"""
+        if obj.reply_to:
+            return {
+                'id': str(obj.reply_to.id),
+                'username': obj.reply_to.username,
+                'content': obj.reply_to.content[:100],  # Truncate for preview
+                'is_from_host': obj.reply_to.user == obj.reply_to.chat_room.host if obj.reply_to.user else False
+            }
+        return None
+
 
 class MessageCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating a message"""
+    reply_to = serializers.UUIDField(required=False, allow_null=True)
+
     class Meta:
         model = Message
-        fields = ['username', 'content']
+        fields = ['username', 'content', 'reply_to']
 
     def validate_content(self, value):
         if not value or len(value.strip()) == 0:
@@ -100,6 +115,17 @@ class MessageCreateSerializer(serializers.ModelSerializer):
         if len(value) > 5000:
             raise serializers.ValidationError("Message content too long (max 5000 characters)")
         return value.strip()
+
+    def validate_reply_to(self, value):
+        """Validate that reply_to message exists and is in the same chat room"""
+        if value:
+            chat_room = self.context.get('chat_room')
+            try:
+                message = Message.objects.get(id=value, chat_room=chat_room, is_deleted=False)
+                return message
+            except Message.DoesNotExist:
+                raise serializers.ValidationError("Reply target message not found")
+        return None
 
     def create(self, validated_data):
         request = self.context.get('request')

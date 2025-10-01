@@ -68,6 +68,11 @@ class ChatRoom(models.Model):
         """Get the chat room URL"""
         return f"/chat/{self.code}"
 
+    @property
+    def message_count(self):
+        """Get count of non-deleted messages"""
+        return self.messages.filter(is_deleted=False).count()
+
 
 class Message(models.Model):
     """Chat message model"""
@@ -86,6 +91,9 @@ class Message(models.Model):
     # User info (username required, user optional for guests)
     username = models.CharField(max_length=100, help_text="Display name in chat")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='messages', help_text="Optional: registered user")
+
+    # Reply tracking
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies', help_text="Message this is replying to")
 
     # Message content
     message_type = models.CharField(max_length=10, choices=MESSAGE_TYPES, default=MESSAGE_NORMAL)
