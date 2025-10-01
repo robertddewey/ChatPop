@@ -3,12 +3,23 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404
-from .models import ChatRoom, Message, BackRoom, BackRoomMember
+from django.conf import settings
+from .models import ChatRoom, Message, BackRoom, BackRoomMember, AnonymousUserFingerprint
 from .serializers import (
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
     BackRoomSerializer, BackRoomMemberSerializer
 )
+
+
+def get_client_ip(request):
+    """Get the client's IP address from the request"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
 
 
 class ChatRoomCreateView(generics.CreateAPIView):
@@ -83,21 +94,11 @@ class MessageListView(generics.ListAPIView):
         code = self.kwargs['code']
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
 
-        # Get non-deleted messages
-        # Order by: host messages first, then pinned messages, then by creation time (oldest first)
-        from django.db.models import Case, When, Value, IntegerField
-
+        # Get non-deleted messages in chronological order
         return Message.objects.filter(
             chat_room=chat_room,
             is_deleted=False
-        ).annotate(
-            priority=Case(
-                When(message_type=Message.MESSAGE_HOST, then=Value(0)),
-                When(is_pinned=True, then=Value(1)),
-                default=Value(2),
-                output_field=IntegerField()
-            )
-        ).order_by('priority', 'created_at')
+        ).order_by('created_at')
 
 
 class MessageCreateView(generics.CreateAPIView):
@@ -210,3 +211,77 @@ class BackRoomJoinView(APIView):
             'member': BackRoomMemberSerializer(member).data,
             'message': 'Successfully joined back room'
         }, status=status.HTTP_201_CREATED)
+
+
+class FingerprintUsernameView(APIView):
+    """Get or set username by fingerprint for anonymous users"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, code):
+        """Get username for a fingerprint if it exists"""
+        # Check if fingerprinting is enabled
+        if not settings.ANONYMOUS_USER_FINGERPRINT:
+            return Response(
+                {'detail': 'Fingerprinting is disabled'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        fingerprint = request.query_params.get('fingerprint')
+
+        if not fingerprint:
+            raise ValidationError("Fingerprint is required")
+
+        # Look up username by fingerprint
+        try:
+            fp_record = AnonymousUserFingerprint.objects.get(
+                chat_room=chat_room,
+                fingerprint=fingerprint
+            )
+            # Update last_seen timestamp and IP address
+            fp_record.ip_address = get_client_ip(request)
+            fp_record.save(update_fields=['last_seen', 'ip_address'])
+
+            return Response({
+                'username': fp_record.username,
+                'found': True
+            })
+        except AnonymousUserFingerprint.DoesNotExist:
+            return Response({
+                'username': None,
+                'found': False
+            })
+
+    def post(self, request, code):
+        """Set username for a fingerprint"""
+        # Check if fingerprinting is enabled
+        if not settings.ANONYMOUS_USER_FINGERPRINT:
+            return Response(
+                {'detail': 'Fingerprinting is disabled'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        fingerprint = request.data.get('fingerprint')
+        username = request.data.get('username')
+
+        if not fingerprint:
+            raise ValidationError("Fingerprint is required")
+        if not username:
+            raise ValidationError("Username is required")
+
+        # Get client IP address
+        ip_address = get_client_ip(request)
+
+        # Create or update fingerprint record
+        fp_record, created = AnonymousUserFingerprint.objects.update_or_create(
+            chat_room=chat_room,
+            fingerprint=fingerprint,
+            defaults={'username': username, 'ip_address': ip_address}
+        )
+
+        return Response({
+            'username': fp_record.username,
+            'created': created,
+            'message': 'Username saved successfully'
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)

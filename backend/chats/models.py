@@ -199,6 +199,9 @@ class AnonymousUserFingerprint(models.Model):
     fingerprint = models.CharField(max_length=255, db_index=True, help_text="Browser fingerprint hash")
     username = models.CharField(max_length=100, help_text="Username associated with this fingerprint")
 
+    # IP address tracking
+    ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Last known IP address")
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

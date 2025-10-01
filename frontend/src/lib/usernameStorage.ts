@@ -3,12 +3,35 @@
  * Priority: localStorage → sessionStorage → fingerprint (if enabled)
  */
 
+import FingerprintJS from '@fingerprintjs/fingerprintjs';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000';
+const API_URL = `${API_BASE_URL}/api`;
+
+let fpPromise: Promise<any> | null = null;
+
+/**
+ * Get browser fingerprint (lazy loaded)
+ */
+async function getFingerprint(): Promise<string> {
+  if (!fpPromise) {
+    fpPromise = FingerprintJS.load();
+  }
+  const fp = await fpPromise;
+  const result = await fp.get();
+  return result.visitorId;
+}
+
 export class UsernameStorage {
   /**
    * Get username for a specific chat
-   * Checks localStorage first, then sessionStorage
+   * Checks localStorage → sessionStorage → fingerprint API (if enabled)
+   *
+   * @param chatCode - The chat room code
+   * @param isLoggedIn - Whether the user is logged in (skip fingerprinting if true)
+   * @returns Username or null if not found
    */
-  static getUsername(chatCode: string): string | null {
+  static async getUsername(chatCode: string, isLoggedIn: boolean = false): Promise<string | null> {
     // Try localStorage first
     const localUsername = localStorage.getItem(`chat_username_${chatCode}`);
     if (localUsername) {
@@ -25,16 +48,75 @@ export class UsernameStorage {
       return sessionUsername;
     }
 
-    return null;
+    // Skip fingerprinting for logged-in users
+    if (isLoggedIn) {
+      return null;
+    }
+
+    // Try fingerprint API (if enabled)
+    try {
+      const fingerprint = await getFingerprint();
+      const response = await fetch(
+        `${API_URL}/chats/${chatCode}/fingerprint-username/?fingerprint=${encodeURIComponent(fingerprint)}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.found && data.username) {
+          // Save to localStorage and sessionStorage
+          this.saveUsername(chatCode, data.username);
+          return data.username;
+        }
+      }
+      // If fingerprinting is disabled (503) or not found, return null
+      return null;
+    } catch (error) {
+      console.warn('Failed to get username from fingerprint:', error);
+      return null;
+    }
   }
 
   /**
    * Save username for a specific chat
-   * Saves to both localStorage and sessionStorage
+   * Saves to localStorage, sessionStorage, and fingerprint API (if enabled)
+   *
+   * @param chatCode - The chat room code
+   * @param username - The username to save
+   * @param isLoggedIn - Whether the user is logged in (skip fingerprinting if true)
    */
-  static saveUsername(chatCode: string, username: string): void {
+  static async saveUsername(chatCode: string, username: string, isLoggedIn: boolean = false): Promise<void> {
+    // Always save to localStorage and sessionStorage
     localStorage.setItem(`chat_username_${chatCode}`, username);
     sessionStorage.setItem(`chat_username_${chatCode}`, username);
+
+    // Skip fingerprinting for logged-in users
+    if (isLoggedIn) {
+      return;
+    }
+
+    // Also save to fingerprint API (if enabled)
+    try {
+      const fingerprint = await getFingerprint();
+      await fetch(`${API_URL}/chats/${chatCode}/fingerprint-username/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fingerprint,
+          username,
+        }),
+      });
+      // Silently fail if fingerprinting is disabled or fails
+    } catch (error) {
+      console.warn('Failed to save username to fingerprint:', error);
+    }
   }
 
   /**

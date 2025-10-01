@@ -200,3 +200,8 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
 # Custom User Model
 AUTH_USER_MODEL = "accounts.User"
+
+# ChatPop Settings
+# Enable/disable anonymous user fingerprinting for username persistence
+# This can be toggled from Django admin
+ANONYMOUS_USER_FINGERPRINT = os.getenv("ANONYMOUS_USER_FINGERPRINT", "True") == "True"

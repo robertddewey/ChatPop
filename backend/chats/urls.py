@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomJoinView, MyChatsView,
     MessageListView, MessageCreateView, MessagePinView,
-    BackRoomDetailView, BackRoomJoinView
+    BackRoomDetailView, BackRoomJoinView, FingerprintUsernameView
 )
 
 app_name = 'chats'
@@ -22,4 +22,7 @@ urlpatterns = [
     # Back Room
     path('<str:code>/backroom/', BackRoomDetailView.as_view(), name='backroom-detail'),
     path('<str:code>/backroom/join/', BackRoomJoinView.as_view(), name='backroom-join'),
+
+    # Fingerprint Username
+    path('<str:code>/fingerprint-username/', FingerprintUsernameView.as_view(), name='fingerprint-username'),
 ]

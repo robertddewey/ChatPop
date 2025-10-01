@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ChatRoom, Message, BackRoom, BackRoomMember, Transaction
+from .models import ChatRoom, Message, BackRoom, BackRoomMember, Transaction, AnonymousUserFingerprint
 
 
 @admin.register(ChatRoom)
@@ -63,3 +63,16 @@ class TransactionAdmin(admin.ModelAdmin):
     search_fields = ['username', 'stripe_payment_intent_id', 'stripe_charge_id', 'chat_room__name']
     readonly_fields = ['id', 'created_at', 'completed_at']
     date_hierarchy = 'created_at'
+
+
+@admin.register(AnonymousUserFingerprint)
+class AnonymousUserFingerprintAdmin(admin.ModelAdmin):
+    list_display = ['username', 'chat_room', 'fingerprint_preview', 'ip_address', 'last_seen', 'created_at']
+    list_filter = ['created_at', 'last_seen']
+    search_fields = ['username', 'fingerprint', 'chat_room__name', 'chat_room__code', 'ip_address']
+    readonly_fields = ['id', 'fingerprint', 'ip_address', 'created_at', 'updated_at', 'last_seen']
+    date_hierarchy = 'last_seen'
+
+    def fingerprint_preview(self, obj):
+        return f"{obj.fingerprint[:16]}..." if len(obj.fingerprint) > 16 else obj.fingerprint
+    fingerprint_preview.short_description = 'Fingerprint'

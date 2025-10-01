@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { chatApi, messageApi, authApi, type ChatRoom, type Message } from '@/lib/api';
 import Header from '@/components/Header';
+import { UsernameStorage } from '@/lib/usernameStorage';
 
 export default function ChatPage() {
   const params = useParams();
@@ -61,17 +62,30 @@ export default function ChatPage() {
 
         // Check if user is already logged in
         const token = localStorage.getItem('auth_token');
+        let isLoggedIn = false;
+
         if (token) {
           try {
             const currentUser = await authApi.getCurrentUser();
+            isLoggedIn = true;
             const displayUsername = currentUser.display_name || currentUser.email.split('@')[0];
             setUsername(displayUsername);
-            localStorage.setItem(`chat_username_${code}`, displayUsername);
+            await UsernameStorage.saveUsername(code, displayUsername, true); // Skip fingerprinting for logged-in users
             setHasJoined(true);
             await loadMessages();
           } catch (userErr) {
             // If getting user fails, just proceed as guest
             console.error('Failed to load user:', userErr);
+          }
+        }
+
+        // If not logged in, try to get username from storage (including fingerprint)
+        if (!isLoggedIn) {
+          const storedUsername = await UsernameStorage.getUsername(code, false);
+          if (storedUsername) {
+            setUsername(storedUsername);
+            setHasJoined(true);
+            await loadMessages();
           }
         }
 
@@ -107,7 +121,9 @@ export default function ChatPage() {
 
     try {
       await chatApi.joinChat(code, username.trim(), accessCode || undefined);
-      localStorage.setItem(`chat_username_${code}`, username.trim());
+      const token = localStorage.getItem('auth_token');
+      const isLoggedIn = !!token;
+      await UsernameStorage.saveUsername(code, username.trim(), isLoggedIn);
       setHasJoined(true);
       await loadMessages();
     } catch (err: any) {
@@ -122,10 +138,17 @@ export default function ChatPage() {
 
     setSending(true);
     try {
-      // Get username from localStorage or use current username
-      let messageUsername = localStorage.getItem(`chat_username_${code}`) || username;
+      // Use current username from state (already loaded via UsernameStorage)
+      let messageUsername = username;
 
-      // If logged in and no username saved, use email or display name
+      // If no username, try to get from storage
+      if (!messageUsername) {
+        const token = localStorage.getItem('auth_token');
+        const isLoggedIn = !!token;
+        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+      }
+
+      // If still no username and logged in, use email or display name
       if (!messageUsername && chatRoom) {
         const token = localStorage.getItem('auth_token');
         if (token) {
@@ -178,9 +201,8 @@ export default function ChatPage() {
         // Show host messages
         if (msg.is_from_host) return true;
 
-        // Show my messages
-        const myUsername = localStorage.getItem(`chat_username_${code}`);
-        if (msg.username === myUsername) return true;
+        // Show my messages (use username from state)
+        if (msg.username === username) return true;
 
         // Show messages that host replied to
         const hostRepliedToThis = messages.some(
@@ -432,48 +454,48 @@ export default function ChatPage() {
       header: "border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
       headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
       headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
-      stickySection: "border-b border-purple-200 dark:border-purple-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-lg px-4 py-2 flex-shrink-0 space-y-2",
-      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMTYsIDE5MSwgMjE2LCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDE5MiwgMTMyLCAyNTIsIDAuMTUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI3BhdHRlcm4pIi8+PC9zdmc+')] bg-repeat",
+      stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
+      messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMTYsIDE5MSwgMjE2LCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDE5MiwgMTMyLCAyNTIsIDAuMTUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI3BhdHRlcm4pIi8+PC9zdmc+')] bg-repeat",
       hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-white shadow-lg border-2 border-white/20",
       hostText: "text-white",
       pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
       pinnedText: "text-amber-900 dark:text-amber-200",
       regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-purple-100 dark:border-purple-800 shadow-sm",
       regularText: "text-gray-700 dark:text-gray-300",
-      filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30 w-[100px]",
-      filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700 w-[100px]",
+      filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30",
+      filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700",
     },
     design2: {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
       header: "border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
       headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
       headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
-      stickySection: "border-b border-blue-200 dark:border-blue-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-lg px-4 py-2 flex-shrink-0 space-y-2",
-      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMDAsIDIzMCwgMjUwLCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDU5LCAxMzAsIDI0NiwgMC4xNSkiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiLz48L3N2Zz4=')] bg-repeat",
+      stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
+      messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMDAsIDIzMCwgMjUwLCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDU5LCAxMzAsIDI0NiwgMC4xNSkiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiLz48L3N2Zz4=')] bg-repeat",
       hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500 text-white shadow-lg border-2 border-white/20",
       hostText: "text-white",
       pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
       pinnedText: "text-amber-900 dark:text-amber-200",
       regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-blue-100 dark:border-blue-800 shadow-sm",
       regularText: "text-gray-700 dark:text-gray-300",
-      filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30 w-[100px]",
-      filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700 w-[100px]",
+      filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
+      filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
     },
     design3: {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
       header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
       headerTitle: "text-lg font-bold text-zinc-100",
       headerSubtitle: "text-sm text-zinc-400",
-      stickySection: "border-b border-zinc-800 bg-zinc-900/80 px-4 py-2 flex-shrink-0 space-y-2",
-      messagesArea: "flex-1 overflow-y-auto px-4 py-4 space-y-2",
+      stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
+      messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
       hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
       hostText: "text-cyan-950",
       pinnedMessage: "rounded px-3 py-2 bg-yellow-400 font-medium",
       pinnedText: "text-yellow-950",
       regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
       regularText: "text-zinc-100",
-      filterButtonActive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300 w-[100px]",
-      filterButtonInactive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700 w-[100px]",
+      filterButtonActive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
+      filterButtonInactive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
     },
   };
 
@@ -500,62 +522,70 @@ export default function ChatPage() {
           {/* Filter Toggle */}
           <button
             onClick={() => setFilterMode(filterMode === 'all' ? 'focus' : 'all')}
-            className={`transition-all ${
+            className={`transition-all whitespace-nowrap ${
               filterMode === 'focus'
                 ? currentDesign.filterButtonActive
                 : currentDesign.filterButtonInactive
             }`}
           >
-            {filterMode === 'focus' ? 'Focus On' : 'Focus Off'}
+            Host Focus: {filterMode === 'focus' ? 'On' : 'Off'}
           </button>
         </div>
       </div>
 
-      {/* Sticky Section: Host + Pinned Messages */}
-      {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
-        <div className={currentDesign.stickySection}>
-          {/* Host Messages */}
-          {stickyHostMessages.map((message) => (
-            <div
-              key={`sticky-${message.id}`}
-              className={`${currentDesign.hostMessage} cursor-pointer hover:opacity-90 transition-opacity`}
-              onClick={() => scrollToMessage(message.id)}
-            >
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
-                  {message.username}
-                </span>
-                <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
-                  👑
-                </span>
+      {/* Content Area - Relative positioned to contain absolute sticky section */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
+        {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
+          <div className={currentDesign.stickySection}>
+            {/* Host Messages */}
+            {stickyHostMessages.map((message) => (
+              <div
+                key={`sticky-${message.id}`}
+                className={`${currentDesign.hostMessage} cursor-pointer hover:opacity-90 transition-opacity`}
+                onClick={() => scrollToMessage(message.id)}
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
+                    {message.username}
+                  </span>
+                  <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
+                    👑
+                  </span>
+                  <span className={`text-xs ${currentDesign.hostText} opacity-60 ml-auto`}>
+                    {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className={`text-sm ${currentDesign.hostText}`}>
+                  {message.content}
+                </p>
               </div>
-              <p className={`text-sm ${currentDesign.hostText}`}>
-                {message.content}
-              </p>
-            </div>
-          ))}
+            ))}
 
-          {/* Pinned Message */}
-          {stickyPinnedMessage && (
-            <div
-              className={`${currentDesign.pinnedMessage} cursor-pointer hover:opacity-90 transition-opacity`}
-              onClick={() => scrollToMessage(stickyPinnedMessage.id)}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
-                  {stickyPinnedMessage.username}
-                </span>
-                <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
-                  📌 Pinned ${stickyPinnedMessage.pin_amount_paid}
-                </span>
+            {/* Pinned Message */}
+            {stickyPinnedMessage && (
+              <div
+                className={`${currentDesign.pinnedMessage} cursor-pointer hover:opacity-90 transition-opacity`}
+                onClick={() => scrollToMessage(stickyPinnedMessage.id)}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
+                    {stickyPinnedMessage.username}
+                  </span>
+                  <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
+                    📌 Pinned ${stickyPinnedMessage.pin_amount_paid}
+                  </span>
+                  <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
+                    {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className={`text-sm ${currentDesign.pinnedText}`}>
+                  {stickyPinnedMessage.content}
+                </p>
               </div>
-              <p className={`text-sm ${currentDesign.pinnedText}`}>
-                {stickyPinnedMessage.content}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
 
       {/* Messages Area */}
       <div
@@ -632,8 +662,8 @@ export default function ChatPage() {
 
                   {/* Pinned message header */}
                   {message.is_pinned && !message.is_from_host && (
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
+                    <div className="flex items-center justify-between mb-1 gap-3">
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
                         <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
                           {message.username}
                         </span>
@@ -641,7 +671,7 @@ export default function ChatPage() {
                           📌 ${message.pin_amount_paid}
                         </span>
                       </div>
-                      <span className={`text-xs ${currentDesign.pinnedText} opacity-60`}>
+                      <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
                         {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                       </span>
                     </div>
@@ -658,6 +688,7 @@ export default function ChatPage() {
           );
         })}
         <div ref={messagesEndRef} />
+      </div>
       </div>
 
       {/* Message Input */}
