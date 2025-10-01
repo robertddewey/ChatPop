@@ -1,0 +1,65 @@
+from django.contrib import admin
+from .models import ChatRoom, Message, BackRoom, BackRoomMember, Transaction
+
+
+@admin.register(ChatRoom)
+class ChatRoomAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'host', 'access_mode', 'is_active', 'created_at']
+    list_filter = ['access_mode', 'is_active', 'voice_enabled', 'video_enabled', 'created_at']
+    search_fields = ['name', 'code', 'host__email', 'description']
+    readonly_fields = ['id', 'code', 'created_at', 'updated_at']
+    fieldsets = (
+        ('Basic Info', {
+            'fields': ('id', 'code', 'name', 'description', 'is_active')
+        }),
+        ('Host Information', {
+            'fields': ('host',)
+        }),
+        ('Access Control', {
+            'fields': ('access_mode', 'access_code')
+        }),
+        ('Media Settings', {
+            'fields': ('voice_enabled', 'video_enabled', 'photo_enabled')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+
+
+@admin.register(Message)
+class MessageAdmin(admin.ModelAdmin):
+    list_display = ['username', 'chat_room', 'message_type', 'content_preview', 'is_pinned', 'created_at']
+    list_filter = ['message_type', 'is_pinned', 'is_deleted', 'created_at']
+    search_fields = ['username', 'content', 'chat_room__name']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+
+    def content_preview(self, obj):
+        return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
+    content_preview.short_description = 'Content'
+
+
+@admin.register(BackRoom)
+class BackRoomAdmin(admin.ModelAdmin):
+    list_display = ['chat_room', 'price_per_seat', 'max_seats', 'seats_occupied', 'seats_available', 'is_active']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['chat_room__name']
+    readonly_fields = ['id', 'seats_available', 'created_at', 'updated_at']
+
+
+@admin.register(BackRoomMember)
+class BackRoomMemberAdmin(admin.ModelAdmin):
+    list_display = ['username', 'back_room', 'amount_paid', 'is_active', 'joined_at']
+    list_filter = ['is_active', 'joined_at']
+    search_fields = ['username', 'back_room__chat_room__name']
+    readonly_fields = ['id', 'joined_at']
+
+
+@admin.register(Transaction)
+class TransactionAdmin(admin.ModelAdmin):
+    list_display = ['username', 'transaction_type', 'amount', 'status', 'chat_room', 'created_at']
+    list_filter = ['transaction_type', 'status', 'created_at']
+    search_fields = ['username', 'stripe_payment_intent_id', 'stripe_charge_id', 'chat_room__name']
+    readonly_fields = ['id', 'created_at', 'completed_at']
+    date_hierarchy = 'created_at'
