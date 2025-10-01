@@ -515,7 +515,17 @@ export default function ChatPage() {
           </h1>
           {/* Filter Toggle */}
           <button
-            onClick={() => setFilterMode(filterMode === 'all' ? 'focus' : 'all')}
+            onClick={() => {
+              const newMode = filterMode === 'all' ? 'focus' : 'all';
+              setFilterMode(newMode);
+
+              // Reset scroll to top when changing filter to prevent weird jumps
+              setTimeout(() => {
+                if (messagesContainerRef.current) {
+                  messagesContainerRef.current.scrollTop = 0;
+                }
+              }, 0);
+            }}
             className={`transition-all whitespace-nowrap ${
               filterMode === 'focus'
                 ? currentDesign.filterButtonActive
