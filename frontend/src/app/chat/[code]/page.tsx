@@ -464,6 +464,7 @@ export default function ChatPage() {
       regularText: "text-gray-700 dark:text-gray-300",
       filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30",
       filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700",
+      inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
     },
     design2: {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
@@ -480,6 +481,7 @@ export default function ChatPage() {
       regularText: "text-gray-700 dark:text-gray-300",
       filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
       filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
+      inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
     },
     design3: {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
@@ -496,6 +498,7 @@ export default function ChatPage() {
       regularText: "text-zinc-100",
       filterButtonActive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
       filterButtonInactive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
+      inputArea: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
     },
   };
 
@@ -504,15 +507,6 @@ export default function ChatPage() {
   // Main chat interface
   return (
     <div className={currentDesign.container}>
-      {/* Design Switcher - Only show in dev */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="fixed bottom-4 left-4 z-50 flex gap-2 bg-black/80 text-white p-2 rounded-lg text-xs">
-          <a href={`?design=design1`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Design 1</a>
-          <a href={`?design=design2`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Design 2</a>
-          <a href={`?design=design3`} className="px-2 py-1 rounded bg-white/20 hover:bg-white/30">Design 3</a>
-        </div>
-      )}
-
       {/* Chat Header */}
       <div className={currentDesign.header}>
         <div className="flex items-center justify-between">
@@ -593,18 +587,48 @@ export default function ChatPage() {
         onScroll={handleScroll}
         className={currentDesign.messagesArea}
       >
+        {/* Add padding-top when sticky messages are present to avoid overlap */}
+        <div className={`space-y-3 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
         {filteredMessages.map((message, index) => {
           const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
-          const isFirstInThread = !prevMessage || prevMessage.username !== message.username || prevMessage.is_from_host || message.is_from_host || message.is_pinned;
+
+          // Time-based threading: break thread if >5 minutes gap
+          // TODO: Make this dynamic based on chat velocity when WebSockets are implemented
+          const THREAD_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+          const timeDiff = prevMessage ?
+            new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime() :
+            Infinity;
+
+          const isFirstInThread = !prevMessage ||
+            prevMessage.username !== message.username ||
+            prevMessage.is_from_host ||
+            message.is_from_host ||
+            message.is_pinned ||
+            timeDiff > THREAD_WINDOW_MS;
+
           const nextMessage = index < filteredMessages.length - 1 ? filteredMessages[index + 1] : null;
-          const isLastInThread = !nextMessage || nextMessage.username !== message.username || nextMessage.is_from_host || message.is_from_host || message.is_pinned;
+          const nextTimeDiff = nextMessage ?
+            new Date(nextMessage.created_at).getTime() - new Date(message.created_at).getTime() :
+            Infinity;
+
+          const isLastInThread = !nextMessage ||
+            nextMessage.username !== message.username ||
+            nextMessage.is_from_host ||
+            message.is_from_host ||
+            message.is_pinned ||
+            nextTimeDiff > THREAD_WINDOW_MS;
 
           // Find the last message in this thread to get its timestamp
           let lastMessageInThread = message;
           if (isFirstInThread && !isLastInThread && !message.is_from_host && !message.is_pinned) {
             for (let i = index + 1; i < filteredMessages.length; i++) {
               const futureMsg = filteredMessages[i];
-              if (futureMsg.username === message.username && !futureMsg.is_from_host && !futureMsg.is_pinned) {
+              const futureMsgTimeDiff = new Date(futureMsg.created_at).getTime() - new Date(lastMessageInThread.created_at).getTime();
+
+              if (futureMsg.username === message.username &&
+                  !futureMsg.is_from_host &&
+                  !futureMsg.is_pinned &&
+                  futureMsgTimeDiff <= THREAD_WINDOW_MS) {
                 lastMessageInThread = futureMsg;
               } else {
                 break;
@@ -688,11 +712,12 @@ export default function ChatPage() {
           );
         })}
         <div ref={messagesEndRef} />
+        </div>
       </div>
       </div>
 
       {/* Message Input */}
-      <div className="border-t bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0">
+      <div className={currentDesign.inputArea}>
         <form onSubmit={handleSendMessage} className="flex gap-2">
           <input
             type="text"
