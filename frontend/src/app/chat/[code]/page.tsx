@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import BackRoomTab from '@/components/BackRoomTab';
 import BackRoomView from '@/components/BackRoomView';
+import MessageActionsModal from '@/components/MessageActionsModal';
 import { UsernameStorage } from '@/lib/usernameStorage';
 
 export default function ChatPage() {
@@ -228,6 +229,27 @@ export default function ChatPage() {
 
   // Track which sticky messages are visible in scroll area
   const [visibleMessageIds, setVisibleMessageIds] = useState<Set<string>>(new Set());
+
+  // Message action handlers (placeholders for now)
+  const handlePinSelf = (messageId: string) => {
+    console.log('Pin self message:', messageId);
+    // TODO: Implement pin self logic with payment
+  };
+
+  const handlePinOther = (messageId: string) => {
+    console.log('Pin other message:', messageId);
+    // TODO: Implement pin other logic (host only)
+  };
+
+  const handleBlockUser = (username: string) => {
+    console.log('Block user:', username);
+    // TODO: Implement block user logic
+  };
+
+  const handleTipUser = (username: string) => {
+    console.log('Tip user:', username);
+    // TODO: Implement tip user logic with payment
+  };
 
   // Filter messages based on mode
   const filteredMessages = filterMode === 'focus'
@@ -598,55 +620,77 @@ export default function ChatPage() {
           <div className={currentDesign.stickySection}>
             {/* Host Messages */}
             {stickyHostMessages.map((message) => (
-              <div
+              <MessageActionsModal
                 key={`sticky-${message.id}`}
-                className={`${currentDesign.hostMessage} cursor-pointer hover:opacity-90 transition-opacity`}
-                onClick={() => scrollToMessage(message.id)}
+                message={message}
+                currentUsername={username}
+                isHost={chatRoom?.host.id === currentUserId}
+                design={designVariant as 'design1' | 'design2' | 'design3'}
+                onPinSelf={handlePinSelf}
+                onPinOther={handlePinOther}
+                onBlock={handleBlockUser}
+                onTip={handleTipUser}
               >
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
-                    {message.username}
-                  </span>
-                  <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
-                    👑
-                  </span>
-                  <span className={`text-xs ${currentDesign.hostText} opacity-60 ml-auto`}>
-                    {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                <div
+                  className={`${currentDesign.hostMessage} cursor-pointer hover:opacity-90 transition-opacity`}
+                  onClick={() => scrollToMessage(message.id)}
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
+                      {message.username}
+                    </span>
+                    <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
+                      👑
+                    </span>
+                    <span className={`text-xs ${currentDesign.hostText} opacity-60 ml-auto`}>
+                      {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <p className={`text-sm ${currentDesign.hostText} overflow-hidden whitespace-nowrap pr-32`}>
+                      {message.content}
+                    </p>
+                    <div className={`absolute right-0 top-0 bottom-0 w-32 ${currentDesign.hostMessageFade} pointer-events-none`} />
+                  </div>
                 </div>
-                <div className="relative">
-                  <p className={`text-sm ${currentDesign.hostText} overflow-hidden whitespace-nowrap pr-32`}>
-                    {message.content}
-                  </p>
-                  <div className={`absolute right-0 top-0 bottom-0 w-32 ${currentDesign.hostMessageFade} pointer-events-none`} />
-                </div>
-              </div>
+              </MessageActionsModal>
             ))}
 
             {/* Pinned Message */}
             {stickyPinnedMessage && (
-              <div
-                className={`${currentDesign.pinnedMessage} cursor-pointer hover:opacity-90 transition-opacity`}
-                onClick={() => scrollToMessage(stickyPinnedMessage.id)}
+              <MessageActionsModal
+                message={stickyPinnedMessage}
+                currentUsername={username}
+                isHost={chatRoom?.host.id === currentUserId}
+                design={designVariant as 'design1' | 'design2' | 'design3'}
+                onPinSelf={handlePinSelf}
+                onPinOther={handlePinOther}
+                onBlock={handleBlockUser}
+                onTip={handleTipUser}
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
-                    {stickyPinnedMessage.username}
-                  </span>
-                  <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
-                    📌 Pinned ${stickyPinnedMessage.pin_amount_paid}
-                  </span>
-                  <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
-                    {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                <div
+                  className={`${currentDesign.pinnedMessage} cursor-pointer hover:opacity-90 transition-opacity`}
+                  onClick={() => scrollToMessage(stickyPinnedMessage.id)}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
+                      {stickyPinnedMessage.username}
+                    </span>
+                    <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
+                      📌 Pinned ${stickyPinnedMessage.pin_amount_paid}
+                    </span>
+                    <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
+                      {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <p className={`text-sm ${currentDesign.pinnedText} overflow-hidden whitespace-nowrap pr-32`}>
+                      {stickyPinnedMessage.content}
+                    </p>
+                    <div className={`absolute right-0 top-0 bottom-0 w-32 ${currentDesign.pinnedMessageFade} pointer-events-none`} />
+                  </div>
                 </div>
-                <div className="relative">
-                  <p className={`text-sm ${currentDesign.pinnedText} overflow-hidden whitespace-nowrap pr-32`}>
-                    {stickyPinnedMessage.content}
-                  </p>
-                  <div className={`absolute right-0 top-0 bottom-0 w-32 ${currentDesign.pinnedMessageFade} pointer-events-none`} />
-                </div>
-              </div>
+              </MessageActionsModal>
             )}
           </div>
         )}
@@ -656,6 +700,11 @@ export default function ChatPage() {
         ref={messagesContainerRef}
         onScroll={handleScroll}
         className={`${currentDesign.messagesArea} ${chatRoom?.has_back_room && backRoom ? 'pr-12' : ''}`}
+        style={{
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+          WebkitTouchCallout: 'none',
+        }}
       >
         {/* Add padding-top when sticky messages are present to avoid overlap */}
         <div className={`space-y-3 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
@@ -727,55 +776,66 @@ export default function ChatPage() {
                   <div className="w-0.5 mr-2 bg-gray-400 dark:bg-gray-600 opacity-30"></div>
                 )}
 
-                {/* Message bubble */}
-                <div
-                  className={
-                    message.is_from_host
-                      ? currentDesign.hostMessage + ' flex-1'
-                      : message.is_pinned
-                      ? currentDesign.pinnedMessage
-                      : currentDesign.regularMessage
-                  }
+                {/* Message bubble with action modal */}
+                <MessageActionsModal
+                  message={message}
+                  currentUsername={username}
+                  isHost={chatRoom?.host.id === currentUserId}
+                  design={designVariant as 'design1' | 'design2' | 'design3'}
+                  onPinSelf={handlePinSelf}
+                  onPinOther={handlePinOther}
+                  onBlock={handleBlockUser}
+                  onTip={handleTipUser}
                 >
-                  {/* Host message header */}
-                  {message.is_from_host && (
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
-                          {message.username}
-                        </span>
-                        <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
-                          👑
-                        </span>
-                      </div>
-                      <span className={`text-xs ${currentDesign.hostText} opacity-60`}>
-                        {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Pinned message header */}
-                  {message.is_pinned && !message.is_from_host && (
-                    <div className="flex items-center justify-between mb-1 gap-3">
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
-                          {message.username}
-                        </span>
-                        <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
-                          📌 ${message.pin_amount_paid}
+                  <div
+                    className={
+                      message.is_from_host
+                        ? currentDesign.hostMessage + ' flex-1'
+                        : message.is_pinned
+                        ? currentDesign.pinnedMessage
+                        : currentDesign.regularMessage
+                    }
+                  >
+                    {/* Host message header */}
+                    {message.is_from_host && (
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
+                            {message.username}
+                          </span>
+                          <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
+                            👑
+                          </span>
+                        </div>
+                        <span className={`text-xs ${currentDesign.hostText} opacity-60`}>
+                          {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                         </span>
                       </div>
-                      <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
-                        {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Message content */}
-                  <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
-                    {message.content}
-                  </p>
-                </div>
+                    {/* Pinned message header */}
+                    {message.is_pinned && !message.is_from_host && (
+                      <div className="flex items-center justify-between mb-1 gap-3">
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
+                            {message.username}
+                          </span>
+                          <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
+                            📌 ${message.pin_amount_paid}
+                          </span>
+                        </div>
+                        <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
+                          {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Message content */}
+                    <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
+                      {message.content}
+                    </p>
+                  </div>
+                </MessageActionsModal>
               </div>
 
             </div>
