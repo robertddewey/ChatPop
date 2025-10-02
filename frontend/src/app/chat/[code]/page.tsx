@@ -501,6 +501,7 @@ export default function ChatPage() {
       filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30",
       filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700",
       inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
+      inputField: "flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
     },
     design2: {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
@@ -520,6 +521,7 @@ export default function ChatPage() {
       filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
       filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
       inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
+      inputField: "flex-1 px-4 py-2 border border-blue-300 dark:border-blue-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
     },
     design3: {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
@@ -539,6 +541,7 @@ export default function ChatPage() {
       filterButtonActive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
       filterButtonInactive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
       inputArea: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
+      inputField: "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
     },
   };
 
@@ -805,7 +808,7 @@ export default function ChatPage() {
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder="Type a message..."
-            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            className={currentDesign.inputField}
             disabled={sending}
           />
           <button
