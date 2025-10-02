@@ -49,30 +49,6 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Get viewport width for panel positioning - use lazy initialization
-  const [viewportWidth, setViewportWidth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth;
-    }
-    return 0;
-  });
-
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    // Make visible after a tiny delay to prevent initial animation flash
-    requestAnimationFrame(() => {
-      setIsVisible(true);
-    });
-
-    const resizeHandler = () => {
-      setViewportWidth(window.innerWidth);
-    };
-
-    window.addEventListener('resize', resizeHandler);
-    return () => window.removeEventListener('resize', resizeHandler);
-  }, []);
-
   // Scroll to bottom when filter mode changes
   useEffect(() => {
     // Mark that we should auto-scroll
@@ -605,20 +581,9 @@ export default function ChatPage() {
 
       {/* Content Area Wrapper - Contains both Main Chat and Back Room */}
       <div className="flex-1 relative overflow-hidden">
-        {viewportWidth > 0 ? (
-        <div
-          ref={containerRef}
-          className="flex h-full"
-          style={{
-            width: viewportWidth * 2,
-            marginLeft: -viewportWidth,
-            transform: `translateX(${isInBackRoom ? 0 : viewportWidth}px)`,
-            transition: 'none',
-            opacity: isVisible ? 1 : 0
-          }}
-        >
-          {/* Main Chat Content */}
-          <div className="flex-shrink-0 h-full overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 relative" style={{ width: viewportWidth }}>
+        {!isInBackRoom ? (
+          /* Main Chat Content */
+          <div className="h-full overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 relative">
         {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
         {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
           <div className={currentDesign.stickySection}>
@@ -805,25 +770,18 @@ export default function ChatPage() {
         </div>
       </div>
       </div>
-
-          {/* Back Room View */}
-          <div className="flex-shrink-0 h-full bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 relative" style={{ width: viewportWidth }}>
-            {chatRoom?.has_back_room && backRoom ? (
-              <BackRoomView
-                chatRoom={chatRoom}
-                backRoom={backRoom}
-                username={username}
-                currentUserId={currentUserId}
-                isMember={isBackRoomMember}
-                onBack={() => setIsInBackRoom(false)}
-              />
-            ) : null}
-          </div>
-        </div>
         ) : (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-gray-500">Loading...</div>
-          </div>
+          /* Back Room View */
+          chatRoom?.has_back_room && backRoom ? (
+            <BackRoomView
+              chatRoom={chatRoom}
+              backRoom={backRoom}
+              username={username}
+              currentUserId={currentUserId}
+              isMember={isBackRoomMember}
+              onBack={() => setIsInBackRoom(false)}
+            />
+          ) : null
         )}
       </div>
 
