@@ -99,6 +99,22 @@ export default function ChatSettingsSheet({
 
   const shareLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/chat/${chatRoom.code}`;
 
+  // Get current design directly from URL - only on client side
+  const [currentDesign, setCurrentDesign] = useState(() => {
+    if (typeof window === 'undefined') return 'design1';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('design') || 'design1';
+  });
+
+  useEffect(() => {
+    // Update when sheet opens to ensure it's fresh
+    if (isOpen) {
+      const params = new URLSearchParams(window.location.search);
+      const design = params.get('design') || 'design1';
+      setCurrentDesign(design);
+    }
+  }, [isOpen]);
+
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>{children}</SheetTrigger>
@@ -111,38 +127,67 @@ export default function ChatSettingsSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
-          {/* Back Room Section */}
-          {chatRoom.has_back_room && backRoom && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Back Room
-              </h3>
+          {/* Theme Selection */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+              Theme
+            </h3>
 
-              <div className="space-y-2">
-                <div className="flex justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    Price per seat
-                  </span>
-                  <span className="text-sm font-semibold">${backRoom.price_per_seat}</span>
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('design', 'design1');
+                  window.location.href = url.toString();
+                }}
+                className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
+                  currentDesign === 'design1'
+                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
+                }`}
+              >
+                <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">Purple Dream</div>
+                <div className="h-8 rounded bg-gradient-to-r from-purple-500 via-pink-500 to-red-500"></div>
+              </button>
+
+              <button
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('design', 'design2');
+                  window.location.href = url.toString();
+                }}
+                className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
+                  currentDesign === 'design2'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
+                }`}
+              >
+                <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">Ocean Blue</div>
+                <div className="h-8 rounded bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500"></div>
+              </button>
+
+              <button
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('design', 'design3');
+                  window.location.href = url.toString();
+                }}
+                className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
+                  currentDesign === 'design3'
+                    ? 'border-cyan-400 bg-zinc-900'
+                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
+                }`}
+              >
+                <div className={`text-xs font-semibold mb-2 ${
+                  currentDesign === 'design3' ? 'text-zinc-100' : 'text-gray-900 dark:text-white'
+                }`}>Dark Mode</div>
+                <div className="h-8 rounded bg-zinc-950 flex items-center justify-center gap-1">
+                  <div className="h-4 w-12 rounded bg-cyan-400"></div>
+                  <div className="h-4 w-8 rounded bg-yellow-400"></div>
                 </div>
-
-                <div className="flex justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    Seats available
-                  </span>
-                  <span className="text-sm font-semibold">
-                    {backRoom.seats_available} / {backRoom.max_seats}
-                  </span>
-                </div>
-
-                {!isHost && backRoom.is_active && !backRoom.is_full && (
-                  <button className="w-full mt-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors">
-                    Join Back Room - ${backRoom.price_per_seat}
-                  </button>
-                )}
-              </div>
+              </button>
             </div>
-          )}
+          </div>
 
           {/* Chat Information for All Users */}
           <div className="space-y-4 pt-4 border-t dark:border-gray-700">
