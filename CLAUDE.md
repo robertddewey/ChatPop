@@ -126,6 +126,20 @@ Frontend: http://localhost:4000
 - `backend/` - Django project with DRF, Channels, WebSockets
 - `frontend/` - Next.js with TypeScript, Tailwind, shadcn/ui
 
+### Layout Architecture
+**IMPORTANT:** The `/chat` route uses a dedicated layout to isolate chat-specific styles and viewport settings.
+
+- **Root Layout** (`/app/layout.tsx`): Applies to all pages (/, /login, /register, /create)
+  - Standard viewport settings (allows zoom, scrolling)
+  - Minimal global styles
+
+- **Chat Layout** (`/app/chat/layout.tsx`): Applies only to `/chat/*` routes
+  - Disables pinch-to-zoom (`maximumScale: 1`, `userScalable: false`)
+  - Fixed positioning to prevent address bar bounce on mobile
+  - Chat-specific CSS loaded from `chat-layout.css`
+
+This architecture ensures that chat-specific behaviors (fixed viewport, no zoom) don't affect other pages like login, registration, or the home page.
+
 ### Version Control
 - GitHub repository
 - Feature branch workflow recommended
