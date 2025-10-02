@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type Message, type BackRoom } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
@@ -9,6 +9,8 @@ import BackRoomTab from '@/components/BackRoomTab';
 import BackRoomView from '@/components/BackRoomView';
 import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
+import LoginModal from '@/components/LoginModal';
+import RegisterModal from '@/components/RegisterModal';
 import { UsernameStorage } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
 
@@ -16,6 +18,16 @@ export default function ChatPage() {
   const params = useParams();
   const code = params.code as string;
   const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const authMode = searchParams.get('auth');
+
+  const closeModal = () => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('auth');
+    newParams.delete('redirect');
+    router.push(`${window.location.pathname}?${newParams.toString()}`);
+  };
 
   // Theme state with hierarchy: URL > localStorage > host default > system default
   const [designVariant, setDesignVariant] = useState<'purple-dream' | 'ocean-blue' | 'dark-mode'>('purple-dream');
@@ -899,6 +911,22 @@ export default function ChatPage() {
         />
       )}
       </div>
+
+      {/* Auth Modals */}
+      {authMode === 'login' && (
+        <LoginModal
+          onClose={closeModal}
+          theme="chat"
+          chatTheme={designVariant}
+        />
+      )}
+      {authMode === 'register' && (
+        <RegisterModal
+          onClose={closeModal}
+          theme="chat"
+          chatTheme={designVariant}
+        />
+      )}
     </>
   );
 }

@@ -109,14 +109,20 @@ export default function JoinChatModal({
 
   const handleLogin = () => {
     const currentPath = window.location.pathname;
-    const searchParams = window.location.search;
-    router.push(`/login?redirect=${encodeURIComponent(currentPath + searchParams)}`);
+    const currentSearch = window.location.search;
+    const params = new URLSearchParams(currentSearch);
+    params.set('auth', 'login');
+    params.set('redirect', currentPath + currentSearch);
+    router.push(`${currentPath}?${params.toString()}`);
   };
 
   const handleSignup = () => {
     const currentPath = window.location.pathname;
-    const searchParams = window.location.search;
-    router.push(`/register?redirect=${encodeURIComponent(currentPath + searchParams)}`);
+    const currentSearch = window.location.search;
+    const params = new URLSearchParams(currentSearch);
+    params.set('auth', 'register');
+    params.set('redirect', currentPath + currentSearch);
+    router.push(`${currentPath}?${params.toString()}`);
   };
 
   if (typeof document === 'undefined') return null;
