@@ -38,6 +38,10 @@ class ChatRoom(models.Model):
     video_enabled = models.BooleanField(default=False)
     photo_enabled = models.BooleanField(default=True)
 
+    # Theme settings
+    default_theme = models.CharField(max_length=20, default='design1', help_text="Default theme for this chat room (design1, design2, design3)")
+    theme_locked = models.BooleanField(default=False, help_text="If true, users cannot override the theme")
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

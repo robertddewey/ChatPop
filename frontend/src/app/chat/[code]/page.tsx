@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type Message, type BackRoom } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
@@ -14,15 +14,10 @@ import { UsernameStorage } from '@/lib/usernameStorage';
 export default function ChatPage() {
   const params = useParams();
   const code = params.code as string;
+  const searchParams = useSearchParams();
 
-  // Get design variant from URL query params
-  const [searchParams] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return new URLSearchParams(window.location.search);
-    }
-    return new URLSearchParams();
-  });
-  const designVariant = searchParams.get('design') || 'design1';
+  // Theme state with hierarchy: URL > localStorage > host default > system default
+  const [designVariant, setDesignVariant] = useState<'design1' | 'design2' | 'design3'>('design1');
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -109,6 +104,48 @@ export default function ChatPage() {
 
     loadChatRoom();
   }, [code]);
+
+  // Determine theme based on hierarchy: URL param > localStorage > host default > system default
+  useEffect(() => {
+    if (!chatRoom) return;
+
+    const determineTheme = (): 'design1' | 'design2' | 'design3' => {
+      // If theme is locked by host, use host's default theme
+      if (chatRoom.theme_locked) {
+        return (chatRoom.default_theme as 'design1' | 'design2' | 'design3') || 'design1';
+      }
+
+      // Check URL parameter first (from searchParams hook)
+      const urlTheme = searchParams.get('design');
+      if (urlTheme && ['design1', 'design2', 'design3'].includes(urlTheme)) {
+        return urlTheme as 'design1' | 'design2' | 'design3';
+      }
+
+      // Check localStorage for user preference
+      if (typeof window !== 'undefined') {
+        const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
+        if (localTheme && ['design1', 'design2', 'design3'].includes(localTheme)) {
+          return localTheme as 'design1' | 'design2' | 'design3';
+        }
+      }
+
+      // Use host's default theme
+      if (chatRoom.default_theme && ['design1', 'design2', 'design3'].includes(chatRoom.default_theme)) {
+        return chatRoom.default_theme as 'design1' | 'design2' | 'design3';
+      }
+
+      // Fall back to system default
+      return 'design1';
+    };
+
+    const theme = determineTheme();
+    setDesignVariant(theme);
+
+    // Save to localStorage if not locked (so it persists for next visit)
+    if (!chatRoom.theme_locked && typeof window !== 'undefined') {
+      localStorage.setItem(`chatpop_theme_${code}`, theme);
+    }
+  }, [chatRoom, code, searchParams]);
 
   // Load Back Room data if it exists
   useEffect(() => {

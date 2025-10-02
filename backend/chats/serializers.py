@@ -16,6 +16,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'code', 'name', 'description', 'host', 'url',
             'access_mode', 'voice_enabled', 'video_enabled', 'photo_enabled',
+            'default_theme', 'theme_locked',
             'message_count', 'has_back_room', 'is_active', 'created_at'
         ]
         read_only_fields = ['id', 'code', 'host', 'url', 'created_at']
@@ -33,7 +34,8 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
         model = ChatRoom
         fields = [
             'name', 'description', 'access_mode', 'access_code',
-            'voice_enabled', 'video_enabled', 'photo_enabled'
+            'voice_enabled', 'video_enabled', 'photo_enabled',
+            'default_theme', 'theme_locked'
         ]
 
     def validate_access_code(self, value):
@@ -55,7 +57,8 @@ class ChatRoomUpdateSerializer(serializers.ModelSerializer):
         model = ChatRoom
         fields = [
             'name', 'description', 'access_mode', 'access_code',
-            'voice_enabled', 'video_enabled', 'photo_enabled', 'is_active'
+            'voice_enabled', 'video_enabled', 'photo_enabled',
+            'default_theme', 'theme_locked', 'is_active'
         ]
 
     def validate_access_code(self, value):

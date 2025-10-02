@@ -45,6 +45,8 @@ export interface ChatRoom {
   voice_enabled: boolean;
   video_enabled: boolean;
   photo_enabled: boolean;
+  default_theme: string;
+  theme_locked: boolean;
   message_count: number;
   has_back_room: boolean;
   is_active: boolean;

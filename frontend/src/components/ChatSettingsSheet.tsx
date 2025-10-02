@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Sheet,
   SheetContent,
@@ -25,6 +26,7 @@ export default function ChatSettingsSheet({
   onUpdate,
   children,
 }: ChatSettingsSheetProps) {
+  const router = useRouter();
   const isHost = chatRoom.host.id === currentUserId;
   const [isOpen, setIsOpen] = useState(false);
   const [backRoom, setBackRoom] = useState<BackRoom | null>(null);
@@ -138,7 +140,8 @@ export default function ChatSettingsSheet({
                 onClick={() => {
                   const url = new URL(window.location.href);
                   url.searchParams.set('design', 'design1');
-                  window.location.href = url.toString();
+                  router.replace(url.pathname + url.search, { scroll: false });
+                  setCurrentDesign('design1');
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
                   currentDesign === 'design1'
@@ -154,7 +157,8 @@ export default function ChatSettingsSheet({
                 onClick={() => {
                   const url = new URL(window.location.href);
                   url.searchParams.set('design', 'design2');
-                  window.location.href = url.toString();
+                  router.replace(url.pathname + url.search, { scroll: false });
+                  setCurrentDesign('design2');
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
                   currentDesign === 'design2'
@@ -170,7 +174,8 @@ export default function ChatSettingsSheet({
                 onClick={() => {
                   const url = new URL(window.location.href);
                   url.searchParams.set('design', 'design3');
-                  window.location.href = url.toString();
+                  router.replace(url.pathname + url.search, { scroll: false });
+                  setCurrentDesign('design3');
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
                   currentDesign === 'design3'
