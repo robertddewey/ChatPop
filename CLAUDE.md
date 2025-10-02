@@ -187,6 +187,89 @@ if (message.type === 'message_pinned') {
 
 ---
 
+## Theme Development Guidelines
+
+### Theme Classification
+
+**IMPORTANT:** Every theme must be explicitly classified as either **Light Mode** or **Dark Mode**. This ensures consistent styling across all UI components.
+
+### Current Themes
+
+| Theme ID | Name | Type | Primary Colors |
+|----------|------|------|----------------|
+| `purple-dream` | Purple Dream | Light | Purple/Pink gradients on white |
+| `ocean-blue` | Ocean Blue | Light | Blue/Cyan gradients on white |
+| `dark-mode` | Dark Mode | Dark | Cyan/Yellow accents on zinc-900 |
+
+### Adding a New Theme
+
+When creating a new theme (e.g., `forest-green`, `sunset-orange`), follow these steps:
+
+#### 1. Determine Theme Type
+Decide if the theme is **Light Mode** or **Dark Mode** based on:
+- Primary background color (light = white/gray-50, dark = zinc-900/gray-900)
+- Overall visual appearance
+- User expectations (e.g., "Midnight Theme" would be dark)
+
+#### 2. Apply Consistent Modal Styling
+
+All modals and overlays must match the theme type. Update these components:
+
+**Components requiring theme-specific styling:**
+- `MessageActionsModal.tsx` - Long-press action menu
+- `JoinChatModal.tsx` - Chat join dialog
+- `ChatSettingsSheet.tsx` - Settings drawer
+- Any future modals/drawers/overlays
+
+**Light Mode Pattern:**
+```typescript
+overlay: 'bg-black/20 backdrop-blur-sm',
+container: 'bg-white',
+messagePreview: 'bg-gray-50 border border-gray-200',
+messageText: 'text-gray-800',
+actionButton: 'bg-gray-100 hover:bg-gray-200 text-gray-900',
+```
+
+**Dark Mode Pattern:**
+```typescript
+overlay: 'bg-black/60 backdrop-blur-sm',
+container: 'bg-zinc-900',
+messagePreview: 'bg-zinc-800 border border-zinc-600',
+messageText: 'text-zinc-50',
+actionButton: 'bg-zinc-700 hover:bg-zinc-600 text-zinc-50',
+```
+
+#### 3. Implementation Pattern
+
+Use the centralized theme utilities from `/frontend/src/lib/themes.ts`:
+
+```typescript
+import { isDarkTheme, migrateLegacyTheme, type ThemeId } from '@/lib/themes';
+
+// Check if theme is dark
+const isDark = isDarkTheme(currentTheme);
+className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}
+
+// Migrate legacy theme names (design1/2/3) to new names
+const theme = migrateLegacyTheme(urlParam);
+```
+
+#### 4. Validation Checklist
+
+Before merging a new theme, verify:
+- [ ] Theme type (Light/Dark) is documented in this file
+- [ ] All modals use appropriate light/dark styling
+- [ ] Text contrast meets accessibility standards
+- [ ] Border colors are visible on theme background
+- [ ] Icons and buttons are visible and properly styled
+- [ ] Theme switch in ChatSettingsSheet displays correctly
+
+### Why This Matters
+
+Inconsistent modal styling creates a jarring user experience. A dark theme with white popups (or vice versa) breaks visual coherence and feels unpolished. By following these guidelines, we ensure every theme provides a cohesive, professional appearance.
+
+---
+
 ## Future Enhancements
 - **Custom Themes:** Option to set specific themes/branding for chats
 - **Enhanced Engagement:** Additional tipping options and gamification

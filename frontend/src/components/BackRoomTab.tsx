@@ -16,7 +16,7 @@ export default function BackRoomTab({
   hasBackRoom,
   onClick,
   hasNewMessages = false,
-  design = 'design1',
+  design = 'purple-dream',
 }: BackRoomTabProps) {
   if (!hasBackRoom) return null;
 

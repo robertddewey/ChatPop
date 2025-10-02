@@ -10,7 +10,7 @@ interface MessageActionsModalProps {
   message: Message;
   currentUsername?: string;
   isHost?: boolean;
-  design?: 'design1' | 'design2' | 'design3';
+  design?: 'purple-dream' | 'ocean-blue' | 'dark-mode';
   children: React.ReactNode;
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
@@ -20,7 +20,7 @@ interface MessageActionsModalProps {
 
 // Theme configurations for the modal
 const modalStyles = {
-  design1: {
+  "purple-dream": {
     overlay: 'bg-black/20 backdrop-blur-sm',
     container: 'bg-white',
     messagePreview: 'bg-gray-50 border border-gray-200 rounded-2xl shadow-sm',
@@ -28,7 +28,7 @@ const modalStyles = {
     actionButton: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-900',
     actionIcon: 'text-purple-600',
   },
-  design2: {
+  "ocean-blue": {
     overlay: 'bg-black/20 backdrop-blur-sm',
     container: 'bg-white',
     messagePreview: 'bg-gray-50 border border-gray-200 rounded-2xl shadow-sm',
@@ -36,7 +36,7 @@ const modalStyles = {
     actionButton: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-900',
     actionIcon: 'text-blue-600',
   },
-  design3: {
+  "dark-mode": {
     overlay: 'bg-black/60 backdrop-blur-sm',
     container: 'bg-zinc-900',
     messagePreview: 'bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl',
@@ -50,7 +50,7 @@ export default function MessageActionsModal({
   message,
   currentUsername,
   isHost = false,
-  design = 'design1',
+  design = 'purple-dream',
   children,
   onPinSelf,
   onPinOther,

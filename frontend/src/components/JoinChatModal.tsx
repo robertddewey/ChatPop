@@ -10,13 +10,13 @@ interface JoinChatModalProps {
   currentUserDisplayName?: string;
   storedUsername?: string;
   isLoggedIn: boolean;
-  design?: 'design1' | 'design2' | 'design3';
+  design?: 'purple-dream' | 'ocean-blue' | 'dark-mode';
   onJoin: (username: string, accessCode?: string) => void;
 }
 
 // Theme configurations
 const modalStyles = {
-  design1: {
+  "purple-dream": {
     overlay: 'bg-black/5',
     container: 'bg-gradient-to-br from-purple-50 to-pink-50 dark:from-gray-900 dark:to-gray-800',
     title: 'text-gray-900 dark:text-gray-100',
@@ -27,7 +27,7 @@ const modalStyles = {
     divider: 'border-purple-200 dark:border-purple-700',
     error: 'text-red-600 dark:text-red-400',
   },
-  design2: {
+  "ocean-blue": {
     overlay: 'bg-black/5',
     container: 'bg-gradient-to-br from-sky-50 to-cyan-50 dark:from-gray-900 dark:to-gray-800',
     title: 'text-gray-900 dark:text-gray-100',
@@ -38,7 +38,7 @@ const modalStyles = {
     divider: 'border-blue-200 dark:border-blue-700',
     error: 'text-red-600 dark:text-red-400',
   },
-  design3: {
+  "dark-mode": {
     overlay: 'bg-black/5',
     container: 'bg-zinc-900',
     title: 'text-zinc-50',
@@ -56,7 +56,7 @@ export default function JoinChatModal({
   currentUserDisplayName,
   storedUsername,
   isLoggedIn,
-  design = 'design1',
+  design = 'purple-dream',
   onJoin,
 }: JoinChatModalProps) {
   const router = useRouter();

@@ -18,7 +18,7 @@ export default function ChatPage() {
   const searchParams = useSearchParams();
 
   // Theme state with hierarchy: URL > localStorage > host default > system default
-  const [designVariant, setDesignVariant] = useState<'design1' | 'design2' | 'design3'>('design1');
+  const [designVariant, setDesignVariant] = useState<'purple-dream' | 'ocean-blue' | 'dark-mode'>('purple-dream');
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -110,33 +110,33 @@ export default function ChatPage() {
   useEffect(() => {
     if (!chatRoom) return;
 
-    const determineTheme = (): 'design1' | 'design2' | 'design3' => {
+    const determineTheme = (): 'purple-dream' | 'ocean-blue' | 'dark-mode' => {
       // If theme is locked by host, use host's default theme
       if (chatRoom.theme_locked) {
-        return (chatRoom.default_theme as 'design1' | 'design2' | 'design3') || 'design1';
+        return (chatRoom.default_theme as 'purple-dream' | 'ocean-blue' | 'dark-mode') || 'purple-dream';
       }
 
       // Check URL parameter first (from searchParams hook)
       const urlTheme = searchParams.get('design');
-      if (urlTheme && ['design1', 'design2', 'design3'].includes(urlTheme)) {
-        return urlTheme as 'design1' | 'design2' | 'design3';
+      if (urlTheme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
+        return urlTheme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
       }
 
       // Check localStorage for user preference
       if (typeof window !== 'undefined') {
         const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
-        if (localTheme && ['design1', 'design2', 'design3'].includes(localTheme)) {
-          return localTheme as 'design1' | 'design2' | 'design3';
+        if (localTheme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
+          return localTheme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
         }
       }
 
       // Use host's default theme
-      if (chatRoom.default_theme && ['design1', 'design2', 'design3'].includes(chatRoom.default_theme)) {
-        return chatRoom.default_theme as 'design1' | 'design2' | 'design3';
+      if (chatRoom.default_theme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(chatRoom.default_theme)) {
+        return chatRoom.default_theme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
       }
 
       // Fall back to system default
-      return 'design1';
+      return 'purple-dream';
     };
 
     const theme = determineTheme();
@@ -489,7 +489,7 @@ export default function ChatPage() {
 
   // Design configurations
   const designs = {
-    design1: {
+    'purple-dream': {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20",
       header: "border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
       headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
@@ -509,7 +509,7 @@ export default function ChatPage() {
       inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
       inputField: "flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
     },
-    design2: {
+    'ocean-blue': {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
       header: "border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
       headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
@@ -529,7 +529,7 @@ export default function ChatPage() {
       inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
       inputField: "flex-1 px-4 py-2 border border-blue-300 dark:border-blue-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
     },
-    design3: {
+    'dark-mode': {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
       header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
       headerTitle: "text-lg font-bold text-zinc-100",
@@ -551,7 +551,7 @@ export default function ChatPage() {
     },
   };
 
-  const currentDesign = designs[designVariant as keyof typeof designs] || designs.design1;
+  const currentDesign = designs[designVariant as keyof typeof designs] || designs['purple-dream'];
 
   // Main chat interface
   return (
@@ -563,7 +563,7 @@ export default function ChatPage() {
           currentUserDisplayName={currentUserId ? username : undefined}
           storedUsername={!currentUserId ? username : undefined}
           isLoggedIn={!!currentUserId}
-          design={designVariant as 'design1' | 'design2' | 'design3'}
+          design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
           onJoin={handleJoinChat}
         />
       )}
@@ -585,6 +585,7 @@ export default function ChatPage() {
               chatRoom={chatRoom}
               currentUserId={currentUserId}
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
+              onThemeChange={(theme) => setDesignVariant(theme)}
             >
               <h1 className={`${currentDesign.headerTitle} cursor-pointer hover:opacity-70 transition-opacity`}>
                 {chatRoom.name}
@@ -630,7 +631,7 @@ export default function ChatPage() {
                 message={message}
                 currentUsername={username}
                 isHost={chatRoom?.host.id === currentUserId}
-                design={designVariant as 'design1' | 'design2' | 'design3'}
+                design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
                 onPinSelf={handlePinSelf}
                 onPinOther={handlePinOther}
                 onBlock={handleBlockUser}
@@ -667,7 +668,7 @@ export default function ChatPage() {
                 message={stickyPinnedMessage}
                 currentUsername={username}
                 isHost={chatRoom?.host.id === currentUserId}
-                design={designVariant as 'design1' | 'design2' | 'design3'}
+                design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
                 onPinSelf={handlePinSelf}
                 onPinOther={handlePinOther}
                 onBlock={handleBlockUser}
@@ -781,7 +782,7 @@ export default function ChatPage() {
                   message={message}
                   currentUsername={username}
                   isHost={chatRoom?.host.id === currentUserId}
-                  design={designVariant as 'design1' | 'design2' | 'design3'}
+                  design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
                   onPinSelf={handlePinSelf}
                   onPinOther={handlePinOther}
                   onBlock={handleBlockUser}

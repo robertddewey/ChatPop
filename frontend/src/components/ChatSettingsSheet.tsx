@@ -12,11 +12,13 @@ import {
 } from '@/components/ui/sheet';
 import { chatApi, backRoomApi, type ChatRoom, type BackRoom } from '@/lib/api';
 import { Copy, Check } from 'lucide-react';
+import { migrateLegacyTheme, isDarkTheme, DEFAULT_THEME, type ThemeId } from '@/lib/themes';
 
 interface ChatSettingsSheetProps {
   chatRoom: ChatRoom;
   currentUserId?: string;
   onUpdate?: (chatRoom: ChatRoom) => void;
+  onThemeChange?: (theme: ThemeId) => void;
   children: React.ReactNode;
 }
 
@@ -24,6 +26,7 @@ export default function ChatSettingsSheet({
   chatRoom,
   currentUserId,
   onUpdate,
+  onThemeChange,
   children,
 }: ChatSettingsSheetProps) {
   const router = useRouter();
@@ -101,19 +104,19 @@ export default function ChatSettingsSheet({
 
   const shareLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/chat/${chatRoom.code}`;
 
-  // Get current design directly from URL - only on client side
-  const [currentDesign, setCurrentDesign] = useState(() => {
-    if (typeof window === 'undefined') return 'design1';
+  // Get current theme directly from URL - only on client side
+  const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => {
+    if (typeof window === 'undefined') return DEFAULT_THEME;
     const params = new URLSearchParams(window.location.search);
-    return params.get('design') || 'design1';
+    return migrateLegacyTheme(params.get('design'));
   });
 
   useEffect(() => {
     // Update when sheet opens to ensure it's fresh
     if (isOpen) {
       const params = new URLSearchParams(window.location.search);
-      const design = params.get('design') || 'design1';
-      setCurrentDesign(design);
+      const theme = migrateLegacyTheme(params.get('design'));
+      setCurrentTheme(theme);
     }
   }, [isOpen]);
 
@@ -123,18 +126,18 @@ export default function ChatSettingsSheet({
       <SheetContent
         side="bottom"
         className={`h-[100dvh] overflow-y-auto pt-2 ${
-          currentDesign === 'design3'
+          isDarkTheme(currentTheme)
             ? 'bg-zinc-900 border-t-zinc-800'
             : 'bg-white border-t-white'
         }`}
-        closeButtonClassName={currentDesign === 'design3' ? 'text-white' : 'text-gray-900'}
+        closeButtonClassName={isDarkTheme(currentTheme) ? 'text-white' : 'text-gray-900'}
       >
-        <div className={currentDesign === 'design3' ? 'dark' : ''}>
+        <div className={isDarkTheme(currentTheme) ? 'dark' : ''}>
           <SheetHeader>
-            <SheetTitle className={currentDesign === 'design3' ? 'text-white' : ''}>
+            <SheetTitle className={isDarkTheme(currentTheme) ? 'text-white' : ''}>
               Chat Settings
             </SheetTitle>
-            <SheetDescription className={currentDesign === 'design3' ? 'text-gray-400' : ''}>
+            <SheetDescription className={isDarkTheme(currentTheme) ? 'text-gray-400' : ''}>
               {isHost ? 'Manage your chat room settings' : 'Chat room information'}
             </SheetDescription>
           </SheetHeader>
@@ -143,7 +146,7 @@ export default function ChatSettingsSheet({
           {/* Theme Selection */}
           <div className="space-y-4">
             <h3 className={`text-sm font-semibold ${
-              currentDesign === 'design3' ? 'text-white' : 'text-gray-900'
+              isDarkTheme(currentTheme) ? 'text-white' : 'text-gray-900'
             }`}>
               Theme
             </h3>
@@ -152,12 +155,13 @@ export default function ChatSettingsSheet({
               <button
                 onClick={() => {
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'design1');
+                  url.searchParams.set('design', 'purple-dream');
                   router.replace(url.pathname + url.search, { scroll: false });
-                  setCurrentDesign('design1');
+                  setCurrentTheme('purple-dream');
+                  onThemeChange?.('purple-dream');
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
-                  currentDesign === 'design1'
+                  currentTheme === 'purple-dream'
                     ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
                     : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
                 }`}
@@ -169,12 +173,13 @@ export default function ChatSettingsSheet({
               <button
                 onClick={() => {
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'design2');
+                  url.searchParams.set('design', 'ocean-blue');
                   router.replace(url.pathname + url.search, { scroll: false });
-                  setCurrentDesign('design2');
+                  setCurrentTheme('ocean-blue');
+                  onThemeChange?.('ocean-blue');
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
-                  currentDesign === 'design2'
+                  currentTheme === 'ocean-blue'
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
                 }`}
@@ -186,18 +191,19 @@ export default function ChatSettingsSheet({
               <button
                 onClick={() => {
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'design3');
+                  url.searchParams.set('design', 'dark-mode');
                   router.replace(url.pathname + url.search, { scroll: false });
-                  setCurrentDesign('design3');
+                  setCurrentTheme('dark-mode');
+                  onThemeChange?.('dark-mode');
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
-                  currentDesign === 'design3'
+                  isDarkTheme(currentTheme)
                     ? 'border-cyan-400 bg-zinc-900'
                     : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
                 }`}
               >
                 <div className={`text-xs font-semibold mb-2 ${
-                  currentDesign === 'design3' ? 'text-zinc-100' : 'text-gray-900 dark:text-white'
+                  isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900 dark:text-white'
                 }`}>Dark Mode</div>
                 <div className="h-8 rounded bg-zinc-950 flex items-center justify-center gap-1">
                   <div className="h-4 w-12 rounded bg-cyan-400"></div>
@@ -209,21 +215,21 @@ export default function ChatSettingsSheet({
 
           {/* Chat Information for All Users */}
           <div className={`space-y-4 pt-4 border-t ${
-            currentDesign === 'design3' ? 'border-zinc-700' : 'border-gray-200'
+            isDarkTheme(currentTheme) ? 'border-zinc-700' : 'border-gray-200'
           }`}>
             <h3 className={`text-sm font-semibold ${
-              currentDesign === 'design3' ? 'text-white' : 'text-gray-900'
+              isDarkTheme(currentTheme) ? 'text-white' : 'text-gray-900'
             }`}>
               Chat Information
             </h3>
 
             {/* Chat Code */}
             <div className={`flex items-center justify-between p-3 rounded-lg ${
-              currentDesign === 'design3' ? 'bg-zinc-800' : 'bg-gray-50'
+              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
             }`}>
               <div>
-                <p className={`text-xs ${currentDesign === 'design3' ? 'text-gray-400' : 'text-gray-500'}`}>Chat Code</p>
-                <p className={`text-sm font-mono font-semibold ${currentDesign === 'design3' ? 'text-white' : 'text-black'}`}>{chatRoom.code}</p>
+                <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Chat Code</p>
+                <p className={`text-sm font-mono font-semibold ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>{chatRoom.code}</p>
               </div>
               <button
                 onClick={handleCopyCode}
@@ -239,11 +245,11 @@ export default function ChatSettingsSheet({
 
             {/* Share Link */}
             <div className={`flex items-center justify-between p-3 rounded-lg ${
-              currentDesign === 'design3' ? 'bg-zinc-800' : 'bg-gray-50'
+              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
             }`}>
               <div className="flex-1 min-w-0">
-                <p className={`text-xs ${currentDesign === 'design3' ? 'text-gray-400' : 'text-gray-500'}`}>Share Link</p>
-                <p className={`text-sm font-mono truncate ${currentDesign === 'design3' ? 'text-white' : 'text-black'}`}>{shareLink}</p>
+                <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Share Link</p>
+                <p className={`text-sm font-mono truncate ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>{shareLink}</p>
               </div>
               <button
                 onClick={handleCopyLink}
@@ -259,20 +265,20 @@ export default function ChatSettingsSheet({
 
             {/* Host Info */}
             <div className={`p-3 rounded-lg ${
-              currentDesign === 'design3' ? 'bg-zinc-800' : 'bg-gray-50'
+              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
             }`}>
-              <p className={`text-xs ${currentDesign === 'design3' ? 'text-gray-400' : 'text-gray-500'}`}>Hosted by</p>
-              <p className={`text-sm font-semibold ${currentDesign === 'design3' ? 'text-white' : 'text-black'}`}>
+              <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Hosted by</p>
+              <p className={`text-sm font-semibold ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>
                 {chatRoom.host.display_name || chatRoom.host.email}
               </p>
             </div>
 
             {/* Created Date */}
             <div className={`p-3 rounded-lg ${
-              currentDesign === 'design3' ? 'bg-zinc-800' : 'bg-gray-50'
+              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
             }`}>
-              <p className={`text-xs ${currentDesign === 'design3' ? 'text-gray-400' : 'text-gray-500'}`}>Created</p>
-              <p className={`text-sm ${currentDesign === 'design3' ? 'text-white' : 'text-black'}`}>
+              <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Created</p>
+              <p className={`text-sm ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>
                 {new Date(chatRoom.created_at).toLocaleDateString('en-US', {
                   month: 'long',
                   day: 'numeric',
