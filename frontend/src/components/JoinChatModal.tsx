@@ -68,20 +68,11 @@ export default function JoinChatModal({
   const [isJoining, setIsJoining] = useState(false);
   const audioContextRef = React.useRef<AudioContext>();
 
-  // Initialize AudioContext for future audio features
-  const initAudioContext = React.useCallback(() => {
-    if (!audioContextRef.current && typeof window !== 'undefined') {
-      try {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        // Immediately resume to unlock audio
-        if (audioContextRef.current.state === 'suspended') {
-          audioContextRef.current.resume();
-        }
-        console.log('AudioContext initialized successfully');
-      } catch (e) {
-        console.log('Failed to initialize AudioContext:', e);
-      }
-    }
+  // Import the audio initialization function
+  const { initAudioContext } = React.useMemo(() => {
+    return typeof window !== 'undefined'
+      ? require('@/lib/sounds')
+      : { initAudioContext: () => {} };
   }, []);
 
   const displayName = isLoggedIn ? currentUserDisplayName : storedUsername;

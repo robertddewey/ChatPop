@@ -132,6 +132,61 @@ Frontend: http://localhost:4000
 
 ---
 
+## Audio Implementation (iOS Safari Compatible)
+
+### Critical Implementation Details
+
+**IMPORTANT:** iOS Safari has strict audio playback restrictions. The current implementation uses a proven approach that works reliably on iOS.
+
+### Current Implementation
+- **Location:** `/frontend/src/lib/sounds.ts`
+- **Method:** HTML5 `<audio>` elements with dynamically generated WAV files (base64 data URLs)
+- **Initialization:** AudioContext unlocked during "Join Chat" button click in `JoinChatModal`
+
+### Why This Approach?
+1. **Web Audio API alone DOES NOT work on iOS Safari** - even with a "running" AudioContext, iOS silently blocks output
+2. **HTML5 Audio elements work reliably** - iOS treats them differently than Web Audio API
+3. **One-time unlock** - The initial join gesture unlocks audio for the entire session
+
+### How to Add New Sounds
+
+To add sounds for pins, tips, or other events:
+
+```typescript
+// 1. Create a sound generator function in sounds.ts
+const generatePinChime = (): string => {
+  // Generate WAV file with higher frequency notes for urgency
+  const notes = [783.99, 987.77]; // G5, B5
+  // Use same WAV generation pattern as generateSuccessChime()
+};
+
+// 2. Export a play function
+export const playPinSound = async () => {
+  const audio = new Audio();
+  audio.src = generatePinChime();
+  audio.volume = 0.7;
+  await audio.play();
+};
+
+// 3. Call from event handlers (WebSocket, etc.)
+if (message.type === 'message_pinned') {
+  playPinSound(); // No user gesture needed - already unlocked!
+}
+```
+
+### DO NOT:
+- ❌ Use Web Audio API oscillators directly (silent on iOS)
+- ❌ Require additional user gestures for each sound
+- ❌ Use external audio files (slower, requires network)
+
+### DO:
+- ✅ Use HTML5 Audio elements
+- ✅ Generate WAV files programmatically as base64 data URLs
+- ✅ Unlock audio during the join gesture
+- ✅ Reuse the unlocked state for all future sounds
+
+---
+
 ## Future Enhancements
 - **Custom Themes:** Option to set specific themes/branding for chats
 - **Enhanced Engagement:** Additional tipping options and gamification

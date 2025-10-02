@@ -10,6 +10,7 @@ import BackRoomView from '@/components/BackRoomView';
 import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
 import { UsernameStorage } from '@/lib/usernameStorage';
+import { playJoinSound } from '@/lib/sounds';
 
 export default function ChatPage() {
   const params = useParams();
@@ -190,6 +191,9 @@ export default function ChatPage() {
       setUsername(username);
       setHasJoined(true);
       await loadMessages();
+
+      // Play success sound to verify audio works after user gesture
+      playJoinSound();
     } catch (err: any) {
       throw new Error(err.response?.data?.detail || 'Invalid access code');
     }
