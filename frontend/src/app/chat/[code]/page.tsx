@@ -571,7 +571,14 @@ export default function ChatPage() {
 
   // Main chat interface
   return (
-    <div className={currentDesign.container}>
+    <div
+      className={currentDesign.container}
+      style={{
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
+      }}
+    >
       {/* Chat Header */}
       <div className={currentDesign.header}>
         <div className="flex items-center justify-between">
@@ -700,11 +707,6 @@ export default function ChatPage() {
         ref={messagesContainerRef}
         onScroll={handleScroll}
         className={`${currentDesign.messagesArea} ${chatRoom?.has_back_room && backRoom ? 'pr-12' : ''}`}
-        style={{
-          WebkitUserSelect: 'none',
-          userSelect: 'none',
-          WebkitTouchCallout: 'none',
-        }}
       >
         {/* Add padding-top when sticky messages are present to avoid overlap */}
         <div className={`space-y-3 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>

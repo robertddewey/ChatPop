@@ -124,15 +124,6 @@ export default function MessageActionsModal({
       {/* Trigger: Long-press enabled message */}
       {React.cloneElement(children as React.ReactElement, {
         ...longPressHandlers,
-        className: `${(children as React.ReactElement).props.className} select-none`,
-        style: {
-          ...(children as React.ReactElement).props.style,
-          WebkitUserSelect: 'none',
-          userSelect: 'none',
-          WebkitTouchCallout: 'none',
-          touchAction: 'manipulation',
-          WebkitTapHighlightColor: 'transparent',
-        },
         onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
       })}
 
