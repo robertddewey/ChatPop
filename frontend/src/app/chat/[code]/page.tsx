@@ -49,7 +49,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to bottom when filter mode changes
+  // Scroll to bottom when filter mode changes, or when switching between Main Chat and Back Room
   useEffect(() => {
     // Mark that we should auto-scroll
     shouldAutoScrollRef.current = true;
@@ -61,7 +61,7 @@ export default function ChatPage() {
         container.scrollTop = container.scrollHeight;
       }
     });
-  }, [filterMode]);
+  }, [filterMode, isInBackRoom]);
 
   // Load chat room details
   useEffect(() => {
