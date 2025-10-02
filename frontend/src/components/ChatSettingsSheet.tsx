@@ -111,8 +111,41 @@ export default function ChatSettingsSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
-          {/* Info for All Users */}
-          <div className="space-y-4">
+          {/* Back Room Section */}
+          {chatRoom.has_back_room && backRoom && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Back Room
+              </h3>
+
+              <div className="space-y-2">
+                <div className="flex justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Price per seat
+                  </span>
+                  <span className="text-sm font-semibold">${backRoom.price_per_seat}</span>
+                </div>
+
+                <div className="flex justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Seats available
+                  </span>
+                  <span className="text-sm font-semibold">
+                    {backRoom.seats_available} / {backRoom.max_seats}
+                  </span>
+                </div>
+
+                {!isHost && backRoom.is_active && !backRoom.is_full && (
+                  <button className="w-full mt-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors">
+                    Join Back Room - ${backRoom.price_per_seat}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Chat Information for All Users */}
+          <div className="space-y-4 pt-4 border-t dark:border-gray-700">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
               Chat Information
             </h3>
@@ -173,39 +206,6 @@ export default function ChatSettingsSheet({
               </p>
             </div>
           </div>
-
-          {/* Back Room Section */}
-          {chatRoom.has_back_room && backRoom && (
-            <div className="space-y-4 pt-4 border-t dark:border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Back Room
-              </h3>
-
-              <div className="space-y-2">
-                <div className="flex justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    Price per seat
-                  </span>
-                  <span className="text-sm font-semibold">${backRoom.price_per_seat}</span>
-                </div>
-
-                <div className="flex justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    Seats available
-                  </span>
-                  <span className="text-sm font-semibold">
-                    {backRoom.seats_available} / {backRoom.max_seats}
-                  </span>
-                </div>
-
-                {!isHost && backRoom.is_active && !backRoom.is_full && (
-                  <button className="w-full mt-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors">
-                    Join Back Room - ${backRoom.price_per_seat}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Host-Only Settings */}
           {isHost && (

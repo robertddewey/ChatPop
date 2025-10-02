@@ -160,11 +160,11 @@ class BackRoom(models.Model):
 
     @property
     def seats_available(self):
-        return self.max_seats - self.seats_occupied
+        return (self.max_seats or 0) - (self.seats_occupied or 0)
 
     @property
     def is_full(self):
-        return self.seats_occupied >= self.max_seats
+        return (self.seats_occupied or 0) >= (self.max_seats or 0)
 
 
 class BackRoomMember(models.Model):
@@ -188,6 +188,46 @@ class BackRoomMember(models.Model):
 
     def __str__(self):
         return f"{self.username} in {self.back_room}"
+
+
+class BackRoomMessage(models.Model):
+    """Messages in the back room"""
+    MESSAGE_NORMAL = 'normal'
+    MESSAGE_HOST = 'host'
+    MESSAGE_SYSTEM = 'system'
+    MESSAGE_TYPES = [
+        (MESSAGE_NORMAL, 'Normal'),
+        (MESSAGE_HOST, 'Host Message'),
+        (MESSAGE_SYSTEM, 'System Message'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    back_room = models.ForeignKey(BackRoom, on_delete=models.CASCADE, related_name='messages')
+
+    # User info (username required, user optional for guests)
+    username = models.CharField(max_length=100, help_text="Display name in chat")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='backroom_messages', help_text="Optional: registered user")
+
+    # Reply tracking
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies', help_text="Message this is replying to")
+
+    # Message content
+    message_type = models.CharField(max_length=10, choices=MESSAGE_TYPES, default=MESSAGE_NORMAL)
+    content = models.TextField()
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_deleted = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['back_room', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.username}: {self.content[:50]}"
 
 
 class AnonymousUserFingerprint(models.Model):

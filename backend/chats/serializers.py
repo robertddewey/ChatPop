@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import ChatRoom, Message, BackRoom, BackRoomMember, Transaction
+from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, Transaction
 from accounts.serializers import UserSerializer
 
 
@@ -220,3 +220,74 @@ class TransactionSerializer(serializers.ModelSerializer):
             'id', 'chat_room', 'status', 'user',
             'stripe_payment_intent_id', 'created_at', 'completed_at'
         ]
+
+
+class BackRoomMessageSerializer(serializers.ModelSerializer):
+    """Serializer for BackRoomMessage with host detection and reply info"""
+    user = UserSerializer(read_only=True)
+    is_from_host = serializers.SerializerMethodField()
+    reply_to_message = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BackRoomMessage
+        fields = [
+            'id', 'back_room', 'username', 'user', 'message_type', 'content',
+            'reply_to', 'reply_to_message', 'is_from_host', 'created_at', 'is_deleted'
+        ]
+        read_only_fields = [
+            'id', 'user', 'message_type', 'created_at', 'is_deleted'
+        ]
+
+    def get_is_from_host(self, obj):
+        return obj.user == obj.back_room.chat_room.host if obj.user else False
+
+    def get_reply_to_message(self, obj):
+        """Return basic info about the message being replied to"""
+        if obj.reply_to:
+            return {
+                'id': str(obj.reply_to.id),
+                'username': obj.reply_to.username,
+                'content': obj.reply_to.content[:100],  # Truncate for preview
+                'is_from_host': obj.reply_to.user == obj.reply_to.back_room.chat_room.host if obj.reply_to.user else False
+            }
+        return None
+
+
+class BackRoomMessageCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a back room message"""
+    reply_to = serializers.UUIDField(required=False, allow_null=True)
+
+    class Meta:
+        model = BackRoomMessage
+        fields = ['username', 'content', 'reply_to']
+
+    def validate_content(self, value):
+        if not value or len(value.strip()) == 0:
+            raise serializers.ValidationError("Message content cannot be empty")
+        if len(value) > 5000:
+            raise serializers.ValidationError("Message content too long (max 5000 characters)")
+        return value.strip()
+
+    def validate_reply_to(self, value):
+        """Validate that reply_to message exists and is in the same back room"""
+        if value:
+            try:
+                message = BackRoomMessage.objects.get(id=value)
+                # Check that reply is in same back room (will be validated in view)
+                return message
+            except BackRoomMessage.DoesNotExist:
+                raise serializers.ValidationError("Reply message not found")
+        return None
+
+
+class BackRoomMemberSerializer(serializers.ModelSerializer):
+    """Serializer for BackRoomMember"""
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = BackRoomMember
+        fields = [
+            'id', 'username', 'user', 'amount_paid',
+            'joined_at', 'is_active'
+        ]
+        read_only_fields = ['id', 'user', 'amount_paid', 'joined_at']

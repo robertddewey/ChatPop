@@ -195,4 +195,25 @@ export const backRoomApi = {
     const response = await api.post(`/api/chats/${code}/backroom/join/`, { username });
     return response.data;
   },
+
+  getMessages: async (code: string, username: string): Promise<Message[]> => {
+    const response = await api.get(`/api/chats/${code}/backroom/messages/`, {
+      data: { username }
+    });
+    return response.data.results || response.data;
+  },
+
+  sendMessage: async (code: string, username: string, content: string, replyTo?: string): Promise<Message> => {
+    const response = await api.post(`/api/chats/${code}/backroom/messages/send/`, {
+      username,
+      content,
+      reply_to: replyTo
+    });
+    return response.data;
+  },
+
+  getMembers: async (code: string) => {
+    const response = await api.get(`/api/chats/${code}/backroom/members/`);
+    return response.data;
+  },
 };

@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { chatApi, messageApi, authApi, type ChatRoom, type Message } from '@/lib/api';
+import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type Message, type BackRoom } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
+import BackRoomTab from '@/components/BackRoomTab';
+import BackRoomView from '@/components/BackRoomView';
 import { UsernameStorage } from '@/lib/usernameStorage';
 
 export default function ChatPage() {
@@ -38,6 +40,11 @@ export default function ChatPage() {
 
   // Message filter
   const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
+
+  // Back Room state
+  const [isInBackRoom, setIsInBackRoom] = useState(false);
+  const [backRoom, setBackRoom] = useState<BackRoom | null>(null);
+  const [isBackRoomMember, setIsBackRoomMember] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -101,6 +108,29 @@ export default function ChatPage() {
 
     loadChatRoom();
   }, [code]);
+
+  // Load Back Room data if it exists
+  useEffect(() => {
+    const loadBackRoom = async () => {
+      if (!chatRoom?.has_back_room || !hasJoined) return;
+
+      try {
+        const backRoomData = await backRoomApi.getBackRoom(code);
+        setBackRoom(backRoomData);
+
+        // Host always has access; for non-hosts, we'll check via BackRoomView's permission handling
+        const isHost = currentUserId && chatRoom.host.id === currentUserId;
+        if (isHost) {
+          setIsBackRoomMember(true);
+        }
+        // For non-hosts, membership will be determined when they try to view messages
+      } catch (error) {
+        console.error('Failed to load back room:', error);
+      }
+    };
+
+    loadBackRoom();
+  }, [chatRoom, hasJoined, code, currentUserId, username]);
 
   // Load messages
   const loadMessages = async () => {
@@ -548,8 +578,11 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Content Area - Relative positioned to contain absolute sticky section */}
+      {/* Content Area Wrapper - Contains both Main Chat and Back Room */}
       <div className="flex-1 relative overflow-hidden">
+        {!isInBackRoom ? (
+          /* Main Chat Content */
+          <div className="h-full relative overflow-hidden">
         {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
         {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
           <div className={currentDesign.stickySection}>
@@ -606,7 +639,7 @@ export default function ChatPage() {
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className={currentDesign.messagesArea}
+        className={`${currentDesign.messagesArea} ${chatRoom?.has_back_room && backRoom ? 'pr-12' : ''}`}
       >
         {/* Add padding-top when sticky messages are present to avoid overlap */}
         <div className={`space-y-3 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
@@ -736,6 +769,22 @@ export default function ChatPage() {
         </div>
       </div>
       </div>
+        ) : (
+          /* Back Room View */
+          chatRoom && backRoom && (
+            <div className="h-full">
+              <BackRoomView
+                chatRoom={chatRoom}
+                backRoom={backRoom}
+                username={username}
+                currentUserId={currentUserId}
+                isMember={isBackRoomMember}
+                onBack={() => setIsInBackRoom(false)}
+              />
+            </div>
+          )
+        )}
+      </div>
 
       {/* Message Input */}
       <div className={currentDesign.inputArea}>
@@ -757,6 +806,17 @@ export default function ChatPage() {
           </button>
         </form>
       </div>
+
+      {/* Back Room Tab */}
+      {chatRoom?.has_back_room && backRoom && (
+        <BackRoomTab
+          isInBackRoom={isInBackRoom}
+          hasBackRoom={true}
+          onClick={() => setIsInBackRoom(!isInBackRoom)}
+          hasNewMessages={false}
+          design={designVariant}
+        />
+      )}
     </div>
   );
 }
