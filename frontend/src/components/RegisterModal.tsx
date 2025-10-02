@@ -25,6 +25,15 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     password: '',
     reserved_username: '',
   });
+  const [usernameStatus, setUsernameStatus] = useState<{ checking: boolean; available: boolean | null; message: string }>({
+    checking: false,
+    available: null,
+    message: '',
+  });
+  const [usernameValidation, setUsernameValidation] = useState<{ valid: boolean; message: string }>({
+    valid: true,
+    message: '',
+  });
 
   // Prevent body scrolling when modal is open
   useEffect(() => {
@@ -33,6 +42,59 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
       document.body.style.overflow = 'unset';
     };
   }, []);
+
+  // Validate username format in real-time
+  useEffect(() => {
+    const username = formData.reserved_username;
+
+    if (!username) {
+      setUsernameValidation({ valid: true, message: '' });
+      return;
+    }
+
+    // Check for non-alphanumeric characters (including spaces)
+    const alphanumericRegex = /^[a-zA-Z0-9]+$/;
+    if (!alphanumericRegex.test(username)) {
+      setUsernameValidation({
+        valid: false,
+        message: 'Only letters and numbers allowed (no spaces or special characters)',
+      });
+      return;
+    }
+
+    setUsernameValidation({ valid: true, message: '' });
+  }, [formData.reserved_username]);
+
+  // Check username availability with debounce (only if format is valid)
+  useEffect(() => {
+    const username = formData.reserved_username.trim();
+
+    if (!username || !usernameValidation.valid) {
+      setUsernameStatus({ checking: false, available: null, message: '' });
+      return;
+    }
+
+    setUsernameStatus({ checking: true, available: null, message: 'Checking...' });
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const result = await authApi.checkUsername(username);
+        setUsernameStatus({
+          checking: false,
+          available: result.available,
+          message: result.message,
+        });
+      } catch (error) {
+        setUsernameStatus({
+          checking: false,
+          available: null,
+          message: 'Error checking username',
+        });
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.reserved_username, usernameValidation.valid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,15 +255,25 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
               id="reserved_username"
               value={formData.reserved_username}
               onChange={(e) => setFormData({ ...formData, reserved_username: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.reserved_username)}`}
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.reserved_username || !usernameValidation.valid || (usernameStatus.available === false))}`}
               placeholder=""
             />
             {fieldErrors.reserved_username && (
               <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.reserved_username}</p>
             )}
-            <p className={`mt-1 text-xs ${styles.subtitle}`}>
-              Letters and numbers only. Reserved for all chats.
-            </p>
+            {!fieldErrors.reserved_username && !usernameValidation.valid && (
+              <p className={`mt-1 text-sm ${styles.fieldError}`}>{usernameValidation.message}</p>
+            )}
+            {!fieldErrors.reserved_username && usernameValidation.valid && usernameStatus.message && (
+              <p className={`mt-1 text-sm ${usernameStatus.available === true ? 'text-green-600 dark:text-green-400' : usernameStatus.available === false ? styles.fieldError : styles.subtitle}`}>
+                {usernameStatus.message}
+              </p>
+            )}
+            {!fieldErrors.reserved_username && usernameValidation.valid && !usernameStatus.message && (
+              <p className={`mt-1 text-xs ${styles.subtitle}`}>
+                Letters and numbers only. Reserved for all chats.
+              </p>
+            )}
           </div>
 
           <div>

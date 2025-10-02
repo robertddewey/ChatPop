@@ -1,25 +1,46 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { authApi } from '@/lib/api';
 
 export default function Header() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Check auth token on mount and when URL changes
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    setIsLoggedIn(!!token);
-  }, []);
+    const checkAuth = () => {
+      const token = localStorage.getItem('auth_token');
+      console.log('[Header] Checking auth:', { hasToken: !!token });
+      setIsLoggedIn(!!token);
+    };
+
+    checkAuth();
+
+    // Listen for storage events (from other tabs/windows)
+    window.addEventListener('storage', checkAuth);
+
+    // Listen for custom auth events (from same window)
+    window.addEventListener('auth-change', checkAuth);
+
+    return () => {
+      window.removeEventListener('storage', checkAuth);
+      window.removeEventListener('auth-change', checkAuth);
+    };
+  }, [pathname, searchParams]);
 
   const handleLogout = async () => {
     setLoading(true);
     try {
       await authApi.logout();
       setIsLoggedIn(false);
+      // Dispatch auth-change event for other components
+      window.dispatchEvent(new Event('auth-change'));
       router.push('/');
     } catch (err) {
       console.error('Logout failed:', err);

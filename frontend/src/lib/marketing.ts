@@ -9,12 +9,16 @@ export const MARKETING = {
     title: "Your Group Chat,",
     titleHighlight: "for Everyone.",
     badge: "No App Needed",
-    subtitle: "Create an instant group chat for your community and engage your audience with ChatPop. No app or login needed.",
+    subtitle: "Create an instant group chat for your community and engage your audience with ChatPop. Share the link and chat.",
     cta: "Start a ChatPop",
   },
 
   // Features
   features: {
+    noAppNeeded: {
+      title: "No App Required",
+      description: "Your audience just needs the link - no app download or registration needed to join and chat",
+    },
     publicPrivate: {
       title: "Public & Private Rooms",
       description: "Control who can join your chat with access codes for private rooms",

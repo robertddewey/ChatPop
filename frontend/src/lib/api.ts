@@ -93,7 +93,7 @@ export interface BackRoom {
 
 // API Functions
 export const authApi = {
-  register: async (data: { email: string; password: string; password_confirm: string; display_name?: string }) => {
+  register: async (data: { email: string; password: string; reserved_username?: string }) => {
     const response = await api.post('/api/auth/register/', data);
     return response.data;
   },
@@ -102,6 +102,10 @@ export const authApi = {
     const response = await api.post('/api/auth/login/', { email, password });
     if (response.data.token) {
       localStorage.setItem('auth_token', response.data.token);
+      // Dispatch auth-change event to notify other components
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('auth-change'));
+      }
     }
     return response.data;
   },
@@ -124,6 +128,13 @@ export const authApi = {
 
   getCurrentUser: async (): Promise<User> => {
     const response = await api.get('/api/auth/me/');
+    return response.data;
+  },
+
+  checkUsername: async (username: string): Promise<{ available: boolean; message: string }> => {
+    const response = await api.get('/api/auth/check-username/', {
+      params: { username },
+    });
     return response.data;
   },
 };

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { chatApi } from '@/lib/api';
 import { X } from 'lucide-react';
 
@@ -13,6 +13,7 @@ interface CreateChatModalProps {
 
 export default function CreateChatModal({ onClose }: CreateChatModalProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
@@ -38,40 +39,62 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
     const savedData = localStorage.getItem(FORM_STORAGE_KEY);
     const token = localStorage.getItem('auth_token');
 
+    console.log('[CreateChatModal] Restore effect:', {
+      hasSavedData: !!savedData,
+      hasToken: !!token,
+      savedDataContent: savedData,
+      tokenPreview: token?.substring(0, 10) + '...'
+    });
+
     if (savedData && token) {
       try {
         const restored = JSON.parse(savedData);
+        console.log('[CreateChatModal] Restored data:', restored);
         setFormData(restored);
-        localStorage.removeItem(FORM_STORAGE_KEY);
 
-        // Auto-submit the form
-        (async () => {
-          setLoading(true);
-          try {
-            const chatRoom = await chatApi.createChat(restored);
-            router.push(`/chat/${chatRoom.code}`);
-          } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to create chat room');
-            setLoading(false);
-          }
-        })();
+        // Only auto-submit if the form has a name (meaning user actually filled it out)
+        if (restored.name && restored.name.trim()) {
+          console.log('[CreateChatModal] Auto-submitting chat creation...');
+          (async () => {
+            setLoading(true);
+            try {
+              const chatRoom = await chatApi.createChat(restored);
+              console.log('[CreateChatModal] Chat created successfully:', chatRoom);
+              // Clear saved form data AFTER successful creation
+              localStorage.removeItem(FORM_STORAGE_KEY);
+              router.push(`/chat/${chatRoom.code}`);
+            } catch (err: any) {
+              console.error('[CreateChatModal] Failed to create chat:', err);
+              setError(err.response?.data?.detail || 'Failed to create chat room');
+              setLoading(false);
+            }
+          })();
+        } else {
+          console.log('[CreateChatModal] Skipping auto-submit - no chat name');
+          // Clear empty form data
+          localStorage.removeItem(FORM_STORAGE_KEY);
+        }
       } catch (e) {
         console.error('Failed to restore form data:', e);
         localStorage.removeItem(FORM_STORAGE_KEY);
       }
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[CreateChatModal] Form submitted:', formData);
     setError('');
     setLoading(true);
 
     try {
       // Check if user is logged in
       const token = localStorage.getItem('auth_token');
+      console.log('[CreateChatModal] Has auth token:', !!token);
+
       if (!token) {
         // Save form data before redirecting to login
+        console.log('[CreateChatModal] No token, saving form data and redirecting to auth');
         localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(formData));
         // Open login modal instead of redirecting
         const params = new URLSearchParams(window.location.search);
@@ -81,7 +104,9 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
         return;
       }
 
+      console.log('[CreateChatModal] Creating chat room...');
       const chatRoom = await chatApi.createChat(formData);
+      console.log('[CreateChatModal] Chat room created:', chatRoom);
 
       // Clear any saved form data on success
       localStorage.removeItem(FORM_STORAGE_KEY);
@@ -89,6 +114,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
       // Redirect to the chat room
       router.push(`/chat/${chatRoom.code}`);
     } catch (err: any) {
+      console.error('[CreateChatModal] Error creating chat room:', err);
       setError(err.response?.data?.detail || 'Failed to create chat room');
       setLoading(false);
     }

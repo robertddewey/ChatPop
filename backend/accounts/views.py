@@ -112,3 +112,22 @@ class MySubscribersView(generics.ListAPIView):
     def get_queryset(self):
         """Get users subscribed to the current user"""
         return UserSubscription.objects.filter(subscribed_to=self.request.user)
+
+
+class CheckUsernameView(APIView):
+    """Check if a username is available"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        username = request.query_params.get('username', '').strip()
+
+        if not username:
+            return Response({'available': False, 'message': 'Username is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if username exists (case-insensitive)
+        exists = User.objects.filter(reserved_username__iexact=username).exists()
+
+        return Response({
+            'available': not exists,
+            'message': 'Username is already taken' if exists else 'Username is available'
+        })
