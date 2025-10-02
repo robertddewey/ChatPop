@@ -58,12 +58,16 @@ export default function MessageActionsModal({
   onTip,
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartY = React.useRef(0);
   const styles = modalStyles[design];
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
 
   const handleOpen = () => {
     setIsOpen(true);
+    setDragOffset(0);
     // Trigger haptic feedback (Android only)
     if (typeof window !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate(50);
@@ -72,6 +76,39 @@ export default function MessageActionsModal({
 
   const handleClose = () => {
     setIsOpen(false);
+    setDragOffset(0);
+    setIsDragging(false);
+  };
+
+  const handleDragStart = (e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0].clientY;
+    setIsDragging(true);
+  };
+
+  const handleDragMove = (e: React.TouchEvent) => {
+    if (!isDragging) return;
+
+    const currentY = e.touches[0].clientY;
+    const delta = currentY - dragStartY.current;
+
+    // Only allow dragging down (positive delta)
+    if (delta > 0) {
+      setDragOffset(delta);
+    }
+  };
+
+  const handleDragEnd = () => {
+    if (!isDragging) return;
+
+    setIsDragging(false);
+
+    // Close if dragged down more than 100px
+    if (dragOffset > 100) {
+      handleClose();
+    } else {
+      // Snap back to original position
+      setDragOffset(0);
+    }
   };
 
   const handleAction = (action: () => void) => {
@@ -87,6 +124,7 @@ export default function MessageActionsModal({
   // Filter actions based on context
   const actions = [];
 
+  // Pin self (own message, not pinned)
   if (isOwnMessage && !message.is_pinned && onPinSelf) {
     actions.push({
       icon: Pin,
@@ -95,7 +133,17 @@ export default function MessageActionsModal({
     });
   }
 
-  if (isHost && !isOwnMessage && !message.is_pinned && onPinOther) {
+  // Keep pinned (own message, already pinned)
+  if (isOwnMessage && message.is_pinned && onPinSelf) {
+    actions.push({
+      icon: Pin,
+      label: 'Keep My Message Pinned',
+      action: () => handleAction(() => onPinSelf(message.id)),
+    });
+  }
+
+  // Pin other (not own message, not pinned)
+  if (!isOwnMessage && !message.is_pinned && onPinOther) {
     actions.push({
       icon: Pin,
       label: 'Pin Message',
@@ -103,19 +151,29 @@ export default function MessageActionsModal({
     });
   }
 
-  if (!isOwnMessage && !isHostMessage && onBlock) {
+  // Keep pinned (not own message, already pinned)
+  if (!isOwnMessage && message.is_pinned && onPinOther) {
     actions.push({
-      icon: Ban,
-      label: `Block ${message.username}`,
-      action: () => handleAction(() => onBlock(message.username)),
+      icon: Pin,
+      label: 'Keep Message Pinned',
+      action: () => handleAction(() => onPinOther(message.id)),
     });
   }
 
   if (!isOwnMessage && onTip) {
     actions.push({
       icon: DollarSign,
-      label: `Tip ${message.username}`,
+      label: 'Tip User',
       action: () => handleAction(() => onTip(message.username)),
+    });
+  }
+
+  // Block should always be last (bottom of modal)
+  if (!isOwnMessage && !isHostMessage && onBlock) {
+    actions.push({
+      icon: Ban,
+      label: 'Block User',
+      action: () => handleAction(() => onBlock(message.username)),
     });
   }
 
@@ -132,14 +190,26 @@ export default function MessageActionsModal({
         <div
           className="fixed inset-0 z-[9999] flex items-end justify-center"
           onClick={handleClose}
+          style={{
+            WebkitUserSelect: 'none',
+            userSelect: 'none',
+            WebkitTouchCallout: 'none',
+          }}
         >
           {/* Backdrop with blur */}
           <div className={`absolute inset-0 ${styles.overlay}`} />
 
           {/* Modal Content */}
           <div
-            className={`relative w-full max-w-lg ${styles.container} rounded-t-3xl pb-safe animate-slide-up`}
+            className={`relative w-full max-w-lg ${styles.container} rounded-t-3xl pb-safe ${!isDragging && 'animate-slide-up'}`}
+            style={{
+              transform: `translateY(${dragOffset}px)`,
+              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
             onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleDragStart}
+            onTouchMove={handleDragMove}
+            onTouchEnd={handleDragEnd}
           >
             {/* Drag handle */}
             <div className="pt-3 pb-2 flex justify-center">
@@ -173,7 +243,7 @@ export default function MessageActionsModal({
                     className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 ${styles.actionButton}`}
                   >
                     <Icon className={`w-6 h-6 ${styles.actionIcon}`} />
-                    <span className="text-lg font-medium">{action.label}</span>
+                    <span className="text-base font-medium">{action.label}</span>
                   </button>
                 );
               })}

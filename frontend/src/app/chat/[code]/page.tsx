@@ -684,7 +684,7 @@ export default function ChatPage() {
                       {stickyPinnedMessage.username}
                     </span>
                     <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
-                      📌 Pinned ${stickyPinnedMessage.pin_amount_paid}
+                      📌 ${stickyPinnedMessage.pin_amount_paid}
                     </span>
                     <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
                       {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -872,6 +872,10 @@ export default function ChatPage() {
             placeholder="Type a message..."
             className={currentDesign.inputField}
             disabled={sending}
+            style={{
+              WebkitUserSelect: 'text',
+              userSelect: 'text',
+            }}
           />
           <button
             type="submit"
