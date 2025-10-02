@@ -17,7 +17,7 @@ interface JoinChatModalProps {
 // Theme configurations
 const modalStyles = {
   design1: {
-    overlay: 'bg-black/20 backdrop-blur-md',
+    overlay: 'bg-black/5',
     container: 'bg-gradient-to-br from-purple-50 to-pink-50 dark:from-gray-900 dark:to-gray-800',
     title: 'text-gray-900 dark:text-gray-100',
     subtitle: 'text-gray-600 dark:text-gray-400',
@@ -28,7 +28,7 @@ const modalStyles = {
     error: 'text-red-600 dark:text-red-400',
   },
   design2: {
-    overlay: 'bg-black/20 backdrop-blur-md',
+    overlay: 'bg-black/5',
     container: 'bg-gradient-to-br from-sky-50 to-cyan-50 dark:from-gray-900 dark:to-gray-800',
     title: 'text-gray-900 dark:text-gray-100',
     subtitle: 'text-gray-600 dark:text-gray-400',
@@ -39,7 +39,7 @@ const modalStyles = {
     error: 'text-red-600 dark:text-red-400',
   },
   design3: {
-    overlay: 'bg-black/20 backdrop-blur-sm',
+    overlay: 'bg-black/5',
     container: 'bg-zinc-900',
     title: 'text-zinc-50',
     subtitle: 'text-zinc-400',
@@ -139,11 +139,6 @@ export default function JoinChatModal({
       <div className={`relative w-full max-w-md ${styles.container} rounded-3xl p-8 shadow-2xl`}>
         {/* Title */}
         <div className="mb-6 text-center">
-          {isReturningUser && (
-            <p className={`text-sm ${styles.subtitle} mb-1`}>
-              {chatRoom.name}
-            </p>
-          )}
           <h1 className={`text-2xl font-bold ${styles.title} mb-2`}>
             {isReturningUser ? `Welcome back, ${displayName}!` : `Join ${chatRoom.name}`}
           </h1>

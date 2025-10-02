@@ -529,7 +529,7 @@ export default function ChatPage() {
 
       {/* Main Chat Interface - blurred when not joined */}
       <div
-        className={`${currentDesign.container} ${!hasJoined ? 'blur-sm opacity-30 pointer-events-none' : ''}`}
+        className={`${currentDesign.container} ${!hasJoined ? 'pointer-events-none' : ''}`}
         style={{
           WebkitUserSelect: 'none',
           userSelect: 'none',
