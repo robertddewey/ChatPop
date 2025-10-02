@@ -11,7 +11,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { chatApi, backRoomApi, type ChatRoom, type BackRoom } from '@/lib/api';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, BadgeCheck } from 'lucide-react';
 import { migrateLegacyTheme, isDarkTheme, DEFAULT_THEME, type ThemeId } from '@/lib/themes';
 
 interface ChatSettingsSheetProps {
@@ -278,9 +278,14 @@ export default function ChatSettingsSheet({
               isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
             }`}>
               <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Hosted by</p>
-              <p className={`text-sm font-semibold ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>
-                {chatRoom.host.display_name || chatRoom.host.email}
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className={`text-sm font-semibold ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>
+                  {chatRoom.host.reserved_username || chatRoom.host.email.split('@')[0]}
+                </p>
+                {chatRoom.host.reserved_username && (
+                  <BadgeCheck className="text-blue-500 flex-shrink-0" size={16} />
+                )}
+              </div>
             </div>
 
             {/* Created Date */}

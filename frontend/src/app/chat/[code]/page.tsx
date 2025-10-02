@@ -13,6 +13,7 @@ import LoginModal from '@/components/LoginModal';
 import RegisterModal from '@/components/RegisterModal';
 import { UsernameStorage } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
+import { Settings } from 'lucide-react';
 
 export default function ChatPage() {
   const params = useParams();
@@ -602,8 +603,9 @@ export default function ChatPage() {
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
               onThemeChange={(theme) => setDesignVariant(theme)}
             >
-              <div className="flex-1 min-w-0">
-                <h1 className={`${currentDesign.headerTitle} cursor-pointer hover:opacity-70 transition-opacity truncate`}>
+              <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
+                <Settings className={`${currentDesign.headerTitle} flex-shrink-0`} size={18} />
+                <h1 className={`${currentDesign.headerTitle} truncate`}>
                   {chatRoom.name}
                 </h1>
               </div>
