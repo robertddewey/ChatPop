@@ -84,11 +84,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   const isChat = theme === 'chat';
 
   const styles = {
-    overlay: isChat
-      ? isDarkChat
-        ? 'bg-black/60 backdrop-blur-sm'
-        : 'bg-black/20 backdrop-blur-sm'
-      : 'bg-black/20 backdrop-blur-sm',
+    overlay: 'bg-black/20 backdrop-blur-sm',
     container: isChat
       ? isDarkChat
         ? 'bg-zinc-900 border border-zinc-800'

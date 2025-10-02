@@ -14,41 +14,27 @@ interface JoinChatModalProps {
   onJoin: (username: string, accessCode?: string) => void;
 }
 
-// Theme configurations
-const modalStyles = {
-  "purple-dream": {
-    overlay: 'bg-black/5',
-    container: 'bg-gradient-to-br from-purple-50 to-pink-50 dark:from-gray-900 dark:to-gray-800',
-    title: 'text-gray-900 dark:text-gray-100',
-    subtitle: 'text-gray-600 dark:text-gray-400',
-    input: 'bg-white dark:bg-gray-800 border-2 border-purple-200 dark:border-purple-700 text-gray-900 dark:text-gray-100 focus:border-purple-500 dark:focus:border-purple-400',
-    primaryButton: 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white',
-    secondaryButton: 'bg-white dark:bg-gray-800 border-2 border-purple-200 dark:border-purple-700 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20',
-    divider: 'border-purple-200 dark:border-purple-700',
-    error: 'text-red-600 dark:text-red-400',
-  },
-  "ocean-blue": {
-    overlay: 'bg-black/5',
-    container: 'bg-gradient-to-br from-sky-50 to-cyan-50 dark:from-gray-900 dark:to-gray-800',
-    title: 'text-gray-900 dark:text-gray-100',
-    subtitle: 'text-gray-600 dark:text-gray-400',
-    input: 'bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-blue-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 dark:focus:border-blue-400',
-    primaryButton: 'bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white',
-    secondaryButton: 'bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20',
-    divider: 'border-blue-200 dark:border-blue-700',
-    error: 'text-red-600 dark:text-red-400',
-  },
-  "dark-mode": {
-    overlay: 'bg-black/5',
-    container: 'bg-zinc-900',
-    title: 'text-zinc-50',
-    subtitle: 'text-zinc-400',
-    input: 'bg-zinc-800 border border-zinc-600 text-zinc-50 focus:border-cyan-400',
-    primaryButton: 'bg-cyan-500 hover:bg-cyan-400 text-zinc-900',
-    secondaryButton: 'bg-zinc-700 border border-zinc-600 text-zinc-50 hover:bg-zinc-600',
-    divider: 'border-zinc-600',
-    error: 'text-red-400',
-  },
+// Theme configurations - simplified to light/dark
+const getModalStyles = (design: 'purple-dream' | 'ocean-blue' | 'dark-mode') => {
+  const isDark = design === 'dark-mode';
+
+  return {
+    overlay: 'bg-transparent',
+    container: isDark ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-gray-200',
+    title: isDark ? 'text-zinc-50' : 'text-gray-900',
+    subtitle: isDark ? 'text-zinc-400' : 'text-gray-600',
+    input: isDark
+      ? 'bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400'
+      : 'bg-white border border-gray-300 text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500',
+    primaryButton: isDark
+      ? 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950'
+      : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
+    secondaryButton: isDark
+      ? 'bg-zinc-700 border border-zinc-600 text-zinc-50 hover:bg-zinc-600'
+      : 'bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50',
+    divider: isDark ? 'border-zinc-600' : 'border-gray-300',
+    error: isDark ? 'text-red-400' : 'text-red-600',
+  };
 };
 
 export default function JoinChatModal({
@@ -60,7 +46,7 @@ export default function JoinChatModal({
   onJoin,
 }: JoinChatModalProps) {
   const router = useRouter();
-  const styles = modalStyles[design];
+  const styles = getModalStyles(design);
 
   const [username, setUsername] = useState(storedUsername || '');
   const [accessCode, setAccessCode] = useState('');
