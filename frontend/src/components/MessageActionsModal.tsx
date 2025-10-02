@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
 import { Pin, DollarSign, Ban, X } from 'lucide-react';
@@ -64,6 +64,16 @@ export default function MessageActionsModal({
   const styles = modalStyles[design];
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
+
+  // Prevent body scrolling when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = 'unset';
+      };
+    }
+  }, [isOpen]);
 
   const handleOpen = () => {
     setIsOpen(true);

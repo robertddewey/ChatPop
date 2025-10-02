@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import type { ChatRoom } from '@/lib/api';
@@ -62,6 +62,14 @@ export default function JoinChatModal({
   }, []);
 
   const displayName = isLoggedIn ? currentUserDisplayName : storedUsername;
+
+  // Prevent body scrolling when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
   const isReturningUser = !!displayName;
 
   const handleJoin = async (e: React.FormEvent) => {

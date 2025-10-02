@@ -7,8 +7,9 @@ export const MARKETING = {
   // Hero Section
   hero: {
     title: "Your Group Chat,",
-    titleHighlight: "for Everyone",
-    subtitle: "Create an instant group chat for your community and engage your audience with ChatPop",
+    titleHighlight: "for Everyone.",
+    badge: "No App Needed",
+    subtitle: "Create an instant group chat for your community and engage your audience with ChatPop. No app or login needed.",
     cta: "Start a ChatPop",
   },
 

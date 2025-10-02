@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Users, DollarSign } from 'lucide-react';
 import { BackRoom } from '@/lib/api';
 
@@ -16,6 +16,14 @@ export default function BackRoomJoinModal({
   onClose,
 }: BackRoomJoinModalProps) {
   const [loading, setLoading] = useState(false);
+
+  // Prevent body scrolling when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
 
   const handleJoin = async () => {
     setLoading(true);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import RegisterModal from "@/components/RegisterModal";
@@ -28,12 +29,19 @@ export default function Home() {
       {/* Hero Section */}
       <main className="container mx-auto px-4 py-20">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">
+          <h2 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-4">
             {MARKETING.hero.title}
             <span className="block bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
               {MARKETING.hero.titleHighlight}
             </span>
           </h2>
+
+          {/* Badge */}
+          <div className="mb-6">
+            <span className="inline-block px-4 py-2 bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/30 text-purple-700 dark:text-purple-300 rounded-full text-sm font-semibold">
+              {MARKETING.hero.badge}
+            </span>
+          </div>
 
           <p className="text-xl text-gray-600 dark:text-gray-300 mb-12 max-w-2xl mx-auto">
             {MARKETING.hero.subtitle}

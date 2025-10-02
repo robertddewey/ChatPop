@@ -25,6 +25,14 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
     photo_enabled: true,
   });
 
+  // Prevent body scrolling when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   // Restore form data from localStorage on mount and auto-submit if logged in
   useEffect(() => {
     const savedData = localStorage.getItem(FORM_STORAGE_KEY);
