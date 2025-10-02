@@ -492,8 +492,10 @@ export default function ChatPage() {
       messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMTYsIDE5MSwgMjE2LCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDE5MiwgMTMyLCAyNTIsIDAuMTUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI3BhdHRlcm4pIi8+PC9zdmc+')] bg-repeat",
       hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-white shadow-lg border-2 border-white/20",
       hostText: "text-white",
+      hostMessageFade: "bg-gradient-to-l from-red-500 to-transparent",
       pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
       pinnedText: "text-amber-900 dark:text-amber-200",
+      pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
       regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-purple-100 dark:border-purple-800 shadow-sm",
       regularText: "text-gray-700 dark:text-gray-300",
       filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30",
@@ -509,8 +511,10 @@ export default function ChatPage() {
       messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMDAsIDIzMCwgMjUwLCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDU5LCAxMzAsIDI0NiwgMC4xNSkiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiLz48L3N2Zz4=')] bg-repeat",
       hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500 text-white shadow-lg border-2 border-white/20",
       hostText: "text-white",
+      hostMessageFade: "bg-gradient-to-l from-cyan-500 to-transparent",
       pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
       pinnedText: "text-amber-900 dark:text-amber-200",
+      pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
       regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-blue-100 dark:border-blue-800 shadow-sm",
       regularText: "text-gray-700 dark:text-gray-300",
       filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
@@ -526,8 +530,10 @@ export default function ChatPage() {
       messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
       hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
       hostText: "text-cyan-950",
+      hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
       pinnedMessage: "rounded px-3 py-2 bg-yellow-400 font-medium",
       pinnedText: "text-yellow-950",
+      pinnedMessageFade: "bg-gradient-to-l from-yellow-400 to-transparent",
       regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
       regularText: "text-zinc-100",
       filterButtonActive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
@@ -605,9 +611,12 @@ export default function ChatPage() {
                     {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <p className={`text-sm ${currentDesign.hostText}`}>
-                  {message.content}
-                </p>
+                <div className="relative">
+                  <p className={`text-sm ${currentDesign.hostText} overflow-hidden whitespace-nowrap pr-32`}>
+                    {message.content}
+                  </p>
+                  <div className={`absolute right-0 top-0 bottom-0 w-32 ${currentDesign.hostMessageFade} pointer-events-none`} />
+                </div>
               </div>
             ))}
 
@@ -628,9 +637,12 @@ export default function ChatPage() {
                     {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <p className={`text-sm ${currentDesign.pinnedText}`}>
-                  {stickyPinnedMessage.content}
-                </p>
+                <div className="relative">
+                  <p className={`text-sm ${currentDesign.pinnedText} overflow-hidden whitespace-nowrap pr-32`}>
+                    {stickyPinnedMessage.content}
+                  </p>
+                  <div className={`absolute right-0 top-0 bottom-0 w-32 ${currentDesign.pinnedMessageFade} pointer-events-none`} />
+                </div>
               </div>
             )}
           </div>
