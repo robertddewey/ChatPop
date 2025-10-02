@@ -102,7 +102,7 @@ export default function ChatSettingsSheet({
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>{children}</SheetTrigger>
-      <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
+      <SheetContent side="bottom" className="h-[100dvh] overflow-y-auto pt-2 border-t-white dark:border-t-gray-950">
         <SheetHeader>
           <SheetTitle>Chat Settings</SheetTitle>
           <SheetDescription>
