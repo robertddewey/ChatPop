@@ -493,6 +493,7 @@ export default function ChatPage() {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20",
       header: "border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
       headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
+      headerTitleFade: "bg-gradient-to-l from-white/80 via-white/60 dark:from-gray-800/80 dark:via-gray-800/60 to-white/0 dark:to-gray-800/0",
       headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
       stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
       messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMTYsIDE5MSwgMjE2LCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDE5MiwgMTMyLCAyNTIsIDAuMTUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI3BhdHRlcm4pIi8+PC9zdmc+')] bg-repeat",
@@ -504,8 +505,8 @@ export default function ChatPage() {
       pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
       regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-purple-100 dark:border-purple-800 shadow-sm",
       regularText: "text-gray-700 dark:text-gray-300",
-      filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30",
-      filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700",
+      filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30",
+      filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700",
       inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
       inputField: "flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
     },
@@ -513,6 +514,7 @@ export default function ChatPage() {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
       header: "border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
       headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
+      headerTitleFade: "bg-gradient-to-l from-white/80 via-white/60 dark:from-gray-800/80 dark:via-gray-800/60 to-white/0 dark:to-gray-800/0",
       headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
       stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
       messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMDAsIDIzMCwgMjUwLCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDU5LCAxMzAsIDI0NiwgMC4xNSkiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiLz48L3N2Zz4=')] bg-repeat",
@@ -524,8 +526,8 @@ export default function ChatPage() {
       pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
       regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-blue-100 dark:border-blue-800 shadow-sm",
       regularText: "text-gray-700 dark:text-gray-300",
-      filterButtonActive: "px-4 py-2 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
-      filterButtonInactive: "px-4 py-2 rounded-full text-xs font-bold bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
+      filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
+      filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
       inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
       inputField: "flex-1 px-4 py-2 border border-blue-300 dark:border-blue-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
     },
@@ -533,6 +535,7 @@ export default function ChatPage() {
       container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
       header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
       headerTitle: "text-lg font-bold text-zinc-100",
+      headerTitleFade: "bg-gradient-to-l from-zinc-900 to-transparent",
       headerSubtitle: "text-sm text-zinc-400",
       stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
       messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
@@ -544,8 +547,8 @@ export default function ChatPage() {
       pinnedMessageFade: "bg-gradient-to-l from-yellow-400 to-transparent",
       regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
       regularText: "text-zinc-100",
-      filterButtonActive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
-      filterButtonInactive: "px-3 py-1.5 rounded text-xs font-bold tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
+      filterButtonActive: "px-3 py-1.5 rounded text-xs tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
+      filterButtonInactive: "px-3 py-1.5 rounded text-xs tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
       inputArea: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
       inputField: "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
     },
@@ -579,7 +582,7 @@ export default function ChatPage() {
       >
         {/* Chat Header */}
         <div className={currentDesign.header}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           {chatRoom && (
             <ChatSettingsSheet
               chatRoom={chatRoom}
@@ -587,9 +590,11 @@ export default function ChatPage() {
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
               onThemeChange={(theme) => setDesignVariant(theme)}
             >
-              <h1 className={`${currentDesign.headerTitle} cursor-pointer hover:opacity-70 transition-opacity`}>
-                {chatRoom.name}
-              </h1>
+              <div className="flex-1 min-w-0">
+                <h1 className={`${currentDesign.headerTitle} cursor-pointer hover:opacity-70 transition-opacity truncate`}>
+                  {chatRoom.name}
+                </h1>
+              </div>
             </ChatSettingsSheet>
           )}
           {/* Filter Toggle */}
@@ -652,12 +657,9 @@ export default function ChatPage() {
                       {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <div className="relative">
-                    <p className={`text-sm ${currentDesign.hostText} overflow-hidden whitespace-nowrap pr-32`}>
-                      {message.content}
-                    </p>
-                    <div className={`absolute right-0 top-0 bottom-0 w-32 ${currentDesign.hostMessageFade} pointer-events-none`} />
-                  </div>
+                  <p className={`text-sm ${currentDesign.hostText} truncate`}>
+                    {message.content}
+                  </p>
                 </div>
               </MessageActionsModal>
             ))}
@@ -689,12 +691,9 @@ export default function ChatPage() {
                       {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <div className="relative">
-                    <p className={`text-sm ${currentDesign.pinnedText} overflow-hidden whitespace-nowrap pr-32`}>
-                      {stickyPinnedMessage.content}
-                    </p>
-                    <div className={`absolute right-0 top-0 bottom-0 w-32 ${currentDesign.pinnedMessageFade} pointer-events-none`} />
-                  </div>
+                  <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
+                    {stickyPinnedMessage.content}
+                  </p>
                 </div>
               </MessageActionsModal>
             )}

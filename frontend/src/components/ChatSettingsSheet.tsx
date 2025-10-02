@@ -223,6 +223,16 @@ export default function ChatSettingsSheet({
               Chat Information
             </h3>
 
+            {/* Chat Name */}
+            <div className={`p-3 rounded-lg ${
+              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
+            }`}>
+              <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Chat Name</p>
+              <p className={`text-sm font-semibold ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>
+                {chatRoom.name}
+              </p>
+            </div>
+
             {/* Chat Code */}
             <div className={`flex items-center justify-between p-3 rounded-lg ${
               isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
