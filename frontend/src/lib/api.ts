@@ -23,7 +23,7 @@ api.interceptors.request.use((config) => {
 export interface User {
   id: string;
   email: string;
-  display_name: string;
+  reserved_username: string;
   first_name: string;
   last_name: string;
   email_notifications: boolean;
@@ -107,8 +107,19 @@ export const authApi = {
   },
 
   logout: async () => {
-    await api.post('/api/auth/logout/');
-    localStorage.removeItem('auth_token');
+    try {
+      // Only call API if we have a token (real user)
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        await api.post('/api/auth/logout/');
+      }
+    } catch (error) {
+      // Ignore logout API errors - we'll clear local storage anyway
+      console.warn('Logout API call failed, clearing local storage anyway:', error);
+    } finally {
+      // Always clear local storage
+      localStorage.removeItem('auth_token');
+    }
   },
 
   getCurrentUser: async (): Promise<User> => {
@@ -141,6 +152,12 @@ export const chatApi = {
       username,
       access_code: accessCode,
     });
+
+    // Store session token if provided
+    if (response.data.session_token) {
+      localStorage.setItem(`chat_session_${code}`, response.data.session_token);
+    }
+
     return response.data;
   },
 
@@ -171,9 +188,13 @@ export const messageApi = {
   },
 
   sendMessage: async (code: string, username: string, content: string): Promise<Message> => {
+    // Get session token from localStorage
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
     const response = await api.post(`/api/chats/${code}/messages/send/`, {
       username,
       content,
+      session_token: sessionToken,
     });
     return response.data;
   },

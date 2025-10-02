@@ -128,6 +128,44 @@ docker-compose down
 Stop backend: `Ctrl+C` in the Django terminal
 Stop frontend: `Ctrl+C` in the Next.js terminal
 
+## Running Tests
+
+### Backend Tests
+
+Run all Django tests:
+```bash
+cd backend
+./venv/bin/python manage.py test
+```
+
+Run tests with verbose output:
+```bash
+./venv/bin/python manage.py test -v 2
+```
+
+Run specific test modules:
+```bash
+# Run all chat tests
+./venv/bin/python manage.py test chats
+
+# Run security tests only
+./venv/bin/python manage.py test chats.tests_security
+
+# Run a specific test class
+./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests
+
+# Run a specific test method
+./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests.test_message_send_requires_session_token
+```
+
+### Frontend Tests
+
+Run Next.js tests (when test suite is added):
+```bash
+cd frontend
+npm test
+```
+
 ## Features Roadmap
 
 ### MVP Features

@@ -4,12 +4,15 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404
 from django.conf import settings
+from django.core.cache import cache
+from accounts.models import User
 from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, AnonymousUserFingerprint
 from .serializers import (
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomUpdateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
     BackRoomSerializer, BackRoomMemberSerializer, BackRoomMessageSerializer, BackRoomMessageCreateSerializer
 )
+from .security import ChatSessionValidator
 
 
 def get_client_ip(request):
@@ -86,10 +89,21 @@ class ChatRoomJoinView(APIView):
             if provided_code != chat_room.access_code:
                 raise PermissionDenied("Invalid access code")
 
-        # Return chat room info and username
+        username = serializer.validated_data['username']
+        user_id = str(request.user.id) if request.user.is_authenticated else None
+
+        # Create JWT session token
+        session_token = ChatSessionValidator.create_session_token(
+            chat_code=code,
+            username=username,
+            user_id=user_id
+        )
+
+        # Return chat room info, username, and session token
         return Response({
             'chat_room': ChatRoomSerializer(chat_room).data,
-            'username': serializer.validated_data['username'],
+            'username': username,
+            'session_token': session_token,
             'message': 'Successfully joined chat room'
         })
 
@@ -126,6 +140,20 @@ class MessageCreateView(generics.CreateAPIView):
 
     def create(self, request, code):
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+
+        # Validate session token
+        session_token = request.data.get('session_token')
+        username = request.data.get('username')
+
+        if not session_token:
+            raise PermissionDenied("Session token is required")
+
+        # Validate the JWT session token
+        session_data = ChatSessionValidator.validate_session_token(
+            token=session_token,
+            chat_code=code,
+            username=username
+        )
 
         serializer = self.get_serializer(
             data=request.data,
@@ -412,3 +440,55 @@ class BackRoomMembersView(APIView):
 
         serializer = BackRoomMemberSerializer(members, many=True)
         return Response(serializer.data)
+
+
+class UsernameValidationView(APIView):
+    """Validate username availability for a specific chat room"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code):
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        username = request.data.get('username', '').strip()
+
+        if not username:
+            raise ValidationError("Username is required")
+
+        # Normalize username for comparison (case-insensitive)
+        username_lower = username.lower()
+
+        # Check if username matches authenticated user's reserved username
+        user_reserved = None
+        has_reserved = False
+        if request.user.is_authenticated and request.user.reserved_username:
+            user_reserved = request.user.reserved_username.lower()
+            has_reserved = (user_reserved == username_lower)
+
+        # Get active usernames in this chat from cache
+        cache_key = f"chat_{chat_room.code}_active_users"
+        active_users = cache.get(cache_key, set())
+
+        # Check if username is already in use in this chat (case-insensitive)
+        in_use_in_chat = any(u.lower() == username_lower for u in active_users)
+
+        # Check if username is reserved by someone else
+        reserved_by_other = False
+        if User.objects.filter(reserved_username__iexact=username).exists():
+            # It's a reserved username - check if it belongs to current user
+            if not (request.user.is_authenticated and user_reserved == username_lower):
+                reserved_by_other = True
+
+        # Determine availability
+        available = not in_use_in_chat and not reserved_by_other
+
+        # If user has reserved username and using it, allow even if someone anonymous is using it
+        if has_reserved and user_reserved == username_lower:
+            available = True
+
+        return Response({
+            'available': available,
+            'username': username,
+            'in_use_in_chat': in_use_in_chat and not has_reserved,
+            'reserved_by_other': reserved_by_other,
+            'has_reserved_badge': has_reserved,
+            'message': 'Username validated successfully'
+        })

@@ -51,11 +51,11 @@ class LoginView(APIView):
 
 class LogoutView(APIView):
     """Logout a user"""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]  # Allow anyone to logout
 
     def post(self, request):
-        # Delete the user's token
-        if hasattr(request.user, 'auth_token'):
+        # Delete the user's token if authenticated
+        if request.user.is_authenticated and hasattr(request.user, 'auth_token'):
             request.user.auth_token.delete()
 
         logout(request)
