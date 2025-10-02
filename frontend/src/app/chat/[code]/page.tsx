@@ -8,6 +8,7 @@ import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import BackRoomTab from '@/components/BackRoomTab';
 import BackRoomView from '@/components/BackRoomView';
 import MessageActionsModal from '@/components/MessageActionsModal';
+import JoinChatModal from '@/components/JoinChatModal';
 import { UsernameStorage } from '@/lib/usernameStorage';
 
 export default function ChatPage() {
@@ -82,9 +83,6 @@ export default function ChatPage() {
             setCurrentUserId(currentUser.id);
             const displayUsername = currentUser.display_name || currentUser.email.split('@')[0];
             setUsername(displayUsername);
-            await UsernameStorage.saveUsername(code, displayUsername, true); // Skip fingerprinting for logged-in users
-            setHasJoined(true);
-            await loadMessages();
           } catch (userErr) {
             // If getting user fails, just proceed as guest
             console.error('Failed to load user:', userErr);
@@ -96,10 +94,11 @@ export default function ChatPage() {
           const storedUsername = await UsernameStorage.getUsername(code, false);
           if (storedUsername) {
             setUsername(storedUsername);
-            setHasJoined(true);
-            await loadMessages();
           }
         }
+
+        // Always set hasJoined to false initially - user must join through modal
+        setHasJoined(false);
 
         setLoading(false);
       } catch (err: any) {
@@ -144,7 +143,22 @@ export default function ChatPage() {
     }
   };
 
-  // Join as guest
+  // Join handler for modal
+  const handleJoinChat = async (username: string, accessCode?: string) => {
+    try {
+      await chatApi.joinChat(code, username, accessCode);
+      const token = localStorage.getItem('auth_token');
+      const isLoggedIn = !!token;
+      await UsernameStorage.saveUsername(code, username, isLoggedIn);
+      setUsername(username);
+      setHasJoined(true);
+      await loadMessages();
+    } catch (err: any) {
+      throw new Error(err.response?.data?.detail || 'Invalid access code');
+    }
+  };
+
+  // Join as guest (old handler - kept for backward compatibility but not used in UI)
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setJoinError('');
@@ -431,77 +445,6 @@ export default function ChatPage() {
     );
   }
 
-  // Join screen for guests
-  if (!hasJoined && chatRoom) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800">
-        <Header />
-        <div className="container mx-auto px-4 py-12 max-w-md">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              {chatRoom.name}
-            </h1>
-            {chatRoom.description && (
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                {chatRoom.description}
-              </p>
-            )}
-
-            <p className="text-sm text-gray-500 dark:text-gray-500 mb-6">
-              Hosted by {chatRoom.host.display_name || chatRoom.host.email}
-            </p>
-
-            {joinError && (
-              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400">
-                {joinError}
-              </div>
-            )}
-
-            <form onSubmit={handleJoin} className="space-y-4">
-              <div>
-                <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Choose a username
-                </label>
-                <input
-                  type="text"
-                  id="username"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                  placeholder="Your name"
-                />
-              </div>
-
-              {chatRoom.access_mode === 'private' && (
-                <div>
-                  <label htmlFor="access_code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Access Code
-                  </label>
-                  <input
-                    type="text"
-                    id="access_code"
-                    required
-                    value={accessCode}
-                    onChange={(e) => setAccessCode(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    placeholder="Enter access code"
-                  />
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
-              >
-                Join Chat
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Design configurations
   const designs = {
@@ -571,16 +514,30 @@ export default function ChatPage() {
 
   // Main chat interface
   return (
-    <div
-      className={currentDesign.container}
-      style={{
-        WebkitUserSelect: 'none',
-        userSelect: 'none',
-        WebkitTouchCallout: 'none',
-      }}
-    >
-      {/* Chat Header */}
-      <div className={currentDesign.header}>
+    <>
+      {/* Join Modal - rendered when user hasn't joined */}
+      {!hasJoined && chatRoom && (
+        <JoinChatModal
+          chatRoom={chatRoom}
+          currentUserDisplayName={currentUserId ? username : undefined}
+          storedUsername={!currentUserId ? username : undefined}
+          isLoggedIn={!!currentUserId}
+          design={designVariant as 'design1' | 'design2' | 'design3'}
+          onJoin={handleJoinChat}
+        />
+      )}
+
+      {/* Main Chat Interface - blurred when not joined */}
+      <div
+        className={`${currentDesign.container} ${!hasJoined ? 'blur-sm opacity-30 pointer-events-none' : ''}`}
+        style={{
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+          WebkitTouchCallout: 'none',
+        }}
+      >
+        {/* Chat Header */}
+        <div className={currentDesign.header}>
         <div className="flex items-center justify-between">
           {chatRoom && (
             <ChatSettingsSheet
@@ -900,6 +857,7 @@ export default function ChatPage() {
           design={designVariant}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }
