@@ -1,4 +1,5 @@
 import type { Viewport } from "next";
+import "../chat-layout.css";
 
 export const viewport: Viewport = {
   width: 'device-width',

@@ -65,12 +65,18 @@ export default function MessageActionsModal({
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
 
-  // Prevent body scrolling when modal is open
+  // Prevent body scrolling when modal is open (only on non-chat routes)
+  // Chat routes already have body scroll locked via chat-layout.css
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
+      const isChatRoute = window.location.pathname.startsWith('/chat/');
+      if (!isChatRoute) {
+        document.body.style.overflow = 'hidden';
+      }
       return () => {
-        document.body.style.overflow = 'unset';
+        if (!isChatRoute) {
+          document.body.style.overflow = 'unset';
+        }
       };
     }
   }, [isOpen]);
