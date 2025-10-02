@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type Message, type BackRoom } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
@@ -45,8 +46,58 @@ export default function ChatPage() {
   const [isInBackRoom, setIsInBackRoom] = useState(false);
   const [backRoom, setBackRoom] = useState<BackRoom | null>(null);
   const [isBackRoomMember, setIsBackRoomMember] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Get viewport width for animation
+  const [viewportWidth, setViewportWidth] = useState(0);
+
+  useEffect(() => {
+    const width = window.innerWidth;
+    console.log('📐 Viewport width updated:', width);
+    setViewportWidth(width);
+
+    const resizeHandler = () => {
+      setViewportWidth(window.innerWidth);
+    };
+
+    window.addEventListener('resize', resizeHandler);
+    return () => window.removeEventListener('resize', resizeHandler);
+  }, []);
+
+  // Set hasMounted after a delay to allow initial render to complete
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      console.log('⏰ Setting hasMounted to true');
+      setHasMounted(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('=== ANIMATION STATE ===');
+    console.log('isInBackRoom:', isInBackRoom);
+    console.log('viewportWidth:', viewportWidth);
+    console.log('hasMounted:', hasMounted);
+    console.log('Target X:', isInBackRoom ? 0 : viewportWidth);
+    console.log('Container width:', viewportWidth * 2);
+    console.log('Panel width:', viewportWidth);
+
+    if (containerRef.current) {
+      setTimeout(() => {
+        const style = window.getComputedStyle(containerRef.current!);
+        const rect = containerRef.current!.getBoundingClientRect();
+        console.log('🎯 ACTUAL DOM:');
+        console.log('  Transform:', style.transform);
+        console.log('  Width:', style.width);
+        console.log('  Rect width:', rect.width);
+        console.log('  Left position:', rect.left);
+      }, 100);
+    }
+  }, [isInBackRoom, viewportWidth]);
 
   // Scroll to bottom when filter mode changes
   useEffect(() => {
@@ -580,9 +631,16 @@ export default function ChatPage() {
 
       {/* Content Area Wrapper - Contains both Main Chat and Back Room */}
       <div className="flex-1 relative overflow-hidden">
-        {!isInBackRoom ? (
-          /* Main Chat Content */
-          <div className="h-full relative overflow-hidden">
+        {viewportWidth > 0 ? (
+        <motion.div
+          ref={containerRef}
+          animate={{ x: isInBackRoom ? 0 : viewportWidth }}
+          transition={{ duration: hasMounted ? 0.3 : 0, ease: 'easeInOut' }}
+          className="flex h-full"
+          style={{ width: viewportWidth * 2, marginLeft: -viewportWidth }}
+        >
+          {/* Main Chat Content */}
+          <div className="flex-shrink-0 h-full overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 relative" style={{ width: viewportWidth }}>
         {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
         {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
           <div className={currentDesign.stickySection}>
@@ -769,10 +827,10 @@ export default function ChatPage() {
         </div>
       </div>
       </div>
-        ) : (
-          /* Back Room View */
-          chatRoom && backRoom && (
-            <div className="h-full">
+
+          {/* Back Room View */}
+          <div className="flex-shrink-0 h-full bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 relative" style={{ width: viewportWidth }}>
+            {chatRoom?.has_back_room && backRoom ? (
               <BackRoomView
                 chatRoom={chatRoom}
                 backRoom={backRoom}
@@ -781,8 +839,13 @@ export default function ChatPage() {
                 isMember={isBackRoomMember}
                 onBack={() => setIsInBackRoom(false)}
               />
-            </div>
-          )
+            ) : null}
+          </div>
+        </motion.div>
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-gray-500">Loading...</div>
+          </div>
         )}
       </div>
 
@@ -812,7 +875,10 @@ export default function ChatPage() {
         <BackRoomTab
           isInBackRoom={isInBackRoom}
           hasBackRoom={true}
-          onClick={() => setIsInBackRoom(!isInBackRoom)}
+          onClick={() => {
+            console.log('🖱️ BackRoomTab clicked! Toggling from', isInBackRoom, 'to', !isInBackRoom);
+            setIsInBackRoom(!isInBackRoom);
+          }}
           hasNewMessages={false}
           design={designVariant}
         />
