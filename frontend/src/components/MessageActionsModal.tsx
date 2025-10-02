@@ -68,9 +68,14 @@ export default function MessageActionsModal({
   const handleOpen = () => {
     setIsOpen(true);
     setDragOffset(0);
-    // Trigger haptic feedback (Android only)
+
+    // Haptic feedback (Android only)
     if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate(50);
+      try {
+        navigator.vibrate(50);
+      } catch (e) {
+        // Silent fail
+      }
     }
   };
 

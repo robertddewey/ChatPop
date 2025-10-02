@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 interface UseLongPressOptions {
   onLongPress: () => void;
   onClick?: () => void;
+  onTouchStart?: () => void; // Called immediately on touch start
   threshold?: number; // ms to hold before triggering
   cancelOnMove?: boolean; // cancel if finger/mouse moves
 }
@@ -10,6 +11,7 @@ interface UseLongPressOptions {
 export function useLongPress({
   onLongPress,
   onClick,
+  onTouchStart,
   threshold = 500,
   cancelOnMove = true,
 }: UseLongPressOptions) {
@@ -20,8 +22,10 @@ export function useLongPress({
 
   const start = useCallback(
     (event: React.MouseEvent | React.TouchEvent) => {
-      // Prevent text selection on long press
-      event.preventDefault();
+      // Call onTouchStart immediately during the user gesture
+      if (onTouchStart) {
+        onTouchStart();
+      }
 
       // Store start position
       if ('touches' in event) {
@@ -42,7 +46,7 @@ export function useLongPress({
         setLongPressTriggered(true);
       }, threshold);
     },
-    [onLongPress, threshold]
+    [onLongPress, onTouchStart, threshold]
   );
 
   const clear = useCallback(
@@ -63,11 +67,6 @@ export function useLongPress({
   const move = useCallback(
     (event: React.MouseEvent | React.TouchEvent) => {
       if (!cancelOnMove || !startPos.current) return;
-
-      // Prevent text selection during move as well
-      if ('touches' in event) {
-        event.preventDefault();
-      }
 
       let currentX: number, currentY: number;
 

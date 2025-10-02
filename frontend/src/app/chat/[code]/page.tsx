@@ -612,7 +612,7 @@ export default function ChatPage() {
                 : currentDesign.filterButtonInactive
             }`}
           >
-            Host Focus: {filterMode === 'focus' ? 'On' : 'Off'}
+            Focus
           </button>
         </div>
       </div>
