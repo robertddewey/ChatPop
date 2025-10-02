@@ -300,8 +300,12 @@ export default function ChatSettingsSheet({
 
           {/* Host-Only Settings */}
           {isHost && (
-            <form onSubmit={handleSubmit} className="space-y-4 pt-4 border-t dark:border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+            <form onSubmit={handleSubmit} className={`space-y-4 pt-4 border-t ${
+              isDarkTheme(currentTheme) ? 'border-zinc-700' : 'border-gray-200'
+            }`}>
+              <h3 className={`text-sm font-semibold ${
+                isDarkTheme(currentTheme) ? 'text-white' : 'text-gray-900'
+              }`}>
                 Edit Settings (Host Only)
               </h3>
 
@@ -319,38 +323,33 @@ export default function ChatSettingsSheet({
 
               {/* Chat Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className={`block text-sm font-medium mb-1 ${
+                  isDarkTheme(currentTheme) ? 'text-zinc-300' : 'text-gray-700'
+                }`}>
                   Chat Name
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
+                    isDarkTheme(currentTheme)
+                      ? 'bg-zinc-800 border-zinc-700 text-zinc-100 focus:ring-cyan-400'
+                      : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-500'
+                  }`}
                   required
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Description
-                </label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
 
               {/* Access Mode */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${
+                  isDarkTheme(currentTheme) ? 'text-zinc-300' : 'text-gray-700'
+                }`}>
                   Access Mode
                 </label>
                 <div className="flex gap-4">
-                  <label className="flex items-center">
+                  <label className="flex items-center cursor-pointer">
                     <input
                       type="radio"
                       value="public"
@@ -358,11 +357,17 @@ export default function ChatSettingsSheet({
                       onChange={(e) =>
                         setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
                       }
-                      className="mr-2"
+                      className={`mr-2 ${
+                        isDarkTheme(currentTheme)
+                          ? 'text-cyan-400 focus:ring-cyan-400'
+                          : 'text-purple-600 focus:ring-purple-500'
+                      }`}
                     />
-                    <span className="text-sm">Public</span>
+                    <span className={`text-sm ${
+                      isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
+                    }`}>Public</span>
                   </label>
-                  <label className="flex items-center">
+                  <label className="flex items-center cursor-pointer">
                     <input
                       type="radio"
                       value="private"
@@ -370,9 +375,15 @@ export default function ChatSettingsSheet({
                       onChange={(e) =>
                         setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
                       }
-                      className="mr-2"
+                      className={`mr-2 ${
+                        isDarkTheme(currentTheme)
+                          ? 'text-cyan-400 focus:ring-cyan-400'
+                          : 'text-purple-600 focus:ring-purple-500'
+                      }`}
                     />
-                    <span className="text-sm">Private</span>
+                    <span className={`text-sm ${
+                      isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
+                    }`}>Private</span>
                   </label>
                 </div>
               </div>
@@ -380,14 +391,20 @@ export default function ChatSettingsSheet({
               {/* Access Code (if private) */}
               {formData.access_mode === 'private' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className={`block text-sm font-medium mb-1 ${
+                    isDarkTheme(currentTheme) ? 'text-zinc-300' : 'text-gray-700'
+                  }`}>
                     Access Code
                   </label>
                   <input
                     type="text"
                     value={formData.access_code}
                     onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
+                      isDarkTheme(currentTheme)
+                        ? 'bg-zinc-800 border-zinc-700 text-zinc-100 focus:ring-cyan-400'
+                        : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-500'
+                    }`}
                     placeholder="Enter access code"
                     required
                   />
@@ -396,34 +413,66 @@ export default function ChatSettingsSheet({
 
               {/* Media Settings */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label className={`block text-sm font-medium ${
+                  isDarkTheme(currentTheme) ? 'text-zinc-300' : 'text-gray-700'
+                }`}>
                   Media Settings
                 </label>
-                <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                  <span className="text-sm">Voice enabled</span>
+                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                  isDarkTheme(currentTheme)
+                    ? 'bg-zinc-800 hover:bg-zinc-700'
+                    : 'bg-gray-50 hover:bg-gray-100'
+                }`}>
+                  <span className={`text-sm ${
+                    isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
+                  }`}>Voice enabled</span>
                   <input
                     type="checkbox"
                     checked={formData.voice_enabled}
                     onChange={(e) => setFormData({ ...formData, voice_enabled: e.target.checked })}
-                    className="rounded"
+                    className={`rounded ${
+                      isDarkTheme(currentTheme)
+                        ? 'text-cyan-400 focus:ring-cyan-400'
+                        : 'text-purple-600 focus:ring-purple-500'
+                    }`}
                   />
                 </label>
-                <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                  <span className="text-sm">Video enabled</span>
+                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                  isDarkTheme(currentTheme)
+                    ? 'bg-zinc-800 hover:bg-zinc-700'
+                    : 'bg-gray-50 hover:bg-gray-100'
+                }`}>
+                  <span className={`text-sm ${
+                    isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
+                  }`}>Video enabled</span>
                   <input
                     type="checkbox"
                     checked={formData.video_enabled}
                     onChange={(e) => setFormData({ ...formData, video_enabled: e.target.checked })}
-                    className="rounded"
+                    className={`rounded ${
+                      isDarkTheme(currentTheme)
+                        ? 'text-cyan-400 focus:ring-cyan-400'
+                        : 'text-purple-600 focus:ring-purple-500'
+                    }`}
                   />
                 </label>
-                <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                  <span className="text-sm">Photo enabled</span>
+                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                  isDarkTheme(currentTheme)
+                    ? 'bg-zinc-800 hover:bg-zinc-700'
+                    : 'bg-gray-50 hover:bg-gray-100'
+                }`}>
+                  <span className={`text-sm ${
+                    isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
+                  }`}>Photo enabled</span>
                   <input
                     type="checkbox"
                     checked={formData.photo_enabled}
                     onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
-                    className="rounded"
+                    className={`rounded ${
+                      isDarkTheme(currentTheme)
+                        ? 'text-cyan-400 focus:ring-cyan-400'
+                        : 'text-purple-600 focus:ring-purple-500'
+                    }`}
                   />
                 </label>
               </div>
@@ -432,7 +481,13 @@ export default function ChatSettingsSheet({
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg font-semibold transition-colors"
+                className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
+                  loading
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : isDarkTheme(currentTheme)
+                    ? 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                }`}
               >
                 {loading ? 'Saving...' : 'Save Changes'}
               </button>
