@@ -21,20 +21,20 @@ interface MessageActionsModalProps {
 // Theme configurations for the modal
 const modalStyles = {
   design1: {
-    overlay: 'bg-black/40 backdrop-blur-md',
-    container: 'bg-gradient-to-br from-purple-50 to-pink-50 dark:from-gray-900 dark:to-gray-800',
-    messagePreview: 'bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-800 rounded-2xl shadow-lg',
-    messageText: 'text-gray-800 dark:text-gray-200',
-    actionButton: 'bg-white/80 dark:bg-gray-800/80 hover:bg-purple-100 dark:hover:bg-purple-900/40 border-2 border-purple-200 dark:border-purple-700 text-gray-800 dark:text-gray-200',
-    actionIcon: 'text-purple-600 dark:text-purple-400',
+    overlay: 'bg-black/20 backdrop-blur-sm',
+    container: 'bg-white',
+    messagePreview: 'bg-gray-50 border border-gray-200 rounded-2xl shadow-sm',
+    messageText: 'text-gray-800',
+    actionButton: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-900',
+    actionIcon: 'text-purple-600',
   },
   design2: {
-    overlay: 'bg-black/40 backdrop-blur-md',
-    container: 'bg-gradient-to-br from-sky-50 to-cyan-50 dark:from-gray-900 dark:to-gray-800',
-    messagePreview: 'bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-800 rounded-2xl shadow-lg',
-    messageText: 'text-gray-800 dark:text-gray-200',
-    actionButton: 'bg-white/80 dark:bg-gray-800/80 hover:bg-blue-100 dark:hover:bg-blue-900/40 border-2 border-blue-200 dark:border-blue-700 text-gray-800 dark:text-gray-200',
-    actionIcon: 'text-blue-600 dark:text-blue-400',
+    overlay: 'bg-black/20 backdrop-blur-sm',
+    container: 'bg-white',
+    messagePreview: 'bg-gray-50 border border-gray-200 rounded-2xl shadow-sm',
+    messageText: 'text-gray-800',
+    actionButton: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-900',
+    actionIcon: 'text-blue-600',
   },
   design3: {
     overlay: 'bg-black/60 backdrop-blur-sm',

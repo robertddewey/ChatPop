@@ -120,18 +120,31 @@ export default function ChatSettingsSheet({
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>{children}</SheetTrigger>
-      <SheetContent side="bottom" className="h-[100dvh] overflow-y-auto pt-2 border-t-white dark:border-t-gray-950">
-        <SheetHeader>
-          <SheetTitle>Chat Settings</SheetTitle>
-          <SheetDescription>
-            {isHost ? 'Manage your chat room settings' : 'Chat room information'}
-          </SheetDescription>
-        </SheetHeader>
+      <SheetContent
+        side="bottom"
+        className={`h-[100dvh] overflow-y-auto pt-2 ${
+          currentDesign === 'design3'
+            ? 'bg-zinc-900 border-t-zinc-800'
+            : 'bg-white border-t-white'
+        }`}
+        closeButtonClassName={currentDesign === 'design3' ? 'text-white' : 'text-gray-900'}
+      >
+        <div className={currentDesign === 'design3' ? 'dark' : ''}>
+          <SheetHeader>
+            <SheetTitle className={currentDesign === 'design3' ? 'text-white' : ''}>
+              Chat Settings
+            </SheetTitle>
+            <SheetDescription className={currentDesign === 'design3' ? 'text-gray-400' : ''}>
+              {isHost ? 'Manage your chat room settings' : 'Chat room information'}
+            </SheetDescription>
+          </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+          <div className="mt-6 space-y-6">
           {/* Theme Selection */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+            <h3 className={`text-sm font-semibold ${
+              currentDesign === 'design3' ? 'text-white' : 'text-gray-900'
+            }`}>
               Theme
             </h3>
 
@@ -195,16 +208,22 @@ export default function ChatSettingsSheet({
           </div>
 
           {/* Chat Information for All Users */}
-          <div className="space-y-4 pt-4 border-t dark:border-gray-700">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+          <div className={`space-y-4 pt-4 border-t ${
+            currentDesign === 'design3' ? 'border-zinc-700' : 'border-gray-200'
+          }`}>
+            <h3 className={`text-sm font-semibold ${
+              currentDesign === 'design3' ? 'text-white' : 'text-gray-900'
+            }`}>
               Chat Information
             </h3>
 
             {/* Chat Code */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div className={`flex items-center justify-between p-3 rounded-lg ${
+              currentDesign === 'design3' ? 'bg-zinc-800' : 'bg-gray-50'
+            }`}>
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Chat Code</p>
-                <p className="text-sm font-mono font-semibold">{chatRoom.code}</p>
+                <p className={`text-xs ${currentDesign === 'design3' ? 'text-gray-400' : 'text-gray-500'}`}>Chat Code</p>
+                <p className={`text-sm font-mono font-semibold ${currentDesign === 'design3' ? 'text-white' : 'text-black'}`}>{chatRoom.code}</p>
               </div>
               <button
                 onClick={handleCopyCode}
@@ -219,10 +238,12 @@ export default function ChatSettingsSheet({
             </div>
 
             {/* Share Link */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div className={`flex items-center justify-between p-3 rounded-lg ${
+              currentDesign === 'design3' ? 'bg-zinc-800' : 'bg-gray-50'
+            }`}>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Share Link</p>
-                <p className="text-sm font-mono truncate">{shareLink}</p>
+                <p className={`text-xs ${currentDesign === 'design3' ? 'text-gray-400' : 'text-gray-500'}`}>Share Link</p>
+                <p className={`text-sm font-mono truncate ${currentDesign === 'design3' ? 'text-white' : 'text-black'}`}>{shareLink}</p>
               </div>
               <button
                 onClick={handleCopyLink}
@@ -237,17 +258,21 @@ export default function ChatSettingsSheet({
             </div>
 
             {/* Host Info */}
-            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Hosted by</p>
-              <p className="text-sm font-semibold">
+            <div className={`p-3 rounded-lg ${
+              currentDesign === 'design3' ? 'bg-zinc-800' : 'bg-gray-50'
+            }`}>
+              <p className={`text-xs ${currentDesign === 'design3' ? 'text-gray-400' : 'text-gray-500'}`}>Hosted by</p>
+              <p className={`text-sm font-semibold ${currentDesign === 'design3' ? 'text-white' : 'text-black'}`}>
                 {chatRoom.host.display_name || chatRoom.host.email}
               </p>
             </div>
 
             {/* Created Date */}
-            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Created</p>
-              <p className="text-sm">
+            <div className={`p-3 rounded-lg ${
+              currentDesign === 'design3' ? 'bg-zinc-800' : 'bg-gray-50'
+            }`}>
+              <p className={`text-xs ${currentDesign === 'design3' ? 'text-gray-400' : 'text-gray-500'}`}>Created</p>
+              <p className={`text-sm ${currentDesign === 'design3' ? 'text-white' : 'text-black'}`}>
                 {new Date(chatRoom.created_at).toLocaleDateString('en-US', {
                   month: 'long',
                   day: 'numeric',
@@ -397,6 +422,7 @@ export default function ChatSettingsSheet({
               </button>
             </form>
           )}
+          </div>
         </div>
       </SheetContent>
     </Sheet>
