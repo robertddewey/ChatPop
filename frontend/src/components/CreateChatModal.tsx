@@ -89,7 +89,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
       {/* Mobile: Full screen, Desktop: Max width */}
-      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-8 relative max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-8 relative max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -100,12 +100,9 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
         </button>
 
         {/* Header */}
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">
           Room Settings
         </h1>
-        <p className="text-gray-600 mb-8">
-          Set up your group chat and start engaging with your audience
-        </p>
 
         {/* Error Message */}
         {error && (
@@ -115,10 +112,10 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Chat Name */}
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="name" className="block text-sm font-bold text-gray-700 mb-2">
               Group Chat Name (required)
             </label>
             <input
@@ -128,28 +125,13 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              placeholder="e.g., Tech Talk Tuesday"
-            />
-          </div>
-
-          {/* Description */}
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-              Description
-            </label>
-            <textarea
-              id="description"
-              rows={3}
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              placeholder="What's this chat about?"
+              placeholder=""
             />
           </div>
 
           {/* Access Mode */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-bold text-gray-700 mb-2">
               Access Mode (required)
             </label>
             <div className="grid grid-cols-2 gap-4">
@@ -183,7 +165,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
           {/* Access Code (for private rooms) */}
           {formData.access_mode === 'private' && (
             <div>
-              <label htmlFor="access_code" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="access_code" className="block text-sm font-bold text-gray-700 mb-2">
                 Access Code (required)
               </label>
               <input
@@ -193,14 +175,14 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
                 value={formData.access_code}
                 onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="e.g., VIP2024"
+                placeholder=""
               />
             </div>
           )}
 
           {/* Features */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+            <label className="block text-sm font-bold text-gray-700 mb-3">
               Enable Features
             </label>
             <div className="space-y-3">
@@ -241,7 +223,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
               disabled={loading}
               className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Creating...' : 'Start your ChatPop'}
+              {loading ? 'Creating...' : 'Create Room'}
             </button>
           </div>
         </form>

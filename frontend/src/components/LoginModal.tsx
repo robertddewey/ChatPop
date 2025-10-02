@@ -112,12 +112,9 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
         </button>
 
         {/* Header */}
-        <h1 className={`text-3xl font-bold ${styles.title} mb-2`}>
+        <h1 className={`text-2xl md:text-3xl font-bold ${styles.title} mb-4`}>
           {MARKETING.auth.login.title}
         </h1>
-        <p className={`${styles.subtitle} mb-8`}>
-          {MARKETING.auth.login.subtitle}
-        </p>
 
         {/* Error Message */}
         {error && (
@@ -127,9 +124,9 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className={`block text-sm font-medium ${styles.label} mb-2`}>
+            <label htmlFor="email" className={`block text-sm font-bold ${styles.label} mb-2`}>
               {MARKETING.forms.email}
             </label>
             <input
@@ -139,12 +136,12 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
-              placeholder={MARKETING.placeholders.email}
+              placeholder=""
             />
           </div>
 
           <div>
-            <label htmlFor="password" className={`block text-sm font-medium ${styles.label} mb-2`}>
+            <label htmlFor="password" className={`block text-sm font-bold ${styles.label} mb-2`}>
               {MARKETING.forms.password}
             </label>
             <input
@@ -154,7 +151,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
-              placeholder={MARKETING.placeholders.password}
+              placeholder=""
             />
           </div>
 

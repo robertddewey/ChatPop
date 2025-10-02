@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.core.validators import RegexValidator
 from django.db import models
 import uuid
 
@@ -40,8 +41,20 @@ class User(AbstractUser):
     username = None
     email = models.EmailField(unique=True)
 
-    # Display name (can be different from email)
-    display_name = models.CharField(max_length=100, blank=True)
+    # Reserved username (optional, globally unique, alphanumeric only)
+    reserved_username_validator = RegexValidator(
+        regex=r'^[a-zA-Z0-9]+$',
+        message='Reserved username must contain only alphanumeric characters (a-z, A-Z, 0-9)',
+        code='invalid_reserved_username'
+    )
+    reserved_username = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        unique=True,
+        validators=[reserved_username_validator],
+        help_text='Optional reserved username (alphanumeric only, no spaces or special characters)'
+    )
 
     # Notification preferences
     email_notifications = models.BooleanField(default=True)
@@ -67,8 +80,14 @@ class User(AbstractUser):
         return self.email
 
     def get_display_name(self):
-        """Return display name or email prefix if not set"""
-        return self.display_name or self.email.split('@')[0]
+        """Return reserved username or email prefix if not set"""
+        return self.reserved_username or self.email.split('@')[0]
+
+    def save(self, *args, **kwargs):
+        """Normalize reserved_username to lowercase for case-insensitive uniqueness"""
+        if self.reserved_username:
+            self.reserved_username = self.reserved_username.lower()
+        super().save(*args, **kwargs)
 
 
 class UserSubscription(models.Model):

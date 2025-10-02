@@ -3,7 +3,7 @@ from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
     MessageListView, MessageCreateView, MessagePinView,
     BackRoomDetailView, BackRoomJoinView, BackRoomMessagesView, BackRoomMessageSendView, BackRoomMembersView,
-    FingerprintUsernameView
+    FingerprintUsernameView, UsernameValidationView
 )
 
 app_name = 'chats'
@@ -30,4 +30,7 @@ urlpatterns = [
 
     # Fingerprint Username
     path('<str:code>/fingerprint-username/', FingerprintUsernameView.as_view(), name='fingerprint-username'),
+
+    # Username Validation
+    path('<str:code>/validate-username/', UsernameValidationView.as_view(), name='validate-username'),
 ]

@@ -23,19 +23,13 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    password_confirm: '',
-    display_name: '',
+    reserved_username: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setFieldErrors({});
-
-    if (formData.password !== formData.password_confirm) {
-      setFieldErrors({ password_confirm: 'Passwords do not match' });
-      return;
-    }
 
     setLoading(true);
 
@@ -48,7 +42,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
 
       if (typeof errorData === 'object' && errorData !== null) {
         const hasFieldErrors = Object.keys(errorData).some(key =>
-          ['email', 'password', 'password_confirm', 'display_name'].includes(key)
+          ['email', 'password', 'reserved_username'].includes(key)
         );
 
         if (hasFieldErrors) {
@@ -151,12 +145,9 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
         </button>
 
         {/* Header */}
-        <h1 className={`text-3xl font-bold ${styles.title} mb-2`}>
+        <h1 className={`text-2xl md:text-3xl font-bold ${styles.title} mb-4`}>
           {MARKETING.auth.register.title}
         </h1>
-        <p className={`${styles.subtitle} mb-8`}>
-          {MARKETING.auth.register.subtitle}
-        </p>
 
         {/* Error Message */}
         {error && (
@@ -166,9 +157,9 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className={`block text-sm font-medium ${styles.label} mb-2`}>
+            <label htmlFor="email" className={`block text-sm font-bold ${styles.label} mb-2`}>
               {MARKETING.forms.email}
             </label>
             <input
@@ -178,7 +169,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.email)}`}
-              placeholder={MARKETING.placeholders.email}
+              placeholder=""
             />
             {fieldErrors.email && (
               <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.email}</p>
@@ -186,21 +177,27 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
           </div>
 
           <div>
-            <label htmlFor="display_name" className={`block text-sm font-medium ${styles.label} mb-2`}>
-              {MARKETING.forms.displayName}
+            <label htmlFor="reserved_username" className={`block text-sm font-bold ${styles.label} mb-2`}>
+              Reserved Username (Optional)
             </label>
             <input
               type="text"
-              id="display_name"
-              value={formData.display_name}
-              onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(false)}`}
-              placeholder={MARKETING.placeholders.displayName}
+              id="reserved_username"
+              value={formData.reserved_username}
+              onChange={(e) => setFormData({ ...formData, reserved_username: e.target.value })}
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.reserved_username)}`}
+              placeholder=""
             />
+            {fieldErrors.reserved_username && (
+              <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.reserved_username}</p>
+            )}
+            <p className={`mt-1 text-xs ${styles.subtitle}`}>
+              Letters and numbers only. Reserved for all chats.
+            </p>
           </div>
 
           <div>
-            <label htmlFor="password" className={`block text-sm font-medium ${styles.label} mb-2`}>
+            <label htmlFor="password" className={`block text-sm font-bold ${styles.label} mb-2`}>
               {MARKETING.forms.password}
             </label>
             <input
@@ -210,28 +207,10 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.password)}`}
-              placeholder={MARKETING.placeholders.password}
+              placeholder=""
             />
             {fieldErrors.password && (
               <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.password}</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="password_confirm" className={`block text-sm font-medium ${styles.label} mb-2`}>
-              {MARKETING.forms.passwordConfirm}
-            </label>
-            <input
-              type="password"
-              id="password_confirm"
-              required
-              value={formData.password_confirm}
-              onChange={(e) => setFormData({ ...formData, password_confirm: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.password_confirm)}`}
-              placeholder={MARKETING.placeholders.password}
-            />
-            {fieldErrors.password_confirm && (
-              <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.password_confirm}</p>
             )}
           </div>
 

@@ -11,7 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'display_name', 'first_name', 'last_name',
+            'id', 'email', 'reserved_username', 'first_name', 'last_name',
             'email_notifications', 'push_notifications',
             'subscriber_count', 'subscription_count',
             'created_at', 'last_active'
@@ -28,23 +28,27 @@ class UserSerializer(serializers.ModelSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Serializer for user registration"""
     password = serializers.CharField(write_only=True, min_length=8)
-    password_confirm = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'password_confirm', 'display_name', 'first_name', 'last_name']
+        fields = ['email', 'password', 'reserved_username', 'first_name', 'last_name']
 
-    def validate(self, data):
-        if data['password'] != data['password_confirm']:
-            raise serializers.ValidationError({"password": "Passwords must match"})
-        return data
+    def validate_reserved_username(self, value):
+        """Validate reserved username format and uniqueness"""
+        if value:
+            # Check alphanumeric
+            if not value.isalnum():
+                raise serializers.ValidationError("Reserved username must contain only alphanumeric characters (a-z, A-Z, 0-9)")
+            # Check uniqueness (case-insensitive)
+            if User.objects.filter(reserved_username__iexact=value).exists():
+                raise serializers.ValidationError("This username is already reserved")
+        return value
 
     def create(self, validated_data):
-        validated_data.pop('password_confirm')
         user = User.objects.create_user(
             email=validated_data['email'],
             password=validated_data['password'],
-            display_name=validated_data.get('display_name', ''),
+            reserved_username=validated_data.get('reserved_username', ''),
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', '')
         )

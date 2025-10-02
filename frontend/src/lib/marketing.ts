@@ -31,7 +31,7 @@ export const MARKETING = {
   // Authentication
   auth: {
     login: {
-      title: "Welcome Back",
+      title: "Log in to ChatPop",
       subtitle: "Log in to your account",
       submitButton: "Log in",
       submitButtonLoading: "Logging in...",
@@ -39,9 +39,9 @@ export const MARKETING = {
       switchToRegisterLink: "Sign up",
     },
     register: {
-      title: "Create Account",
+      title: "Join ChatPop",
       subtitle: "Sign up to start creating chat rooms",
-      submitButton: "Create Account",
+      submitButton: "Sign up",
       submitButtonLoading: "Creating account...",
       switchToLogin: "Already have an account?",
       switchToLoginLink: "Log in",

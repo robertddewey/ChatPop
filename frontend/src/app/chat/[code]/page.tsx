@@ -89,7 +89,7 @@ export default function ChatPage() {
             const currentUser = await authApi.getCurrentUser();
             isLoggedIn = true;
             setCurrentUserId(currentUser.id);
-            const displayUsername = currentUser.display_name || currentUser.email.split('@')[0];
+            const displayUsername = currentUser.reserved_username || currentUser.email.split('@')[0];
             setUsername(displayUsername);
           } catch (userErr) {
             // If getting user fails, just proceed as guest
@@ -250,11 +250,11 @@ export default function ChatPage() {
         messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
       }
 
-      // If still no username and logged in, use email or display name
+      // If still no username and logged in, use email or reserved username
       if (!messageUsername && chatRoom) {
         const token = localStorage.getItem('auth_token');
         if (token) {
-          messageUsername = chatRoom.host.display_name || chatRoom.host.email.split('@')[0];
+          messageUsername = chatRoom.host.reserved_username || chatRoom.host.email.split('@')[0];
         }
       }
 
