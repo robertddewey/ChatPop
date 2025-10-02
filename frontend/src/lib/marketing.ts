@@ -32,9 +32,9 @@ export const MARKETING = {
   auth: {
     login: {
       title: "Welcome Back",
-      subtitle: "Sign in to your account",
-      submitButton: "Sign In",
-      submitButtonLoading: "Signing in...",
+      subtitle: "Log in to your account",
+      submitButton: "Log in",
+      submitButtonLoading: "Logging in...",
       switchToRegister: "Don't have an account?",
       switchToRegisterLink: "Sign up",
     },
@@ -44,7 +44,7 @@ export const MARKETING = {
       submitButton: "Create Account",
       submitButtonLoading: "Creating account...",
       switchToLogin: "Already have an account?",
-      switchToLoginLink: "Sign in",
+      switchToLoginLink: "Log in",
     },
   },
 

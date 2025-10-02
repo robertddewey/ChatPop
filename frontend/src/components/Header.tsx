@@ -52,7 +52,7 @@ export default function Header() {
                 onClick={() => router.push('/?auth=login')}
                 className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
               >
-                Sign In
+                Log in
               </button>
               <button
                 onClick={() => router.push('/?auth=register')}

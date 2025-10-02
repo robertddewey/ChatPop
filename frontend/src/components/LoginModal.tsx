@@ -103,7 +103,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
   };
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${styles.overlay}`}>
+    <div className={`fixed inset-0 z-[10000] flex items-center justify-center p-4 ${styles.overlay}`}>
       {/* Mobile: Full screen, Desktop: Max width */}
       <div className={`w-full max-w-md ${styles.container} rounded-2xl shadow-xl p-8 relative max-h-[90vh] overflow-y-auto`}>
         {/* Close Button */}
