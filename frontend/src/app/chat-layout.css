@@ -19,3 +19,17 @@ html {
   height: 100dvh;
   touch-action: pan-x pan-y;
 }
+
+/* Prevent pinch-to-zoom on all elements within chat */
+* {
+  touch-action: pan-x pan-y;
+}
+
+/* Specific prevention for modals and overlays */
+[role="dialog"],
+[role="alertdialog"],
+.modal,
+.overlay,
+[data-radix-portal] {
+  touch-action: pan-x pan-y;
+}
