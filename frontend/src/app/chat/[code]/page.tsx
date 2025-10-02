@@ -589,7 +589,7 @@ export default function ChatPage() {
       <div className="flex-1 relative overflow-hidden">
         {!isInBackRoom ? (
           /* Main Chat Content */
-          <div className="h-full overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 relative">
+          <div className="h-full overflow-hidden relative">
         {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
         {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
           <div className={currentDesign.stickySection}>
