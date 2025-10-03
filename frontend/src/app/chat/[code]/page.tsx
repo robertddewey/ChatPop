@@ -36,6 +36,7 @@ export default function ChatPage() {
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
+  const [hasReservedUsername, setHasReservedUsername] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -90,6 +91,7 @@ export default function ChatPage() {
           try {
             const currentUser = await authApi.getCurrentUser();
             setCurrentUserId(currentUser.id);
+            setHasReservedUsername(!!currentUser.reserved_username);
 
             // Get fingerprint for logged-in users too
             try {
@@ -615,6 +617,7 @@ export default function ChatPage() {
           currentUserDisplayName={username}
           hasJoinedBefore={hasJoinedBefore}
           isLoggedIn={!!currentUserId}
+          hasReservedUsername={hasReservedUsername}
           design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
           onJoin={handleJoinChat}
         />

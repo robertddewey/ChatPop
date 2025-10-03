@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
+import { BadgeCheck } from 'lucide-react';
 import type { ChatRoom } from '@/lib/api';
 
 interface JoinChatModalProps {
@@ -10,6 +11,7 @@ interface JoinChatModalProps {
   currentUserDisplayName: string;
   hasJoinedBefore: boolean;
   isLoggedIn: boolean;
+  hasReservedUsername?: boolean;
   design?: 'purple-dream' | 'ocean-blue' | 'dark-mode';
   onJoin: (username: string, accessCode?: string) => void;
 }
@@ -42,6 +44,7 @@ export default function JoinChatModal({
   currentUserDisplayName,
   hasJoinedBefore,
   isLoggedIn,
+  hasReservedUsername = false,
   design = 'purple-dream',
   onJoin,
 }: JoinChatModalProps) {
@@ -132,13 +135,24 @@ export default function JoinChatModal({
       <div className={`relative w-full max-w-md ${styles.container} rounded-3xl p-8 shadow-2xl`}>
         {/* Title */}
         <div className="mb-6 text-center">
-          <h1 className={`text-2xl font-bold ${styles.title} mb-2`}>
-            {hasJoinedBefore
-              ? `Welcome back, ${currentUserDisplayName}!`
-              : isLoggedIn
-              ? `Come join us, ${currentUserDisplayName}`
-              : `Join ${chatRoom.name}`
-            }
+          <h1 className={`text-2xl font-bold ${styles.title} mb-2 flex items-center justify-center gap-2`}>
+            {hasJoinedBefore ? (
+              <>
+                Welcome back, {currentUserDisplayName}!
+                {hasReservedUsername && (
+                  <BadgeCheck className="text-blue-500 flex-shrink-0" size={20} />
+                )}
+              </>
+            ) : isLoggedIn ? (
+              <>
+                Come join us, {currentUserDisplayName}
+                {hasReservedUsername && (
+                  <BadgeCheck className="text-blue-500 flex-shrink-0" size={20} />
+                )}
+              </>
+            ) : (
+              `Join ${chatRoom.name}`
+            )}
           </h1>
           {chatRoom.is_private && (
             <p className={`text-sm ${styles.subtitle}`}>
@@ -154,7 +168,12 @@ export default function JoinChatModal({
             // Logged-in returning user - show locked username
             <div className="text-center">
               <p className={`text-sm ${styles.subtitle} mb-2`}>You'll join as:</p>
-              <p className={`text-lg font-semibold ${styles.title}`}>{currentUserDisplayName}</p>
+              <div className="flex items-center justify-center gap-2">
+                <p className={`text-lg font-semibold ${styles.title}`}>{currentUserDisplayName}</p>
+                {hasReservedUsername && (
+                  <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
+                )}
+              </div>
             </div>
           ) : isLoggedIn ? (
             // Logged-in first-time user - editable username pre-filled with reserved_username
