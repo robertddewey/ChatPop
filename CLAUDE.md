@@ -151,7 +151,15 @@ This architecture ensures that chat-specific behaviors (fixed viewport, no zoom)
 - GitHub repository
 - Feature branch workflow recommended
 
-### Testing
+### Testing Guidelines
+
+**IMPORTANT:** Follow these testing practices rigorously:
+
+1. **Update Tests When Modifying Code:** Whenever you modify backend functionality, update the corresponding tests to reflect the changes. This ensures tests remain accurate and useful.
+
+2. **Run Tests After Backend Changes:** Always run the test suite after making changes to backend code. This catches regressions and validates that new code works correctly.
+
+3. **Document Tests in README:** When adding new tests, update the test coverage section in README.md to document what the tests cover and their purpose.
 
 #### Running Tests
 
@@ -171,11 +179,20 @@ cd backend
 # All chat tests
 ./venv/bin/python manage.py test chats
 
-# Security tests (SQL injection, XSS, session tokens, username case preservation)
+# Security tests (26 tests)
 ./venv/bin/python manage.py test chats.tests_security
 
-# Username validation tests (length, character restrictions, case handling)
+# Username validation tests (10 tests)
 ./venv/bin/python manage.py test chats.tests_validators
+
+# Profanity filter tests (18 tests)
+./venv/bin/python manage.py test chats.tests_profanity
+
+# Back Room feature tests (27 tests)
+./venv/bin/python manage.py test chats.tests
+
+# Rate limit tests (12 tests)
+./venv/bin/python manage.py test chats.tests_rate_limits
 
 # Specific test class
 ./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests
@@ -184,20 +201,39 @@ cd backend
 ./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests.test_message_send_requires_session_token
 ```
 
-**Test Coverage:**
-- `chats.tests_security` - Security tests including:
-  - SQL injection and XSS prevention
-  - Session token validation
-  - Username case preservation (both reserved and anonymous usernames)
-  - Case-insensitive uniqueness enforcement
-- `chats.tests_validators` - Username validation tests covering:
-  - Minimum length (5 characters)
-  - Maximum length (15 characters)
-  - Allowed characters (letters, numbers, underscores)
-  - Invalid characters rejection (spaces, special characters, unicode)
-  - Case preservation
-  - Whitespace trimming
-- `accounts.tests` - User registration and authentication tests
+#### Current Test Coverage (93+ tests)
+
+**Security Tests (`chats.tests_security` - 26 tests):**
+- JWT session security (17 tests): token validation, expiration, chat/username binding, signature verification
+- Username reservation & fingerprinting (9 tests): uniqueness, persistence, case handling
+- Attack prevention: SQL injection, XSS protection
+
+**Username Validation (`chats.tests_validators` - 10 tests):**
+- Format requirements: length (5-15 chars), allowed characters (letters, numbers, underscores)
+- Invalid character rejection: spaces, special characters, unicode/emoji
+- Edge cases: whitespace handling, case preservation, numeric-only usernames
+
+**Profanity Filter (`chats.tests_profanity` - 18 tests):**
+- Profanity checker module (5 tests): clean validation, profanity detection, leet speak variants
+- Validator integration (4 tests): profanity check integration, skip flag
+- Chat join API (4 tests): profanity rejection at join endpoint
+- User registration (3 tests): reserved username profanity checking
+- Auto-generated usernames (2 tests): suggested usernames always clean
+
+**Back Room Feature (`chats.tests` - 27 tests):**
+- Back Room messaging (15 tests): permissions, message types, access control
+- Integration tests (2 tests): error handling, validation
+
+**Rate Limiting (`chats.tests_rate_limits` - 12 tests):**
+- Username suggestion rate limiting: 20/hour per fingerprint/IP per chat
+- Per-fingerprint and per-chat isolation
+- IP fallback, counter verification, edge cases
+- Cache key format and TTL verification
+
+**Authentication (`accounts.tests`):**
+- User registration and authentication (basic template - to be expanded)
+
+See README.md for detailed test coverage breakdown.
 
 #### Username Validation Rules
 

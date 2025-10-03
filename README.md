@@ -157,6 +157,12 @@ Run specific test modules:
 # Run profanity filter tests
 ./venv/bin/python manage.py test chats.tests_profanity
 
+# Run Back Room feature tests
+./venv/bin/python manage.py test chats.tests
+
+# Run rate limit tests
+./venv/bin/python manage.py test chats.tests_rate_limits
+
 # Run a specific test class
 ./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests
 
@@ -164,16 +170,128 @@ Run specific test modules:
 ./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests.test_message_send_requires_session_token
 ```
 
-**Test Coverage:**
-- `chats.tests_security` (26 tests) - Security tests including SQL injection, XSS, session tokens, and username case preservation
-- `chats.tests_validators` (10 tests) - Username validation tests (length, character restrictions, case handling)
-- `chats.tests_profanity` (18 tests) - Profanity filter tests including:
-  - Direct profanity checker module tests (5 tests)
-  - Validator integration tests (4 tests)
-  - Chat join API endpoint tests (4 tests)
-  - User registration API tests (3 tests)
-  - Auto-generated username tests (2 tests)
-- `accounts.tests` - User registration and authentication tests
+### Test Coverage
+
+#### Security Tests (`chats.tests_security` - 26 tests)
+**Purpose:** Comprehensive security testing to prevent common vulnerabilities and unauthorized access
+
+**JWT Session Security Tests (17 tests):**
+- Session token requirement validation
+- Invalid/forged token rejection
+- Expired token handling
+- Chat-specific token validation (tokens can't be used across different chats)
+- Username-specific token validation (tokens tied to specific usernames)
+- Token signature verification (wrong secret keys rejected)
+- Token payload tampering prevention
+- Future-dated token rejection
+- Empty/null token handling
+- Private chat access code protection
+
+**Username Reservation & Fingerprinting Tests (9 tests):**
+- Anonymous user username uniqueness enforcement
+- Reserved username protection (registered users)
+- Anonymous + registered user coexistence with same name
+- Fingerprint-based username persistence for anonymous users
+- Username persistence for registered users
+- Case-insensitive uniqueness with case preservation (both reserved & chat usernames)
+- Case preservation in message display
+
+**Attack Prevention Tests:**
+- SQL injection attempts in usernames (blocked by validation)
+- XSS attacks in usernames (blocked by validation)
+
+#### Username Validation Tests (`chats.tests_validators` - 10 tests)
+**Purpose:** Ensure username format requirements are properly enforced
+
+**Validation Rules Tested:**
+- Valid username patterns (letters, numbers, underscores only)
+- Minimum length requirement (5 characters)
+- Maximum length requirement (15 characters)
+- Invalid character rejection (spaces, special characters, unicode/emoji)
+- Whitespace handling (leading/trailing stripped, internal spaces rejected)
+- Empty/None value handling
+- Case preservation (original case maintained)
+- Unicode/emoji character rejection
+- Underscore positioning (allowed at any position)
+- Numeric-only usernames (allowed)
+
+#### Profanity Filter Tests (`chats.tests_profanity` - 18 tests)
+**Purpose:** Prevent inappropriate usernames while avoiding false positives
+
+**Profanity Checker Module Tests (5 tests):**
+- Clean username validation
+- Obvious profanity detection and blocking
+- Leet speak variant detection (case variations, separators)
+- Legitimate words with banned substrings allowed (e.g., "password", "assistant")
+- ValidationResult structure verification
+
+**Validator Integration Tests (4 tests):**
+- Clean usernames pass profanity check
+- Profane usernames fail validation
+- Skip flag bypasses profanity filter (for auto-generated usernames)
+- Legitimate words pass validation
+
+**Chat Join API Tests (4 tests):**
+- Clean usernames accepted
+- Profane usernames rejected at join
+- Leet speak profanity rejected
+- Legitimate words with substrings accepted
+
+**User Registration Tests (3 tests):**
+- Clean reserved usernames accepted
+- Profane reserved usernames rejected
+- Registration without reserved username works
+
+**Auto-generated Username Tests (2 tests):**
+- Suggested usernames are always clean
+- Suggest endpoint returns valid usernames
+
+#### Back Room Feature Tests (`chats.tests` - 27 tests)
+**Purpose:** Test paid Back Room functionality and access control
+
+**Back Room Message Tests (15 tests):**
+- BackRoom and BackRoomMessage model creation
+- Host message viewing permissions
+- Member message viewing permissions
+- Non-member access blocking (403 Forbidden)
+- Host message sending with HOST message type
+- Member message sending with NORMAL message type
+- Non-member send blocking
+- Member list viewing (host-only)
+- Non-host member list access blocking
+- Back room full status calculation
+- Message reply functionality
+
+**Back Room Integration Tests (2 tests):**
+- Accessing non-existent back room (404 handling)
+- Empty message validation
+
+#### Rate Limit Tests (`chats.tests_rate_limits` - 12 tests)
+**Purpose:** Validate API rate limiting to prevent abuse and ensure fair usage
+
+**Username Suggestion Rate Limiting (12 tests):**
+- 20 requests per hour limit enforcement
+- 21st request blocking with proper error response
+- Per-fingerprint isolation (separate limits for different users)
+- Per-chat isolation (separate limits for different chat rooms)
+- IP-based fallback when fingerprint unavailable
+- Counter increment verification (remaining count decrements correctly)
+- Error message format validation
+- Successful generation-only counting (failures don't count against limit)
+- Non-existent chat handling (404, not rate limit)
+- Independent limits for different fingerprints
+- Cache key format verification
+- Edge case: exactly 20 requests (boundary testing)
+
+**Rate Limit Details:**
+- Limit: 20 username suggestions per hour
+- Scope: Per chat room, per fingerprint/IP
+- Duration: 1 hour (3600 seconds)
+- Response: 429 Too Many Requests when limit exceeded
+- Tracking: Redis cache with auto-expiration
+
+#### Authentication Tests (`accounts.tests`)
+**Purpose:** User registration and authentication (basic template - to be expanded)
 
 ### Frontend Tests
 
