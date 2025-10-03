@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '@/lib/api';
+import { validateUsername } from '@/lib/validation';
 import { MARKETING } from '@/lib/marketing';
 import { X } from 'lucide-react';
 
@@ -58,17 +59,12 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
       return;
     }
 
-    // Check for non-alphanumeric characters (including spaces)
-    const alphanumericRegex = /^[a-zA-Z0-9]+$/;
-    if (!alphanumericRegex.test(username)) {
-      setUsernameValidation({
-        valid: false,
-        message: 'Only letters and numbers allowed (no spaces or special characters)',
-      });
-      return;
-    }
-
-    setUsernameValidation({ valid: true, message: '' });
+    // Use shared validation
+    const validation = validateUsername(username);
+    setUsernameValidation({
+      valid: validation.isValid,
+      message: validation.error || '',
+    });
   }, [formData.reserved_username]);
 
   // Check username availability with debounce (only if format is valid)
@@ -263,6 +259,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
               onChange={(e) => setFormData({ ...formData, reserved_username: e.target.value })}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.reserved_username || !usernameValidation.valid || (usernameStatus.available === false))}`}
               placeholder=""
+              maxLength={15}
             />
             {fieldErrors.reserved_username && (
               <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.reserved_username}</p>
@@ -277,7 +274,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
             )}
             {!fieldErrors.reserved_username && usernameValidation.valid && !usernameStatus.message && (
               <p className={`mt-1 text-xs ${styles.subtitle}`}>
-                Letters and numbers only. Reserved for all chats.
+                5-15 characters. Letters, numbers, and underscores only. Reserved for all chats.
               </p>
             )}
           </div>

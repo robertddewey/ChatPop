@@ -148,7 +148,9 @@ export default function ChatSettingsSheet({
             <h3 className={`text-sm font-semibold ${
               isDarkTheme(currentTheme) ? 'text-white' : 'text-gray-900'
             }`}>
-              Theme
+              Theme <span className={`text-xs font-normal ${
+                isDarkTheme(currentTheme) ? 'text-zinc-400' : 'text-gray-500'
+              }`}>(chat will reload)</span>
             </h3>
 
             <div className="grid grid-cols-3 gap-3">
@@ -156,9 +158,8 @@ export default function ChatSettingsSheet({
                 onClick={() => {
                   const url = new URL(window.location.href);
                   url.searchParams.set('design', 'purple-dream');
-                  router.replace(url.pathname + url.search, { scroll: false });
-                  setCurrentTheme('purple-dream');
-                  onThemeChange?.('purple-dream');
+                  // Reload page to apply theme-color (iOS Safari requirement)
+                  window.location.href = url.pathname + url.search;
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
                   currentTheme === 'purple-dream'
@@ -174,9 +175,8 @@ export default function ChatSettingsSheet({
                 onClick={() => {
                   const url = new URL(window.location.href);
                   url.searchParams.set('design', 'ocean-blue');
-                  router.replace(url.pathname + url.search, { scroll: false });
-                  setCurrentTheme('ocean-blue');
-                  onThemeChange?.('ocean-blue');
+                  // Reload page to apply theme-color (iOS Safari requirement)
+                  window.location.href = url.pathname + url.search;
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
                   currentTheme === 'ocean-blue'
@@ -192,9 +192,8 @@ export default function ChatSettingsSheet({
                 onClick={() => {
                   const url = new URL(window.location.href);
                   url.searchParams.set('design', 'dark-mode');
-                  router.replace(url.pathname + url.search, { scroll: false });
-                  setCurrentTheme('dark-mode');
-                  onThemeChange?.('dark-mode');
+                  // Reload page to apply theme-color (iOS Safari requirement)
+                  window.location.href = url.pathname + url.search;
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
                   isDarkTheme(currentTheme)

@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.utils import timezone
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, Transaction, ChatParticipation
+from .validators import validate_username
 from accounts.serializers import UserSerializer
 
 
@@ -82,13 +84,16 @@ class ChatRoomUpdateSerializer(serializers.ModelSerializer):
 
 class ChatRoomJoinSerializer(serializers.Serializer):
     """Serializer for joining a chat room"""
-    username = serializers.CharField(max_length=100, required=True)
+    username = serializers.CharField(max_length=15, required=True)
     access_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
     def validate_username(self, value):
-        if not value or len(value.strip()) == 0:
-            raise serializers.ValidationError("Username cannot be empty")
-        return value.strip()
+        """Validate username format using shared validator"""
+        try:
+            value = validate_username(value)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(str(e))
+        return value
 
 
 class MessageSerializer(serializers.ModelSerializer):

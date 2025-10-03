@@ -151,12 +151,20 @@ Run specific test modules:
 # Run security tests only
 ./venv/bin/python manage.py test chats.tests_security
 
+# Run username validation tests
+./venv/bin/python manage.py test chats.tests_validators
+
 # Run a specific test class
 ./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests
 
 # Run a specific test method
 ./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests.test_message_send_requires_session_token
 ```
+
+**Test Coverage:**
+- `chats.tests_security` - Security tests including SQL injection, XSS, session tokens, and username case preservation
+- `chats.tests_validators` - Username validation tests (length, character restrictions, case handling)
+- `accounts.tests` - User registration and authentication tests
 
 ### Frontend Tests
 

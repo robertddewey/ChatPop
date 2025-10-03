@@ -84,9 +84,9 @@ class User(AbstractUser):
         return self.reserved_username or self.email.split('@')[0]
 
     def save(self, *args, **kwargs):
-        """Normalize reserved_username to lowercase for case-insensitive uniqueness"""
-        if self.reserved_username:
-            self.reserved_username = self.reserved_username.lower()
+        """Save user - case is preserved for reserved_username"""
+        # Note: Case-insensitive uniqueness is handled via __iexact lookups in serializers
+        # We preserve the original case as entered by the user
         super().save(*args, **kwargs)
 
 

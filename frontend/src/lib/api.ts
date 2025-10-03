@@ -188,6 +188,16 @@ export const chatApi = {
     return response.data;
   },
 
+  suggestUsername: async (code: string, fingerprint?: string): Promise<{
+    username: string;
+    remaining: number;
+  }> => {
+    const response = await api.post(`/api/chats/${code}/suggest-username/`, {
+      fingerprint,
+    });
+    return response.data;
+  },
+
   joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string) => {
     const response = await api.post(`/api/chats/${code}/join/`, {
       username,

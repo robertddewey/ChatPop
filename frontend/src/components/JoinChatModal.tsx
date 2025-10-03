@@ -3,8 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck } from 'lucide-react';
+import { BadgeCheck, Dices } from 'lucide-react';
 import type { ChatRoom } from '@/lib/api';
+import { chatApi } from '@/lib/api';
+import { validateUsername } from '@/lib/validation';
+import { getFingerprint } from '@/lib/usernameStorage';
 
 interface JoinChatModalProps {
   chatRoom: ChatRoom;
@@ -51,10 +54,11 @@ export default function JoinChatModal({
   const router = useRouter();
   const styles = getModalStyles(design);
 
-  const [username, setUsername] = useState(currentUserDisplayName || '');
+  const [username, setUsername] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [isSuggestingUsername, setIsSuggestingUsername] = useState(false);
   const audioContextRef = React.useRef<AudioContext>();
 
   // Import the audio initialization function
@@ -85,9 +89,13 @@ export default function JoinChatModal({
     // Initialize AudioContext during user gesture (button click)
     initAudioContext();
 
-    // Validation
-    if (!username.trim()) {
-      setError('Please enter a username');
+    // Use placeholder (reserved username) if no username entered
+    const finalUsername = username.trim() || currentUserDisplayName || '';
+
+    // Validate username format
+    const validation = validateUsername(finalUsername);
+    if (!validation.isValid) {
+      setError(validation.error || 'Invalid username');
       return;
     }
 
@@ -99,7 +107,7 @@ export default function JoinChatModal({
     setIsJoining(true);
 
     try {
-      await onJoin(username.trim(), accessCode.trim() || undefined);
+      await onJoin(finalUsername.trim(), accessCode.trim() || undefined);
     } catch (err: any) {
       setError(err.message || 'Failed to join chat');
       setIsJoining(false);
@@ -124,6 +132,22 @@ export default function JoinChatModal({
     router.push(`${currentPath}?${params.toString()}`);
   };
 
+  const handleSuggestUsername = async () => {
+    setError('');
+    setIsSuggestingUsername(true);
+
+    try {
+      const fingerprint = await getFingerprint();
+      const result = await chatApi.suggestUsername(chatRoom.code, fingerprint);
+      setUsername(result.username);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || err.message;
+      setError(errorMessage || 'Failed to generate username');
+    } finally {
+      setIsSuggestingUsername(false);
+    }
+  };
+
   if (typeof document === 'undefined') return null;
 
   return createPortal(
@@ -135,20 +159,18 @@ export default function JoinChatModal({
       <div className={`relative w-full max-w-md ${styles.container} rounded-3xl p-8 shadow-2xl`}>
         {/* Title */}
         <div className="mb-6 text-center">
-          <h1 className={`text-2xl font-bold ${styles.title} mb-2 flex items-center justify-center gap-2`}>
+          <h1 className={`text-2xl font-bold ${styles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
             {hasJoinedBefore ? (
-              <>
-                Welcome back, {currentUserDisplayName}!
-                {hasReservedUsername && (
-                  <BadgeCheck className="text-blue-500 flex-shrink-0" size={20} />
-                )}
-              </>
+              'Welcome back!'
             ) : isLoggedIn ? (
               <>
-                Come join us, {currentUserDisplayName}
-                {hasReservedUsername && (
-                  <BadgeCheck className="text-blue-500 flex-shrink-0" size={20} />
-                )}
+                <span>Come join us,</span>
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  {currentUserDisplayName}
+                  {hasReservedUsername && (
+                    <BadgeCheck className="text-blue-500 flex-shrink-0" size={20} />
+                  )}
+                </span>
               </>
             ) : (
               `Join ${chatRoom.name}`
@@ -166,10 +188,9 @@ export default function JoinChatModal({
           {/* Username Display or Input */}
           {isLoggedIn && hasJoinedBefore ? (
             // Logged-in returning user - show locked username
-            <div className="text-center">
-              <p className={`text-sm ${styles.subtitle} mb-2`}>You'll join as:</p>
+            <div className="text-center mb-8">
               <div className="flex items-center justify-center gap-2">
-                <p className={`text-lg font-semibold ${styles.title}`}>{currentUserDisplayName}</p>
+                <p className={`text-sm ${styles.subtitle}`}>You'll join as: <span className={`font-semibold ${styles.title}`}>{currentUserDisplayName}</span></p>
                 {hasReservedUsername && (
                   <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
                 )}
@@ -179,33 +200,55 @@ export default function JoinChatModal({
             // Logged-in first-time user - editable username pre-filled with reserved_username
             <div>
               <label className={`block text-sm font-medium ${styles.subtitle} mb-2`}>
-                Username for this chat
+                Pick a username
               </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username"
-                className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
-                maxLength={30}
-                disabled={isJoining}
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={currentUserDisplayName || "Enter username"}
+                  className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input} transition-colors focus:outline-none`}
+                  maxLength={15}
+                  disabled={isJoining || isSuggestingUsername}
+                />
+                <button
+                  type="button"
+                  onClick={handleSuggestUsername}
+                  disabled={isJoining || isSuggestingUsername}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${styles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title="Suggest random username"
+                >
+                  <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
+                </button>
+              </div>
             </div>
           ) : (
             // Anonymous user - always show input
             <div>
               <label className={`block text-sm font-medium ${styles.subtitle} mb-2`}>
-                Choose a username
+                Pick a username
               </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username"
-                className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
-                maxLength={30}
-                disabled={isJoining}
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter username"
+                  className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input} transition-colors focus:outline-none`}
+                  maxLength={15}
+                  disabled={isJoining || isSuggestingUsername}
+                />
+                <button
+                  type="button"
+                  onClick={handleSuggestUsername}
+                  disabled={isJoining || isSuggestingUsername}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${styles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title="Suggest random username"
+                >
+                  <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
+                </button>
+              </div>
             </div>
           )}
 
@@ -228,7 +271,7 @@ export default function JoinChatModal({
 
           {/* Error Message */}
           {error && (
-            <p className={`text-sm ${styles.error} text-center`}>
+            <p className={`text-xs ${styles.error} text-left -mt-3`}>
               {error}
             </p>
           )}

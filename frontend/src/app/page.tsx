@@ -22,6 +22,39 @@ export default function Home() {
     router.push('/?modal=create');
   };
 
+  // Set theme-color for homepage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const updateThemeColor = () => {
+      // Detect dark mode preference
+      const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      // Match homepage gradient colors (purple-50 for light, gray-900 for dark)
+      const themeColor = isDarkMode ? '#111827' : '#faf5ff';
+
+      // Find or create theme-color meta tag
+      let metaTag = document.querySelector('meta[name="theme-color"]');
+      if (!metaTag) {
+        metaTag = document.createElement('meta');
+        metaTag.setAttribute('name', 'theme-color');
+        document.head.appendChild(metaTag);
+      }
+      metaTag.setAttribute('content', themeColor);
+    };
+
+    // Update initially
+    updateThemeColor();
+
+    // Listen for dark mode changes
+    const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleDarkModeChange = () => updateThemeColor();
+    darkModeQuery.addEventListener('change', handleDarkModeChange);
+
+    return () => {
+      darkModeQuery.removeEventListener('change', handleDarkModeChange);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800">
       <Header />

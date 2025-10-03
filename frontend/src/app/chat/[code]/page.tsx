@@ -15,6 +15,85 @@ import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
 import { Settings, BadgeCheck } from 'lucide-react';
 
+// Design configurations
+const designs = {
+  'purple-dream': {
+    themeColor: {
+      light: '#ffffff',
+      dark: '#1f2937',
+    },
+    container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20",
+    header: "border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
+    headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
+    headerTitleFade: "bg-gradient-to-l from-white/80 via-white/60 dark:from-gray-800/80 dark:via-gray-800/60 to-white/0 dark:to-gray-800/0",
+    headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
+    stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
+    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMTYsIDE5MSwgMjE2LCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDE5MiwgMTMyLCAyNTIsIDAuMTUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI3BhdHRlcm4pIi8+PC9zdmc+')] bg-repeat",
+    hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-white shadow-lg border-2 border-white/20",
+    hostText: "text-white",
+    hostMessageFade: "bg-gradient-to-l from-red-500 to-transparent",
+    pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
+    pinnedText: "text-amber-900 dark:text-amber-200",
+    pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
+    regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-purple-100 dark:border-purple-800 shadow-sm",
+    regularText: "text-gray-700 dark:text-gray-300",
+    filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30",
+    filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700",
+    inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
+    inputField: "flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
+  },
+  'ocean-blue': {
+    themeColor: {
+      light: '#ffffff',
+      dark: '#1f2937',
+    },
+    container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
+    header: "border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
+    headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
+    headerTitleFade: "bg-gradient-to-l from-white/80 via-white/60 dark:from-gray-800/80 dark:via-gray-800/60 to-white/0 dark:to-gray-800/0",
+    headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
+    stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
+    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMDAsIDIzMCwgMjUwLCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDU5LCAxMzAsIDI0NiwgMC4xNSkiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiLz48L3N2Zz4=')] bg-repeat",
+    hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500 text-white shadow-lg border-2 border-white/20",
+    hostText: "text-white",
+    hostMessageFade: "bg-gradient-to-l from-cyan-500 to-transparent",
+    pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
+    pinnedText: "text-amber-900 dark:text-amber-200",
+    pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
+    regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-blue-100 dark:border-blue-800 shadow-sm",
+    regularText: "text-gray-700 dark:text-gray-300",
+    filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
+    filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
+    inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
+    inputField: "flex-1 px-4 py-2 border border-blue-300 dark:border-blue-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
+  },
+  'dark-mode': {
+    themeColor: {
+      light: '#18181b',
+      dark: '#18181b',
+    },
+    container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
+    header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
+    headerTitle: "text-lg font-bold text-zinc-100",
+    headerTitleFade: "bg-gradient-to-l from-zinc-900 to-transparent",
+    headerSubtitle: "text-sm text-zinc-400",
+    stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
+    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
+    hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
+    hostText: "text-cyan-950",
+    hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
+    pinnedMessage: "rounded px-3 py-2 bg-yellow-400 font-medium",
+    pinnedText: "text-yellow-950",
+    pinnedMessageFade: "bg-gradient-to-l from-yellow-400 to-transparent",
+    regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
+    regularText: "text-zinc-100",
+    filterButtonActive: "px-3 py-1.5 rounded text-xs tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
+    filterButtonInactive: "px-3 py-1.5 rounded text-xs tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
+    inputArea: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
+    inputField: "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
+  },
+};
+
 export default function ChatPage() {
   const params = useParams();
   const code = params.code as string;
@@ -190,6 +269,22 @@ export default function ChatPage() {
       localStorage.setItem(`chatpop_theme_${code}`, theme);
     }
   }, [chatRoom, code, searchParams]);
+
+  // Update body background when theme changes
+  // Theme-color meta tags are set in layout.tsx before page loads
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const currentThemeDesign = designs[designVariant as keyof typeof designs];
+    if (!currentThemeDesign?.themeColor) return;
+
+    // Detect system dark mode preference
+    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const themeColor = isDarkMode ? currentThemeDesign.themeColor.dark : currentThemeDesign.themeColor.light;
+
+    // Update body background (iOS Safari derives tint from topmost background at scroll edge)
+    document.body.style.backgroundColor = themeColor;
+  }, [designVariant]);
 
   // Load Back Room data if it exists
   useEffect(() => {
@@ -536,74 +631,6 @@ export default function ChatPage() {
       </div>
     );
   }
-
-
-  // Design configurations
-  const designs = {
-    'purple-dream': {
-      container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20",
-      header: "border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
-      headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
-      headerTitleFade: "bg-gradient-to-l from-white/80 via-white/60 dark:from-gray-800/80 dark:via-gray-800/60 to-white/0 dark:to-gray-800/0",
-      headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
-      stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-purple-200 dark:border-purple-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
-      messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMTYsIDE5MSwgMjE2LCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDE5MiwgMTMyLCAyNTIsIDAuMTUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI3BhdHRlcm4pIi8+PC9zdmc+')] bg-repeat",
-      hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-white shadow-lg border-2 border-white/20",
-      hostText: "text-white",
-      hostMessageFade: "bg-gradient-to-l from-red-500 to-transparent",
-      pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
-      pinnedText: "text-amber-900 dark:text-amber-200",
-      pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
-      regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-purple-100 dark:border-purple-800 shadow-sm",
-      regularText: "text-gray-700 dark:text-gray-300",
-      filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30",
-      filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700",
-      inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
-      inputField: "flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
-    },
-    'ocean-blue': {
-      container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
-      header: "border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
-      headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
-      headerTitleFade: "bg-gradient-to-l from-white/80 via-white/60 dark:from-gray-800/80 dark:via-gray-800/60 to-white/0 dark:to-gray-800/0",
-      headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
-      stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-blue-200 dark:border-blue-800 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
-      messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMDAsIDIzMCwgMjUwLCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDU5LCAxMzAsIDI0NiwgMC4xNSkiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiLz48L3N2Zz4=')] bg-repeat",
-      hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500 text-white shadow-lg border-2 border-white/20",
-      hostText: "text-white",
-      hostMessageFade: "bg-gradient-to-l from-cyan-500 to-transparent",
-      pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
-      pinnedText: "text-amber-900 dark:text-amber-200",
-      pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
-      regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-blue-100 dark:border-blue-800 shadow-sm",
-      regularText: "text-gray-700 dark:text-gray-300",
-      filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
-      filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
-      inputArea: "border-t border-gray-300 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
-      inputField: "flex-1 px-4 py-2 border border-blue-300 dark:border-blue-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
-    },
-    'dark-mode': {
-      container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
-      header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
-      headerTitle: "text-lg font-bold text-zinc-100",
-      headerTitleFade: "bg-gradient-to-l from-zinc-900 to-transparent",
-      headerSubtitle: "text-sm text-zinc-400",
-      stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
-      messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
-      hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
-      hostText: "text-cyan-950",
-      hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
-      pinnedMessage: "rounded px-3 py-2 bg-yellow-400 font-medium",
-      pinnedText: "text-yellow-950",
-      pinnedMessageFade: "bg-gradient-to-l from-yellow-400 to-transparent",
-      regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
-      regularText: "text-zinc-100",
-      filterButtonActive: "px-3 py-1.5 rounded text-xs tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
-      filterButtonInactive: "px-3 py-1.5 rounded text-xs tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
-      inputArea: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
-      inputField: "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
-    },
-  };
 
   const currentDesign = designs[designVariant as keyof typeof designs] || designs['purple-dream'];
 

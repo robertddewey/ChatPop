@@ -91,6 +91,13 @@
 - **PostgreSQL:** Port **5435** (localhost:5435)
 - **Redis:** Port **6381** (localhost:6381)
 
+**STRICT ENFORCEMENT POLICY:**
+- These ports MUST be used at all times - no exceptions
+- If something is already running on these ports, kill it before starting servers
+- Never use ports 3000, 3002, 8000, or any other ports for this project
+- All CORS configurations, API URLs, and documentation must reference ONLY these ports
+- Use `lsof -ti:PORT | xargs kill` to free up ports if needed
+
 ### Starting the Development Servers
 
 **1. Start Docker Containers (PostgreSQL & Redis):**
@@ -143,6 +150,98 @@ This architecture ensures that chat-specific behaviors (fixed viewport, no zoom)
 ### Version Control
 - GitHub repository
 - Feature branch workflow recommended
+
+### Testing
+
+#### Running Tests
+
+**All Backend Tests:**
+```bash
+cd backend
+./venv/bin/python manage.py test
+```
+
+**With Verbose Output:**
+```bash
+./venv/bin/python manage.py test -v 2
+```
+
+**Specific Test Modules:**
+```bash
+# All chat tests
+./venv/bin/python manage.py test chats
+
+# Security tests (SQL injection, XSS, session tokens, username case preservation)
+./venv/bin/python manage.py test chats.tests_security
+
+# Username validation tests (length, character restrictions, case handling)
+./venv/bin/python manage.py test chats.tests_validators
+
+# Specific test class
+./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests
+
+# Specific test method
+./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests.test_message_send_requires_session_token
+```
+
+**Test Coverage:**
+- `chats.tests_security` - Security tests including:
+  - SQL injection and XSS prevention
+  - Session token validation
+  - Username case preservation (both reserved and anonymous usernames)
+  - Case-insensitive uniqueness enforcement
+- `chats.tests_validators` - Username validation tests covering:
+  - Minimum length (5 characters)
+  - Maximum length (15 characters)
+  - Allowed characters (letters, numbers, underscores)
+  - Invalid characters rejection (spaces, special characters, unicode)
+  - Case preservation
+  - Whitespace trimming
+- `accounts.tests` - User registration and authentication tests
+
+#### Username Validation Rules
+
+**Unified Validation:** The same validation rules apply to both reserved usernames (registration) and chat usernames (anonymous users).
+
+**Rules:**
+- **Minimum Length:** 5 characters (more than 4)
+- **Maximum Length:** 15 characters
+- **Allowed Characters:** Letters (a-z, A-Z), numbers (0-9), and underscores (_)
+- **Disallowed Characters:** Spaces and all special characters except underscore
+- **Case Handling:**
+  - Case is **preserved** in storage and display (e.g., "Alice" stays "Alice")
+  - Uniqueness checks are **case-insensitive** (e.g., cannot have both "Alice" and "alice")
+
+**Implementation Files:**
+- **Backend Validator:** `/backend/chats/validators.py` - Shared validation function used by both registration and chat join serializers
+- **Frontend Validator:** `/frontend/src/lib/validation.ts` - Client-side validation matching backend rules
+- **Test Suite:** `/backend/chats/tests_validators.py` - 10 test cases covering all validation scenarios
+- **Security Tests:** `/backend/chats/tests_security.py` - Includes case preservation tests for both reserved and anonymous usernames
+
+**Usage in Serializers:**
+```python
+from chats.validators import validate_username
+
+def validate_reserved_username(self, value):
+    """Validate reserved username format and uniqueness"""
+    if value:
+        value = validate_username(value)  # Format validation
+        # Check case-insensitive uniqueness
+        if User.objects.filter(reserved_username__iexact=value).exists():
+            raise serializers.ValidationError("This username is already reserved")
+    return value
+```
+
+**Frontend Usage:**
+```typescript
+import { validateUsername } from '@/lib/validation';
+
+const validation = validateUsername(username);
+if (!validation.isValid) {
+  setError(validation.error || 'Invalid username');
+  return;
+}
+```
 
 ---
 
@@ -268,19 +367,76 @@ className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}
 const theme = migrateLegacyTheme(urlParam);
 ```
 
-#### 4. Validation Checklist
+#### 4. Define Mobile Browser Theme Colors
+
+**IMPORTANT:** Every theme must define `themeColor` in TWO locations for native mobile browser integration (URL bar/address bar coloring).
+
+**Step 1:** Add the `themeColor` property to the theme's design configuration in `/frontend/src/app/chat/[code]/page.tsx`:
+
+```typescript
+const designs = {
+  'your-theme-name': {
+    themeColor: {
+      light: '#ffffff',  // Hex color for light system mode
+      dark: '#1f2937',   // Hex color for dark system mode
+    },
+    container: "...",
+    header: "...",
+    // ... rest of theme config
+  },
+};
+```
+
+**Step 2:** Add the theme to the `themeColors` mapping in `/frontend/src/app/chat/layout.tsx`:
+
+```typescript
+const themeColors = {
+  'purple-dream': { light: '#ffffff', dark: '#1f2937' },
+  'ocean-blue': { light: '#ffffff', dark: '#1f2937' },
+  'dark-mode': { light: '#18181b', dark: '#18181b' },
+  'your-theme-name': { light: '#ffffff', dark: '#1f2937' }, // Add your new theme here
+};
+```
+
+**How to Choose Theme Colors:**
+- Match the **header background color** of your theme
+- Convert Tailwind CSS classes to hex values:
+  - `bg-white` → `#ffffff`
+  - `bg-gray-800` → `#1f2937`
+  - `bg-zinc-900` → `#18181b`
+  - `bg-purple-900` → `#581c87`
+  - Use a Tailwind color reference or browser inspector to find exact hex values
+
+**Examples:**
+- **Purple Dream**: Uses `bg-white/80 dark:bg-gray-800/80` header → `{ light: '#ffffff', dark: '#1f2937' }`
+- **Ocean Blue**: Uses `bg-white/80 dark:bg-gray-800/80` header → `{ light: '#ffffff', dark: '#1f2937' }`
+- **Dark Mode**: Uses `bg-zinc-900` header (always dark) → `{ light: '#18181b', dark: '#18181b' }`
+
+**Why This Matters:**
+Mobile browsers use the `<meta name="theme-color">` tag to color the URL bar/address bar to match your app's design. This creates a native app-like experience similar to Discord, where the browser chrome seamlessly extends your theme's header color.
+
+**How It Works:**
+- Theme colors are set at page load (before React hydration) by reading from URL parameter or localStorage
+- When user changes theme, the page reloads to apply new theme-color meta tags (iOS Safari requirement)
+- The layout script detects system light/dark mode preference automatically
+- Body background is set immediately to prevent color flash
+
+#### 5. Validation Checklist
 
 Before merging a new theme, verify:
 - [ ] Theme type (Light/Dark) is documented in this file
+- [ ] `themeColor` property defined with both light and dark hex values
+- [ ] Theme colors match header background (test on mobile device)
 - [ ] All modals use appropriate light/dark styling
 - [ ] Text contrast meets accessibility standards
 - [ ] Border colors are visible on theme background
 - [ ] Icons and buttons are visible and properly styled
 - [ ] Theme switch in ChatSettingsSheet displays correctly
+- [ ] Mobile URL bar updates correctly on theme change (test on iOS Safari, Chrome Mobile)
 
 ### Why This Matters
 
-Inconsistent modal styling creates a jarring user experience. A dark theme with white popups (or vice versa) breaks visual coherence and feels unpolished. By following these guidelines, we ensure every theme provides a cohesive, professional appearance.
+Inconsistent modal styling creates a jarring user experience. A dark theme with white popups (or vice versa) breaks visual coherence and feels unpolished. Similarly, a mismatched URL bar color breaks the immersive mobile experience. By following these guidelines, we ensure every theme provides a cohesive, professional appearance across all devices and UI components.
 
 ---
 

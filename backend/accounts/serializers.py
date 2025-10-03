@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import User, UserSubscription
+from chats.validators import validate_username
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -36,9 +38,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def validate_reserved_username(self, value):
         """Validate reserved username format and uniqueness"""
         if value:
-            # Check alphanumeric
-            if not value.isalnum():
-                raise serializers.ValidationError("Reserved username must contain only alphanumeric characters (a-z, A-Z, 0-9)")
+            # Validate format using shared validator
+            try:
+                value = validate_username(value)
+            except DjangoValidationError as e:
+                raise serializers.ValidationError(str(e))
+
             # Check uniqueness (case-insensitive)
             if User.objects.filter(reserved_username__iexact=value).exists():
                 raise serializers.ValidationError("This username is already reserved")

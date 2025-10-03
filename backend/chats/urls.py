@@ -3,7 +3,7 @@ from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
     MessageListView, MessageCreateView, MessagePinView,
     BackRoomDetailView, BackRoomJoinView, BackRoomMessagesView, BackRoomMessageSendView, BackRoomMembersView,
-    FingerprintUsernameView, UsernameValidationView, MyParticipationView
+    FingerprintUsernameView, UsernameValidationView, MyParticipationView, SuggestUsernameView
 )
 
 app_name = 'chats'
@@ -33,6 +33,9 @@ urlpatterns = [
 
     # Username Validation
     path('<str:code>/validate-username/', UsernameValidationView.as_view(), name='validate-username'),
+
+    # Username Suggestion
+    path('<str:code>/suggest-username/', SuggestUsernameView.as_view(), name='suggest-username'),
 
     # Chat Participation
     path('<str:code>/my-participation/', MyParticipationView.as_view(), name='my-participation'),

@@ -1,5 +1,9 @@
 /* Chat-specific styles - only applies to /chat routes */
 
+:root {
+  color-scheme: light dark; /* Tell Safari we support both schemes */
+}
+
 body {
   overflow: hidden;
   width: 100%;
@@ -10,6 +14,8 @@ body {
   top: 0;
   left: 0;
   touch-action: pan-x pan-y;
+  /* Background will be set dynamically by JavaScript after user joins */
+  /* Keep transparent/default before joining to show JoinChatModal properly */
 }
 
 html {

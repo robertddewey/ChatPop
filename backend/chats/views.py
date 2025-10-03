@@ -95,6 +95,65 @@ class ChatRoomJoinView(APIView):
         user_id = str(request.user.id) if request.user.is_authenticated else None
         ip_address = get_client_ip(request)
 
+        # SECURITY CHECK 1: Check if username is reserved by another user
+        from accounts.models import User
+        reserved_user = User.objects.filter(reserved_username__iexact=username).first()
+        if reserved_user and request.user.is_authenticated:
+            # Only block registered users from using another user's reserved_username
+            # Anonymous users CAN use reserved usernames (they coexist with the registered user)
+            if reserved_user.id != request.user.id:
+                raise ValidationError(f"Username '{username}' is reserved by another user")
+
+        # SECURITY CHECK 2: Check for existing participation (username persistence)
+        if request.user.is_authenticated:
+            # Check if this user already joined this chat
+            existing_participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                user=request.user
+            ).first()
+            if existing_participation:
+                # User already joined - they must use the same username
+                if existing_participation.username != username:
+                    raise ValidationError(
+                        f"You have already joined this chat as '{existing_participation.username}'. "
+                        f"You cannot change your username in this chat."
+                    )
+        elif fingerprint:
+            # Check if this fingerprint already joined this chat
+            existing_participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                fingerprint=fingerprint,
+                user__isnull=True
+            ).first()
+            if existing_participation:
+                # Fingerprint already joined - they must use the same username
+                if existing_participation.username != username:
+                    raise ValidationError(
+                        f"You have already joined this chat as '{existing_participation.username}'. "
+                        f"You cannot change your username in this chat."
+                    )
+
+        # SECURITY CHECK 3: Check if username is already taken by another participant
+        # (excluding the current user/fingerprint who may be rejoining)
+        # NOTE: Anonymous and registered users CAN coexist with the same username
+        if request.user.is_authenticated:
+            # Registered user: only check for other registered users (not anonymous)
+            username_taken = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                username__iexact=username,
+                user__isnull=False  # Only check registered users
+            ).exclude(user=request.user).exists()
+        else:
+            # Anonymous user: only check for other anonymous users (not registered)
+            username_taken = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                username__iexact=username,
+                user__isnull=True  # Only check anonymous users
+            ).exclude(fingerprint=fingerprint).exists()
+
+        if username_taken:
+            raise ValidationError(f"Username '{username}' is already in use in this chat")
+
         # Create or update ChatParticipation
         if request.user.is_authenticated:
             # Logged-in user - find/create by user_id
@@ -576,4 +635,52 @@ class UsernameValidationView(APIView):
             'reserved_by_other': reserved_by_other,
             'has_reserved_badge': has_reserved,
             'message': 'Username validated successfully'
+        })
+
+
+class SuggestUsernameView(APIView):
+    """
+    Suggest a random username for a chat.
+    Rate limited to 20 requests per fingerprint/IP per chat per hour.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code):
+        from .username_generator import generate_username
+
+        # Get chat room
+        chat_room = get_object_or_404(ChatRoom, code=code)
+
+        # Get fingerprint or IP for rate limiting
+        fingerprint = request.data.get('fingerprint')
+        if not fingerprint:
+            # Fallback to IP-based rate limiting
+            fingerprint = get_client_ip(request)
+
+        # Rate limiting key (per chat, per fingerprint/IP)
+        rate_limit_key = f"username_suggest_limit:{code}:{fingerprint}"
+
+        # Check rate limit
+        current_count = cache.get(rate_limit_key, 0)
+        if current_count >= 20:
+            return Response({
+                'error': 'Suggestion limit reached. You can request up to 20 username suggestions per hour for this chat.',
+                'remaining': 0
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # Generate username
+        username = generate_username(code)
+
+        if not username:
+            return Response({
+                'error': 'Unable to generate a unique username. Please try entering one manually.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Increment rate limit counter (only on success)
+        new_count = current_count + 1
+        cache.set(rate_limit_key, new_count, 3600)  # 1 hour TTL
+
+        return Response({
+            'username': username,
+            'remaining': 20 - new_count
         })
