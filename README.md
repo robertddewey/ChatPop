@@ -154,6 +154,9 @@ Run specific test modules:
 # Run username validation tests
 ./venv/bin/python manage.py test chats.tests_validators
 
+# Run profanity filter tests
+./venv/bin/python manage.py test chats.tests_profanity
+
 # Run a specific test class
 ./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests
 
@@ -162,8 +165,14 @@ Run specific test modules:
 ```
 
 **Test Coverage:**
-- `chats.tests_security` - Security tests including SQL injection, XSS, session tokens, and username case preservation
-- `chats.tests_validators` - Username validation tests (length, character restrictions, case handling)
+- `chats.tests_security` (26 tests) - Security tests including SQL injection, XSS, session tokens, and username case preservation
+- `chats.tests_validators` (10 tests) - Username validation tests (length, character restrictions, case handling)
+- `chats.tests_profanity` (18 tests) - Profanity filter tests including:
+  - Direct profanity checker module tests (5 tests)
+  - Validator integration tests (4 tests)
+  - Chat join API endpoint tests (4 tests)
+  - User registration API tests (3 tests)
+  - Auto-generated username tests (2 tests)
 - `accounts.tests` - User registration and authentication tests
 
 ### Frontend Tests
