@@ -886,9 +886,7 @@ export default function ChatPage() {
                             {message.username}
                           </span>
                           {message.username_is_reserved && (
-                            <span className="text-blue-500" title="Verified username">
-                              ✓
-                            </span>
+                            <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
                           )}
                           <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
                             📌 ${message.pin_amount_paid}
