@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, Transaction
+from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, Transaction, ChatParticipation
 from accounts.serializers import UserSerializer
 
 
@@ -95,6 +95,7 @@ class MessageSerializer(serializers.ModelSerializer):
     """Serializer for Message model"""
     user = UserSerializer(read_only=True)
     is_from_host = serializers.SerializerMethodField()
+    username_is_reserved = serializers.SerializerMethodField()
     time_until_unpin = serializers.SerializerMethodField()
     reply_to_message = serializers.SerializerMethodField()
 
@@ -104,7 +105,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'id', 'chat_room', 'username', 'user', 'message_type', 'content',
             'reply_to', 'reply_to_message',
             'is_pinned', 'pinned_at', 'pinned_until', 'pin_amount_paid',
-            'is_from_host', 'time_until_unpin', 'created_at', 'is_deleted'
+            'is_from_host', 'username_is_reserved', 'time_until_unpin', 'created_at', 'is_deleted'
         ]
         read_only_fields = [
             'id', 'user', 'message_type', 'is_pinned', 'pinned_at',
@@ -113,6 +114,14 @@ class MessageSerializer(serializers.ModelSerializer):
 
     def get_is_from_host(self, obj):
         return obj.user == obj.chat_room.host if obj.user else False
+
+    def get_username_is_reserved(self, obj):
+        """Check if username matches user's reserved_username"""
+        return (
+            obj.user and
+            obj.user.reserved_username and
+            obj.username.lower() == obj.user.reserved_username.lower()
+        )
 
     def get_time_until_unpin(self, obj):
         if obj.is_pinned and obj.pinned_until:
@@ -229,13 +238,14 @@ class BackRoomMessageSerializer(serializers.ModelSerializer):
     """Serializer for BackRoomMessage with host detection and reply info"""
     user = UserSerializer(read_only=True)
     is_from_host = serializers.SerializerMethodField()
+    username_is_reserved = serializers.SerializerMethodField()
     reply_to_message = serializers.SerializerMethodField()
 
     class Meta:
         model = BackRoomMessage
         fields = [
             'id', 'back_room', 'username', 'user', 'message_type', 'content',
-            'reply_to', 'reply_to_message', 'is_from_host', 'created_at', 'is_deleted'
+            'reply_to', 'reply_to_message', 'is_from_host', 'username_is_reserved', 'created_at', 'is_deleted'
         ]
         read_only_fields = [
             'id', 'user', 'message_type', 'created_at', 'is_deleted'
@@ -243,6 +253,14 @@ class BackRoomMessageSerializer(serializers.ModelSerializer):
 
     def get_is_from_host(self, obj):
         return obj.user == obj.back_room.chat_room.host if obj.user else False
+
+    def get_username_is_reserved(self, obj):
+        """Check if username matches user's reserved_username"""
+        return (
+            obj.user and
+            obj.user.reserved_username and
+            obj.username.lower() == obj.user.reserved_username.lower()
+        )
 
     def get_reply_to_message(self, obj):
         """Return basic info about the message being replied to"""
@@ -294,3 +312,16 @@ class BackRoomMemberSerializer(serializers.ModelSerializer):
             'joined_at', 'is_active'
         ]
         read_only_fields = ['id', 'user', 'amount_paid', 'joined_at']
+
+
+class ChatParticipationSerializer(serializers.ModelSerializer):
+    """Serializer for ChatParticipation"""
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = ChatParticipation
+        fields = [
+            'id', 'chat_room', 'user', 'fingerprint', 'username',
+            'first_joined_at', 'last_seen_at', 'is_active'
+        ]
+        read_only_fields = ['id', 'chat_room', 'user', 'first_joined_at', 'last_seen_at']

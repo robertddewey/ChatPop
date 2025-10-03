@@ -74,6 +74,7 @@ export interface Message {
   pinned_until: string | null;
   pin_amount_paid: string;
   is_from_host: boolean;
+  username_is_reserved: boolean;
   time_until_unpin: number | null;
   created_at: string;
   is_deleted: boolean;
@@ -139,6 +140,13 @@ export const authApi = {
   },
 };
 
+export interface ChatParticipation {
+  has_joined: boolean;
+  username?: string;
+  first_joined_at?: string;
+  last_seen_at?: string;
+}
+
 export const chatApi = {
   createChat: async (data: {
     name: string;
@@ -158,10 +166,33 @@ export const chatApi = {
     return response.data;
   },
 
-  joinChat: async (code: string, username: string, accessCode?: string) => {
+  getMyParticipation: async (code: string, fingerprint?: string): Promise<ChatParticipation> => {
+    const response = await api.get(`/api/chats/${code}/my-participation/`, {
+      params: { fingerprint },
+    });
+    return response.data;
+  },
+
+  validateUsername: async (code: string, username: string, fingerprint?: string): Promise<{
+    available: boolean;
+    username: string;
+    in_use_in_chat: boolean;
+    reserved_by_other: boolean;
+    has_reserved_badge: boolean;
+    message: string;
+  }> => {
+    const response = await api.post(`/api/chats/${code}/validate-username/`, {
+      username,
+      fingerprint,
+    });
+    return response.data;
+  },
+
+  joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string) => {
     const response = await api.post(`/api/chats/${code}/join/`, {
       username,
       access_code: accessCode,
+      fingerprint,
     });
 
     // Store session token if provided

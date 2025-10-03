@@ -6,11 +6,12 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.core.cache import cache
 from accounts.models import User
-from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, AnonymousUserFingerprint
+from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, AnonymousUserFingerprint, ChatParticipation
 from .serializers import (
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomUpdateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
-    BackRoomSerializer, BackRoomMemberSerializer, BackRoomMessageSerializer, BackRoomMessageCreateSerializer
+    BackRoomSerializer, BackRoomMemberSerializer, BackRoomMessageSerializer, BackRoomMessageCreateSerializer,
+    ChatParticipationSerializer
 )
 from .security import ChatSessionValidator
 
@@ -90,7 +91,42 @@ class ChatRoomJoinView(APIView):
                 raise PermissionDenied("Invalid access code")
 
         username = serializer.validated_data['username']
+        fingerprint = request.data.get('fingerprint')
         user_id = str(request.user.id) if request.user.is_authenticated else None
+        ip_address = get_client_ip(request)
+
+        # Create or update ChatParticipation
+        if request.user.is_authenticated:
+            # Logged-in user - find/create by user_id
+            participation, created = ChatParticipation.objects.get_or_create(
+                chat_room=chat_room,
+                user=request.user,
+                defaults={
+                    'username': username,
+                    'fingerprint': fingerprint,
+                    'ip_address': ip_address,
+                }
+            )
+            if not created:
+                # Update last_seen and fingerprint (in case they switched devices)
+                participation.fingerprint = fingerprint
+                participation.ip_address = ip_address
+                participation.save()
+        elif fingerprint:
+            # Anonymous user - find/create by fingerprint
+            participation, created = ChatParticipation.objects.get_or_create(
+                chat_room=chat_room,
+                fingerprint=fingerprint,
+                user__isnull=True,
+                defaults={
+                    'username': username,
+                    'ip_address': ip_address,
+                }
+            )
+            if not created:
+                # Update last_seen and IP
+                participation.ip_address = ip_address
+                participation.save()
 
         # Create JWT session token
         session_token = ChatSessionValidator.create_session_token(
@@ -442,6 +478,47 @@ class BackRoomMembersView(APIView):
         return Response(serializer.data)
 
 
+class MyParticipationView(APIView):
+    """Get current user's participation in a chat"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, code):
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        fingerprint = request.query_params.get('fingerprint')
+
+        participation = None
+
+        # For logged-in users, find by user_id
+        if request.user.is_authenticated:
+            participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                user=request.user,
+                is_active=True
+            ).first()
+        # For anonymous users, find by fingerprint
+        elif fingerprint:
+            participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                fingerprint=fingerprint,
+                user__isnull=True,
+                is_active=True
+            ).first()
+
+        if participation:
+            # Update last_seen timestamp
+            participation.save()  # auto_now updates last_seen_at
+            return Response({
+                'has_joined': True,
+                'username': participation.username,
+                'first_joined_at': participation.first_joined_at,
+                'last_seen_at': participation.last_seen_at
+            })
+
+        return Response({
+            'has_joined': False
+        })
+
+
 class UsernameValidationView(APIView):
     """Validate username availability for a specific chat room"""
     permission_classes = [permissions.AllowAny]
@@ -449,6 +526,7 @@ class UsernameValidationView(APIView):
     def post(self, request, code):
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
         username = request.data.get('username', '').strip()
+        fingerprint = request.data.get('fingerprint')
 
         if not username:
             raise ValidationError("Username is required")
@@ -456,38 +534,45 @@ class UsernameValidationView(APIView):
         # Normalize username for comparison (case-insensitive)
         username_lower = username.lower()
 
-        # Check if username matches authenticated user's reserved username
-        user_reserved = None
-        has_reserved = False
-        if request.user.is_authenticated and request.user.reserved_username:
-            user_reserved = request.user.reserved_username.lower()
-            has_reserved = (user_reserved == username_lower)
-
-        # Get active usernames in this chat from cache
-        cache_key = f"chat_{chat_room.code}_active_users"
-        active_users = cache.get(cache_key, set())
-
-        # Check if username is already in use in this chat (case-insensitive)
-        in_use_in_chat = any(u.lower() == username_lower for u in active_users)
-
         # Check if username is reserved by someone else
         reserved_by_other = False
-        if User.objects.filter(reserved_username__iexact=username).exists():
-            # It's a reserved username - check if it belongs to current user
-            if not (request.user.is_authenticated and user_reserved == username_lower):
+        reserved_user = User.objects.filter(reserved_username__iexact=username).first()
+        if reserved_user:
+            # It's reserved - check if it belongs to current user
+            if not (request.user.is_authenticated and request.user.id == reserved_user.id):
                 reserved_by_other = True
 
-        # Determine availability
-        available = not in_use_in_chat and not reserved_by_other
+        # Check if username exists in ChatParticipation for this chat
+        existing_participation = ChatParticipation.objects.filter(
+            chat_room=chat_room,
+            username__iexact=username,
+            is_active=True
+        ).first()
 
-        # If user has reserved username and using it, allow even if someone anonymous is using it
-        if has_reserved and user_reserved == username_lower:
-            available = True
+        in_use_in_chat = False
+        if existing_participation:
+            # Check if it's their own participation
+            if request.user.is_authenticated and existing_participation.user_id == request.user.id:
+                in_use_in_chat = False  # It's their own username
+            elif not request.user.is_authenticated and fingerprint and existing_participation.fingerprint == fingerprint:
+                in_use_in_chat = False  # It's their own username (anonymous)
+            else:
+                in_use_in_chat = True  # Someone else has this username
+
+        # Determine if user has reserved username
+        has_reserved = (
+            request.user.is_authenticated and
+            request.user.reserved_username and
+            request.user.reserved_username.lower() == username_lower
+        )
+
+        # Determine availability
+        available = not reserved_by_other and not in_use_in_chat
 
         return Response({
             'available': available,
             'username': username,
-            'in_use_in_chat': in_use_in_chat and not has_reserved,
+            'in_use_in_chat': in_use_in_chat,
             'reserved_by_other': reserved_by_other,
             'has_reserved_badge': has_reserved,
             'message': 'Username validated successfully'

@@ -7,8 +7,8 @@ import type { ChatRoom } from '@/lib/api';
 
 interface JoinChatModalProps {
   chatRoom: ChatRoom;
-  currentUserDisplayName?: string;
-  storedUsername?: string;
+  currentUserDisplayName: string;
+  hasJoinedBefore: boolean;
   isLoggedIn: boolean;
   design?: 'purple-dream' | 'ocean-blue' | 'dark-mode';
   onJoin: (username: string, accessCode?: string) => void;
@@ -40,7 +40,7 @@ const getModalStyles = (design: 'purple-dream' | 'ocean-blue' | 'dark-mode') => 
 export default function JoinChatModal({
   chatRoom,
   currentUserDisplayName,
-  storedUsername,
+  hasJoinedBefore,
   isLoggedIn,
   design = 'purple-dream',
   onJoin,
@@ -48,7 +48,7 @@ export default function JoinChatModal({
   const router = useRouter();
   const styles = getModalStyles(design);
 
-  const [username, setUsername] = useState(storedUsername || '');
+  const [username, setUsername] = useState(currentUserDisplayName || '');
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
@@ -60,8 +60,6 @@ export default function JoinChatModal({
       ? require('@/lib/sounds')
       : { initAudioContext: () => {} };
   }, []);
-
-  const displayName = isLoggedIn ? currentUserDisplayName : storedUsername;
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css
@@ -76,7 +74,6 @@ export default function JoinChatModal({
       }
     };
   }, []);
-  const isReturningUser = !!displayName;
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +83,7 @@ export default function JoinChatModal({
     initAudioContext();
 
     // Validation
-    if (!isLoggedIn && !username.trim()) {
+    if (!username.trim()) {
       setError('Please enter a username');
       return;
     }
@@ -99,8 +96,7 @@ export default function JoinChatModal({
     setIsJoining(true);
 
     try {
-      const finalUsername = isLoggedIn ? currentUserDisplayName! : username.trim();
-      await onJoin(finalUsername, accessCode.trim() || undefined);
+      await onJoin(username.trim(), accessCode.trim() || undefined);
     } catch (err: any) {
       setError(err.message || 'Failed to join chat');
       setIsJoining(false);
@@ -137,7 +133,12 @@ export default function JoinChatModal({
         {/* Title */}
         <div className="mb-6 text-center">
           <h1 className={`text-2xl font-bold ${styles.title} mb-2`}>
-            {isReturningUser ? `Welcome back, ${displayName}!` : `Join ${chatRoom.name}`}
+            {hasJoinedBefore
+              ? `Welcome back, ${currentUserDisplayName}!`
+              : isLoggedIn
+              ? `Come join us, ${currentUserDisplayName}`
+              : `Join ${chatRoom.name}`
+            }
           </h1>
           {chatRoom.is_private && (
             <p className={`text-sm ${styles.subtitle}`}>
@@ -148,8 +149,31 @@ export default function JoinChatModal({
 
         {/* Form */}
         <form onSubmit={handleJoin} className="space-y-4">
-          {/* Username Input (only for non-logged-in users) */}
-          {!isLoggedIn && !isReturningUser && (
+          {/* Username Display or Input */}
+          {isLoggedIn && hasJoinedBefore ? (
+            // Logged-in returning user - show locked username
+            <div className="text-center">
+              <p className={`text-sm ${styles.subtitle} mb-2`}>You'll join as:</p>
+              <p className={`text-lg font-semibold ${styles.title}`}>{currentUserDisplayName}</p>
+            </div>
+          ) : isLoggedIn ? (
+            // Logged-in first-time user - editable username pre-filled with reserved_username
+            <div>
+              <label className={`block text-sm font-medium ${styles.subtitle} mb-2`}>
+                Username for this chat
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter username"
+                className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
+                maxLength={30}
+                disabled={isJoining}
+              />
+            </div>
+          ) : (
+            // Anonymous user - always show input
             <div>
               <label className={`block text-sm font-medium ${styles.subtitle} mb-2`}>
                 Choose a username

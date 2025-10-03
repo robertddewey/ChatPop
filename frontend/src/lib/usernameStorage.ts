@@ -13,7 +13,7 @@ let fpPromise: Promise<any> | null = null;
 /**
  * Get browser fingerprint (lazy loaded)
  */
-async function getFingerprint(): Promise<string> {
+export async function getFingerprint(): Promise<string> {
   if (!fpPromise) {
     fpPromise = FingerprintJS.load();
   }

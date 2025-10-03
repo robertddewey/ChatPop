@@ -11,9 +11,9 @@ import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
 import LoginModal from '@/components/LoginModal';
 import RegisterModal from '@/components/RegisterModal';
-import { UsernameStorage } from '@/lib/usernameStorage';
+import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
-import { Settings } from 'lucide-react';
+import { Settings, BadgeCheck } from 'lucide-react';
 
 export default function ChatPage() {
   const params = useParams();
@@ -41,6 +41,7 @@ export default function ChatPage() {
 
   // Join state for guests
   const [hasJoined, setHasJoined] = useState(false);
+  const [hasJoinedBefore, setHasJoinedBefore] = useState(false);
   const [username, setUsername] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [joinError, setJoinError] = useState('');
@@ -83,26 +84,53 @@ export default function ChatPage() {
 
         // Check if user is already logged in
         const token = localStorage.getItem('auth_token');
-        let isLoggedIn = false;
+        let fingerprint: string | undefined;
 
         if (token) {
           try {
             const currentUser = await authApi.getCurrentUser();
-            isLoggedIn = true;
             setCurrentUserId(currentUser.id);
-            const displayUsername = currentUser.reserved_username || currentUser.email.split('@')[0];
-            setUsername(displayUsername);
+
+            // Get fingerprint for logged-in users too
+            try {
+              fingerprint = await getFingerprint();
+            } catch (fpErr) {
+              console.warn('Failed to get fingerprint:', fpErr);
+            }
+
+            // Check ChatParticipation to see if they've joined before
+            const participation = await chatApi.getMyParticipation(code, fingerprint);
+
+            if (participation.has_joined && participation.username) {
+              // Returning user - use their locked username
+              setUsername(participation.username);
+              setHasJoinedBefore(true);
+            } else {
+              // First-time user - use reserved_username
+              setUsername(currentUser.reserved_username || '');
+              setHasJoinedBefore(false);
+            }
           } catch (userErr) {
             // If getting user fails, just proceed as guest
             console.error('Failed to load user:', userErr);
           }
-        }
+        } else {
+          // Anonymous user - check fingerprint participation
+          try {
+            fingerprint = await getFingerprint();
+            const participation = await chatApi.getMyParticipation(code, fingerprint);
 
-        // If not logged in, try to get username from storage (including fingerprint)
-        if (!isLoggedIn) {
-          const storedUsername = await UsernameStorage.getUsername(code, false);
-          if (storedUsername) {
-            setUsername(storedUsername);
+            if (participation.has_joined && participation.username) {
+              // Returning anonymous user
+              setUsername(participation.username);
+              setHasJoinedBefore(true);
+            } else {
+              // First-time anonymous user
+              setHasJoinedBefore(false);
+            }
+          } catch (err) {
+            console.warn('Failed to check participation:', err);
+            setHasJoinedBefore(false);
           }
         }
 
@@ -197,7 +225,15 @@ export default function ChatPage() {
   // Join handler for modal
   const handleJoinChat = async (username: string, accessCode?: string) => {
     try {
-      await chatApi.joinChat(code, username, accessCode);
+      // Get fingerprint
+      let fingerprint: string | undefined;
+      try {
+        fingerprint = await getFingerprint();
+      } catch (fpErr) {
+        console.warn('Failed to get fingerprint:', fpErr);
+      }
+
+      await chatApi.joinChat(code, username, accessCode, fingerprint);
       const token = localStorage.getItem('auth_token');
       const isLoggedIn = !!token;
       await UsernameStorage.saveUsername(code, username, isLoggedIn);
@@ -576,8 +612,8 @@ export default function ChatPage() {
       {!hasJoined && chatRoom && (
         <JoinChatModal
           chatRoom={chatRoom}
-          currentUserDisplayName={currentUserId ? username : undefined}
-          storedUsername={!currentUserId ? username : undefined}
+          currentUserDisplayName={username}
+          hasJoinedBefore={hasJoinedBefore}
           isLoggedIn={!!currentUserId}
           design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
           onJoin={handleJoinChat}
@@ -664,6 +700,9 @@ export default function ChatPage() {
                     <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
                       {message.username}
                     </span>
+                    {message.username_is_reserved && (
+                      <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
+                    )}
                     <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
                       👑
                     </span>
@@ -698,6 +737,9 @@ export default function ChatPage() {
                     <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
                       {stickyPinnedMessage.username}
                     </span>
+                    {stickyPinnedMessage.username_is_reserved && (
+                      <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
+                    )}
                     <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
                       📌 ${stickyPinnedMessage.pin_amount_paid}
                     </span>
@@ -777,6 +819,9 @@ export default function ChatPage() {
                   <span className="font-semibold">
                     {message.username}
                   </span>
+                  {message.username_is_reserved && (
+                    <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
+                  )}
                   <span className="opacity-80">
                     {new Date(lastMessageInThread.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                   </span>
@@ -817,6 +862,9 @@ export default function ChatPage() {
                           <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
                             {message.username}
                           </span>
+                          {message.username_is_reserved && (
+                            <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
+                          )}
                           <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
                             👑
                           </span>
@@ -834,6 +882,11 @@ export default function ChatPage() {
                           <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
                             {message.username}
                           </span>
+                          {message.username_is_reserved && (
+                            <span className="text-blue-500" title="Verified username">
+                              ✓
+                            </span>
+                          )}
                           <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
                             📌 ${message.pin_amount_paid}
                           </span>

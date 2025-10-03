@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
-import { Pin, DollarSign, Ban, X } from 'lucide-react';
+import { Pin, DollarSign, Ban, X, BadgeCheck } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 
 interface MessageActionsModalProps {
@@ -244,6 +244,9 @@ export default function MessageActionsModal({
                   <span className="font-semibold text-sm text-gray-700 dark:text-gray-300">
                     {message.username}
                   </span>
+                  {message.username_is_reserved && (
+                    <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
+                  )}
                   {message.is_from_host && <span className="text-xs">👑</span>}
                   {message.is_pinned && <span className="text-xs">📌</span>}
                 </div>

@@ -234,6 +234,65 @@ class BackRoomMessage(models.Model):
         return f"{self.username}: {self.content[:50]}"
 
 
+class ChatParticipation(models.Model):
+    """Track user participation in chats - username is locked after first join"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    chat_room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='participations')
+
+    # Identity (at least one must be present)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='chat_participations',
+        help_text="Logged-in users: primary identifier"
+    )
+    fingerprint = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Browser fingerprint - primary for anonymous, stored for logged-in"
+    )
+
+    # Username locked for this chat
+    username = models.CharField(max_length=100, help_text="Username chosen for this chat (locked)")
+
+    # IP address tracking
+    ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Last known IP address")
+
+    # Timestamps
+    first_joined_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True, help_text="For future cleanup of inactive users")
+
+    class Meta:
+        ordering = ['-last_seen_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['chat_room', 'user'],
+                condition=models.Q(user__isnull=False),
+                name='unique_chat_user'
+            ),
+            models.UniqueConstraint(
+                fields=['chat_room', 'fingerprint'],
+                condition=models.Q(user__isnull=True),
+                name='unique_chat_fingerprint'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['chat_room', 'user']),
+            models.Index(fields=['chat_room', 'fingerprint']),
+            models.Index(fields=['chat_room', 'username']),
+            models.Index(fields=['-last_seen_at']),
+        ]
+
+    def __str__(self):
+        identifier = f"User {self.user_id}" if self.user else f"Fingerprint {self.fingerprint[:8]}..."
+        return f"{self.username} ({identifier}) in {self.chat_room.code}"
+
+
 class AnonymousUserFingerprint(models.Model):
     """Track anonymous user browser fingerprints for username persistence"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
