@@ -123,24 +123,24 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
       {/* Mobile: Full screen, Desktop: Max width */}
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-8 relative max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-2xl shadow-xl p-8 relative max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-lg transition-colors text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          className="absolute top-4 right-4 p-2 rounded-lg transition-colors text-gray-400 dark:text-zinc-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800"
           aria-label="Close"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Header */}
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-zinc-100 mb-4">
           Room Settings
         </h1>
 
         {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400">
             {error}
           </div>
         )}
@@ -149,7 +149,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Chat Name */}
           <div>
-            <label htmlFor="name" className="block text-sm font-bold text-gray-700 mb-2">
+            <label htmlFor="name" className="block text-sm font-bold text-gray-700 dark:text-zinc-300 mb-2">
               Group Chat Name (required)
             </label>
             <input
@@ -158,14 +158,14 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors focus:outline-none bg-white text-gray-900"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-purple-500 dark:focus:ring-cyan-400 focus:border-purple-500 dark:focus:border-cyan-400 transition-colors focus:outline-none bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100"
               placeholder=""
             />
           </div>
 
           {/* Access Mode */}
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">
+            <label className="block text-sm font-bold text-gray-700 dark:text-zinc-300 mb-2">
               Access Mode (required)
             </label>
             <div className="grid grid-cols-2 gap-4">
@@ -174,24 +174,24 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
                 onClick={() => setFormData({ ...formData, access_mode: 'public', access_code: '' })}
                 className={`p-4 border-2 rounded-lg text-left transition-all ${
                   formData.access_mode === 'public'
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'border-gray-300'
+                    ? 'border-purple-500 dark:border-cyan-400 bg-purple-50 dark:bg-cyan-900/20'
+                    : 'border-gray-300 dark:border-zinc-700'
                 }`}
               >
-                <div className="font-semibold text-gray-900">Public</div>
-                <div className="text-sm text-gray-600">Anyone with the link can join</div>
+                <div className="font-semibold text-gray-900 dark:text-zinc-100">Public</div>
+                <div className="text-sm text-gray-600 dark:text-zinc-400">Anyone with the link can join</div>
               </button>
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, access_mode: 'private' })}
                 className={`p-4 border-2 rounded-lg text-left transition-all ${
                   formData.access_mode === 'private'
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'border-gray-300'
+                    ? 'border-purple-500 dark:border-cyan-400 bg-purple-50 dark:bg-cyan-900/20'
+                    : 'border-gray-300 dark:border-zinc-700'
                 }`}
               >
-                <div className="font-semibold text-gray-900">Private</div>
-                <div className="text-sm text-gray-600">Requires access code</div>
+                <div className="font-semibold text-gray-900 dark:text-zinc-100">Private</div>
+                <div className="text-sm text-gray-600 dark:text-zinc-400">Requires access code</div>
               </button>
             </div>
           </div>
@@ -199,7 +199,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
           {/* Access Code (for private rooms) */}
           {formData.access_mode === 'private' && (
             <div>
-              <label htmlFor="access_code" className="block text-sm font-bold text-gray-700 mb-2">
+              <label htmlFor="access_code" className="block text-sm font-bold text-gray-700 dark:text-zinc-300 mb-2">
                 Access Code (required)
               </label>
               <input
@@ -208,7 +208,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
                 required
                 value={formData.access_code}
                 onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors focus:outline-none bg-white text-gray-900"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-purple-500 dark:focus:ring-cyan-400 focus:border-purple-500 dark:focus:border-cyan-400 transition-colors focus:outline-none bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100"
                 placeholder=""
               />
             </div>
@@ -216,7 +216,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
 
           {/* Features */}
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-3">
+            <label className="block text-sm font-bold text-gray-700 dark:text-zinc-300 mb-3">
               Enable Features
             </label>
             <div className="space-y-3">
@@ -225,27 +225,27 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
                   type="checkbox"
                   checked={formData.photo_enabled}
                   onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
-                  className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                  className="w-5 h-5 text-purple-600 dark:text-cyan-400 border-gray-300 dark:border-zinc-700 rounded focus:ring-purple-500 dark:focus:ring-cyan-400"
                 />
-                <span className="text-gray-700">Photo Sharing</span>
+                <span className="text-gray-700 dark:text-zinc-300">Photo Sharing</span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={formData.voice_enabled}
                   onChange={(e) => setFormData({ ...formData, voice_enabled: e.target.checked })}
-                  className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                  className="w-5 h-5 text-purple-600 dark:text-cyan-400 border-gray-300 dark:border-zinc-700 rounded focus:ring-purple-500 dark:focus:ring-cyan-400"
                 />
-                <span className="text-gray-700">Voice Messages</span>
+                <span className="text-gray-700 dark:text-zinc-300">Voice Messages</span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={formData.video_enabled}
                   onChange={(e) => setFormData({ ...formData, video_enabled: e.target.checked })}
-                  className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                  className="w-5 h-5 text-purple-600 dark:text-cyan-400 border-gray-300 dark:border-zinc-700 rounded focus:ring-purple-500 dark:focus:ring-cyan-400"
                 />
-                <span className="text-gray-700">Video Messages</span>
+                <span className="text-gray-700 dark:text-zinc-300">Video Messages</span>
               </label>
             </div>
           </div>
@@ -255,7 +255,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 dark:bg-cyan-400 text-white dark:text-cyan-950 font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 dark:hover:bg-cyan-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating...' : 'Create Room'}
             </button>
