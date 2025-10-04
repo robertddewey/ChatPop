@@ -244,7 +244,7 @@ export default function MessageActionsModal({
             {/* Message Preview */}
             <div className="px-6 pt-2 pb-6">
               <div className={`p-4 ${modalStyles.messagePreview}`}>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-1 mb-2">
                   <span className={`font-semibold text-sm ${modalStyles.usernameText}`}>
                     {message.username}
                   </span>

@@ -254,7 +254,7 @@ export default function JoinChatModal({
             ) : isLoggedIn ? (
               <>
                 <span>Come join us,</span>
-                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   {currentUserDisplayName}
                   {hasReservedUsername && (
                     <BadgeCheck className="text-blue-500 flex-shrink-0" size={20} />
@@ -278,7 +278,7 @@ export default function JoinChatModal({
           {hasJoinedBefore ? (
             // Returning user (logged-in or anonymous) - show locked username
             <div className="text-center mb-8">
-              <div className="flex items-center justify-center gap-2">
+              <div className="flex items-center justify-center gap-1">
                 <p className={`text-sm ${modalStyles.subtitle}`}>You'll join as: <span className={`font-semibold ${modalStyles.title}`}>{currentUserDisplayName}</span></p>
                 {hasReservedUsername && (
                   <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />

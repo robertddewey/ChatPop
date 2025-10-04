@@ -1,4 +1,4 @@
-import type { Viewport } from "next";
+import type { Viewport, Metadata } from "next";
 import Script from "next/script";
 import "../chat-layout.css";
 
@@ -8,6 +8,14 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover', // iOS Safari needs this for theme-color to work properly
+};
+
+// Server-side metadata with default theme colors
+// Note: This will be overridden client-side based on actual theme
+export const metadata: Metadata = {
+  other: {
+    'theme-color': '#ffffff',
+  },
 };
 
 export default function ChatLayout({
@@ -57,18 +65,39 @@ export default function ChatLayout({
             const themeColor = isDark ? themeColors[theme].dark : themeColors[theme].light;
             const bgColor = isDark ? backgroundColors[theme].dark : backgroundColors[theme].light;
 
-            // Set theme-color meta tags with media queries
-            const lightMeta = document.createElement('meta');
-            lightMeta.name = 'theme-color';
-            lightMeta.media = '(prefers-color-scheme: light)';
-            lightMeta.content = themeColors[theme].light;
-            document.head.appendChild(lightMeta);
+            // Update or create theme-color meta tags
+            // Chrome on iOS needs existing meta tag to be updated, not dynamically created
 
-            const darkMeta = document.createElement('meta');
-            darkMeta.name = 'theme-color';
-            darkMeta.media = '(prefers-color-scheme: dark)';
-            darkMeta.content = themeColors[theme].dark;
-            document.head.appendChild(darkMeta);
+            // Find existing theme-color meta tag (from server-side metadata)
+            let existingMeta = document.querySelector('meta[name="theme-color"]:not([media])');
+            if (existingMeta) {
+              existingMeta.setAttribute('content', themeColor);
+            } else {
+              // Fallback: create if doesn't exist
+              const defaultMeta = document.createElement('meta');
+              defaultMeta.name = 'theme-color';
+              defaultMeta.content = themeColor;
+              document.head.appendChild(defaultMeta);
+            }
+
+            // Add media-query specific meta tags for Safari
+            let lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
+            if (!lightMeta) {
+              lightMeta = document.createElement('meta');
+              lightMeta.setAttribute('name', 'theme-color');
+              lightMeta.setAttribute('media', '(prefers-color-scheme: light)');
+              document.head.appendChild(lightMeta);
+            }
+            lightMeta.setAttribute('content', themeColors[theme].light);
+
+            let darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
+            if (!darkMeta) {
+              darkMeta = document.createElement('meta');
+              darkMeta.setAttribute('name', 'theme-color');
+              darkMeta.setAttribute('media', '(prefers-color-scheme: dark)');
+              document.head.appendChild(darkMeta);
+            }
+            darkMeta.setAttribute('content', themeColors[theme].dark);
 
             // Set body background to match theme (suppressHydrationWarning in root layout handles the warning)
             document.body.style.backgroundColor = bgColor;

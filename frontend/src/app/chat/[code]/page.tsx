@@ -818,7 +818,7 @@ export default function ChatPage() {
                   className={`${currentDesign.hostMessage} cursor-pointer hover:opacity-90 transition-opacity`}
                   onClick={() => scrollToMessage(message.id)}
                 >
-                  <div className="flex items-center gap-1.5 mb-1">
+                  <div className="flex items-center gap-1 mb-1">
                     <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
                       {message.username}
                     </span>
@@ -855,7 +855,7 @@ export default function ChatPage() {
                   className={`${currentDesign.pinnedMessage} cursor-pointer hover:opacity-90 transition-opacity`}
                   onClick={() => scrollToMessage(stickyPinnedMessage.id)}
                 >
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-1 mb-1">
                     <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
                       {stickyPinnedMessage.username}
                     </span>
@@ -937,7 +937,7 @@ export default function ChatPage() {
             <div key={message.id} data-message-id={message.id}>
               {/* Show username header for first message in thread */}
               {isFirstInThread && !message.is_from_host && !message.is_pinned && (
-                <div className="text-xs mb-1 flex items-center gap-2 text-gray-700 dark:text-zinc-100">
+                <div className="text-xs mb-1 flex items-center gap-1 text-gray-700 dark:text-zinc-100">
                   <span className="font-semibold">
                     {message.username}
                   </span>
@@ -980,7 +980,7 @@ export default function ChatPage() {
                     {/* Host message header */}
                     {message.is_from_host && (
                       <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                           <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
                             {message.username}
                           </span>
@@ -1000,7 +1000,7 @@ export default function ChatPage() {
                     {/* Pinned message header */}
                     {message.is_pinned && !message.is_from_host && (
                       <div className="flex items-center justify-between mb-1 gap-3">
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
                             {message.username}
                           </span>
