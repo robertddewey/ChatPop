@@ -759,6 +759,7 @@ export default function ChatPage() {
               currentUserId={currentUserId}
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
               onThemeChange={(theme) => setDesignVariant(theme)}
+              design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
             >
               <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
                 <Settings className={`${currentDesign.headerTitle} flex-shrink-0`} size={18} />

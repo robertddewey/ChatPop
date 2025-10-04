@@ -8,6 +8,7 @@ import type { ChatRoom } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
 import { getFingerprint } from '@/lib/usernameStorage';
+import { isDarkTheme } from '@/lib/themes';
 
 interface JoinChatModalProps {
   chatRoom: ChatRoom;
@@ -19,18 +20,39 @@ interface JoinChatModalProps {
   onJoin: (username: string, accessCode?: string) => void;
 }
 
-// Theme configurations - now uses Tailwind dark: variants to respond to OS preference
-const modalStyles = {
-  overlay: 'bg-transparent',
-  container: 'bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800',
-  title: 'text-gray-900 dark:text-zinc-50',
-  subtitle: 'text-gray-600 dark:text-zinc-400',
-  input: 'bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-zinc-50 placeholder-gray-400 dark:placeholder-zinc-500 focus:ring-2 focus:ring-purple-500 dark:focus:ring-cyan-400 focus:border-purple-500 dark:focus:border-cyan-400',
-  primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
-  secondaryButton: 'bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700',
-  divider: 'border-gray-200 dark:border-zinc-700',
-  dividerText: 'bg-white dark:bg-zinc-900',
-  error: 'text-red-600 dark:text-red-400',
+// Get theme-aware modal styles
+const getModalStyles = (design: 'purple-dream' | 'ocean-blue' | 'dark-mode') => {
+  const useDarkMode = isDarkTheme(design);
+
+  if (useDarkMode) {
+    // Always use dark mode for dark-type themes
+    return {
+      overlay: 'bg-transparent',
+      container: 'bg-zinc-900 border border-zinc-800',
+      title: 'text-zinc-50',
+      subtitle: 'text-zinc-400',
+      input: 'bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400',
+      primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
+      secondaryButton: 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700',
+      divider: 'border-zinc-700',
+      dividerText: 'bg-zinc-900',
+      error: 'text-red-400',
+    };
+  } else {
+    // Use system preference for light-type themes
+    return {
+      overlay: 'bg-transparent',
+      container: 'bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800',
+      title: 'text-gray-900 dark:text-zinc-50',
+      subtitle: 'text-gray-600 dark:text-zinc-400',
+      input: 'bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-zinc-50 placeholder-gray-400 dark:placeholder-zinc-500 focus:ring-2 focus:ring-purple-500 dark:focus:ring-cyan-400 focus:border-purple-500 dark:focus:border-cyan-400',
+      primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
+      secondaryButton: 'bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700',
+      divider: 'border-gray-200 dark:border-zinc-700',
+      dividerText: 'bg-white dark:bg-zinc-900',
+      error: 'text-red-600 dark:text-red-400',
+    };
+  }
 };
 
 export default function JoinChatModal({
@@ -43,6 +65,7 @@ export default function JoinChatModal({
   onJoin,
 }: JoinChatModalProps) {
   const router = useRouter();
+  const modalStyles = getModalStyles(design);
 
   const [username, setUsername] = useState('');
   const [accessCode, setAccessCode] = useState('');

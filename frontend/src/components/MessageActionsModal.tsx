@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
 import { Pin, DollarSign, Ban, X, BadgeCheck } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
+import { isDarkTheme } from '@/lib/themes';
 
 interface MessageActionsModalProps {
   message: Message;
@@ -18,14 +19,35 @@ interface MessageActionsModalProps {
   onTip?: (username: string) => void;
 }
 
-// Theme configurations - now uses Tailwind dark: variants to respond to OS preference
-const modalStyles = {
-  overlay: 'bg-black/20 dark:bg-black/60 backdrop-blur-sm',
-  container: 'bg-white dark:bg-zinc-900',
-  messagePreview: 'bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-2xl dark:rounded-lg shadow-sm dark:shadow-xl',
-  messageText: 'text-gray-800 dark:text-zinc-50',
-  actionButton: 'bg-gray-100 dark:bg-zinc-700 hover:bg-gray-200 dark:hover:bg-zinc-600 active:bg-gray-300 dark:active:bg-zinc-500 text-gray-900 dark:text-zinc-50 dark:border dark:border-zinc-600',
-  actionIcon: 'text-purple-600 dark:text-cyan-400',
+// Get theme-aware modal styles
+const getModalStyles = (design: 'purple-dream' | 'ocean-blue' | 'dark-mode') => {
+  const useDarkMode = isDarkTheme(design);
+
+  if (useDarkMode) {
+    // Always use dark mode for dark-type themes
+    return {
+      overlay: 'bg-black/60 backdrop-blur-sm',
+      container: 'bg-zinc-900',
+      messagePreview: 'bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl',
+      messageText: 'text-zinc-50',
+      actionButton: 'bg-zinc-700 hover:bg-zinc-600 active:bg-zinc-500 text-zinc-50 border border-zinc-600',
+      actionIcon: 'text-cyan-400',
+      dragHandle: 'bg-gray-600',
+      usernameText: 'text-gray-300',
+    };
+  } else {
+    // Use system preference for light-type themes
+    return {
+      overlay: 'bg-black/20 dark:bg-black/60 backdrop-blur-sm',
+      container: 'bg-white dark:bg-zinc-900',
+      messagePreview: 'bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-2xl dark:rounded-lg shadow-sm dark:shadow-xl',
+      messageText: 'text-gray-800 dark:text-zinc-50',
+      actionButton: 'bg-gray-100 dark:bg-zinc-700 hover:bg-gray-200 dark:hover:bg-zinc-600 active:bg-gray-300 dark:active:bg-zinc-500 text-gray-900 dark:text-zinc-50 dark:border dark:border-zinc-600',
+      actionIcon: 'text-purple-600 dark:text-cyan-400',
+      dragHandle: 'bg-gray-300 dark:bg-gray-600',
+      usernameText: 'text-gray-700 dark:text-gray-300',
+    };
+  }
 };
 
 export default function MessageActionsModal({
@@ -45,6 +67,7 @@ export default function MessageActionsModal({
   const dragStartY = React.useRef(0);
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
+  const modalStyles = getModalStyles(design);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css
@@ -215,14 +238,14 @@ export default function MessageActionsModal({
           >
             {/* Drag handle */}
             <div className="pt-3 pb-2 flex justify-center">
-              <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full" />
+              <div className={`w-12 h-1.5 ${modalStyles.dragHandle} rounded-full`} />
             </div>
 
             {/* Message Preview */}
             <div className="px-6 pt-2 pb-6">
               <div className={`p-4 ${modalStyles.messagePreview}`}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="font-semibold text-sm text-gray-700 dark:text-gray-300">
+                  <span className={`font-semibold text-sm ${modalStyles.usernameText}`}>
                     {message.username}
                   </span>
                   {message.username_is_reserved && (

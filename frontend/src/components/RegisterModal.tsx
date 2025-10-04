@@ -7,6 +7,7 @@ import { validateUsername } from '@/lib/validation';
 import { MARKETING } from '@/lib/marketing';
 import { getFingerprint } from '@/lib/usernameStorage';
 import { X, Dices } from 'lucide-react';
+import { isDarkTheme } from '@/lib/themes';
 
 interface RegisterModalProps {
   onClose: () => void;
@@ -15,6 +16,8 @@ interface RegisterModalProps {
 }
 
 export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }: RegisterModalProps) {
+  // Determine if we should use dark mode based on chat theme
+  const useChatDarkMode = theme === 'chat' && chatTheme && isDarkTheme(chatTheme);
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
@@ -187,8 +190,23 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     }
   };
 
-  // Theme-aware styles - now uses Tailwind dark: variants to respond to OS preference
-  const styles = {
+  // Theme-aware styles
+  const styles = useChatDarkMode ? {
+    // Dark mode styles for dark-type themes (bypasses system preference)
+    overlay: 'bg-black/75',
+    container: 'bg-zinc-900 border border-zinc-800',
+    title: 'text-zinc-100',
+    subtitle: 'text-zinc-400',
+    input: (hasError: boolean) => `bg-zinc-800 border text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 ${hasError ? 'border-red-500' : 'border-zinc-700'}`,
+    label: 'text-zinc-300',
+    button: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
+    link: 'text-cyan-400 hover:underline hover:text-cyan-300',
+    error: 'bg-red-900/20 border-red-800 text-red-400',
+    fieldError: 'text-red-400',
+    closeButton: 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800',
+    diceButton: 'bg-zinc-700 border border-zinc-600 text-zinc-50 hover:bg-zinc-600',
+  } : {
+    // Default styles (uses system preference via dark: variants)
     overlay: 'bg-black/75',
     container: 'bg-white dark:bg-zinc-900 border-0 dark:border dark:border-zinc-800',
     title: 'text-gray-900 dark:text-zinc-100',
