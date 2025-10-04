@@ -478,6 +478,142 @@ Inconsistent modal styling creates a jarring user experience. A dark theme with 
 
 ---
 
+## SVG Background Patterns
+
+### Overview
+
+Chat themes can include subtle SVG background patterns to add visual texture without interfering with message readability. This is a standardized system that uses external SVG files with CSS filters for colorization.
+
+### Current Implementation
+
+**Themes with SVG backgrounds:**
+- **Pink Dream**: Pink-tinted pattern (`hue-rotate(310deg)`)
+- **Ocean Blue**: Blue-tinted pattern (`hue-rotate(180deg)`)
+
+**SVG File Location:** `/frontend/public/bg-pattern.svg` (166KB optimized)
+
+### Adding SVG Backgrounds to New Themes
+
+#### Step 1: Prepare SVG File
+
+1. **Optimize the SVG** using SVGO to reduce file size:
+   ```bash
+   npx svgo input.svg -o optimized.svg
+   ```
+
+2. **Target file size:** Aim for ~3KB for inline SVGs, or up to ~200KB for external files (cached per session)
+
+3. **Place in public directory:** Move the optimized SVG to `/frontend/public/bg-pattern.svg` (or use a theme-specific filename)
+
+#### Step 2: Add Background to Theme Configuration
+
+In `/frontend/src/app/chat/[code]/page.tsx`, add the `messagesAreaBg` property to your theme:
+
+```typescript
+const designs = {
+  'your-theme-name': {
+    // ... other theme properties
+    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3",
+    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.08] [filter:sepia(1)_hue-rotate(XXXdeg)_saturate(3)]",
+    stickySection: "absolute top-0 left-0 right-0 z-20 border-b ... bg-.../80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
+  },
+};
+```
+
+**Key properties:**
+- `bg-[url('/bg-pattern.svg')]` - References the SVG file in public directory
+- `bg-repeat` - Tiles the pattern across the entire background
+- `bg-[length:800px_533px]` - Scales the pattern (adjust based on your SVG dimensions)
+- `opacity-[0.08]` - Very subtle opacity (0.08 = 8% visible, adjust as needed)
+- `[filter:sepia(1)_hue-rotate(XXXdeg)_saturate(3)]` - Colorizes the pattern:
+  - `sepia(1)` - Converts to sepia tone (base for colorization)
+  - `hue-rotate(XXXdeg)` - Shifts color (0°=red, 120°=green, 180°=cyan, 310°=pink)
+  - `saturate(3)` - Increases color intensity
+
+#### Step 3: Implement Background Layer Structure
+
+The background pattern must be implemented as a separate layer to avoid affecting message content:
+
+```typescript
+{/* Messages Container */}
+<div className="relative flex-1 overflow-hidden">
+  {/* Background Pattern Layer - Fixed behind everything */}
+  <div className={`absolute inset-0 pointer-events-none ${currentDesign.messagesAreaBg}`} />
+
+  {/* Messages Area */}
+  <div
+    ref={messagesContainerRef}
+    onScroll={handleScroll}
+    className={currentDesign.messagesArea}
+  >
+    {/* Messages content with proper z-index */}
+    <div className={`space-y-3 relative z-10 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
+      {/* Messages render here */}
+    </div>
+  </div>
+</div>
+```
+
+**Critical implementation details:**
+- Background layer uses `absolute inset-0` to fill the entire container
+- `pointer-events-none` prevents the background from blocking clicks/touches
+- Background layer is positioned **outside** the scrollable messages container
+- Messages content wrapper uses `relative z-10` to appear above background
+- Sticky section uses `z-20` to appear above both background and messages
+
+#### Step 4: Z-Index Layer Structure
+
+Ensure proper stacking order:
+
+```
+z-index: none  → Background pattern layer (absolute, pointer-events-none)
+z-index: 10    → Messages content (relative)
+z-index: 20    → Sticky section (host messages, pinned messages)
+```
+
+**Important:** The `stickySection` in your theme config **must** use `z-20` to ensure sticky messages appear above the background pattern.
+
+### Color Customization Examples
+
+**Hue rotation values for common colors:**
+- Red/Pink: `310deg - 350deg`
+- Orange: `20deg - 40deg`
+- Yellow: `50deg - 70deg`
+- Green: `100deg - 140deg`
+- Cyan/Blue: `170deg - 200deg`
+- Purple: `260deg - 290deg`
+
+**Opacity guidelines:**
+- Very subtle (recommended): `0.05 - 0.10`
+- Moderate: `0.10 - 0.15`
+- Visible: `0.15 - 0.25`
+
+### Performance Considerations
+
+**File size impact:**
+- External SVG loaded once per chat session
+- Cached by browser (HTTP caching headers)
+- Gzip/Brotli compression reduces size by ~70% (166KB → ~50KB)
+- No re-download on theme switch within same session
+
+**Optimization tips:**
+- Use SVGO to remove unnecessary metadata and optimize paths
+- Consider using simpler SVG patterns for better performance
+- Test on mobile devices to ensure smooth scrolling
+
+### Testing Checklist
+
+Before merging a theme with SVG background:
+- [ ] Background visible but subtle (doesn't interfere with messages)
+- [ ] Pattern tiles seamlessly across entire chat area
+- [ ] Color matches theme aesthetic (test hue-rotate values)
+- [ ] Sticky messages appear above background (z-20)
+- [ ] Scrolling performance is smooth on mobile devices
+- [ ] Background doesn't receive click/touch events
+- [ ] File size is optimized (run SVGO)
+
+---
+
 ## Dual Sessions Architecture & IP Rate Limiting
 
 ### Overview

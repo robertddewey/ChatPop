@@ -16,12 +16,12 @@ interface JoinChatModalProps {
   hasJoinedBefore: boolean;
   isLoggedIn: boolean;
   hasReservedUsername?: boolean;
-  design?: 'purple-dream' | 'ocean-blue' | 'dark-mode';
+  design?: 'pink-dream' | 'ocean-blue' | 'dark-mode';
   onJoin: (username: string, accessCode?: string) => void;
 }
 
 // Get theme-aware modal styles
-const getModalStyles = (design: 'purple-dream' | 'ocean-blue' | 'dark-mode') => {
+const getModalStyles = (design: 'pink-dream' | 'ocean-blue' | 'dark-mode') => {
   const useDarkMode = isDarkTheme(design);
 
   if (useDarkMode) {
@@ -61,7 +61,7 @@ export default function JoinChatModal({
   hasJoinedBefore,
   isLoggedIn,
   hasReservedUsername = false,
-  design = 'purple-dream',
+  design = 'pink-dream',
   onJoin,
 }: JoinChatModalProps) {
   const router = useRouter();

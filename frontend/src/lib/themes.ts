@@ -1,7 +1,7 @@
 // Theme configuration for ChatPop
 // Centralizes theme definitions and provides helper utilities
 
-export type ThemeId = 'purple-dream' | 'ocean-blue' | 'dark-mode';
+export type ThemeId = 'pink-dream' | 'ocean-blue' | 'dark-mode';
 export type ThemeType = 'light' | 'dark';
 
 export interface ThemeConfig {
@@ -12,11 +12,11 @@ export interface ThemeConfig {
 }
 
 export const themes: Record<ThemeId, ThemeConfig> = {
-  'purple-dream': {
-    id: 'purple-dream',
-    name: 'Purple Dream',
+  'pink-dream': {
+    id: 'pink-dream',
+    name: 'Pink Dream',
     type: 'light',
-    description: 'Purple and pink gradients on a clean white background',
+    description: 'Pink and rose gradients on a clean white background',
   },
   'ocean-blue': {
     id: 'ocean-blue',
@@ -41,15 +41,17 @@ export const isDarkTheme = (themeId: string | undefined): boolean => {
 
 // Get theme config by ID, with fallback
 export const getTheme = (themeId: string | undefined): ThemeConfig => {
-  return themes[(themeId as ThemeId)] || themes['purple-dream'];
+  return themes[(themeId as ThemeId)] || themes['pink-dream'];
 };
 
 // Default theme
-export const DEFAULT_THEME: ThemeId = 'purple-dream';
+export const DEFAULT_THEME: ThemeId = 'pink-dream';
 
-// Legacy mapping for backward compatibility (URLs with old design1/2/3)
+// Legacy mapping for backward compatibility (URLs with old design1/2/3 and old theme names)
 export const legacyThemeMapping: Record<string, ThemeId> = {
-  'design1': 'purple-dream',
+  'design1': 'pink-dream',
+  'purple-dream': 'pink-dream',
+  'midnight-rose': 'pink-dream',
   'design2': 'ocean-blue',
   'design3': 'dark-mode',
 };

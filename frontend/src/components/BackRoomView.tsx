@@ -12,6 +12,7 @@ interface BackRoomViewProps {
   currentUserId?: string;
   isMember: boolean;
   onBack: () => void;
+  design?: 'pink-dream' | 'ocean-blue' | 'dark-mode';
 }
 
 export default function BackRoomView({
@@ -21,6 +22,7 @@ export default function BackRoomView({
   currentUserId,
   isMember,
   onBack,
+  design = 'pink-dream',
 }: BackRoomViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -30,6 +32,42 @@ export default function BackRoomView({
 
   const isHost = chatRoom.host.id === currentUserId;
   const hasAccess = isMember || isHost;
+
+  // Theme-specific styles
+  const getThemeStyles = () => {
+    switch (design) {
+      case 'pink-dream':
+        return {
+          header: 'bg-gradient-to-r from-pink-500 via-rose-500 to-red-500 text-white',
+          joinButton: 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white',
+          sendButton: 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white',
+          inputFocus: 'focus:ring-pink-500',
+        };
+      case 'ocean-blue':
+        return {
+          header: 'bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500 text-white',
+          joinButton: 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white',
+          sendButton: 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white',
+          inputFocus: 'focus:ring-blue-500',
+        };
+      case 'dark-mode':
+        return {
+          header: 'bg-cyan-400 text-cyan-950',
+          joinButton: 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950',
+          sendButton: 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950',
+          inputFocus: 'focus:ring-cyan-400',
+        };
+      default:
+        return {
+          header: 'bg-gradient-to-r from-pink-500 via-rose-500 to-red-500 text-white',
+          joinButton: 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white',
+          sendButton: 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white',
+          inputFocus: 'focus:ring-pink-500',
+        };
+    }
+  };
+
+  const styles = getThemeStyles();
 
   useEffect(() => {
     if (hasAccess) {
@@ -84,7 +122,7 @@ export default function BackRoomView({
   return (
     <div className="h-full flex flex-col relative">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b dark:border-gray-700 bg-purple-600 text-white">
+      <div className={`flex items-center justify-between p-4 border-b dark:border-gray-700 ${styles.header}`}>
         <h1 className="text-xl font-bold">Back Room</h1>
         <div className="text-sm opacity-90">
           {backRoom.seats_available} seats left
@@ -111,7 +149,7 @@ export default function BackRoomView({
         <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
           <button
             onClick={() => setShowJoinModal(true)}
-            className="px-8 py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-lg shadow-2xl transition-all transform hover:scale-105"
+            className={`px-8 py-4 rounded-xl font-bold text-lg shadow-2xl transition-all transform hover:scale-105 ${styles.joinButton}`}
           >
             Join Back Room - ${backRoom.price_per_seat}
           </button>
@@ -127,13 +165,13 @@ export default function BackRoomView({
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type your message..."
-              className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className={`flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 ${styles.inputFocus} focus:border-transparent`}
               disabled={loading}
             />
             <button
               type="submit"
               disabled={loading || !newMessage.trim()}
-              className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-xl font-semibold transition-colors"
+              className={`px-6 py-3 disabled:bg-gray-400 rounded-xl font-semibold transition-colors ${styles.sendButton}`}
             >
               Send
             </button>

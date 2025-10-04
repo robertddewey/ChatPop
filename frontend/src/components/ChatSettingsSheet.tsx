@@ -19,7 +19,7 @@ interface ChatSettingsSheetProps {
   currentUserId?: string;
   onUpdate?: (chatRoom: ChatRoom) => void;
   onThemeChange?: (theme: ThemeId) => void;
-  design?: 'purple-dream' | 'ocean-blue' | 'dark-mode';
+  design?: 'pink-dream' | 'ocean-blue' | 'dark-mode';
   children: React.ReactNode;
 }
 
@@ -28,7 +28,7 @@ export default function ChatSettingsSheet({
   currentUserId,
   onUpdate,
   onThemeChange,
-  design = 'purple-dream',
+  design = 'pink-dream',
   children,
 }: ChatSettingsSheetProps) {
   const router = useRouter();
@@ -189,16 +189,16 @@ export default function ChatSettingsSheet({
               <button
                 onClick={() => {
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'purple-dream');
+                  url.searchParams.set('design', 'pink-dream');
                   // Reload page to apply theme-color (iOS Safari requirement)
                   window.location.href = url.pathname + url.search;
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
-                  styles.themeCard.selected(currentTheme === 'purple-dream', 'purple')
+                  styles.themeCard.selected(currentTheme === 'pink-dream', 'purple')
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <div className={`text-xs font-semibold ${styles.text}`}>Purple Dream</div>
+                  <div className={`text-xs font-semibold ${styles.text}`}>Pink Dream</div>
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${useDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400'}`}>
                     <Smartphone size={10} />
                     <span>Auto</span>
