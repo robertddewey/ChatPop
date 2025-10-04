@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type Message, type BackRoom } from '@/lib/api';
 import Header from '@/components/Header';
@@ -14,6 +14,7 @@ import RegisterModal from '@/components/RegisterModal';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
 import { Settings, BadgeCheck } from 'lucide-react';
+import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 
 // Design configurations
 const designs = {
@@ -156,8 +157,38 @@ export default function ChatPage() {
   const [backRoom, setBackRoom] = useState<BackRoom | null>(null);
   const [isBackRoomMember, setIsBackRoomMember] = useState(false);
 
+  // WebSocket state
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Handle incoming WebSocket messages
+  const handleWebSocketMessage = useCallback((message: Message) => {
+    setMessages((prev) => {
+      // Check if message already exists (avoid duplicates)
+      if (prev.some((m) => m.id === message.id)) {
+        return prev;
+      }
+      // Add new message and auto-scroll
+      shouldAutoScrollRef.current = true;
+      return [...prev, message];
+    });
+  }, []);
+
+  // WebSocket connection
+  const { sendMessage: wsSendMessage, isConnected } = useChatWebSocket({
+    chatCode: code,
+    sessionToken,
+    onMessage: handleWebSocketMessage,
+    enabled: hasJoined && !!sessionToken,
+  });
+
+  // Load session token from localStorage on mount and when joining
+  useEffect(() => {
+    const token = localStorage.getItem(`chat_session_${code}`);
+    setSessionToken(token);
+  }, [code, hasJoined]);
 
   // Scroll to bottom when filter mode changes, or when switching between Main Chat and Back Room
   useEffect(() => {
@@ -184,6 +215,9 @@ export default function ChatPage() {
         const token = localStorage.getItem('auth_token');
         let fingerprint: string | undefined;
 
+        console.log('=== Chat Session Debug Info ===');
+        console.log('Logged In:', !!token);
+
         if (token) {
           try {
             const currentUser = await authApi.getCurrentUser();
@@ -193,8 +227,9 @@ export default function ChatPage() {
             // Get fingerprint for logged-in users too
             try {
               fingerprint = await getFingerprint();
+              console.log('Fingerprint:', fingerprint);
             } catch (fpErr) {
-              console.warn('Failed to get fingerprint:', fpErr);
+              console.error('❌ Error getting fingerprint:', fpErr);
             }
 
             // Check ChatParticipation to see if they've joined before
@@ -205,21 +240,26 @@ export default function ChatPage() {
               setUsername(participation.username);
               setHasJoinedBefore(true);
               setHasReservedUsername(participation.username_is_reserved || false);
+              console.log('Username (from participation):', participation.username);
+              console.log('Reserved Username Badge:', participation.username_is_reserved || false);
             } else {
               // First-time user - pre-fill with reserved_username (they can change it)
               setUsername(currentUser.reserved_username || '');
               setHasJoinedBefore(false);
               // Badge shows if they have a reserved username
               setHasReservedUsername(!!currentUser.reserved_username);
+              console.log('Username (pre-filled from account):', currentUser.reserved_username || '(none)');
+              console.log('Reserved Username Badge:', !!currentUser.reserved_username);
             }
           } catch (userErr) {
             // If getting user fails, just proceed as guest
-            console.error('Failed to load user:', userErr);
+            console.error('❌ Failed to load user:', userErr);
           }
         } else {
           // Anonymous user - check fingerprint participation
           try {
             fingerprint = await getFingerprint();
+            console.log('Fingerprint:', fingerprint);
             const participation = await chatApi.getMyParticipation(code, fingerprint);
 
             if (participation.has_joined && participation.username) {
@@ -227,16 +267,21 @@ export default function ChatPage() {
               setUsername(participation.username);
               setHasJoinedBefore(true);
               setHasReservedUsername(participation.username_is_reserved || false);
+              console.log('Username (from participation):', participation.username);
+              console.log('Reserved Username Badge:', participation.username_is_reserved || false);
             } else {
               // First-time anonymous user
               setHasJoinedBefore(false);
               setHasReservedUsername(false);
+              console.log('Username: (not set - first time anonymous user)');
             }
           } catch (err) {
-            console.warn('Failed to check participation:', err);
+            console.error('❌ Error checking participation:', err);
             setHasJoinedBefore(false);
           }
         }
+
+        console.log('==============================');
 
         // Always set hasJoined to false initially - user must join through modal
         setHasJoined(false);
@@ -416,6 +461,11 @@ export default function ChatPage() {
       }
 
       await chatApi.joinChat(code, username, accessCode, fingerprint);
+
+      // Update session token immediately after joining
+      const newSessionToken = localStorage.getItem(`chat_session_${code}`);
+      setSessionToken(newSessionToken);
+
       const token = localStorage.getItem('auth_token');
       const isLoggedIn = !!token;
       await UsernameStorage.saveUsername(code, username, isLoggedIn);
@@ -462,33 +512,38 @@ export default function ChatPage() {
 
     setSending(true);
     try {
-      // Use current username from state (already loaded via UsernameStorage)
-      let messageUsername = username;
+      // Send via WebSocket if connected, fallback to REST API
+      if (isConnected && wsSendMessage) {
+        wsSendMessage(newMessage.trim());
+        setNewMessage('');
+        shouldAutoScrollRef.current = true; // Always scroll when sending a message
+      } else {
+        // Fallback to REST API (for backwards compatibility or if WebSocket fails)
+        let messageUsername = username;
 
-      // If no username, try to get from storage
-      if (!messageUsername) {
-        const token = localStorage.getItem('auth_token');
-        const isLoggedIn = !!token;
-        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
-      }
-
-      // If still no username and logged in, use email or reserved username
-      if (!messageUsername && chatRoom) {
-        const token = localStorage.getItem('auth_token');
-        if (token) {
-          messageUsername = chatRoom.host.reserved_username || chatRoom.host.email.split('@')[0];
+        if (!messageUsername) {
+          const token = localStorage.getItem('auth_token');
+          const isLoggedIn = !!token;
+          messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
         }
-      }
 
-      if (!messageUsername) {
-        console.error('No username available');
-        return;
-      }
+        if (!messageUsername && chatRoom) {
+          const token = localStorage.getItem('auth_token');
+          if (token) {
+            messageUsername = chatRoom.host.reserved_username || chatRoom.host.email.split('@')[0];
+          }
+        }
 
-      await messageApi.sendMessage(code, messageUsername, newMessage.trim());
-      setNewMessage('');
-      shouldAutoScrollRef.current = true; // Always scroll when sending a message
-      await loadMessages();
+        if (!messageUsername) {
+          console.error('No username available');
+          return;
+        }
+
+        await messageApi.sendMessage(code, messageUsername, newMessage.trim());
+        setNewMessage('');
+        shouldAutoScrollRef.current = true;
+        await loadMessages();
+      }
     } catch (err: any) {
       console.error('Failed to send message:', err);
     } finally {
@@ -611,16 +666,16 @@ export default function ChatPage() {
     }
   }, [messages.length]);
 
-  // Auto-refresh messages every 3 seconds (simple polling for now)
+  // Auto-refresh messages every 3 seconds (fallback polling when WebSocket is not connected)
   useEffect(() => {
-    if (!hasJoined) return;
+    if (!hasJoined || isConnected) return; // Don't poll if WebSocket is connected
 
     const interval = setInterval(() => {
       loadMessages();
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [hasJoined, code]);
+  }, [hasJoined, code, isConnected]);
 
   // IntersectionObserver to track when sticky host messages are visible in scroll
   useEffect(() => {

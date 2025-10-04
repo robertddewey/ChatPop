@@ -204,6 +204,18 @@ export const chatApi = {
     return response.data;
   },
 
+  checkRateLimit: async (code: string, fingerprint?: string): Promise<{
+    can_join: boolean;
+    is_rate_limited: boolean;
+    anonymous_count?: number;
+    max_allowed?: number;
+    existing_username?: string;
+  }> => {
+    const params = fingerprint ? { fingerprint } : {};
+    const response = await api.get(`/api/chats/${code}/check-rate-limit/`, { params });
+    return response.data;
+  },
+
   joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string) => {
     const response = await api.post(`/api/chats/${code}/join/`, {
       username,
@@ -242,7 +254,10 @@ export const chatApi = {
 export const messageApi = {
   getMessages: async (code: string): Promise<Message[]> => {
     const response = await api.get(`/api/chats/${code}/messages/`);
-    return response.data.results || response.data;
+    // Support new Redis cache response format: { messages: [...], pinned_messages: [...], source: "redis" }
+    // Fallback to old paginated format: { results: [...] }
+    // Fallback to direct array: [...]
+    return response.data.messages || response.data.results || response.data;
   },
 
   sendMessage: async (code: string, username: string, content: string): Promise<Message> => {

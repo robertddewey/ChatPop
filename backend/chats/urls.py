@@ -3,7 +3,7 @@ from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
     MessageListView, MessageCreateView, MessagePinView,
     BackRoomDetailView, BackRoomJoinView, BackRoomMessagesView, BackRoomMessageSendView, BackRoomMembersView,
-    FingerprintUsernameView, UsernameValidationView, MyParticipationView, SuggestUsernameView
+    FingerprintUsernameView, UsernameValidationView, MyParticipationView, SuggestUsernameView, CheckRateLimitView
 )
 
 app_name = 'chats'
@@ -39,4 +39,7 @@ urlpatterns = [
 
     # Chat Participation
     path('<str:code>/my-participation/', MyParticipationView.as_view(), name='my-participation'),
+
+    # Rate Limit Check
+    path('<str:code>/check-rate-limit/', CheckRateLimitView.as_view(), name='check-rate-limit'),
 ]

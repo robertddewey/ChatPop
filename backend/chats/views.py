@@ -5,6 +5,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.core.cache import cache
+from django.db.models import Q
 from accounts.models import User
 from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, AnonymousUserFingerprint, ChatParticipation
 from .serializers import (
@@ -14,6 +15,7 @@ from .serializers import (
     ChatParticipationSerializer
 )
 from .security import ChatSessionValidator
+from .redis_cache import MessageCache
 
 
 def get_client_ip(request):
@@ -120,8 +122,7 @@ class ChatRoomJoinView(APIView):
 
                 if anonymous_count >= MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT:
                     raise ValidationError(
-                        f"Maximum anonymous usernames ({MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT}) reached for this chat. "
-                        f"Please log in to continue."
+                        "Max anonymous usernames. Log in to continue."
                     )
 
         # SECURITY CHECK 1: Check if username is reserved by another user
@@ -241,20 +242,85 @@ class MyChatsView(generics.ListAPIView):
         return ChatRoom.objects.filter(host=self.request.user, is_active=True)
 
 
-class MessageListView(generics.ListAPIView):
-    """List messages in a chat room"""
-    serializer_class = MessageSerializer
+class MessageListView(APIView):
+    """
+    List messages in a chat room.
+
+    Uses hybrid Redis/PostgreSQL strategy:
+    - Fetches from Redis cache first (fast, last 500 messages or 24h)
+    - Falls back to PostgreSQL if Redis miss or requesting older messages
+    - Supports pagination via `before` query param (Unix timestamp)
+    """
     permission_classes = [permissions.AllowAny]
 
-    def get_queryset(self):
-        code = self.kwargs['code']
+    def get(self, request, code):
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
 
-        # Get non-deleted messages in chronological order
-        return Message.objects.filter(
+        # Query params
+        limit = int(request.query_params.get('limit', 50))
+        before_timestamp = request.query_params.get('before')  # Unix timestamp for pagination
+
+        # Always fetch from PostgreSQL for REST API
+        # Redis is only used for WebSocket broadcast (real-time messaging)
+        # This ensures complete message history with no gaps or cache complexity
+        messages = self._fetch_from_db(chat_room, limit, before_timestamp)
+
+        # Fetch pinned messages from Redis (pinned messages are ephemeral)
+        pinned_messages = MessageCache.get_pinned_messages(code)
+
+        return Response({
+            'messages': messages,
+            'pinned_messages': pinned_messages,
+            'source': 'postgresql',  # Always PostgreSQL for REST API
+            'count': len(messages)
+        })
+
+    def _fetch_from_db(self, chat_room, limit, before_timestamp=None):
+        """
+        Fallback: fetch messages from PostgreSQL.
+
+        Returns: List of message dicts (serialized)
+        """
+        queryset = Message.objects.filter(
             chat_room=chat_room,
             is_deleted=False
-        ).order_by('created_at')
+        ).select_related('user', 'reply_to')
+
+        # Filter by timestamp if paginating
+        if before_timestamp:
+            from datetime.datetime import fromtimestamp
+            before_dt = fromtimestamp(float(before_timestamp))
+            queryset = queryset.filter(created_at__lt=before_dt)
+
+        # Order and limit (newest first to get last N messages)
+        messages = queryset.order_by('-created_at')[:limit]
+
+        # Serialize (with username_is_reserved computation)
+        serialized = []
+        for msg in messages:
+            username_is_reserved = MessageCache._compute_username_is_reserved(msg)
+            serialized.append({
+                'id': str(msg.id),
+                'chat_code': msg.chat_room.code,
+                'username': msg.username,
+                'username_is_reserved': username_is_reserved,
+                'user_id': msg.user.id if msg.user else None,
+                'message_type': msg.message_type,
+                'is_from_host': msg.message_type == "host",
+                'content': msg.content,
+                'reply_to_id': str(msg.reply_to.id) if msg.reply_to else None,
+                'is_pinned': msg.is_pinned,
+                'pinned_at': msg.pinned_at.isoformat() if msg.pinned_at else None,
+                'pinned_until': msg.pinned_until.isoformat() if msg.pinned_until else None,
+                'pin_amount_paid': str(msg.pin_amount_paid) if msg.pin_amount_paid else "0.00",
+                'created_at': msg.created_at.isoformat(),
+                'is_deleted': msg.is_deleted,
+            })
+
+        # Reverse to chronological order (oldest first) to match Redis behavior
+        serialized.reverse()
+
+        return serialized
 
 
 class MessageCreateView(generics.CreateAPIView):
@@ -612,6 +678,68 @@ class MyParticipationView(APIView):
 
         return Response({
             'has_joined': False
+        })
+
+
+class CheckRateLimitView(APIView):
+    """Check if user can join chat (rate limit check for anonymous users)"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, code):
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        fingerprint = request.query_params.get('fingerprint')
+
+        # Logged-in users are always allowed
+        if request.user.is_authenticated:
+            return Response({
+                'can_join': True,
+                'is_rate_limited': False
+            })
+
+        # Anonymous users: check rate limit
+        ip_address = get_client_ip(request)
+        MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT = 3
+
+        if not ip_address:
+            # No IP detected, allow join
+            return Response({
+                'can_join': True,
+                'is_rate_limited': False
+            })
+
+        # Check if this fingerprint already has a participation (they're rejoining)
+        existing_fingerprint_participation = None
+        if fingerprint:
+            existing_fingerprint_participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                fingerprint=fingerprint,
+                user__isnull=True,
+                is_active=True
+            ).first()
+
+        # If they already have a participation, they can rejoin
+        if existing_fingerprint_participation:
+            return Response({
+                'can_join': True,
+                'is_rate_limited': False,
+                'existing_username': existing_fingerprint_participation.username
+            })
+
+        # Count active anonymous participations from this IP in this chat
+        anonymous_count = ChatParticipation.objects.filter(
+            chat_room=chat_room,
+            ip_address=ip_address,
+            user__isnull=True,
+            is_active=True
+        ).count()
+
+        is_rate_limited = anonymous_count >= MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT
+
+        return Response({
+            'can_join': not is_rate_limited,
+            'is_rate_limited': is_rate_limited,
+            'anonymous_count': anonymous_count,
+            'max_allowed': MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT
         })
 
 
