@@ -21,11 +21,18 @@ export default function ChatLayout({
       <Script id="theme-color-init" strategy="beforeInteractive">
         {`
           (function() {
-            // Theme color mapping
+            // Theme color mapping (for browser URL bar)
             const themeColors = {
               'purple-dream': { light: '#ffffff', dark: '#1f2937' },
               'ocean-blue': { light: '#ffffff', dark: '#1f2937' },
               'dark-mode': { light: '#18181b', dark: '#18181b' }
+            };
+
+            // Body background colors (match container backgrounds)
+            const backgroundColors = {
+              'purple-dream': { light: '#f0f0ff', dark: '#111827' }, // indigo-50 / gray-900
+              'ocean-blue': { light: '#f0f9ff', dark: '#111827' },   // sky-50 / gray-900
+              'dark-mode': { light: '#09090b', dark: '#09090b' }     // zinc-950 / zinc-950
             };
 
             // Get theme from URL or localStorage
@@ -47,7 +54,8 @@ export default function ChatLayout({
 
             const theme = getTheme();
             const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const color = isDark ? themeColors[theme].dark : themeColors[theme].light;
+            const themeColor = isDark ? themeColors[theme].dark : themeColors[theme].light;
+            const bgColor = isDark ? backgroundColors[theme].dark : backgroundColors[theme].light;
 
             // Set theme-color meta tags with media queries
             const lightMeta = document.createElement('meta');
@@ -62,8 +70,8 @@ export default function ChatLayout({
             darkMeta.content = themeColors[theme].dark;
             document.head.appendChild(darkMeta);
 
-            // Set body background (suppressHydrationWarning in root layout handles the warning)
-            document.body.style.backgroundColor = color;
+            // Set body background to match theme (suppressHydrationWarning in root layout handles the warning)
+            document.body.style.backgroundColor = bgColor;
           })();
         `}
       </Script>

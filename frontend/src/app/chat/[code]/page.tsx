@@ -110,7 +110,25 @@ export default function ChatPage() {
   };
 
   // Theme state with hierarchy: URL > localStorage > host default > system default
-  const [designVariant, setDesignVariant] = useState<'purple-dream' | 'ocean-blue' | 'dark-mode'>('purple-dream');
+  // Initialize from URL or localStorage immediately to avoid flash
+  const [designVariant, setDesignVariant] = useState<'purple-dream' | 'ocean-blue' | 'dark-mode'>(() => {
+    // Check URL parameter first
+    const urlTheme = searchParams.get('design');
+    if (urlTheme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
+      return urlTheme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
+    }
+
+    // Check localStorage
+    if (typeof window !== 'undefined') {
+      const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
+      if (localTheme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
+        return localTheme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
+      }
+    }
+
+    // Default fallback
+    return 'purple-dream';
+  });
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -682,16 +700,18 @@ export default function ChatPage() {
   }, [filteredMessages.length, idsToObserve]);
 
   if (loading) {
+    const currentDesign = designs[designVariant as keyof typeof designs] || designs['purple-dream'];
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+      <div className={`${currentDesign.container} flex items-center justify-center`}>
         <div className="text-gray-600 dark:text-gray-400">Loading chat...</div>
       </div>
     );
   }
 
   if (error) {
+    const currentDesign = designs[designVariant as keyof typeof designs] || designs['purple-dream'];
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800">
+      <div className={currentDesign.container}>
         <Header />
         <div className="container mx-auto px-4 py-12 max-w-2xl">
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-red-600 dark:text-red-400">
