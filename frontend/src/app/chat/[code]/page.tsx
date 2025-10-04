@@ -707,8 +707,8 @@ export default function ChatPage() {
   // Main chat interface
   return (
     <>
-      {/* Join Modal - rendered when user hasn't joined */}
-      {!hasJoined && chatRoom && (
+      {/* Join Modal - rendered when user hasn't joined and auth modal is not open */}
+      {!hasJoined && chatRoom && !authMode && (
         <JoinChatModal
           chatRoom={chatRoom}
           currentUserDisplayName={username}
@@ -774,11 +774,11 @@ export default function ChatPage() {
 
       {/* Content Area Wrapper - Contains both Main Chat and Back Room */}
       <div className="flex-1 relative overflow-hidden">
-        {hasJoined && !isInBackRoom ? (
+        {!isInBackRoom ? (
           /* Main Chat Content */
           <div className="h-full overflow-hidden relative">
         {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
-        {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
+        {hasJoined && (stickyHostMessages.length > 0 || stickyPinnedMessage) && (
           <div className={currentDesign.stickySection}>
             {/* Host Messages */}
             {stickyHostMessages.map((message) => (
@@ -865,7 +865,7 @@ export default function ChatPage() {
       >
         {/* Add padding-top when sticky messages are present to avoid overlap */}
         <div className={`space-y-3 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
-        {filteredMessages.map((message, index) => {
+        {hasJoined && filteredMessages.map((message, index) => {
           const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
 
           // Time-based threading: break thread if >5 minutes gap

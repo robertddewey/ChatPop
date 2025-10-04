@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { BadgeCheck, Dices } from 'lucide-react';
 import type { ChatRoom } from '@/lib/api';
-import { chatApi } from '@/lib/api';
+import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
 import { getFingerprint } from '@/lib/usernameStorage';
 
@@ -35,9 +35,10 @@ const getModalStyles = (design: 'purple-dream' | 'ocean-blue' | 'dark-mode') => 
       ? 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950'
       : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
     secondaryButton: isDark
-      ? 'bg-zinc-700 border border-zinc-600 text-zinc-50 hover:bg-zinc-600'
-      : 'bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50',
-    divider: isDark ? 'border-zinc-600' : 'border-gray-300',
+      ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700'
+      : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200',
+    divider: isDark ? 'border-zinc-700' : 'border-gray-200',
+    dividerText: isDark ? 'bg-zinc-900' : 'bg-white',
     error: isDark ? 'text-red-400' : 'text-red-600',
   };
 };
@@ -123,26 +124,17 @@ export default function JoinChatModal({
 
       try {
         const fingerprint = await getFingerprint();
-        const response = await fetch(
-          `http://localhost:9000/api/chats/${chatRoom.code}/validate-username/`,
+        const response = await api.post(
+          `/api/chats/${chatRoom.code}/validate-username/`,
           {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              username: username.trim(),
-              fingerprint: fingerprint,
-            }),
+            username: username.trim(),
+            fingerprint: fingerprint,
           }
         );
 
-        const data = await response.json();
+        const data = response.data;
 
-        if (!response.ok) {
-          setUsernameError('Unavailable');
-          setUsernameAvailable(false);
-        } else if (!data.available) {
+        if (!data.available) {
           // Username validation succeeded but username is not available
           setUsernameError('Unavailable');
           setUsernameAvailable(false);
@@ -152,8 +144,8 @@ export default function JoinChatModal({
           setUsernameAvailable(true);
         }
       } catch (err) {
-        // Silently fail - user can still try to join
-        setUsernameError('');
+        // Error from server (400, 500, etc.) or network error
+        setUsernameError('Unavailable');
         setUsernameAvailable(false);
       } finally {
         setIsValidatingUsername(false);
@@ -258,7 +250,7 @@ export default function JoinChatModal({
                 </span>
               </>
             ) : (
-              `Join ${chatRoom.name}`
+              'Start chatting'
             )}
           </h1>
           {chatRoom.is_private && (
@@ -397,12 +389,12 @@ export default function JoinChatModal({
           {/* Divider and Auth Buttons (only for non-logged-in users) */}
           {!isLoggedIn && (
             <>
-              <div className="relative my-6">
+              <div className="relative my-3">
                 <div className={`absolute inset-0 flex items-center`}>
                   <div className={`w-full border-t ${styles.divider}`} />
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className={`px-4 ${styles.container} ${styles.subtitle}`}>
+                  <span className={`px-4 ${styles.dividerText} ${styles.subtitle}`}>
                     or
                   </span>
                 </div>
@@ -412,14 +404,14 @@ export default function JoinChatModal({
                 <button
                   type="button"
                   onClick={handleLogin}
-                  className={`w-full px-6 py-3 rounded-xl font-medium ${styles.secondaryButton} transition-all active:scale-95`}
+                  className={`w-full px-6 py-3 rounded-xl font-bold ${styles.secondaryButton} transition-all active:scale-95`}
                 >
                   Log in
                 </button>
                 <button
                   type="button"
                   onClick={handleSignup}
-                  className={`w-full px-6 py-3 rounded-xl font-medium ${styles.secondaryButton} transition-all active:scale-95`}
+                  className={`w-full px-6 py-3 rounded-xl font-bold ${styles.secondaryButton} transition-all active:scale-95`}
                 >
                   Sign up
                 </button>

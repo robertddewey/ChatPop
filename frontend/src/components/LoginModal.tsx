@@ -71,7 +71,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
   const isChat = theme === 'chat';
 
   const styles = {
-    overlay: 'bg-black/20 backdrop-blur-sm',
+    overlay: 'bg-black/75',
     container: isChat
       ? isDarkChat
         ? 'bg-zinc-900 border border-zinc-800'

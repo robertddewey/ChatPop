@@ -121,7 +121,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
       {/* Mobile: Full screen, Desktop: Max width */}
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-8 relative max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
