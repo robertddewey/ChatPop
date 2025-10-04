@@ -76,7 +76,7 @@ export default function Home() {
             </span>
           </div>
 
-          <p className="text-xl text-gray-600 dark:text-gray-300 mb-12 max-w-2xl mx-auto">
+          <p className="text-base md:text-xl text-gray-600 dark:text-gray-300 mb-12 max-w-2xl mx-auto">
             {MARKETING.hero.subtitle}
           </p>
 
