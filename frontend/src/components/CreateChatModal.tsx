@@ -158,7 +158,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors focus:outline-none bg-white text-gray-900"
               placeholder=""
             />
           </div>
@@ -208,7 +208,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
                 required
                 value={formData.access_code}
                 onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors focus:outline-none bg-white text-gray-900"
                 placeholder=""
               />
             </div>

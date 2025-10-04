@@ -138,11 +138,17 @@ export const authApi = {
     });
     return response.data;
   },
+
+  suggestUsername: async (): Promise<{ username: string }> => {
+    const response = await api.post('/api/auth/suggest-username/');
+    return response.data;
+  },
 };
 
 export interface ChatParticipation {
   has_joined: boolean;
   username?: string;
+  username_is_reserved?: boolean;
   first_joined_at?: string;
   last_seen_at?: string;
 }

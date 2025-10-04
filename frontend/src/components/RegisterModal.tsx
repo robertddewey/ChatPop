@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { authApi } from '@/lib/api';
+import { authApi, chatApi } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
 import { MARKETING } from '@/lib/marketing';
-import { X } from 'lucide-react';
+import { getFingerprint } from '@/lib/usernameStorage';
+import { X, Dices } from 'lucide-react';
 
 interface RegisterModalProps {
   onClose: () => void;
@@ -35,6 +36,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     valid: true,
     message: '',
   });
+  const [isSuggestingUsername, setIsSuggestingUsername] = useState(false);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css
@@ -84,13 +86,14 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
         setUsernameStatus({
           checking: false,
           available: result.available,
-          message: result.message,
+          message: result.available ? 'Username is available' : 'Unavailable',
         });
       } catch (error) {
+        // If we get a 400 error (profanity or other validation error), show "Unavailable"
         setUsernameStatus({
           checking: false,
-          available: null,
-          message: 'Error checking username',
+          available: false,
+          message: 'Unavailable',
         });
       }
     }, 500);
@@ -103,12 +106,37 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     setError('');
     setFieldErrors({});
 
+    // Validate reserved username is provided
+    if (!formData.reserved_username.trim()) {
+      setFieldErrors({ reserved_username: 'Reserved username is required' });
+      return;
+    }
+
+    // Validate username format
+    if (!usernameValidation.valid) {
+      setFieldErrors({ reserved_username: usernameValidation.message });
+      return;
+    }
+
+    // Validate username is available
+    if (usernameStatus.available === false) {
+      setFieldErrors({ reserved_username: 'This username is not available' });
+      return;
+    }
+
     setLoading(true);
 
     try {
       await authApi.register(formData);
       await authApi.login(formData.email, formData.password);
-      router.push(redirect);
+
+      // On chat pages, auth-change listener will handle modal close and state refresh
+      // On other pages, navigate to redirect
+      const isChatRoute = window.location.pathname.startsWith('/chat/');
+      if (!isChatRoute) {
+        router.push(redirect);
+      }
+      // Modal will be closed by auth-change listener for chat routes
     } catch (err: any) {
       const errorData = err.response?.data;
 
@@ -145,6 +173,20 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     router.push(`${window.location.pathname}?${newParams.toString()}`);
   };
 
+  const handleSuggestUsername = async () => {
+    setIsSuggestingUsername(true);
+
+    try {
+      const result = await authApi.suggestUsername();
+      setFormData({ ...formData, reserved_username: result.username });
+    } catch (error) {
+      console.error('Failed to suggest username:', error);
+      // If API fails, user can just try again or type their own
+    } finally {
+      setIsSuggestingUsername(false);
+    }
+  };
+
   // Theme-aware styles
   const isDarkChat = chatTheme === 'dark-mode';
   const isChat = theme === 'chat';
@@ -168,9 +210,9 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
       : 'text-gray-600',
     input: (hasError: boolean) => isChat
       ? isDarkChat
-        ? `bg-zinc-800 text-zinc-100 placeholder-zinc-500 focus:ring-cyan-400 ${hasError ? 'border-red-500' : 'border-zinc-700'}`
-        : `bg-white text-gray-900 focus:ring-purple-500 ${hasError ? 'border-red-500' : 'border-gray-300'}`
-      : `bg-white text-gray-900 focus:ring-purple-500 ${hasError ? 'border-red-500' : 'border-gray-300'}`,
+        ? `bg-zinc-800 border text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 ${hasError ? 'border-red-500' : 'border-zinc-700'}`
+        : `bg-white border text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${hasError ? 'border-red-500' : 'border-gray-300'}`
+      : `bg-white border text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${hasError ? 'border-red-500' : 'border-gray-300'}`,
     label: isChat
       ? isDarkChat
         ? 'text-zinc-300'
@@ -201,6 +243,11 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
         ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
         : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
       : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100',
+    diceButton: isChat
+      ? isDarkChat
+        ? 'bg-zinc-700 border border-zinc-600 text-zinc-50 hover:bg-zinc-600'
+        : 'bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50'
+      : 'bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50',
   };
 
   return (
@@ -240,7 +287,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
               required
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.email)}`}
+              className={`w-full px-4 py-3 rounded-xl ${styles.input(!!fieldErrors.email)} transition-colors focus:outline-none`}
               placeholder=""
             />
             {fieldErrors.email && (
@@ -250,17 +297,29 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
 
           <div>
             <label htmlFor="reserved_username" className={`block text-sm font-bold ${styles.label} mb-2`}>
-              Reserved Username (Optional)
+              Reserved username <span className="text-[10px] font-normal">(across all chats)</span>
             </label>
-            <input
-              type="text"
-              id="reserved_username"
-              value={formData.reserved_username}
-              onChange={(e) => setFormData({ ...formData, reserved_username: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.reserved_username || !usernameValidation.valid || (usernameStatus.available === false))}`}
-              placeholder=""
-              maxLength={15}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                id="reserved_username"
+                required
+                value={formData.reserved_username}
+                onChange={(e) => setFormData({ ...formData, reserved_username: e.target.value })}
+                className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input(!!fieldErrors.reserved_username || !usernameValidation.valid || (usernameStatus.available === false))} transition-colors focus:outline-none`}
+                placeholder=""
+                maxLength={15}
+              />
+              <button
+                type="button"
+                onClick={handleSuggestUsername}
+                disabled={loading || isSuggestingUsername}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${styles.diceButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                title="Suggest random username"
+              >
+                <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
+              </button>
+            </div>
             {fieldErrors.reserved_username && (
               <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.reserved_username}</p>
             )}
@@ -274,7 +333,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
             )}
             {!fieldErrors.reserved_username && usernameValidation.valid && !usernameStatus.message && (
               <p className={`mt-1 text-xs ${styles.subtitle}`}>
-                5-15 characters. Letters, numbers, and underscores only. Reserved for all chats.
+                5-15 characters. Letters, numbers & underscores.
               </p>
             )}
           </div>
@@ -289,7 +348,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
               required
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input(!!fieldErrors.password)}`}
+              className={`w-full px-4 py-3 rounded-xl ${styles.input(!!fieldErrors.password)} transition-colors focus:outline-none`}
               placeholder=""
             />
             {fieldErrors.password && (

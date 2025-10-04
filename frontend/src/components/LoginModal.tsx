@@ -45,7 +45,14 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
 
     try {
       await authApi.login(formData.email, formData.password);
-      router.push(redirect);
+
+      // On chat pages, auth-change listener will handle modal close and state refresh
+      // On other pages, navigate to redirect
+      const isChatRoute = window.location.pathname.startsWith('/chat/');
+      if (!isChatRoute) {
+        router.push(redirect);
+      }
+      // Modal will be closed by auth-change listener for chat routes
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Invalid email or password');
       setLoading(false);
@@ -82,9 +89,9 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
       : 'text-gray-600',
     input: isChat
       ? isDarkChat
-        ? 'bg-zinc-800 border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:ring-cyan-400'
-        : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-500'
-      : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-500',
+        ? 'bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400'
+        : 'bg-white border border-gray-300 text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500'
+      : 'bg-white border border-gray-300 text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500',
     label: isChat
       ? isDarkChat
         ? 'text-zinc-300'
@@ -149,7 +156,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
               required
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
+              className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
               placeholder=""
             />
           </div>
@@ -164,7 +171,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
               required
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
+              className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
               placeholder=""
             />
           </div>

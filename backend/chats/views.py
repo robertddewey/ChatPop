@@ -95,6 +95,35 @@ class ChatRoomJoinView(APIView):
         user_id = str(request.user.id) if request.user.is_authenticated else None
         ip_address = get_client_ip(request)
 
+        # SECURITY CHECK 0: IP-based rate limiting for anonymous users
+        MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT = 3
+        if not request.user.is_authenticated and ip_address:
+            # Check if this fingerprint already has a participation (they're rejoining)
+            existing_fingerprint_participation = None
+            if fingerprint:
+                existing_fingerprint_participation = ChatParticipation.objects.filter(
+                    chat_room=chat_room,
+                    fingerprint=fingerprint,
+                    user__isnull=True,
+                    is_active=True
+                ).first()
+
+            # Only enforce limit for NEW participations
+            if not existing_fingerprint_participation:
+                # Count active anonymous participations from this IP in this chat
+                anonymous_count = ChatParticipation.objects.filter(
+                    chat_room=chat_room,
+                    ip_address=ip_address,
+                    user__isnull=True,
+                    is_active=True
+                ).count()
+
+                if anonymous_count >= MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT:
+                    raise ValidationError(
+                        f"Maximum anonymous usernames ({MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT}) reached for this chat. "
+                        f"Please log in to continue."
+                    )
+
         # SECURITY CHECK 1: Check if username is reserved by another user
         from accounts.models import User
         reserved_user = User.objects.filter(reserved_username__iexact=username).first()
@@ -547,14 +576,15 @@ class MyParticipationView(APIView):
 
         participation = None
 
-        # For logged-in users, find by user_id
+        # Dual sessions: Priority 1 - logged-in user participation
         if request.user.is_authenticated:
             participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 user=request.user,
                 is_active=True
             ).first()
-        # For anonymous users, find by fingerprint
+            # Don't fallback to anonymous if logged in
+        # Priority 2 - Anonymous user (fingerprint-based)
         elif fingerprint:
             participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
@@ -566,9 +596,16 @@ class MyParticipationView(APIView):
         if participation:
             # Update last_seen timestamp
             participation.save()  # auto_now updates last_seen_at
+
+            # Check if this username is a reserved username
+            username_is_reserved = False
+            if participation.user and participation.user.reserved_username:
+                username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
+
             return Response({
                 'has_joined': True,
                 'username': participation.username,
+                'username_is_reserved': username_is_reserved,
                 'first_joined_at': participation.first_joined_at,
                 'last_seen_at': participation.last_seen_at
             })

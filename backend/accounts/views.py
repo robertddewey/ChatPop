@@ -3,11 +3,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import login, logout
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import User, UserSubscription
 from .serializers import (
     UserSerializer, UserRegistrationSerializer,
     UserLoginSerializer, UserSubscriptionSerializer
 )
+from chats.validators import validate_username
+from chats.username_generator import generate_username
 
 
 class RegisterView(generics.CreateAPIView):
@@ -124,6 +127,15 @@ class CheckUsernameView(APIView):
         if not username:
             return Response({'available': False, 'message': 'Username is required'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Validate username format and profanity
+        try:
+            username = validate_username(username)
+        except DjangoValidationError as e:
+            return Response({
+                'available': False,
+                'message': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         # Check if username exists (case-insensitive)
         exists = User.objects.filter(reserved_username__iexact=username).exists()
 
@@ -131,3 +143,21 @@ class CheckUsernameView(APIView):
             'available': not exists,
             'message': 'Username is already taken' if exists else 'Username is available'
         })
+
+
+class SuggestUsernameView(APIView):
+    """Suggest a random username for registration"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        # Generate username without chat code (for registration)
+        username = generate_username(chat_code=None)
+
+        if username:
+            return Response({
+                'username': username
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': 'Failed to generate username. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

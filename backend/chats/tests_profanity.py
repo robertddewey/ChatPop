@@ -206,6 +206,54 @@ class ChatJoinProfanityTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
+class CheckUsernameProfanityTests(TestCase):
+    """
+    Test profanity filtering in check-username endpoint (registration modal)
+    """
+
+    def test_check_clean_username(self):
+        """Test that clean username passes check"""
+        response = self.client.get(
+            '/api/auth/check-username/',
+            {'username': 'GoodUser123'}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('available'))
+        self.assertEqual(data.get('message'), 'Username is available')
+
+    def test_check_profane_username_rejected(self):
+        """Test that profane username is rejected during check"""
+        response = self.client.get(
+            '/api/auth/check-username/',
+            {'username': 'asshole99'}
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data.get('available'))
+        self.assertIn('not allowed', data.get('message').lower())
+
+    def test_check_leet_speak_profanity_rejected(self):
+        """Test that leet speak profanity is rejected during check"""
+        response = self.client.get(
+            '/api/auth/check-username/',
+            {'username': 'f_u_c_k_99'}
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data.get('available'))
+
+    def test_check_legitimate_word_with_substring(self):
+        """Test that legitimate words with banned substrings pass check"""
+        response = self.client.get(
+            '/api/auth/check-username/',
+            {'username': 'password123'}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('available'))
+
+
 class UserRegistrationProfanityTests(TestCase):
     """
     Test profanity filtering in user registration
@@ -249,6 +297,86 @@ class UserRegistrationProfanityTests(TestCase):
             content_type='application/json'
         )
         self.assertEqual(response.status_code, 201)
+
+
+class UsernameValidationProfanityTests(TestCase):
+    """
+    Test profanity filtering in username validation endpoint
+    """
+
+    def setUp(self):
+        """Create a test chat room"""
+        from chats.models import ChatRoom
+        from accounts.models import User
+
+        # Create a test user to be the host
+        self.user = User.objects.create_user(
+            email='validationhost@example.com',
+            password='TestPass123!'
+        )
+
+        self.chat = ChatRoom.objects.create(
+            name="Test Chat",
+            host=self.user,
+            access_mode='public'
+        )
+
+    def test_validate_clean_username(self):
+        """Test that clean username passes validation"""
+        response = self.client.post(
+            f'/api/chats/{self.chat.code}/validate-username/',
+            {
+                'username': 'GoodUser123',
+                'fingerprint': 'test-fingerprint'
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('available'))
+
+    def test_validate_profane_username_rejected(self):
+        """Test that profane username is rejected during validation"""
+        response = self.client.post(
+            f'/api/chats/{self.chat.code}/validate-username/',
+            {
+                'username': 'fuck123',
+                'fingerprint': 'test-fingerprint'
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data.get('available'))
+        self.assertIn('error', data)
+
+    def test_validate_leet_speak_profanity_rejected(self):
+        """Test that leet speak profanity is rejected during validation"""
+        response = self.client.post(
+            f'/api/chats/{self.chat.code}/validate-username/',
+            {
+                'username': 'f_u_c_k_99',
+                'fingerprint': 'test-fingerprint'
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data.get('available'))
+
+    def test_validate_legitimate_word_with_substring(self):
+        """Test that legitimate words with banned substrings pass validation"""
+        response = self.client.post(
+            f'/api/chats/{self.chat.code}/validate-username/',
+            {
+                'username': 'password123',
+                'fingerprint': 'test-fingerprint'
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('available'))
 
 
 class SuggestUsernameProfanityTests(TestCase):

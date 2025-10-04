@@ -59,7 +59,11 @@ export default function JoinChatModal({
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [isSuggestingUsername, setIsSuggestingUsername] = useState(false);
+  const [isValidatingUsername, setIsValidatingUsername] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameAvailable, setUsernameAvailable] = useState(false);
   const audioContextRef = React.useRef<AudioContext>();
+  const validationTimeoutRef = React.useRef<NodeJS.Timeout>();
 
   // Import the audio initialization function
   const { initAudioContext } = React.useMemo(() => {
@@ -82,6 +86,87 @@ export default function JoinChatModal({
     };
   }, []);
 
+  // Real-time username validation with debouncing
+  useEffect(() => {
+    // Clear any existing timeout
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+    }
+
+    // Don't validate if:
+    // - Username is empty
+    // - User is logged in and has joined before (locked username)
+    // - Currently suggesting a username
+    if (!username.trim() || (isLoggedIn && hasJoinedBefore) || isSuggestingUsername) {
+      setUsernameError('');
+      setUsernameAvailable(false);
+      setIsValidatingUsername(false);
+      return;
+    }
+
+    // Start validation after debounce delay
+    validationTimeoutRef.current = setTimeout(async () => {
+      // First check format validation (client-side)
+      const validation = validateUsername(username.trim());
+      if (!validation.isValid) {
+        // Show specific format validation error
+        setUsernameError(validation.error || 'Invalid username');
+        setUsernameAvailable(false);
+        setIsValidatingUsername(false);
+        return;
+      }
+
+      // Then check availability (server-side)
+      setIsValidatingUsername(true);
+      setUsernameError('');
+      setUsernameAvailable(false);
+
+      try {
+        const fingerprint = await getFingerprint();
+        const response = await fetch(
+          `http://localhost:9000/api/chats/${chatRoom.code}/validate-username/`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              username: username.trim(),
+              fingerprint: fingerprint,
+            }),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setUsernameError('Unavailable');
+          setUsernameAvailable(false);
+        } else if (!data.available) {
+          // Username validation succeeded but username is not available
+          setUsernameError('Unavailable');
+          setUsernameAvailable(false);
+        } else {
+          // Username is available!
+          setUsernameError('');
+          setUsernameAvailable(true);
+        }
+      } catch (err) {
+        // Silently fail - user can still try to join
+        setUsernameError('');
+        setUsernameAvailable(false);
+      } finally {
+        setIsValidatingUsername(false);
+      }
+    }, 500); // 500ms debounce
+
+    return () => {
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+      }
+    };
+  }, [username, isLoggedIn, hasJoinedBefore, isSuggestingUsername, chatRoom.code]);
+
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -99,7 +184,7 @@ export default function JoinChatModal({
       return;
     }
 
-    if (chatRoom.is_private && !accessCode.trim()) {
+    if (chatRoom.access_mode === 'private' && !accessCode.trim()) {
       setError('This chat requires an access code');
       return;
     }
@@ -120,7 +205,7 @@ export default function JoinChatModal({
     const params = new URLSearchParams(currentSearch);
     params.set('auth', 'login');
     params.set('redirect', currentPath + currentSearch);
-    router.push(`${currentPath}?${params.toString()}`);
+    router.replace(`${currentPath}?${params.toString()}`);
   };
 
   const handleSignup = () => {
@@ -129,7 +214,7 @@ export default function JoinChatModal({
     const params = new URLSearchParams(currentSearch);
     params.set('auth', 'register');
     params.set('redirect', currentPath + currentSearch);
-    router.push(`${currentPath}?${params.toString()}`);
+    router.replace(`${currentPath}?${params.toString()}`);
   };
 
   const handleSuggestUsername = async () => {
@@ -186,8 +271,8 @@ export default function JoinChatModal({
         {/* Form */}
         <form onSubmit={handleJoin} className="space-y-4">
           {/* Username Display or Input */}
-          {isLoggedIn && hasJoinedBefore ? (
-            // Logged-in returning user - show locked username
+          {hasJoinedBefore ? (
+            // Returning user (logged-in or anonymous) - show locked username
             <div className="text-center mb-8">
               <div className="flex items-center justify-center gap-2">
                 <p className={`text-sm ${styles.subtitle}`}>You'll join as: <span className={`font-semibold ${styles.title}`}>{currentUserDisplayName}</span></p>
@@ -208,7 +293,9 @@ export default function JoinChatModal({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={currentUserDisplayName || "Enter username"}
-                  className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input} transition-colors focus:outline-none`}
+                  className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input} transition-colors focus:outline-none ${
+                    usernameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
+                  }`}
                   maxLength={15}
                   disabled={isJoining || isSuggestingUsername}
                 />
@@ -222,9 +309,19 @@ export default function JoinChatModal({
                   <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
                 </button>
               </div>
+              {usernameError && (
+                <p className={`text-xs text-red-500 mt-1`}>
+                  {usernameError}
+                </p>
+              )}
+              {usernameAvailable && !usernameError && (
+                <p className={`text-xs text-green-500 mt-1`}>
+                  Username is available
+                </p>
+              )}
             </div>
           ) : (
-            // Anonymous user - always show input
+            // Anonymous first-time user - show input
             <div>
               <label className={`block text-sm font-medium ${styles.subtitle} mb-2`}>
                 Pick a username
@@ -235,7 +332,9 @@ export default function JoinChatModal({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Enter username"
-                  className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input} transition-colors focus:outline-none`}
+                  className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input} transition-colors focus:outline-none ${
+                    usernameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
+                  }`}
                   maxLength={15}
                   disabled={isJoining || isSuggestingUsername}
                 />
@@ -249,11 +348,21 @@ export default function JoinChatModal({
                   <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
                 </button>
               </div>
+              {usernameError && (
+                <p className={`text-xs text-red-500 mt-1`}>
+                  {usernameError}
+                </p>
+              )}
+              {usernameAvailable && !usernameError && (
+                <p className={`text-xs text-green-500 mt-1`}>
+                  Username is available
+                </p>
+              )}
             </div>
           )}
 
           {/* Access Code Input (only for private chats) */}
-          {chatRoom.is_private && (
+          {chatRoom.access_mode === 'private' && (
             <div>
               <label className={`block text-sm font-medium ${styles.subtitle} mb-2`}>
                 Access Code

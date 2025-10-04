@@ -201,7 +201,7 @@ cd backend
 ./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests.test_message_send_requires_session_token
 ```
 
-#### Current Test Coverage (93+ tests)
+#### Current Test Coverage (101+ tests)
 
 **Security Tests (`chats.tests_security` - 26 tests):**
 - JWT session security (17 tests): token validation, expiration, chat/username binding, signature verification
@@ -213,10 +213,12 @@ cd backend
 - Invalid character rejection: spaces, special characters, unicode/emoji
 - Edge cases: whitespace handling, case preservation, numeric-only usernames
 
-**Profanity Filter (`chats.tests_profanity` - 18 tests):**
+**Profanity Filter (`chats.tests_profanity` - 26 tests):**
 - Profanity checker module (5 tests): clean validation, profanity detection, leet speak variants
 - Validator integration (4 tests): profanity check integration, skip flag
 - Chat join API (4 tests): profanity rejection at join endpoint
+- Username validation endpoint (4 tests): real-time profanity checking during username input (Join ChatPop modal)
+- Check username endpoint (4 tests): real-time profanity checking during registration
 - User registration (3 tests): reserved username profanity checking
 - Auto-generated usernames (2 tests): suggested usernames always clean
 
@@ -473,6 +475,143 @@ Before merging a new theme, verify:
 ### Why This Matters
 
 Inconsistent modal styling creates a jarring user experience. A dark theme with white popups (or vice versa) breaks visual coherence and feels unpolished. Similarly, a mismatched URL bar color breaks the immersive mobile experience. By following these guidelines, we ensure every theme provides a cohesive, professional appearance across all devices and UI components.
+
+---
+
+## Dual Sessions Architecture & IP Rate Limiting
+
+### Overview
+
+ChatPop implements a dual sessions architecture that allows users to have separate anonymous and logged-in participations in the same chat. This enables flexible user journeys while preventing abuse through IP-based rate limiting.
+
+### Dual Sessions Architecture
+
+**Key Principle:** Logged-in and anonymous users are treated as separate entities, even when using the same device/fingerprint.
+
+**Implementation Details:**
+
+1. **Anonymous Users** (`views.py:544-565`)
+   - Identified by browser fingerprint
+   - Participation has `user=null` and stores `fingerprint`
+   - Can join any chat without registration
+   - Username persists across sessions via fingerprint
+
+2. **Logged-In Users** (`views.py:544-565`)
+   - Identified by authenticated user account
+   - Participation has `user=<User>` (fingerprint optional)
+   - Reserved username with verified badge available
+   - Username persists via user account
+
+3. **Participation Priority** (`views.py:550-565`)
+   - `MyParticipationView` checks for logged-in participation first
+   - If authenticated: only check for `user`-based participation
+   - If anonymous: only check for `fingerprint`-based participation where `user__isnull=True`
+   - **No fallback** from logged-in to anonymous
+
+4. **Username Coexistence** (`views.py:139-155`)
+   - Anonymous user "robert" and logged-in user "Robert" can coexist
+   - Separate participation records in same chat
+   - Case-insensitive matching within each user type (anonymous vs logged-in)
+   - Enables upgrade path: join anonymously → register → get verified badge
+
+### Reserved Username Badge
+
+**Badge Logic** (`views.py:570-573`):
+```python
+username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
+```
+
+- Badge shown when participation username matches user's reserved_username (case-insensitive)
+- Only applies to logged-in users (anonymous users never have badge)
+- Displayed in UI with BadgeCheck icon (frontend)
+
+### IP-Based Rate Limiting
+
+**Purpose:** Prevent abuse by limiting anonymous username creation from a single IP address.
+
+**Implementation** (`views.py:98-125`):
+
+```python
+MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT = 3
+```
+
+**Rules:**
+1. **Limit Scope:** 3 anonymous usernames per IP per chat
+2. **Exemptions:**
+   - Returning users (existing fingerprint) can always rejoin
+   - Logged-in users not affected by limit
+3. **Enforcement:**
+   - Check runs before creating new anonymous participation
+   - Returns 400 Bad Request with clear error message
+4. **IP Storage:**
+   - Raw IP addresses stored in `ChatParticipation.ip_address`
+   - Updated on every join/rejoin
+   - Used for rate limiting queries
+
+**Example Use Cases:**
+
+- ✅ User joins as "alice" → joins as "bob" → joins as "charlie" (3rd username, allowed)
+- ❌ User tries to join as "david" (4th username, blocked)
+- ✅ User with fingerprint for "alice" rejoins (returning user, allowed)
+- ✅ User logs in and joins as "eve" (logged-in user, not counted)
+- ✅ Different IP can create 3 new usernames (per-IP limit)
+
+### User Journey Examples
+
+**Scenario 1: Anonymous → Registered with Same Username**
+1. User joins chat anonymously as "robert" (no badge)
+2. User registers account with reserved_username="robert"
+3. User returns to chat as logged-in user
+4. `MyParticipationView` shows no participation (logged-in session doesn't see anonymous)
+5. User joins as "Robert" (creates new logged-in participation)
+6. Badge displays because "Robert" matches reserved_username (case-insensitive)
+7. Both participations coexist: anonymous "robert" and verified "Robert"
+
+**Scenario 2: IP Rate Limiting**
+1. Anonymous user from IP 192.168.1.100 joins as "user1"
+2. Same IP joins as "user2" (fingerprint2)
+3. Same IP joins as "user3" (fingerprint3)
+4. Same IP tries to join as "user4" → **BLOCKED** (max 3 reached)
+5. Original user (fingerprint1) tries to rejoin → **ALLOWED** (returning user)
+6. User logs in and joins → **ALLOWED** (logged-in users exempt)
+
+### Testing
+
+Comprehensive test suite in `backend/chats/tests_dual_sessions.py` (16 tests):
+
+**Dual Sessions Tests (6 tests):**
+- Anonymous and logged-in join create separate participations
+- Same username coexistence (case-insensitive)
+- Participation priority and no-fallback logic
+
+**Reserved Username Badge Tests (4 tests):**
+- Exact and case-insensitive match detection
+- Badge not shown for different usernames or anonymous users
+
+**IP Rate Limiting Tests (6 tests):**
+- 3-username limit enforcement
+- Returning user exemption
+- Logged-in user exemption
+- Per-IP and per-chat isolation
+
+Run tests:
+```bash
+./venv/bin/python manage.py test chats.tests_dual_sessions
+```
+
+### Database Schema
+
+**ChatParticipation Model** (`models.py:253-270`):
+```python
+user = ForeignKey(User, null=True, blank=True)  # Logged-in user
+fingerprint = CharField(max_length=255, null=True, blank=True)  # Anonymous identifier
+username = CharField(max_length=15)  # Chat username (may differ from reserved_username)
+ip_address = GenericIPAddressField(null=True, blank=True)  # For rate limiting
+```
+
+**Unique Constraint** (`models.py:289-294`):
+- User-based participation: unique per (chat_room, user)
+- Anonymous participation: unique per (chat_room, fingerprint) where user is null
 
 ---
 

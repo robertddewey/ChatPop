@@ -106,7 +106,7 @@ export default function ChatPage() {
     const newParams = new URLSearchParams(searchParams);
     newParams.delete('auth');
     newParams.delete('redirect');
-    router.push(`${window.location.pathname}?${newParams.toString()}`);
+    router.replace(`${window.location.pathname}?${newParams.toString()}`);
   };
 
   // Theme state with hierarchy: URL > localStorage > host default > system default
@@ -186,10 +186,13 @@ export default function ChatPage() {
               // Returning user - use their locked username
               setUsername(participation.username);
               setHasJoinedBefore(true);
+              setHasReservedUsername(participation.username_is_reserved || false);
             } else {
-              // First-time user - use reserved_username
+              // First-time user - pre-fill with reserved_username (they can change it)
               setUsername(currentUser.reserved_username || '');
               setHasJoinedBefore(false);
+              // Badge shows if they have a reserved username
+              setHasReservedUsername(!!currentUser.reserved_username);
             }
           } catch (userErr) {
             // If getting user fails, just proceed as guest
@@ -205,9 +208,11 @@ export default function ChatPage() {
               // Returning anonymous user
               setUsername(participation.username);
               setHasJoinedBefore(true);
+              setHasReservedUsername(participation.username_is_reserved || false);
             } else {
               // First-time anonymous user
               setHasJoinedBefore(false);
+              setHasReservedUsername(false);
             }
           } catch (err) {
             console.warn('Failed to check participation:', err);
@@ -227,6 +232,68 @@ export default function ChatPage() {
 
     loadChatRoom();
   }, [code]);
+
+  // Listen for auth changes (login/register)
+  useEffect(() => {
+    const handleAuthChange = async () => {
+      // User just logged in or registered - refresh user state
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        try {
+          const currentUser = await authApi.getCurrentUser();
+          setCurrentUserId(currentUser.id);
+          setHasReservedUsername(!!currentUser.reserved_username);
+
+          // Get fingerprint
+          let fingerprint: string | undefined;
+          try {
+            fingerprint = await getFingerprint();
+          } catch (fpErr) {
+            console.warn('Failed to get fingerprint:', fpErr);
+          }
+
+          // Check if they've already joined this chat
+          const participation = await chatApi.getMyParticipation(code, fingerprint);
+          if (participation.has_joined && participation.username) {
+            // They already joined - update username and badge
+            setUsername(participation.username);
+            setHasJoinedBefore(true);
+            setHasReservedUsername(participation.username_is_reserved || false);
+          } else {
+            // Not joined yet - pre-fill with reserved username
+            setUsername(currentUser.reserved_username || '');
+            setHasJoinedBefore(false);
+            // Badge shows if they have a reserved username
+            setHasReservedUsername(!!currentUser.reserved_username);
+          }
+
+          // Close the auth modal
+          closeModal();
+        } catch (err) {
+          console.error('Failed to refresh user after auth:', err);
+        }
+      }
+    };
+
+    window.addEventListener('auth-change', handleAuthChange);
+    return () => window.removeEventListener('auth-change', handleAuthChange);
+  }, [code]);
+
+  // Listen for back button to show join modal when user navigates back
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      // If user is currently in chat and presses back, show join modal and reset state
+      if (hasJoined) {
+        setHasJoined(false);
+        setMessages([]); // Clear messages to show fresh state
+        setIsInBackRoom(false); // Exit back room view if in there
+        // Note: Settings sheet closes automatically via onClose handler
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [hasJoined]);
 
   // Determine theme based on hierarchy: URL param > localStorage > host default > system default
   useEffect(() => {
@@ -337,6 +404,9 @@ export default function ChatPage() {
       setUsername(username);
       setHasJoined(true);
       await loadMessages();
+
+      // Add history entry so back button shows join modal again
+      window.history.pushState({ joined: true }, '', window.location.href);
 
       // Play success sound to verify audio works after user gesture
       playJoinSound();
@@ -664,6 +734,7 @@ export default function ChatPage() {
         <div className="flex items-center justify-between gap-3">
           {chatRoom && (
             <ChatSettingsSheet
+              key={hasJoined ? 'joined' : 'not-joined'}
               chatRoom={chatRoom}
               currentUserId={currentUserId}
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
@@ -703,7 +774,7 @@ export default function ChatPage() {
 
       {/* Content Area Wrapper - Contains both Main Chat and Back Room */}
       <div className="flex-1 relative overflow-hidden">
-        {!isInBackRoom ? (
+        {hasJoined && !isInBackRoom ? (
           /* Main Chat Content */
           <div className="h-full overflow-hidden relative">
         {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
@@ -940,19 +1011,17 @@ export default function ChatPage() {
         </div>
       </div>
       </div>
-        ) : (
-          /* Back Room View */
-          chatRoom?.has_back_room && backRoom ? (
-            <BackRoomView
-              chatRoom={chatRoom}
-              backRoom={backRoom}
-              username={username}
-              currentUserId={currentUserId}
-              isMember={isBackRoomMember}
-              onBack={() => setIsInBackRoom(false)}
-            />
-          ) : null
-        )}
+        ) : hasJoined && chatRoom?.has_back_room && backRoom ? (
+          /* Back Room View - only when joined */
+          <BackRoomView
+            chatRoom={chatRoom}
+            backRoom={backRoom}
+            username={username}
+            currentUserId={currentUserId}
+            isMember={isBackRoomMember}
+            onBack={() => setIsInBackRoom(false)}
+          />
+        ) : null}
       </div>
 
       {/* Message Input */}
@@ -980,8 +1049,8 @@ export default function ChatPage() {
         </form>
       </div>
 
-      {/* Back Room Tab */}
-      {chatRoom?.has_back_room && backRoom && (
+      {/* Back Room Tab - only show when user has joined */}
+      {hasJoined && chatRoom?.has_back_room && backRoom && (
         <BackRoomTab
           isInBackRoom={isInBackRoom}
           hasBackRoom={true}
