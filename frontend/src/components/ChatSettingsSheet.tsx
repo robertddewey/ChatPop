@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/sheet';
 import { chatApi, backRoomApi, type ChatRoom, type BackRoom } from '@/lib/api';
 import { Copy, Check, BadgeCheck } from 'lucide-react';
-import { migrateLegacyTheme, isDarkTheme, DEFAULT_THEME, type ThemeId } from '@/lib/themes';
+import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId } from '@/lib/themes';
 
 interface ChatSettingsSheetProps {
   chatRoom: ChatRoom;
@@ -125,19 +125,14 @@ export default function ChatSettingsSheet({
       <SheetTrigger asChild>{children}</SheetTrigger>
       <SheetContent
         side="bottom"
-        className={`h-[100dvh] overflow-y-auto pt-2 ${
-          isDarkTheme(currentTheme)
-            ? 'bg-zinc-900 border-t-zinc-800'
-            : 'bg-white border-t-white'
-        }`}
-        closeButtonClassName={isDarkTheme(currentTheme) ? 'text-white' : 'text-gray-900'}
+        className="h-[100dvh] overflow-y-auto pt-2 bg-white dark:bg-zinc-900 border-t-white dark:border-t-zinc-800"
+        closeButtonClassName="text-gray-900 dark:text-white"
       >
-        <div className={isDarkTheme(currentTheme) ? 'dark' : ''}>
           <SheetHeader>
-            <SheetTitle className={isDarkTheme(currentTheme) ? 'text-white' : ''}>
+            <SheetTitle className="text-gray-900 dark:text-white">
               Chat Settings
             </SheetTitle>
-            <SheetDescription className={isDarkTheme(currentTheme) ? 'text-gray-400' : ''}>
+            <SheetDescription className="text-gray-600 dark:text-gray-400">
               {isHost ? 'Manage your chat room settings' : 'Chat room information'}
             </SheetDescription>
           </SheetHeader>
@@ -145,12 +140,8 @@ export default function ChatSettingsSheet({
           <div className="mt-6 space-y-6">
           {/* Theme Selection */}
           <div className="space-y-4">
-            <h3 className={`text-sm font-semibold ${
-              isDarkTheme(currentTheme) ? 'text-white' : 'text-gray-900'
-            }`}>
-              Theme <span className={`text-xs font-normal ${
-                isDarkTheme(currentTheme) ? 'text-zinc-400' : 'text-gray-500'
-              }`}>(chat will reload)</span>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+              Theme <span className="text-xs font-normal text-gray-500 dark:text-zinc-400">(chat will reload)</span>
             </h3>
 
             <div className="grid grid-cols-3 gap-3">
@@ -196,14 +187,12 @@ export default function ChatSettingsSheet({
                   window.location.href = url.pathname + url.search;
                 }}
                 className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
-                  isDarkTheme(currentTheme)
-                    ? 'border-cyan-400 bg-zinc-900'
+                  currentTheme === 'dark-mode'
+                    ? 'border-cyan-400 bg-purple-50 dark:bg-cyan-900/20'
                     : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
                 }`}
               >
-                <div className={`text-xs font-semibold mb-2 ${
-                  isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900 dark:text-white'
-                }`}>Dark Mode</div>
+                <div className="text-xs font-semibold mb-2 text-gray-900 dark:text-white">Dark Mode</div>
                 <div className="h-8 rounded bg-zinc-950 flex items-center justify-center gap-1">
                   <div className="h-4 w-12 rounded bg-cyan-400"></div>
                   <div className="h-4 w-8 rounded bg-yellow-400"></div>
@@ -213,32 +202,24 @@ export default function ChatSettingsSheet({
           </div>
 
           {/* Chat Information for All Users */}
-          <div className={`space-y-4 pt-4 border-t ${
-            isDarkTheme(currentTheme) ? 'border-zinc-700' : 'border-gray-200'
-          }`}>
-            <h3 className={`text-sm font-semibold ${
-              isDarkTheme(currentTheme) ? 'text-white' : 'text-gray-900'
-            }`}>
+          <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-zinc-700">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
               Chat Information
             </h3>
 
             {/* Chat Name */}
-            <div className={`p-3 rounded-lg ${
-              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
-            }`}>
-              <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Chat Name</p>
-              <p className={`text-sm font-semibold ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-zinc-800">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Chat Name</p>
+              <p className="text-sm font-semibold text-black dark:text-white">
                 {chatRoom.name}
               </p>
             </div>
 
             {/* Chat Code */}
-            <div className={`flex items-center justify-between p-3 rounded-lg ${
-              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
-            }`}>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-zinc-800">
               <div>
-                <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Chat Code</p>
-                <p className={`text-sm font-mono font-semibold ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>{chatRoom.code}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Chat Code</p>
+                <p className="text-sm font-mono font-semibold text-black dark:text-white">{chatRoom.code}</p>
               </div>
               <button
                 onClick={handleCopyCode}
@@ -247,18 +228,16 @@ export default function ChatSettingsSheet({
                 {copiedCode ? (
                   <Check className="w-4 h-4 text-green-600" />
                 ) : (
-                  <Copy className="w-4 h-4" />
+                  <Copy className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                 )}
               </button>
             </div>
 
             {/* Share Link */}
-            <div className={`flex items-center justify-between p-3 rounded-lg ${
-              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
-            }`}>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-zinc-800">
               <div className="flex-1 min-w-0">
-                <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Share Link</p>
-                <p className={`text-sm font-mono truncate ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>{shareLink}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Share Link</p>
+                <p className="text-sm font-mono truncate text-black dark:text-white">{shareLink}</p>
               </div>
               <button
                 onClick={handleCopyLink}
@@ -267,18 +246,16 @@ export default function ChatSettingsSheet({
                 {copiedLink ? (
                   <Check className="w-4 h-4 text-green-600" />
                 ) : (
-                  <Copy className="w-4 h-4" />
+                  <Copy className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                 )}
               </button>
             </div>
 
             {/* Host Info */}
-            <div className={`p-3 rounded-lg ${
-              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
-            }`}>
-              <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Hosted by</p>
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-zinc-800">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Hosted by</p>
               <div className="flex items-center gap-1.5">
-                <p className={`text-sm font-semibold ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>
+                <p className="text-sm font-semibold text-black dark:text-white">
                   {chatRoom.host.reserved_username || chatRoom.host.email.split('@')[0]}
                 </p>
                 {chatRoom.host.reserved_username && (
@@ -288,11 +265,9 @@ export default function ChatSettingsSheet({
             </div>
 
             {/* Created Date */}
-            <div className={`p-3 rounded-lg ${
-              isDarkTheme(currentTheme) ? 'bg-zinc-800' : 'bg-gray-50'
-            }`}>
-              <p className={`text-xs ${isDarkTheme(currentTheme) ? 'text-gray-400' : 'text-gray-500'}`}>Created</p>
-              <p className={`text-sm ${isDarkTheme(currentTheme) ? 'text-white' : 'text-black'}`}>
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-zinc-800">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Created</p>
+              <p className="text-sm text-black dark:text-white">
                 {new Date(chatRoom.created_at).toLocaleDateString('en-US', {
                   month: 'long',
                   day: 'numeric',
@@ -304,12 +279,8 @@ export default function ChatSettingsSheet({
 
           {/* Host-Only Settings */}
           {isHost && (
-            <form onSubmit={handleSubmit} className={`space-y-4 pt-4 border-t ${
-              isDarkTheme(currentTheme) ? 'border-zinc-700' : 'border-gray-200'
-            }`}>
-              <h3 className={`text-sm font-semibold ${
-                isDarkTheme(currentTheme) ? 'text-white' : 'text-gray-900'
-              }`}>
+            <form onSubmit={handleSubmit} className="space-y-4 pt-4 border-t border-gray-200 dark:border-zinc-700">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
                 Edit Settings (Host Only)
               </h3>
 
@@ -327,29 +298,21 @@ export default function ChatSettingsSheet({
 
               {/* Chat Name */}
               <div>
-                <label className={`block text-sm font-medium mb-1 ${
-                  isDarkTheme(currentTheme) ? 'text-zinc-300' : 'text-gray-700'
-                }`}>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-zinc-300">
                   Chat Name
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
-                    isDarkTheme(currentTheme)
-                      ? 'bg-zinc-800 border-zinc-700 text-zinc-100 focus:ring-cyan-400'
-                      : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-500'
-                  }`}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-zinc-100 focus:ring-purple-500 dark:focus:ring-cyan-400"
                   required
                 />
               </div>
 
               {/* Access Mode */}
               <div>
-                <label className={`block text-sm font-medium mb-2 ${
-                  isDarkTheme(currentTheme) ? 'text-zinc-300' : 'text-gray-700'
-                }`}>
+                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-zinc-300">
                   Access Mode
                 </label>
                 <div className="flex gap-4">
@@ -361,15 +324,9 @@ export default function ChatSettingsSheet({
                       onChange={(e) =>
                         setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
                       }
-                      className={`mr-2 ${
-                        isDarkTheme(currentTheme)
-                          ? 'text-cyan-400 focus:ring-cyan-400'
-                          : 'text-purple-600 focus:ring-purple-500'
-                      }`}
+                      className="mr-2 text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400"
                     />
-                    <span className={`text-sm ${
-                      isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
-                    }`}>Public</span>
+                    <span className="text-sm text-gray-900 dark:text-zinc-100">Public</span>
                   </label>
                   <label className="flex items-center cursor-pointer">
                     <input
@@ -379,15 +336,9 @@ export default function ChatSettingsSheet({
                       onChange={(e) =>
                         setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
                       }
-                      className={`mr-2 ${
-                        isDarkTheme(currentTheme)
-                          ? 'text-cyan-400 focus:ring-cyan-400'
-                          : 'text-purple-600 focus:ring-purple-500'
-                      }`}
+                      className="mr-2 text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400"
                     />
-                    <span className={`text-sm ${
-                      isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
-                    }`}>Private</span>
+                    <span className="text-sm text-gray-900 dark:text-zinc-100">Private</span>
                   </label>
                 </div>
               </div>
@@ -395,20 +346,14 @@ export default function ChatSettingsSheet({
               {/* Access Code (if private) */}
               {formData.access_mode === 'private' && (
                 <div>
-                  <label className={`block text-sm font-medium mb-1 ${
-                    isDarkTheme(currentTheme) ? 'text-zinc-300' : 'text-gray-700'
-                  }`}>
+                  <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-zinc-300">
                     Access Code
                   </label>
                   <input
                     type="text"
                     value={formData.access_code}
                     onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
-                      isDarkTheme(currentTheme)
-                        ? 'bg-zinc-800 border-zinc-700 text-zinc-100 focus:ring-cyan-400'
-                        : 'bg-white border-gray-300 text-gray-900 focus:ring-purple-500'
-                    }`}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-zinc-100 focus:ring-purple-500 dark:focus:ring-cyan-400"
                     placeholder="Enter access code"
                     required
                   />
@@ -417,66 +362,34 @@ export default function ChatSettingsSheet({
 
               {/* Media Settings */}
               <div className="space-y-2">
-                <label className={`block text-sm font-medium ${
-                  isDarkTheme(currentTheme) ? 'text-zinc-300' : 'text-gray-700'
-                }`}>
+                <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300">
                   Media Settings
                 </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                  isDarkTheme(currentTheme)
-                    ? 'bg-zinc-800 hover:bg-zinc-700'
-                    : 'bg-gray-50 hover:bg-gray-100'
-                }`}>
-                  <span className={`text-sm ${
-                    isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
-                  }`}>Voice enabled</span>
+                <label className="flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700">
+                  <span className="text-sm text-gray-900 dark:text-zinc-100">Voice enabled</span>
                   <input
                     type="checkbox"
                     checked={formData.voice_enabled}
                     onChange={(e) => setFormData({ ...formData, voice_enabled: e.target.checked })}
-                    className={`rounded ${
-                      isDarkTheme(currentTheme)
-                        ? 'text-cyan-400 focus:ring-cyan-400'
-                        : 'text-purple-600 focus:ring-purple-500'
-                    }`}
+                    className="rounded text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400"
                   />
                 </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                  isDarkTheme(currentTheme)
-                    ? 'bg-zinc-800 hover:bg-zinc-700'
-                    : 'bg-gray-50 hover:bg-gray-100'
-                }`}>
-                  <span className={`text-sm ${
-                    isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
-                  }`}>Video enabled</span>
+                <label className="flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700">
+                  <span className="text-sm text-gray-900 dark:text-zinc-100">Video enabled</span>
                   <input
                     type="checkbox"
                     checked={formData.video_enabled}
                     onChange={(e) => setFormData({ ...formData, video_enabled: e.target.checked })}
-                    className={`rounded ${
-                      isDarkTheme(currentTheme)
-                        ? 'text-cyan-400 focus:ring-cyan-400'
-                        : 'text-purple-600 focus:ring-purple-500'
-                    }`}
+                    className="rounded text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400"
                   />
                 </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                  isDarkTheme(currentTheme)
-                    ? 'bg-zinc-800 hover:bg-zinc-700'
-                    : 'bg-gray-50 hover:bg-gray-100'
-                }`}>
-                  <span className={`text-sm ${
-                    isDarkTheme(currentTheme) ? 'text-zinc-100' : 'text-gray-900'
-                  }`}>Photo enabled</span>
+                <label className="flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700">
+                  <span className="text-sm text-gray-900 dark:text-zinc-100">Photo enabled</span>
                   <input
                     type="checkbox"
                     checked={formData.photo_enabled}
                     onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
-                    className={`rounded ${
-                      isDarkTheme(currentTheme)
-                        ? 'text-cyan-400 focus:ring-cyan-400'
-                        : 'text-purple-600 focus:ring-purple-500'
-                    }`}
+                    className="rounded text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400"
                   />
                 </label>
               </div>
@@ -487,10 +400,8 @@ export default function ChatSettingsSheet({
                 disabled={loading}
                 className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
                   loading
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : isDarkTheme(currentTheme)
-                    ? 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950'
-                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                    ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-white'
+                    : 'bg-purple-600 dark:bg-cyan-400 hover:bg-purple-700 dark:hover:bg-cyan-500 text-white dark:text-cyan-950'
                 }`}
               >
                 {loading ? 'Saving...' : 'Save Changes'}
@@ -498,7 +409,6 @@ export default function ChatSettingsSheet({
             </form>
           )}
           </div>
-        </div>
       </SheetContent>
     </Sheet>
   );

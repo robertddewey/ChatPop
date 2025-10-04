@@ -19,28 +19,18 @@ interface JoinChatModalProps {
   onJoin: (username: string, accessCode?: string) => void;
 }
 
-// Theme configurations - simplified to light/dark
-const getModalStyles = (design: 'purple-dream' | 'ocean-blue' | 'dark-mode') => {
-  const isDark = design === 'dark-mode';
-
-  return {
-    overlay: 'bg-transparent',
-    container: isDark ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-gray-200',
-    title: isDark ? 'text-zinc-50' : 'text-gray-900',
-    subtitle: isDark ? 'text-zinc-400' : 'text-gray-600',
-    input: isDark
-      ? 'bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400'
-      : 'bg-white border border-gray-300 text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500',
-    primaryButton: isDark
-      ? 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950'
-      : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
-    secondaryButton: isDark
-      ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700'
-      : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200',
-    divider: isDark ? 'border-zinc-700' : 'border-gray-200',
-    dividerText: isDark ? 'bg-zinc-900' : 'bg-white',
-    error: isDark ? 'text-red-400' : 'text-red-600',
-  };
+// Theme configurations - now uses Tailwind dark: variants to respond to OS preference
+const modalStyles = {
+  overlay: 'bg-transparent',
+  container: 'bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800',
+  title: 'text-gray-900 dark:text-zinc-50',
+  subtitle: 'text-gray-600 dark:text-zinc-400',
+  input: 'bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-zinc-50 placeholder-gray-400 dark:placeholder-zinc-500 focus:ring-2 focus:ring-purple-500 dark:focus:ring-cyan-400 focus:border-purple-500 dark:focus:border-cyan-400',
+  primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 dark:bg-cyan-400 hover:from-purple-700 hover:to-blue-700 dark:hover:bg-cyan-500 text-white dark:text-cyan-950',
+  secondaryButton: 'bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700',
+  divider: 'border-gray-200 dark:border-zinc-700',
+  dividerText: 'bg-white dark:bg-zinc-900',
+  error: 'text-red-600 dark:text-red-400',
 };
 
 export default function JoinChatModal({
@@ -53,7 +43,6 @@ export default function JoinChatModal({
   onJoin,
 }: JoinChatModalProps) {
   const router = useRouter();
-  const styles = getModalStyles(design);
 
   const [username, setUsername] = useState('');
   const [accessCode, setAccessCode] = useState('');
@@ -230,13 +219,13 @@ export default function JoinChatModal({
   return createPortal(
     <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4`}>
       {/* Backdrop */}
-      <div className={`absolute inset-0 ${styles.overlay}`} />
+      <div className={`absolute inset-0 ${modalStyles.overlay}`} />
 
       {/* Modal */}
-      <div className={`relative w-full max-w-md ${styles.container} rounded-3xl p-8 shadow-2xl`}>
+      <div className={`relative w-full max-w-md ${modalStyles.container} rounded-3xl p-8 shadow-2xl`}>
         {/* Title */}
         <div className="mb-6 text-center">
-          <h1 className={`text-2xl font-bold ${styles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
+          <h1 className={`text-2xl font-bold ${modalStyles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
             {hasJoinedBefore ? (
               'Welcome back!'
             ) : isLoggedIn ? (
@@ -254,7 +243,7 @@ export default function JoinChatModal({
             )}
           </h1>
           {chatRoom.is_private && (
-            <p className={`text-sm ${styles.subtitle}`}>
+            <p className={`text-sm ${modalStyles.subtitle}`}>
               This is a private chat
             </p>
           )}
@@ -267,7 +256,7 @@ export default function JoinChatModal({
             // Returning user (logged-in or anonymous) - show locked username
             <div className="text-center mb-8">
               <div className="flex items-center justify-center gap-2">
-                <p className={`text-sm ${styles.subtitle}`}>You'll join as: <span className={`font-semibold ${styles.title}`}>{currentUserDisplayName}</span></p>
+                <p className={`text-sm ${modalStyles.subtitle}`}>You'll join as: <span className={`font-semibold ${modalStyles.title}`}>{currentUserDisplayName}</span></p>
                 {hasReservedUsername && (
                   <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
                 )}
@@ -276,7 +265,7 @@ export default function JoinChatModal({
           ) : isLoggedIn ? (
             // Logged-in first-time user - editable username pre-filled with reserved_username
             <div>
-              <label className={`block text-sm font-medium ${styles.subtitle} mb-2`}>
+              <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
                 Pick a username
               </label>
               <div className="relative">
@@ -285,7 +274,7 @@ export default function JoinChatModal({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={currentUserDisplayName || "Enter username"}
-                  className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input} transition-colors focus:outline-none ${
+                  className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors focus:outline-none ${
                     usernameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
                   }`}
                   maxLength={15}
@@ -295,7 +284,7 @@ export default function JoinChatModal({
                   type="button"
                   onClick={handleSuggestUsername}
                   disabled={isJoining || isSuggestingUsername}
-                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${styles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
                   title="Suggest random username"
                 >
                   <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
@@ -315,7 +304,7 @@ export default function JoinChatModal({
           ) : (
             // Anonymous first-time user - show input
             <div>
-              <label className={`block text-sm font-medium ${styles.subtitle} mb-2`}>
+              <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
                 Pick a username
               </label>
               <div className="relative">
@@ -324,7 +313,7 @@ export default function JoinChatModal({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Enter username"
-                  className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input} transition-colors focus:outline-none ${
+                  className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors focus:outline-none ${
                     usernameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
                   }`}
                   maxLength={15}
@@ -334,7 +323,7 @@ export default function JoinChatModal({
                   type="button"
                   onClick={handleSuggestUsername}
                   disabled={isJoining || isSuggestingUsername}
-                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${styles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
                   title="Suggest random username"
                 >
                   <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
@@ -356,7 +345,7 @@ export default function JoinChatModal({
           {/* Access Code Input (only for private chats) */}
           {chatRoom.access_mode === 'private' && (
             <div>
-              <label className={`block text-sm font-medium ${styles.subtitle} mb-2`}>
+              <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
                 Access Code
               </label>
               <input
@@ -364,7 +353,7 @@ export default function JoinChatModal({
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value)}
                 placeholder="Enter access code"
-                className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
+                className={`w-full px-4 py-3 rounded-xl ${modalStyles.input} transition-colors focus:outline-none`}
                 disabled={isJoining}
               />
             </div>
@@ -372,7 +361,7 @@ export default function JoinChatModal({
 
           {/* Error Message */}
           {error && (
-            <p className={`text-xs ${styles.error} text-left -mt-3`}>
+            <p className={`text-xs ${modalStyles.error} text-left -mt-3`}>
               {error}
             </p>
           )}
@@ -381,7 +370,7 @@ export default function JoinChatModal({
           <button
             type="submit"
             disabled={isJoining}
-            className={`w-full px-6 py-4 rounded-xl font-semibold ${styles.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`w-full px-6 py-4 rounded-xl font-semibold ${modalStyles.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {isJoining ? 'Joining...' : 'Join Chat'}
           </button>
@@ -391,10 +380,10 @@ export default function JoinChatModal({
             <>
               <div className="relative my-3">
                 <div className={`absolute inset-0 flex items-center`}>
-                  <div className={`w-full border-t ${styles.divider}`} />
+                  <div className={`w-full border-t ${modalStyles.divider}`} />
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className={`px-4 ${styles.dividerText} ${styles.subtitle}`}>
+                  <span className={`px-4 ${modalStyles.dividerText} ${modalStyles.subtitle}`}>
                     or
                   </span>
                 </div>
@@ -404,14 +393,14 @@ export default function JoinChatModal({
                 <button
                   type="button"
                   onClick={handleLogin}
-                  className={`w-full px-6 py-3 rounded-xl font-bold ${styles.secondaryButton} transition-all active:scale-95`}
+                  className={`w-full px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95`}
                 >
                   Log in
                 </button>
                 <button
                   type="button"
                   onClick={handleSignup}
-                  className={`w-full px-6 py-3 rounded-xl font-bold ${styles.secondaryButton} transition-all active:scale-95`}
+                  className={`w-full px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95`}
                 >
                   Sign up
                 </button>

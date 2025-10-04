@@ -18,32 +18,14 @@ interface MessageActionsModalProps {
   onTip?: (username: string) => void;
 }
 
-// Theme configurations for the modal
+// Theme configurations - now uses Tailwind dark: variants to respond to OS preference
 const modalStyles = {
-  "purple-dream": {
-    overlay: 'bg-black/20 backdrop-blur-sm',
-    container: 'bg-white',
-    messagePreview: 'bg-gray-50 border border-gray-200 rounded-2xl shadow-sm',
-    messageText: 'text-gray-800',
-    actionButton: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-900',
-    actionIcon: 'text-purple-600',
-  },
-  "ocean-blue": {
-    overlay: 'bg-black/20 backdrop-blur-sm',
-    container: 'bg-white',
-    messagePreview: 'bg-gray-50 border border-gray-200 rounded-2xl shadow-sm',
-    messageText: 'text-gray-800',
-    actionButton: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-900',
-    actionIcon: 'text-blue-600',
-  },
-  "dark-mode": {
-    overlay: 'bg-black/60 backdrop-blur-sm',
-    container: 'bg-zinc-900',
-    messagePreview: 'bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl',
-    messageText: 'text-zinc-50',
-    actionButton: 'bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 text-zinc-50',
-    actionIcon: 'text-cyan-400',
-  },
+  overlay: 'bg-black/20 dark:bg-black/60 backdrop-blur-sm',
+  container: 'bg-white dark:bg-zinc-900',
+  messagePreview: 'bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-2xl dark:rounded-lg shadow-sm dark:shadow-xl',
+  messageText: 'text-gray-800 dark:text-zinc-50',
+  actionButton: 'bg-gray-100 dark:bg-zinc-700 hover:bg-gray-200 dark:hover:bg-zinc-600 active:bg-gray-300 dark:active:bg-zinc-500 text-gray-900 dark:text-zinc-50 dark:border dark:border-zinc-600',
+  actionIcon: 'text-purple-600 dark:text-cyan-400',
 };
 
 export default function MessageActionsModal({
@@ -61,7 +43,6 @@ export default function MessageActionsModal({
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartY = React.useRef(0);
-  const styles = modalStyles[design];
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
 
@@ -218,11 +199,11 @@ export default function MessageActionsModal({
           }}
         >
           {/* Backdrop with blur */}
-          <div className={`absolute inset-0 ${styles.overlay}`} />
+          <div className={`absolute inset-0 ${modalStyles.overlay}`} />
 
           {/* Modal Content */}
           <div
-            className={`relative w-full max-w-lg ${styles.container} rounded-t-3xl pb-safe ${!isDragging && 'animate-slide-up'}`}
+            className={`relative w-full max-w-lg ${modalStyles.container} rounded-t-3xl pb-safe ${!isDragging && 'animate-slide-up'}`}
             style={{
               transform: `translateY(${dragOffset}px)`,
               transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -239,7 +220,7 @@ export default function MessageActionsModal({
 
             {/* Message Preview */}
             <div className="px-6 pt-2 pb-6">
-              <div className={`p-4 ${styles.messagePreview}`}>
+              <div className={`p-4 ${modalStyles.messagePreview}`}>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="font-semibold text-sm text-gray-700 dark:text-gray-300">
                     {message.username}
@@ -250,7 +231,7 @@ export default function MessageActionsModal({
                   {message.is_from_host && <span className="text-xs">👑</span>}
                   {message.is_pinned && <span className="text-xs">📌</span>}
                 </div>
-                <p className={`text-base ${styles.messageText}`}>
+                <p className={`text-base ${modalStyles.messageText}`}>
                   {message.content}
                 </p>
               </div>
@@ -264,9 +245,9 @@ export default function MessageActionsModal({
                   <button
                     key={index}
                     onClick={action.action}
-                    className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 ${styles.actionButton}`}
+                    className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 ${modalStyles.actionButton}`}
                   >
-                    <Icon className={`w-6 h-6 ${styles.actionIcon}`} />
+                    <Icon className={`w-6 h-6 ${modalStyles.actionIcon}`} />
                     <span className="text-base font-medium">{action.label}</span>
                   </button>
                 );
