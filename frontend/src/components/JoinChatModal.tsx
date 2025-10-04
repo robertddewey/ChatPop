@@ -26,7 +26,7 @@ const modalStyles = {
   title: 'text-gray-900 dark:text-zinc-50',
   subtitle: 'text-gray-600 dark:text-zinc-400',
   input: 'bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-zinc-50 placeholder-gray-400 dark:placeholder-zinc-500 focus:ring-2 focus:ring-purple-500 dark:focus:ring-cyan-400 focus:border-purple-500 dark:focus:border-cyan-400',
-  primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 dark:bg-cyan-400 hover:from-purple-700 hover:to-blue-700 dark:hover:bg-cyan-500 text-white dark:text-cyan-950',
+  primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
   secondaryButton: 'bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700',
   divider: 'border-gray-200 dark:border-zinc-700',
   dividerText: 'bg-white dark:bg-zinc-900',

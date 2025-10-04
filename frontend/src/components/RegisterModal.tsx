@@ -195,7 +195,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     subtitle: 'text-gray-600 dark:text-zinc-400',
     input: (hasError: boolean) => `bg-white dark:bg-zinc-800 border text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-500 focus:ring-2 focus:ring-purple-500 dark:focus:ring-cyan-400 focus:border-purple-500 dark:focus:border-cyan-400 ${hasError ? 'border-red-500' : 'border-gray-300 dark:border-zinc-700'}`,
     label: 'text-gray-700 dark:text-zinc-300',
-    button: 'bg-gradient-to-r from-purple-600 to-blue-600 dark:bg-cyan-400 hover:from-purple-700 hover:to-blue-700 dark:hover:bg-cyan-500 text-white dark:text-cyan-950',
+    button: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
     link: 'text-purple-600 dark:text-cyan-400 hover:underline dark:hover:text-cyan-300',
     error: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400',
     fieldError: 'text-red-600 dark:text-red-400',

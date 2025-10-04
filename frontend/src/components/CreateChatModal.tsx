@@ -255,7 +255,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 dark:bg-cyan-400 text-white dark:text-cyan-950 font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 dark:hover:bg-cyan-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating...' : 'Create Room'}
             </button>
