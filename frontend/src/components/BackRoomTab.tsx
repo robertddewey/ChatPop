@@ -16,32 +16,39 @@ export default function BackRoomTab({
   hasBackRoom,
   onClick,
   hasNewMessages = false,
-  design = 'purple-dream',
+  design = 'pink-dream',
 }: BackRoomTabProps) {
   if (!hasBackRoom) return null;
 
   // Design-specific styling
   const getDesignStyles = () => {
     switch (design) {
-      case 'design2':
-        return {
-          baseClasses: 'px-3 py-4 rounded-l-xl',
-          backRoomColors: 'bg-gradient-to-b from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white',
-          mainChatColors: 'bg-gradient-to-b from-gray-700 to-gray-900 hover:from-gray-600 hover:to-gray-800 text-white',
-          shadow: 'shadow-2xl',
-        };
-      case 'design3':
-        return {
-          baseClasses: 'px-2 py-3 rounded-l-md border-l-4',
-          backRoomColors: 'bg-purple-50 hover:bg-purple-100 text-purple-900 border-purple-600',
-          mainChatColors: 'bg-gray-50 hover:bg-gray-100 text-gray-900 border-gray-600',
-          shadow: 'shadow-md',
-        };
-      default: // design1
+      case 'pink-dream':
         return {
           baseClasses: 'px-2 py-3 rounded-l-lg',
-          backRoomColors: 'bg-purple-600 hover:bg-purple-700 text-white',
-          mainChatColors: 'bg-gray-800 hover:bg-gray-700 text-white',
+          backRoomColors: 'bg-gradient-to-b from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white',
+          mainChatColors: 'bg-gradient-to-b from-pink-100 to-pink-200 dark:from-indigo-800 dark:to-indigo-900 hover:from-pink-200 hover:to-pink-300 dark:hover:from-indigo-700 dark:hover:to-indigo-800 text-pink-900 dark:text-white',
+          shadow: 'shadow-lg',
+        };
+      case 'ocean-blue':
+        return {
+          baseClasses: 'px-2 py-3 rounded-l-lg',
+          backRoomColors: 'bg-gradient-to-b from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white',
+          mainChatColors: 'bg-gradient-to-b from-blue-100 to-cyan-100 dark:from-gray-700 dark:to-gray-800 hover:from-blue-200 hover:to-cyan-200 dark:hover:from-gray-600 dark:hover:to-gray-700 text-blue-900 dark:text-white',
+          shadow: 'shadow-lg',
+        };
+      case 'dark-mode':
+        return {
+          baseClasses: 'px-2 py-3 rounded-l-md border-l-4',
+          backRoomColors: 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950 border-cyan-300',
+          mainChatColors: 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border-zinc-700',
+          shadow: 'shadow-md',
+        };
+      default:
+        return {
+          baseClasses: 'px-2 py-3 rounded-l-lg',
+          backRoomColors: 'bg-gradient-to-b from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white',
+          mainChatColors: 'bg-gradient-to-b from-pink-100 to-pink-200 dark:from-indigo-800 dark:to-indigo-900 hover:from-pink-200 hover:to-pink-300 dark:hover:from-indigo-700 dark:hover:to-indigo-800 text-pink-900 dark:text-white',
           shadow: 'shadow-lg',
         };
     }

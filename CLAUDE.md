@@ -478,6 +478,142 @@ Inconsistent modal styling creates a jarring user experience. A dark theme with 
 
 ---
 
+## SVG Background Patterns
+
+### Overview
+
+Chat themes can include subtle SVG background patterns to add visual texture without interfering with message readability. This is a standardized system that uses external SVG files with CSS filters for colorization.
+
+### Current Implementation
+
+**Themes with SVG backgrounds:**
+- **Pink Dream**: Pink-tinted pattern (`hue-rotate(310deg)`)
+- **Ocean Blue**: Blue-tinted pattern (`hue-rotate(180deg)`)
+
+**SVG File Location:** `/frontend/public/bg-pattern.svg` (166KB optimized)
+
+### Adding SVG Backgrounds to New Themes
+
+#### Step 1: Prepare SVG File
+
+1. **Optimize the SVG** using SVGO to reduce file size:
+   ```bash
+   npx svgo input.svg -o optimized.svg
+   ```
+
+2. **Target file size:** Aim for ~3KB for inline SVGs, or up to ~200KB for external files (cached per session)
+
+3. **Place in public directory:** Move the optimized SVG to `/frontend/public/bg-pattern.svg` (or use a theme-specific filename)
+
+#### Step 2: Add Background to Theme Configuration
+
+In `/frontend/src/app/chat/[code]/page.tsx`, add the `messagesAreaBg` property to your theme:
+
+```typescript
+const designs = {
+  'your-theme-name': {
+    // ... other theme properties
+    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3",
+    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.08] [filter:sepia(1)_hue-rotate(XXXdeg)_saturate(3)]",
+    stickySection: "absolute top-0 left-0 right-0 z-20 border-b ... bg-.../80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
+  },
+};
+```
+
+**Key properties:**
+- `bg-[url('/bg-pattern.svg')]` - References the SVG file in public directory
+- `bg-repeat` - Tiles the pattern across the entire background
+- `bg-[length:800px_533px]` - Scales the pattern (adjust based on your SVG dimensions)
+- `opacity-[0.08]` - Very subtle opacity (0.08 = 8% visible, adjust as needed)
+- `[filter:sepia(1)_hue-rotate(XXXdeg)_saturate(3)]` - Colorizes the pattern:
+  - `sepia(1)` - Converts to sepia tone (base for colorization)
+  - `hue-rotate(XXXdeg)` - Shifts color (0°=red, 120°=green, 180°=cyan, 310°=pink)
+  - `saturate(3)` - Increases color intensity
+
+#### Step 3: Implement Background Layer Structure
+
+The background pattern must be implemented as a separate layer to avoid affecting message content:
+
+```typescript
+{/* Messages Container */}
+<div className="relative flex-1 overflow-hidden">
+  {/* Background Pattern Layer - Fixed behind everything */}
+  <div className={`absolute inset-0 pointer-events-none ${currentDesign.messagesAreaBg}`} />
+
+  {/* Messages Area */}
+  <div
+    ref={messagesContainerRef}
+    onScroll={handleScroll}
+    className={currentDesign.messagesArea}
+  >
+    {/* Messages content with proper z-index */}
+    <div className={`space-y-3 relative z-10 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
+      {/* Messages render here */}
+    </div>
+  </div>
+</div>
+```
+
+**Critical implementation details:**
+- Background layer uses `absolute inset-0` to fill the entire container
+- `pointer-events-none` prevents the background from blocking clicks/touches
+- Background layer is positioned **outside** the scrollable messages container
+- Messages content wrapper uses `relative z-10` to appear above background
+- Sticky section uses `z-20` to appear above both background and messages
+
+#### Step 4: Z-Index Layer Structure
+
+Ensure proper stacking order:
+
+```
+z-index: none  → Background pattern layer (absolute, pointer-events-none)
+z-index: 10    → Messages content (relative)
+z-index: 20    → Sticky section (host messages, pinned messages)
+```
+
+**Important:** The `stickySection` in your theme config **must** use `z-20` to ensure sticky messages appear above the background pattern.
+
+### Color Customization Examples
+
+**Hue rotation values for common colors:**
+- Red/Pink: `310deg - 350deg`
+- Orange: `20deg - 40deg`
+- Yellow: `50deg - 70deg`
+- Green: `100deg - 140deg`
+- Cyan/Blue: `170deg - 200deg`
+- Purple: `260deg - 290deg`
+
+**Opacity guidelines:**
+- Very subtle (recommended): `0.05 - 0.10`
+- Moderate: `0.10 - 0.15`
+- Visible: `0.15 - 0.25`
+
+### Performance Considerations
+
+**File size impact:**
+- External SVG loaded once per chat session
+- Cached by browser (HTTP caching headers)
+- Gzip/Brotli compression reduces size by ~70% (166KB → ~50KB)
+- No re-download on theme switch within same session
+
+**Optimization tips:**
+- Use SVGO to remove unnecessary metadata and optimize paths
+- Consider using simpler SVG patterns for better performance
+- Test on mobile devices to ensure smooth scrolling
+
+### Testing Checklist
+
+Before merging a theme with SVG background:
+- [ ] Background visible but subtle (doesn't interfere with messages)
+- [ ] Pattern tiles seamlessly across entire chat area
+- [ ] Color matches theme aesthetic (test hue-rotate values)
+- [ ] Sticky messages appear above background (z-20)
+- [ ] Scrolling performance is smooth on mobile devices
+- [ ] Background doesn't receive click/touch events
+- [ ] File size is optimized (run SVGO)
+
+---
+
 ## Dual Sessions Architecture & IP Rate Limiting
 
 ### Overview
@@ -612,6 +748,206 @@ ip_address = GenericIPAddressField(null=True, blank=True)  # For rate limiting
 **Unique Constraint** (`models.py:289-294`):
 - User-based participation: unique per (chat_room, user)
 - Anonymous participation: unique per (chat_room, fingerprint) where user is null
+
+---
+
+## Redis Message Caching Architecture
+
+### Overview
+
+ChatPop uses a **hybrid Redis/PostgreSQL message storage strategy** to optimize real-time chat performance while maintaining data persistence and integrity.
+
+**Key Principle:** PostgreSQL is the source of truth, Redis is the fast cache for recent messages.
+
+### Architecture Components
+
+**PostgreSQL (Permanent Storage)**
+- **Role:** Long-term message log, source of truth
+- **Stores:** All messages permanently with full metadata
+- **Use Cases:** Message history, search, analytics, compliance
+
+**Redis (Fast Cache)**
+- **Role:** Hot cache for real-time message delivery
+- **Stores:** Recent messages (last 500 or 24 hours per chat)
+- **Use Cases:** Real-time WebSocket broadcasts, initial message load, scroll pagination
+
+### Message Flow
+
+**On Message Send (Dual-Write Pattern):**
+1. User sends message via WebSocket
+2. **Write to PostgreSQL** (permanent record, includes all fields)
+3. **Write to Redis** (cached copy with `username_is_reserved` badge status)
+4. Broadcast to all connected clients via WebSocket
+
+**On Message Load (Read-First Pattern):**
+1. Frontend requests recent messages (GET `/api/chats/{code}/messages/`)
+2. **Check Redis first** (sorted set with timestamp scores)
+3. **Fallback to PostgreSQL** if Redis miss (old messages, cache expired)
+4. Return messages with source indicator (`"source": "redis"` or `"source": "postgresql"`)
+
+### Redis Data Structures
+
+**Regular Messages:**
+```
+Key: chat:{chat_code}:messages
+Type: Sorted Set (ZADD)
+Score: Unix timestamp (microseconds for ordering)
+Value: JSON message object
+TTL: 24 hours OR last 500 messages (whichever is larger)
+```
+
+**Pinned Messages:**
+```
+Key: chat:{chat_code}:pinned
+Type: Sorted Set (ZADD)
+Score: pinned_until timestamp (for auto-expiry)
+Value: JSON message object
+TTL: 7 days
+```
+
+**Back Room Messages:**
+```
+Key: chat:{chat_code}:backroom:messages
+Type: Sorted Set (ZADD)
+Score: Unix timestamp
+Value: JSON message object
+TTL: 24 hours OR last 500 messages
+```
+
+### Message Serialization
+
+Messages in Redis include the `username_is_reserved` flag for frontend badge display:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "chat_code": "ABC123",
+  "username": "Robert",
+  "username_is_reserved": true,
+  "user_id": 42,
+  "message_type": "normal",
+  "content": "Hello everyone!",
+  "reply_to_id": null,
+  "is_pinned": false,
+  "created_at": "2025-01-04T12:34:56.789Z",
+  "is_deleted": false
+}
+```
+
+### Cache Retention Policy
+
+**Hybrid Retention:** Keep last **500 messages** OR **24 hours**, whichever is larger.
+
+**Implementation:**
+- On each new message, trim old messages if count exceeds 500
+- Redis key TTL set to 24 hours (refreshed on each message)
+- Expired messages automatically removed by Redis
+
+**Benefits:**
+- Active chats: Last 500 messages always available (even if >24h old)
+- Inactive chats: Auto-cleanup after 24h to free memory
+- No manual cleanup jobs needed
+
+### Pinned Message Handling
+
+**When a message gets pinned:**
+1. Update message in PostgreSQL (`is_pinned=True`, set `pinned_until`)
+2. Add to Redis pinned cache (`chat:{chat_code}:pinned`)
+3. Score = `pinned_until` timestamp (enables auto-expiry)
+4. Broadcast pin event via WebSocket
+
+**When pin expires:**
+- Automatic: Redis removes by score (`ZREMRANGEBYSCORE`)
+- Manual: API endpoint calls `MessageCache.remove_pinned_message()`
+
+**Old Message Pinning:**
+- Messages beyond Redis retention can still be pinned
+- System loads from PostgreSQL and adds to pinned cache
+- No need to check if message exists in regular cache
+
+### Performance Characteristics
+
+**Expected Latencies:**
+- **Message Send:** ~25ms (5ms Redis + 20ms PostgreSQL)
+- **Load Recent (Redis hit):** <2ms
+- **Load Recent (PostgreSQL fallback):** <100ms
+- **WebSocket Broadcast:** <2ms (reads from Redis)
+- **Scroll Pagination (Redis):** <2ms
+- **Scroll Pagination (PostgreSQL):** <100ms
+
+**Cache Hit Rates:**
+- **Active Chats:** ~95-99% (most loads from Redis)
+- **Inactive Chats:** ~0-50% (depends on message age)
+
+### Configuration Settings
+
+Located in `backend/chatpop/settings.py`:
+
+```python
+# Django Cache (django-redis)
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "PARSER_CLASS": "redis.connection.HiredisParser",
+            "CONNECTION_POOL_KWARGS": {"max_connections": 50}
+        }
+    }
+}
+
+# Message Cache Settings
+MESSAGE_CACHE_MAX_COUNT = 500  # Max messages per chat in Redis
+MESSAGE_CACHE_TTL_HOURS = 24   # Auto-expire after 24 hours
+```
+
+**Environment Variables:**
+- `MESSAGE_CACHE_MAX_COUNT` (default: 500)
+- `MESSAGE_CACHE_TTL_HOURS` (default: 24)
+
+### Implementation Files
+
+**Core Modules:**
+- `backend/chats/redis_cache.py` - MessageCache utility class
+- `backend/chats/consumers.py` - WebSocket consumer (dual-write on send)
+- `backend/chats/views.py` - MessageListView (Redis-first read)
+
+**Key Methods:**
+- `MessageCache.add_message()` - Add message to Redis cache
+- `MessageCache.get_messages()` - Fetch recent messages (Redis)
+- `MessageCache.get_messages_before()` - Pagination support
+- `MessageCache.add_pinned_message()` - Cache pinned message
+- `MessageCache.get_pinned_messages()` - Fetch active pins (auto-expires)
+
+### Edge Cases & Error Handling
+
+**Redis Failure:**
+- Write errors: Log but don't crash (PostgreSQL has the data)
+- Read errors: Automatic fallback to PostgreSQL
+- No impact on data integrity (PostgreSQL is source of truth)
+
+**Cache Inconsistency:**
+- Redis cleared: PostgreSQL backfills on next read
+- Message edited: Update both stores (dual-write)
+- Message deleted: Remove from both stores
+
+**Race Conditions:**
+- Use microsecond timestamps for ordering
+- PostgreSQL `created_at` matches Redis score
+- Ensures consistent message ordering across stores
+
+### Monitoring & Debugging
+
+**Cache Health Metrics:**
+- Track `source` field in API responses (`redis` vs `postgresql`)
+- Monitor cache hit rate (% of loads from Redis)
+- Alert if hit rate drops below 90% for active chats
+
+**Debug Tools:**
+- `MessageCache.clear_chat_cache(chat_code)` - Manual cache invalidation
+- Redis CLI: `ZRANGE chat:ABC123:messages 0 -1` - Inspect cached messages
+- PostgreSQL: Compare message counts with Redis (`ZCARD`)
 
 ---
 

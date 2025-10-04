@@ -198,6 +198,22 @@ STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
+# Django Cache (for message caching)
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_KWARGS": {"max_connections": 50},
+        }
+    }
+}
+
+# Message Cache Settings
+MESSAGE_CACHE_MAX_COUNT = int(os.getenv("MESSAGE_CACHE_MAX_COUNT", "500"))  # Max messages per chat in Redis
+MESSAGE_CACHE_TTL_HOURS = int(os.getenv("MESSAGE_CACHE_TTL_HOURS", "24"))  # Auto-expire after 24 hours
+
 # Custom User Model
 AUTH_USER_MODEL = "accounts.User"
 

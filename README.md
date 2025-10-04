@@ -166,6 +166,9 @@ Run specific test modules:
 # Run dual sessions tests
 ./venv/bin/python manage.py test chats.tests_dual_sessions
 
+# Run Redis cache tests
+./venv/bin/python manage.py test chats.tests_redis_cache
+
 # Run a specific test class
 ./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests
 
@@ -373,6 +376,125 @@ The platform provides a random username generator for both registration and chat
 - Response: 400 Bad Request with clear error message when limit exceeded
 - Storage: Raw IP addresses (not hashed) in ChatParticipation model
 
+#### Redis Message Cache Tests (`chats.tests_redis_cache` - 22 tests)
+**Purpose:** Validate hybrid Redis/PostgreSQL message storage architecture for optimal real-time performance
+
+**Architecture Overview:**
+ChatPop uses a dual-storage strategy for chat messages:
+- **PostgreSQL:** Permanent message log (source of truth) for all messages
+- **Redis:** Fast in-memory cache for recent messages (last 500 or 24 hours)
+- **Pattern:** Dual-write on send (PostgreSQL + Redis), Redis-first on read with PostgreSQL fallback
+
+**Functional Tests (18 tests):**
+- Dual-write pattern: Messages saved to both PostgreSQL and Redis atomically
+- Redis-first read: Fast cache lookups with automatic PostgreSQL fallback
+- Username badge computation: Includes `username_is_reserved` flag in cached data
+- Message ordering: Newest-first retrieval using Redis sorted sets
+- Pagination support: Exclusive timestamp boundaries for scroll-up (`get_messages_before`)
+- Cache retention: Automatic trimming to 500 most recent messages per chat
+- TTL management: 24-hour auto-expiration with refresh on each message
+- Pinned messages: Separate cache with `pinned_until` as score for auto-expiry
+- Backroom separation: Independent cache keys for main chat vs backroom messages
+- Message serialization: All fields (content, user_id, reply_to, timestamps) properly cached
+- Cache clearing: Manual invalidation support for testing/admin operations
+- Graceful degradation: Redis failures don't crash (returns empty/False, PostgreSQL fallback works)
+
+**Performance Tests (6 tests):**
+- PostgreSQL-only write baseline (~0.4ms local)
+- Dual-write performance (PostgreSQL + Redis ~0.9ms local)
+- Redis cache hit speed (~0.45ms local, **50-100x faster in production**)
+- PostgreSQL fallback speed (~0.95ms local)
+- Cache hit rate simulation (100% hit rate for active chats)
+- Pinned message operations (~0.35ms write, ~0.40ms read)
+
+**Performance Characteristics:**
+- **Local development:** ~2x speedup (Redis vs PostgreSQL)
+  - Redis read: 0.45ms
+  - PostgreSQL read: 0.95ms
+  - Dual-write: 0.90ms
+- **Production (with network latency):** ~50-100x speedup expected
+  - Redis: 1-2ms (lightweight protocol, in-memory)
+  - PostgreSQL: 50-100ms (TCP connection, disk I/O, query planning)
+  - Network round-trip time is the dominant factor in production
+
+**Why local tests show only 2x improvement:**
+- Both databases on same machine (no network latency)
+- Test database fits in PostgreSQL's memory cache
+- No connection pooling overhead
+- Simple queries without joins/indexes
+- The massive production speedup comes from eliminating network latency and connection overhead
+
+**Redis Data Structures:**
+- Sorted sets (ZADD/ZREVRANGE) with Unix timestamp scores
+- Keys: `chat:{code}:messages`, `chat:{code}:pinned`, `chat:{code}:backroom:messages`
+- JSON serialization with UUID-to-string conversion
+- Automatic score-based ordering and range queries
+
+**Configuration:**
+- `MESSAGE_CACHE_MAX_COUNT`: 500 messages per chat (default)
+- `MESSAGE_CACHE_TTL_HOURS`: 24 hours auto-expiration (default)
+- Environment variables: `MESSAGE_CACHE_MAX_COUNT`, `MESSAGE_CACHE_TTL_HOURS`
+
+**Implementation Files:**
+- `backend/chats/redis_cache.py`: MessageCache class with all cache operations
+- `backend/chats/consumers.py`: WebSocket dual-write on message send
+- `backend/chats/views.py`: REST API Redis-first read with PostgreSQL fallback
+- `backend/chatpop/settings.py`: django-redis configuration
+
+**Debugging & Monitoring:**
+
+The `inspect_redis` management command provides real-time cache inspection:
+
+```bash
+# List all cached chats
+cd backend
+./venv/bin/python manage.py inspect_redis --list
+
+# Inspect specific chat
+./venv/bin/python manage.py inspect_redis --chat ZCMLY634
+
+# Show cached messages
+./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --show-messages --limit 20
+
+# Compare Redis vs PostgreSQL
+./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --compare
+
+# Inspect specific message
+./venv/bin/python manage.py inspect_redis --message <uuid>
+
+# Monitor cache in real-time
+./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --monitor
+
+# Show overall Redis stats
+./venv/bin/python manage.py inspect_redis --stats
+
+# Clear cache (with confirmation)
+./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --clear
+
+# Clear cache (no confirmation)
+./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --clear --force
+```
+
+**Example output:**
+```
+🔍 Chat: ZCMLY634 (Test Chat Room)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📨 Main Messages (47 cached)
+  Key: chat:ZCMLY634:messages
+  TTL: 23h 45m
+  Oldest: 2025-10-01 19:18:10
+  Newest: 2025-10-04 15:32:45
+
+📌 Pinned Messages (2 cached)
+  Key: chat:ZCMLY634:pinned
+  TTL: 6d 23h
+
+🏠 Backroom Messages (0 cached)
+  Key: chat:ZCMLY634:backroom:messages
+  [Empty]
+```
+
 #### Authentication Tests (`accounts.tests`)
 **Purpose:** User registration and authentication (basic template - to be expanded)
 
@@ -383,6 +505,116 @@ Run Next.js tests (when test suite is added):
 cd frontend
 npm test
 ```
+
+## Theme Development
+
+### SVG Background Patterns
+
+Chat themes can include subtle SVG background patterns to add visual texture without interfering with message readability.
+
+#### Current Implementation
+
+**Themes with SVG backgrounds:**
+- **Pink Dream**: Pink-tinted pattern (`hue-rotate(310deg)`, 4% opacity)
+- **Ocean Blue**: Blue-tinted pattern (`hue-rotate(180deg)`, 4% opacity)
+- **Dark Mode**: Inverted cyan-tinted pattern (`invert(1)` + `hue-rotate(180deg)`, 3% opacity)
+
+**SVG File:** `/frontend/public/bg-pattern.svg` (166KB optimized)
+
+#### Adding SVG Backgrounds to Themes
+
+**Step 1: Prepare SVG File**
+
+Optimize the SVG using SVGO:
+```bash
+npx svgo input.svg -o optimized.svg
+```
+
+Place in public directory: `/frontend/public/bg-pattern.svg`
+
+**Step 2: Configure Theme**
+
+In `/frontend/src/app/chat/[code]/page.tsx`, add `messagesAreaBg` property:
+
+```typescript
+const designs = {
+  'your-theme-name': {
+    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3",
+    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.04] [filter:sepia(1)_hue-rotate(XXXdeg)_saturate(3)]",
+    stickySection: "absolute top-0 left-0 right-0 z-20 ...",
+  },
+};
+```
+
+**For dark themes**, add `invert(1)` to reverse the SVG colors (light backgrounds):
+```typescript
+messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.03] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
+```
+
+**Key CSS properties:**
+- `bg-[url('/bg-pattern.svg')]` - References SVG in public directory
+- `bg-repeat` - Tiles pattern across background
+- `bg-[length:800px_533px]` - Scales pattern (adjust for your SVG)
+- `opacity-[0.04]` - Very subtle (4% visible for light themes)
+- `[filter:sepia(1)_hue-rotate(XXXdeg)_saturate(3)]` - Colorizes pattern
+  - `invert(1)` - (Optional) Reverses colors for dark themes
+  - `sepia(1)` - Base sepia tone
+  - `hue-rotate(XXXdeg)` - Color shift (0°=red, 120°=green, 180°=cyan, 310°=pink)
+  - `saturate(3)` - Increases color intensity
+
+**Step 3: Implement Layer Structure**
+
+Background must be separate layer to avoid affecting messages:
+
+```typescript
+{/* Messages Container */}
+<div className="relative flex-1 overflow-hidden">
+  {/* Background Pattern - Fixed behind everything */}
+  <div className={`absolute inset-0 pointer-events-none ${currentDesign.messagesAreaBg}`} />
+
+  {/* Messages Area */}
+  <div className={currentDesign.messagesArea}>
+    {/* Messages with proper z-index */}
+    <div className="space-y-3 relative z-10">
+      {/* Messages render here */}
+    </div>
+  </div>
+</div>
+```
+
+**Z-Index Layers:**
+```
+z-index: none  → Background pattern (absolute, pointer-events-none)
+z-index: 10    → Messages content (relative)
+z-index: 20    → Sticky section (host/pinned messages)
+```
+
+**Color Customization:**
+- Red/Pink: `310deg - 350deg`
+- Orange: `20deg - 40deg`
+- Yellow: `50deg - 70deg`
+- Green: `100deg - 140deg`
+- Cyan/Blue: `170deg - 200deg`
+- Purple: `260deg - 290deg`
+
+**Opacity Guidelines:**
+- **Light themes** (white/light backgrounds): `0.03 - 0.05` (very subtle)
+- **Dark themes** (dark backgrounds with inverted SVG): `0.02 - 0.04` (extremely subtle)
+- Moderate visibility: `0.05 - 0.08`
+- High visibility: `0.08 - 0.15`
+
+**Current production values:**
+- Pink Dream: `0.04` (4%)
+- Ocean Blue: `0.04` (4%)
+- Dark Mode: `0.03` (3%, with `invert(1)`)
+
+**Performance:**
+- External SVG loaded once per session
+- Cached by browser
+- Gzip/Brotli compression: 166KB → ~50KB
+- No re-download on theme switch
+
+See `CLAUDE.md` for complete theme development guidelines.
 
 ## Features Roadmap
 

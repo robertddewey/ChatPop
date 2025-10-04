@@ -31,14 +31,14 @@ export default function ChatLayout({
           (function() {
             // Theme color mapping (for browser URL bar)
             const themeColors = {
-              'purple-dream': { light: '#ffffff', dark: '#1f2937' },
+              'pink-dream': { light: '#fce7f3', dark: '#1e1b4b' },
               'ocean-blue': { light: '#ffffff', dark: '#1f2937' },
               'dark-mode': { light: '#18181b', dark: '#18181b' }
             };
 
             // Body background colors (match container backgrounds)
             const backgroundColors = {
-              'purple-dream': { light: '#f0f0ff', dark: '#111827' }, // indigo-50 / gray-900
+              'pink-dream': { light: '#fdf2f8', dark: '#1e1b4b' }, // pink-50 / indigo-950
               'ocean-blue': { light: '#f0f9ff', dark: '#111827' },   // sky-50 / gray-900
               'dark-mode': { light: '#09090b', dark: '#09090b' }     // zinc-950 / zinc-950
             };
@@ -57,7 +57,7 @@ export default function ChatLayout({
                 if (stored && themeColors[stored]) return stored;
               }
 
-              return 'purple-dream'; // default
+              return 'pink-dream'; // default
             }
 
             const theme = getTheme();

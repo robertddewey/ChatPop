@@ -16,12 +16,12 @@ interface JoinChatModalProps {
   hasJoinedBefore: boolean;
   isLoggedIn: boolean;
   hasReservedUsername?: boolean;
-  design?: 'purple-dream' | 'ocean-blue' | 'dark-mode';
+  design?: 'pink-dream' | 'ocean-blue' | 'dark-mode';
   onJoin: (username: string, accessCode?: string) => void;
 }
 
 // Get theme-aware modal styles
-const getModalStyles = (design: 'purple-dream' | 'ocean-blue' | 'dark-mode') => {
+const getModalStyles = (design: 'pink-dream' | 'ocean-blue' | 'dark-mode') => {
   const useDarkMode = isDarkTheme(design);
 
   if (useDarkMode) {
@@ -61,7 +61,7 @@ export default function JoinChatModal({
   hasJoinedBefore,
   isLoggedIn,
   hasReservedUsername = false,
-  design = 'purple-dream',
+  design = 'pink-dream',
   onJoin,
 }: JoinChatModalProps) {
   const router = useRouter();
@@ -75,6 +75,8 @@ export default function JoinChatModal({
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [usernameAvailable, setUsernameAvailable] = useState(false);
+  const [isRateLimited, setIsRateLimited] = useState(false);
+  const [rateLimitChecked, setRateLimitChecked] = useState(false);
   const audioContextRef = React.useRef<AudioContext>();
   const validationTimeoutRef = React.useRef<NodeJS.Timeout>();
 
@@ -98,6 +100,34 @@ export default function JoinChatModal({
       }
     };
   }, []);
+
+  // Check rate limit on mount (for anonymous users only)
+  useEffect(() => {
+    const checkRateLimit = async () => {
+      if (isLoggedIn || hasJoinedBefore) {
+        // Logged-in users and returning users are exempt
+        setRateLimitChecked(true);
+        return;
+      }
+
+      try {
+        const fingerprint = await getFingerprint();
+        const result = await chatApi.checkRateLimit(chatRoom.code, fingerprint);
+
+        if (result.is_rate_limited) {
+          setIsRateLimited(true);
+          setError('Max anonymous usernames. Log in to continue.');
+        }
+      } catch (err) {
+        console.error('Failed to check rate limit:', err);
+        // Don't block if check fails
+      } finally {
+        setRateLimitChecked(true);
+      }
+    };
+
+    checkRateLimit();
+  }, [isLoggedIn, hasJoinedBefore, chatRoom.code]);
 
   // Real-time username validation with debouncing
   useEffect(() => {
@@ -340,12 +370,12 @@ export default function JoinChatModal({
                     usernameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
                   }`}
                   maxLength={15}
-                  disabled={isJoining || isSuggestingUsername}
+                  disabled={isJoining || isSuggestingUsername || isRateLimited}
                 />
                 <button
                   type="button"
                   onClick={handleSuggestUsername}
-                  disabled={isJoining || isSuggestingUsername}
+                  disabled={isJoining || isSuggestingUsername || isRateLimited}
                   className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
                   title="Suggest random username"
                 >
@@ -392,7 +422,7 @@ export default function JoinChatModal({
           {/* Join Button */}
           <button
             type="submit"
-            disabled={isJoining}
+            disabled={isJoining || isRateLimited}
             className={`w-full px-6 py-4 rounded-xl font-semibold ${modalStyles.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {isJoining ? 'Joining...' : 'Join Chat'}
