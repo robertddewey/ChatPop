@@ -102,6 +102,7 @@ class Message(models.Model):
     # Message content
     message_type = models.CharField(max_length=10, choices=MESSAGE_TYPES, default=MESSAGE_NORMAL)
     content = models.TextField()
+    voice_url = models.URLField(max_length=500, blank=True, null=True, help_text="URL to voice message audio file")
 
     # Pinning
     is_pinned = models.BooleanField(default=False)
@@ -218,6 +219,7 @@ class BackRoomMessage(models.Model):
     # Message content
     message_type = models.CharField(max_length=10, choices=MESSAGE_TYPES, default=MESSAGE_NORMAL)
     content = models.TextField()
+    voice_url = models.URLField(max_length=500, blank=True, null=True, help_text="URL to voice message audio file")
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

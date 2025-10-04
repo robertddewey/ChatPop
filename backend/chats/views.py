@@ -1,4 +1,4 @@
-from rest_framework import status, generics, permissions
+from rest_framework import status, generics, permissions, parsers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -849,3 +849,154 @@ class SuggestUsernameView(APIView):
             'username': username,
             'remaining': 20 - new_count
         })
+
+
+class VoiceUploadView(APIView):
+    """
+    Upload a voice message.
+    Available to all chat participants if voice_enabled=True on the chat room.
+    Saves to local storage or S3 based on configuration.
+    """
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+
+    def post(self, request, code):
+        from .storage import save_voice_message, get_voice_message_url
+        from .security import ChatSessionValidator
+        from rest_framework.exceptions import PermissionDenied
+
+        # Get chat room
+        chat_room = get_object_or_404(ChatRoom, code=code)
+
+        # Check if voice messages are enabled for this chat
+        if not chat_room.voice_enabled:
+            return Response({
+                'error': 'Voice messages are not enabled for this chat room'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        # Validate session token (works for both authenticated and anonymous users)
+        session_token = request.data.get('session_token') or request.headers.get('X-Chat-Session-Token')
+
+        if not session_token:
+            return Response({
+                'error': 'Session token required to upload voice messages'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+        except PermissionDenied:
+            return Response({
+                'error': 'Invalid session token'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Get uploaded file
+        voice_file = request.FILES.get('voice_message')
+        if not voice_file:
+            return Response({
+                'error': 'No voice message file provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file size (max 10MB)
+        if voice_file.size > 10 * 1024 * 1024:
+            return Response({
+                'error': 'Voice message too large (max 10MB)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file type (audio files only)
+        allowed_types = ['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/wav']
+        if voice_file.content_type not in allowed_types:
+            return Response({
+                'error': f'Invalid file type. Allowed types: {", ".join(allowed_types)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Save file to storage
+            storage_path, storage_type = save_voice_message(voice_file)
+
+            # Get proxy URL for accessing the file
+            voice_url = get_voice_message_url(storage_path)
+
+            return Response({
+                'voice_url': voice_url,
+                'storage_path': storage_path,
+                'storage_type': storage_type
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({
+                'error': f'Failed to upload voice message: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class VoiceStreamView(APIView):
+    """
+    Stream/download a voice message through Django proxy.
+    Provides access control - only chat participants can access voice messages.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, storage_path):
+        from django.http import FileResponse, Http404
+        from .storage import MediaStorage
+        from .security import ChatSessionValidator
+        from rest_framework.exceptions import PermissionDenied
+
+        # Extract chat code and validate session
+        # Storage path format: voice_messages/<uuid>.webm
+        # We need to validate that user has access to the chat
+
+        # Get session token from query params or headers
+        session_token = request.GET.get('session_token') or request.headers.get('X-Chat-Session-Token')
+
+        if not session_token:
+            return Response({
+                'error': 'Session token required to access voice messages'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Validate session (this will raise PermissionDenied if invalid)
+        try:
+            session_data = ChatSessionValidator.validate_session_token(session_token)
+            chat_code = session_data.get('chat_code')
+
+            # Get chat room to verify it exists
+            chat_room = get_object_or_404(ChatRoom, code=chat_code)
+
+            # Check if file exists in storage
+            if not MediaStorage.file_exists(storage_path):
+                raise Http404("Voice message not found")
+
+            # Get file from storage
+            file_obj = MediaStorage.get_file(storage_path)
+            if not file_obj:
+                raise Http404("Voice message not found")
+
+            # Determine content type from file extension
+            content_type = 'audio/webm'  # default
+            if storage_path.endswith('.mp4'):
+                content_type = 'audio/mp4'
+            elif storage_path.endswith('.mp3') or storage_path.endswith('.mpeg'):
+                content_type = 'audio/mpeg'
+            elif storage_path.endswith('.ogg'):
+                content_type = 'audio/ogg'
+            elif storage_path.endswith('.wav'):
+                content_type = 'audio/wav'
+
+            # Stream the file
+            response = FileResponse(file_obj, content_type=content_type)
+            response['Content-Disposition'] = f'inline; filename="{storage_path.split("/")[-1]}"'
+            response['Cache-Control'] = 'private, max-age=3600'  # Cache for 1 hour
+
+            return response
+
+        except PermissionDenied:
+            return Response({
+                'error': 'Invalid session token'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        except Http404:
+            return Response({
+                'error': 'Voice message not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to stream voice message: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -221,3 +221,24 @@ AUTH_USER_MODEL = "accounts.User"
 # Enable/disable anonymous user fingerprinting for username persistence
 # This can be toggled from Django admin
 ANONYMOUS_USER_FINGERPRINT = os.getenv("ANONYMOUS_USER_FINGERPRINT", "True") == "True"
+
+# Media Storage Settings
+# AWS S3 Configuration (optional - uses local storage if not configured)
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
+AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
+AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN", "")
+
+# Determine storage backend based on AWS configuration
+if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and AWS_STORAGE_BUCKET_NAME:
+    # Use S3 storage when AWS credentials are configured
+    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = "private"  # Files are private by default
+    AWS_QUERYSTRING_AUTH = False  # Don't add query string auth (we use Django proxy)
+else:
+    # Use local filesystem storage when AWS credentials are not configured
+    DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
+    MEDIA_ROOT = BASE_DIR / "media"
+    MEDIA_URL = "/media/"
