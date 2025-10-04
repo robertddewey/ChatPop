@@ -11,6 +11,7 @@ import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
 import LoginModal from '@/components/LoginModal';
 import RegisterModal from '@/components/RegisterModal';
+import VoiceRecorder from '@/components/VoiceRecorder';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
 import { Settings, BadgeCheck } from 'lucide-react';
@@ -549,6 +550,47 @@ export default function ChatPage() {
       }
     } catch (err: any) {
       console.error('Failed to send message:', err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Handle voice message upload
+  const handleVoiceRecording = async (audioBlob: Blob) => {
+    if (sending) return;
+
+    setSending(true);
+    try {
+      let messageUsername = username;
+
+      if (!messageUsername) {
+        const token = localStorage.getItem('auth_token');
+        const isLoggedIn = !!token;
+        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+      }
+
+      if (!messageUsername && chatRoom) {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          messageUsername = chatRoom.host.reserved_username || chatRoom.host.email.split('@')[0];
+        }
+      }
+
+      if (!messageUsername) {
+        console.error('No username available');
+        alert('Please join the chat first');
+        return;
+      }
+
+      // Upload voice message
+      await messageApi.uploadVoiceMessage(code, audioBlob, messageUsername);
+
+      // Reload messages to show the voice message
+      shouldAutoScrollRef.current = true;
+      await loadMessages();
+    } catch (err: any) {
+      console.error('Failed to upload voice message:', err);
+      alert('Failed to send voice message. Please try again.');
     } finally {
       setSending(false);
     }
@@ -1122,6 +1164,12 @@ export default function ChatPage() {
               userSelect: 'text',
             }}
           />
+          {chatRoom?.voice_enabled && (
+            <VoiceRecorder
+              onRecordingComplete={handleVoiceRecording}
+              disabled={sending || !hasJoined}
+            />
+          )}
           <button
             type="submit"
             disabled={sending || !newMessage.trim()}
