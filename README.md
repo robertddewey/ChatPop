@@ -506,6 +506,116 @@ cd frontend
 npm test
 ```
 
+## Theme Development
+
+### SVG Background Patterns
+
+Chat themes can include subtle SVG background patterns to add visual texture without interfering with message readability.
+
+#### Current Implementation
+
+**Themes with SVG backgrounds:**
+- **Pink Dream**: Pink-tinted pattern (`hue-rotate(310deg)`, 4% opacity)
+- **Ocean Blue**: Blue-tinted pattern (`hue-rotate(180deg)`, 4% opacity)
+- **Dark Mode**: Inverted cyan-tinted pattern (`invert(1)` + `hue-rotate(180deg)`, 3% opacity)
+
+**SVG File:** `/frontend/public/bg-pattern.svg` (166KB optimized)
+
+#### Adding SVG Backgrounds to Themes
+
+**Step 1: Prepare SVG File**
+
+Optimize the SVG using SVGO:
+```bash
+npx svgo input.svg -o optimized.svg
+```
+
+Place in public directory: `/frontend/public/bg-pattern.svg`
+
+**Step 2: Configure Theme**
+
+In `/frontend/src/app/chat/[code]/page.tsx`, add `messagesAreaBg` property:
+
+```typescript
+const designs = {
+  'your-theme-name': {
+    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3",
+    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.04] [filter:sepia(1)_hue-rotate(XXXdeg)_saturate(3)]",
+    stickySection: "absolute top-0 left-0 right-0 z-20 ...",
+  },
+};
+```
+
+**For dark themes**, add `invert(1)` to reverse the SVG colors (light backgrounds):
+```typescript
+messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.03] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
+```
+
+**Key CSS properties:**
+- `bg-[url('/bg-pattern.svg')]` - References SVG in public directory
+- `bg-repeat` - Tiles pattern across background
+- `bg-[length:800px_533px]` - Scales pattern (adjust for your SVG)
+- `opacity-[0.04]` - Very subtle (4% visible for light themes)
+- `[filter:sepia(1)_hue-rotate(XXXdeg)_saturate(3)]` - Colorizes pattern
+  - `invert(1)` - (Optional) Reverses colors for dark themes
+  - `sepia(1)` - Base sepia tone
+  - `hue-rotate(XXXdeg)` - Color shift (0°=red, 120°=green, 180°=cyan, 310°=pink)
+  - `saturate(3)` - Increases color intensity
+
+**Step 3: Implement Layer Structure**
+
+Background must be separate layer to avoid affecting messages:
+
+```typescript
+{/* Messages Container */}
+<div className="relative flex-1 overflow-hidden">
+  {/* Background Pattern - Fixed behind everything */}
+  <div className={`absolute inset-0 pointer-events-none ${currentDesign.messagesAreaBg}`} />
+
+  {/* Messages Area */}
+  <div className={currentDesign.messagesArea}>
+    {/* Messages with proper z-index */}
+    <div className="space-y-3 relative z-10">
+      {/* Messages render here */}
+    </div>
+  </div>
+</div>
+```
+
+**Z-Index Layers:**
+```
+z-index: none  → Background pattern (absolute, pointer-events-none)
+z-index: 10    → Messages content (relative)
+z-index: 20    → Sticky section (host/pinned messages)
+```
+
+**Color Customization:**
+- Red/Pink: `310deg - 350deg`
+- Orange: `20deg - 40deg`
+- Yellow: `50deg - 70deg`
+- Green: `100deg - 140deg`
+- Cyan/Blue: `170deg - 200deg`
+- Purple: `260deg - 290deg`
+
+**Opacity Guidelines:**
+- **Light themes** (white/light backgrounds): `0.03 - 0.05` (very subtle)
+- **Dark themes** (dark backgrounds with inverted SVG): `0.02 - 0.04` (extremely subtle)
+- Moderate visibility: `0.05 - 0.08`
+- High visibility: `0.08 - 0.15`
+
+**Current production values:**
+- Pink Dream: `0.04` (4%)
+- Ocean Blue: `0.04` (4%)
+- Dark Mode: `0.03` (3%, with `invert(1)`)
+
+**Performance:**
+- External SVG loaded once per session
+- Cached by browser
+- Gzip/Brotli compression: 166KB → ~50KB
+- No re-download on theme switch
+
+See `CLAUDE.md` for complete theme development guidelines.
+
 ## Features Roadmap
 
 ### MVP Features

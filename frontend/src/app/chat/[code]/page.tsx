@@ -18,30 +18,31 @@ import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 
 // Design configurations
 const designs = {
-  'purple-dream': {
+  'pink-dream': {
     themeColor: {
-      light: '#ffffff',
-      dark: '#1f2937',
+      light: '#fce7f3',
+      dark: '#1e1b4b',
     },
-    container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-pink-900/20",
-    header: "border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
+    container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-pink-50 dark:bg-indigo-950",
+    header: "border-b border-pink-200 dark:border-indigo-800 bg-pink-100/80 dark:bg-indigo-900/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
     headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
-    headerTitleFade: "bg-gradient-to-l from-white/80 via-white/60 dark:from-gray-800/80 dark:via-gray-800/60 to-white/0 dark:to-gray-800/0",
-    headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
-    stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
-    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMTYsIDE5MSwgMjE2LCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDE5MiwgMTMyLCAyNTIsIDAuMTUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI3BhdHRlcm4pIi8+PC9zdmc+')] bg-repeat",
-    hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-white shadow-lg border-2 border-white/20",
+    headerTitleFade: "bg-gradient-to-l from-pink-100/80 via-pink-100/60 dark:from-indigo-900/80 dark:via-indigo-900/60 to-pink-100/0 dark:to-indigo-900/0",
+    headerSubtitle: "text-sm text-gray-600 dark:text-gray-300",
+    stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-pink-200 dark:border-indigo-800 bg-pink-100/80 dark:bg-indigo-900/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
+    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3",
+    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.04] [filter:sepia(1)_hue-rotate(310deg)_saturate(3)]",
+    hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-pink-500 via-rose-500 to-red-500 text-white shadow-lg border-2 border-white/20 dark:border-pink-400/20",
     hostText: "text-white",
     hostMessageFade: "bg-gradient-to-l from-red-500 to-transparent",
-    pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
-    pinnedText: "text-amber-900 dark:text-amber-200",
-    pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
-    regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-purple-100 dark:border-purple-800 shadow-sm",
-    regularText: "text-gray-700 dark:text-gray-300",
-    filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg border-2 border-white/30",
-    filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-purple-700 dark:text-purple-300 backdrop-blur-sm border-2 border-purple-200 dark:border-purple-700",
-    inputArea: "border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
-    inputField: "flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
+    pinnedMessage: "rounded-2xl px-5 py-3 bg-pink-200 dark:bg-gradient-to-r dark:from-rose-900/50 dark:to-pink-900/50 border border-pink-500 dark:border-pink-500",
+    pinnedText: "text-rose-900 dark:text-rose-200",
+    pinnedMessageFade: "bg-gradient-to-l from-pink-200 dark:from-rose-900/50 to-transparent",
+    regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-indigo-900/90 backdrop-blur-sm border border-pink-100 dark:border-indigo-700 shadow-sm",
+    regularText: "text-gray-700 dark:text-gray-200",
+    filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg border-2 border-white/30 dark:border-pink-400/30",
+    filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-indigo-800/70 text-black dark:text-white backdrop-blur-sm border-2 border-pink-200 dark:border-indigo-700",
+    inputArea: "border-t border-pink-200 dark:border-indigo-800 bg-pink-50 dark:bg-indigo-950 px-4 py-3 flex-shrink-0",
+    inputField: "flex-1 px-4 py-2 border border-pink-300 dark:border-indigo-700 rounded-lg focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 focus:border-transparent bg-white dark:bg-indigo-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-400",
   },
   'ocean-blue': {
     themeColor: {
@@ -53,19 +54,20 @@ const designs = {
     headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
     headerTitleFade: "bg-gradient-to-l from-white/80 via-white/60 dark:from-gray-800/80 dark:via-gray-800/60 to-white/0 dark:to-gray-800/0",
     headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
-    stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
-    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9InBhdHRlcm4iIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+PHBhdGggZD0iTTAgMGg2MHY2MEgweiIgZmlsbD0icmdiYSgyMDAsIDIzMCwgMjUwLCAwLjEpIi8+PHBhdGggZD0iTTMwIDEwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMCAwLTEwek0xMCAzMGE1IDUgMCAxIDAgMCAxMCA1IDUgMCAwIDAtMTB6TTUwIDMwYTUgNSAwIDEgMCAwIDEwIDUgNSAwIDAgMC0xMHpNMzAgNTBhNSA1IDAgMSAwIDAgMTAgNSA1IDAgMCAwIDAtMTB6IiBmaWxsPSJyZ2JhKDU5LCAxMzAsIDI0NiwgMC4xNSkiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiLz48L3N2Zz4=')] bg-repeat",
+    stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
+    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3",
+    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.04] [filter:sepia(1)_hue-rotate(180deg)_saturate(3)]",
     hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500 text-white shadow-lg border-2 border-white/20",
     hostText: "text-white",
     hostMessageFade: "bg-gradient-to-l from-cyan-500 to-transparent",
-    pinnedMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-300 dark:border-amber-700 shadow-md",
-    pinnedText: "text-amber-900 dark:text-amber-200",
-    pinnedMessageFade: "bg-gradient-to-l from-yellow-100 dark:from-amber-900/40 to-transparent",
+    pinnedMessage: "rounded-2xl px-5 py-3 bg-cyan-200 dark:bg-gradient-to-r dark:from-cyan-900/50 dark:to-blue-900/50 border border-cyan-500 dark:border-cyan-400",
+    pinnedText: "text-cyan-900 dark:text-cyan-200",
+    pinnedMessageFade: "bg-gradient-to-l from-cyan-200 dark:from-cyan-900/50 to-transparent",
     regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-blue-100 dark:border-blue-800 shadow-sm",
     regularText: "text-gray-700 dark:text-gray-300",
     filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
-    filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-blue-700 dark:text-blue-300 backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
-    inputArea: "border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 flex-shrink-0",
+    filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-black dark:text-white backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
+    inputArea: "border-t border-gray-200 dark:border-gray-700 bg-sky-50 dark:bg-gray-900 px-4 py-3 flex-shrink-0",
     inputField: "flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
   },
   'dark-mode': {
@@ -78,8 +80,9 @@ const designs = {
     headerTitle: "text-lg font-bold text-zinc-100",
     headerTitleFade: "bg-gradient-to-l from-zinc-900 to-transparent",
     headerSubtitle: "text-sm text-zinc-400",
-    stickySection: "absolute top-0 left-0 right-0 z-10 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
+    stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
     messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
+    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.03] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
     hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
     hostText: "text-cyan-950",
     hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
@@ -112,23 +115,23 @@ export default function ChatPage() {
 
   // Theme state with hierarchy: URL > localStorage > host default > system default
   // Initialize from URL or localStorage immediately to avoid flash
-  const [designVariant, setDesignVariant] = useState<'purple-dream' | 'ocean-blue' | 'dark-mode'>(() => {
+  const [designVariant, setDesignVariant] = useState<'pink-dream' | 'ocean-blue' | 'dark-mode'>(() => {
     // Check URL parameter first
     const urlTheme = searchParams.get('design');
-    if (urlTheme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
-      return urlTheme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
+    if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
+      return urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
     }
 
     // Check localStorage
     if (typeof window !== 'undefined') {
       const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
-      if (localTheme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
-        return localTheme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
+      if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
+        return localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
       }
     }
 
     // Default fallback
-    return 'purple-dream';
+    return 'pink-dream';
   });
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
@@ -362,33 +365,33 @@ export default function ChatPage() {
   useEffect(() => {
     if (!chatRoom) return;
 
-    const determineTheme = (): 'purple-dream' | 'ocean-blue' | 'dark-mode' => {
+    const determineTheme = (): 'pink-dream' | 'ocean-blue' | 'dark-mode' => {
       // If theme is locked by host, use host's default theme
       if (chatRoom.theme_locked) {
-        return (chatRoom.default_theme as 'purple-dream' | 'ocean-blue' | 'dark-mode') || 'purple-dream';
+        return (chatRoom.default_theme as 'pink-dream' | 'ocean-blue' | 'dark-mode') || 'pink-dream';
       }
 
       // Check URL parameter first (from searchParams hook)
       const urlTheme = searchParams.get('design');
-      if (urlTheme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
-        return urlTheme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
+      if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
+        return urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
       }
 
       // Check localStorage for user preference
       if (typeof window !== 'undefined') {
         const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
-        if (localTheme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
-          return localTheme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
+        if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
+          return localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
         }
       }
 
       // Use host's default theme
-      if (chatRoom.default_theme && ['purple-dream', 'ocean-blue', 'dark-mode'].includes(chatRoom.default_theme)) {
-        return chatRoom.default_theme as 'purple-dream' | 'ocean-blue' | 'dark-mode';
+      if (chatRoom.default_theme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(chatRoom.default_theme)) {
+        return chatRoom.default_theme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
       }
 
       // Fall back to system default
-      return 'purple-dream';
+      return 'pink-dream';
     };
 
     const theme = determineTheme();
@@ -755,7 +758,7 @@ export default function ChatPage() {
   }, [filteredMessages.length, idsToObserve]);
 
   if (loading) {
-    const currentDesign = designs[designVariant as keyof typeof designs] || designs['purple-dream'];
+    const currentDesign = designs[designVariant as keyof typeof designs] || designs['pink-dream'];
     return (
       <div className={`${currentDesign.container} flex items-center justify-center`}>
         <div className="text-gray-600 dark:text-gray-400">Loading chat...</div>
@@ -764,7 +767,7 @@ export default function ChatPage() {
   }
 
   if (error) {
-    const currentDesign = designs[designVariant as keyof typeof designs] || designs['purple-dream'];
+    const currentDesign = designs[designVariant as keyof typeof designs] || designs['pink-dream'];
     return (
       <div className={currentDesign.container}>
         <Header />
@@ -777,7 +780,7 @@ export default function ChatPage() {
     );
   }
 
-  const currentDesign = designs[designVariant as keyof typeof designs] || designs['purple-dream'];
+  const currentDesign = designs[designVariant as keyof typeof designs] || designs['pink-dream'];
 
   // Main chat interface
   return (
@@ -790,7 +793,7 @@ export default function ChatPage() {
           hasJoinedBefore={hasJoinedBefore}
           isLoggedIn={!!currentUserId}
           hasReservedUsername={hasReservedUsername}
-          design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
+          design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
           onJoin={handleJoinChat}
         />
       )}
@@ -814,7 +817,7 @@ export default function ChatPage() {
               currentUserId={currentUserId}
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
               onThemeChange={(theme) => setDesignVariant(theme)}
-              design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
+              design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
             >
               <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
                 <Settings className={`${currentDesign.headerTitle} flex-shrink-0`} size={18} />
@@ -863,7 +866,7 @@ export default function ChatPage() {
                 message={message}
                 currentUsername={username}
                 isHost={chatRoom?.host.id === currentUserId}
-                design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
+                design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
                 onPinSelf={handlePinSelf}
                 onPinOther={handlePinOther}
                 onBlock={handleBlockUser}
@@ -900,7 +903,7 @@ export default function ChatPage() {
                 message={stickyPinnedMessage}
                 currentUsername={username}
                 isHost={chatRoom?.host.id === currentUserId}
-                design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
+                design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
                 onPinSelf={handlePinSelf}
                 onPinOther={handlePinOther}
                 onBlock={handleBlockUser}
@@ -933,6 +936,9 @@ export default function ChatPage() {
           </div>
         )}
 
+      {/* Background Pattern Layer - Fixed behind everything */}
+      <div className={`absolute inset-0 pointer-events-none ${currentDesign.messagesAreaBg}`} />
+
       {/* Messages Area */}
       <div
         ref={messagesContainerRef}
@@ -940,7 +946,7 @@ export default function ChatPage() {
         className={`${currentDesign.messagesArea} ${chatRoom?.has_back_room && backRoom ? 'pr-12' : ''}`}
       >
         {/* Add padding-top when sticky messages are present to avoid overlap */}
-        <div className={`space-y-3 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
+        <div className={`space-y-3 relative z-10 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
         {hasJoined && filteredMessages.map((message, index) => {
           const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
 
@@ -1017,7 +1023,7 @@ export default function ChatPage() {
                   message={message}
                   currentUsername={username}
                   isHost={chatRoom?.host.id === currentUserId}
-                  design={designVariant as 'purple-dream' | 'ocean-blue' | 'dark-mode'}
+                  design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
                   onPinSelf={handlePinSelf}
                   onPinOther={handlePinOther}
                   onBlock={handleBlockUser}
@@ -1096,6 +1102,7 @@ export default function ChatPage() {
             currentUserId={currentUserId}
             isMember={isBackRoomMember}
             onBack={() => setIsInBackRoom(false)}
+            design={designVariant}
           />
         ) : null}
       </div>
