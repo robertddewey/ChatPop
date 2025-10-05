@@ -18,7 +18,6 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null); // Keep stream alive
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -31,123 +30,62 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
       }
-      // Clean up stream on unmount
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
     };
   }, [audioUrl]);
 
   const startRecording = async () => {
     try {
-      console.log('=== Voice Recording Debug ===');
-      console.log('MediaRecorder available:', typeof MediaRecorder !== 'undefined');
-      console.log('navigator.mediaDevices available:', !!navigator.mediaDevices);
-      console.log('navigator.mediaDevices.getUserMedia available:', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
-      console.log('Current URL:', window.location.href);
-      console.log('Is secure context:', window.isSecureContext);
+      // Check if already recording
+      if (recordingState === 'recording') {
+        return;
+      }
 
       // Check if getUserMedia is available
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        const isIP = /^\d+\.\d+\.\d+\.\d+/.test(window.location.hostname);
-        if (isIP && !window.isSecureContext) {
-          alert('Voice recording requires HTTPS when accessing via IP address.\n\nPlease access via:\n• localhost:4000 on this device, or\n• Use HTTPS, or\n• Test on desktop browser first');
-        } else {
-          alert('Microphone access is not available in your browser. Please try a different browser or update iOS.');
-        }
+        alert('Microphone access is not available in your browser.');
         return;
       }
 
       // Check if MediaRecorder exists
       if (typeof MediaRecorder === 'undefined') {
-        console.error('MediaRecorder not available');
-        alert('MediaRecorder API is not available in your browser. Voice recording requires iOS 14.3+ or a different browser.');
+        alert('MediaRecorder API is not available in your browser.');
         return;
       }
 
-      // Reuse existing stream if available, otherwise request new one
-      let stream = streamRef.current;
-
-      if (!stream || !stream.active) {
-        console.log('Requesting microphone permission...');
-
-        // iOS Safari workaround: Try simple audio: true first
-        // Complex constraints can cause the AVAudioSessionCaptureDevice error
-        let constraints: any = { audio: true };
-
-        // Retry logic for iOS Safari bug
-        let retries = 0;
-        const maxRetries = 2;
-
-        while (retries <= maxRetries) {
-          try {
-            if (retries > 0) {
-              console.log(`Retry attempt ${retries}/${maxRetries}...`);
-              // Wait before retry
-              await new Promise(resolve => setTimeout(resolve, 500));
-            }
-
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-            console.log('Microphone access granted, stream:', stream);
-            console.log('Stream active:', stream.active);
-            console.log('Stream tracks:', stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })));
-
-            // Success! Break out of retry loop
-            break;
-          } catch (err: any) {
-            console.log(`getUserMedia attempt ${retries + 1} failed:`, err.message);
-
-            if (retries === maxRetries) {
-              // All retries exhausted, throw the error
-              throw err;
-            }
-
-            retries++;
-          }
+      // Clean up any existing recorder (initialize fresh state)
+      if (mediaRecorderRef.current) {
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop();
         }
-
-        // Store stream reference to keep it alive across recordings
-        streamRef.current = stream;
-
-        // iOS Safari: Wait for audio session to fully initialize
-        // The "No AVAudioSessionCaptureDevice" error happens when iOS hasn't
-        // fully set up the audio capture device yet
-        console.log('Waiting for iOS audio session to initialize...');
-        await new Promise(resolve => setTimeout(resolve, 300));
-        console.log('Audio session initialized, ready to record');
-      } else {
-        console.log('Reusing existing microphone stream');
+        mediaRecorderRef.current = null;
       }
 
-      // Determine MIME type - try to find a supported type
-      let mimeType = '';
-      const types = [
-        'audio/webm',
-        'audio/webm;codecs=opus',
-        'audio/mp4',
-        'audio/mp4;codecs=mp4a',
-        'audio/mpeg',
-        'audio/wav',
-      ];
+      // Simple constraints - iOS Safari works best with this
+      const constraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      };
 
-      for (const type of types) {
-        if (MediaRecorder.isTypeSupported(type)) {
-          mimeType = type;
-          console.log('Using MIME type:', type);
-          break;
+      // Request microphone access (fresh stream each time)
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      // Determine MIME type
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'audio/mp4';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = ''; // Let browser choose
         }
       }
 
-      if (!mimeType) {
-        console.log('No specific MIME type supported, letting browser choose');
-      }
-
-      // Create MediaRecorder without mimeType if none supported (let browser choose)
+      // Create MediaRecorder
       const mediaRecorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
 
-      console.log('MediaRecorder created with mimeType:', mediaRecorder.mimeType);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -158,21 +96,17 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
       };
 
       mediaRecorder.onstop = () => {
-        // Use the mimeType from the MediaRecorder if available
         const blobType = mediaRecorder.mimeType || mimeType || 'audio/webm';
         const blob = new Blob(chunksRef.current, { type: blobType });
-
-        // Create URL for preview
         const url = URL.createObjectURL(blob);
+
         setAudioBlob(blob);
         setAudioUrl(url);
-
-        // DO NOT stop stream tracks here - keep stream alive for subsequent recordings
-        // This prevents iOS from requiring permission again on next recording
-        // Stream will be stopped only on component unmount
-
-        // Change state to preview
         setRecordingState('preview');
+
+        // Stop stream tracks
+        stream.getTracks().forEach(track => track.stop());
+
         if (timerRef.current) {
           clearInterval(timerRef.current);
         }
@@ -189,24 +123,14 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
     } catch (error: any) {
       console.error('Error accessing microphone:', error);
 
-      // Check for iOS-specific "No AVAudioSessionCaptureDevice" error
-      const errorMsg = error.message || '';
-      if (errorMsg.includes('AVAudioSessionCaptureDevice')) {
-        alert('iOS Safari microphone bug detected.\n\nQuick fix:\n1. Close this tab completely\n2. Wait 3 seconds\n3. Open ChatPop in a new tab\n\nIf that doesn\'t work:\n• Close all other tabs/apps\n• Restart Safari\n• Check Settings → Safari → Microphone');
-        return;
-      }
-
-      // Provide specific error messages based on the error type
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        alert('Microphone permission denied.\n\nPlease:\n1. Tap "Allow" when iOS asks for microphone access\n2. Check Settings → Safari → Microphone is set to "Ask" or "Allow"\n3. Reload the page and try again');
+        alert('Microphone permission denied. Please allow microphone access and try again.');
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
         alert('No microphone found. Please connect a microphone and try again.');
       } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        alert('Microphone is already in use by another application. Please close other apps using the microphone and try again.');
-      } else if (error.name === 'TypeError') {
-        alert('Voice recording is not supported in your browser. Please try a different browser.');
+        alert('Microphone is already in use by another application.');
       } else {
-        alert(`Could not access microphone: ${error.message || error.name || 'Unknown error'}`);
+        alert(`Could not access microphone: ${error.message || 'Unknown error'}`);
       }
     }
   };
