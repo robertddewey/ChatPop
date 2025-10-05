@@ -1,6 +1,5 @@
 import type { Viewport, Metadata } from "next";
 import Script from "next/script";
-import "../chat-layout.css";
 
 export const viewport: Viewport = {
   width: 'device-width',

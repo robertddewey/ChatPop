@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type Message, type BackRoom } from '@/lib/api';
 import Header from '@/components/Header';
@@ -660,14 +660,14 @@ export default function ChatPage() {
     : messages;
 
   // Filter messages for sticky section (useMemo to prevent infinite loops)
-  const allStickyHostMessages = React.useMemo(() => {
+  const allStickyHostMessages = useMemo(() => {
     return filteredMessages
       .filter(m => m.is_from_host)
       .slice(-1)  // Get 1 most recent
       .reverse(); // Show newest first
   }, [filteredMessages]);
 
-  const topPinnedMessage = React.useMemo(() => {
+  const topPinnedMessage = useMemo(() => {
     return filteredMessages
       .filter(m => m.is_pinned && !m.is_from_host)
       .sort((a, b) => parseFloat(b.pin_amount_paid) - parseFloat(a.pin_amount_paid))
@@ -675,7 +675,7 @@ export default function ChatPage() {
   }, [filteredMessages]);
 
   // Get IDs to observe (useMemo to prevent infinite loops)
-  const idsToObserve = React.useMemo(() => {
+  const idsToObserve = useMemo(() => {
     const hostIds = allStickyHostMessages.map(m => m.id);
     const pinnedId = topPinnedMessage?.id;
     const ids = [...hostIds];
