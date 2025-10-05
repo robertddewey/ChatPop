@@ -13,6 +13,19 @@ const nextConfig: NextConfig = {
       PORT: '4000',
     },
   }),
+  async headers() {
+    return [
+      {
+        source: '/chat/:path*',
+        headers: [
+          {
+            key: 'Permissions-Policy',
+            value: 'microphone=(self), camera=(self)',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

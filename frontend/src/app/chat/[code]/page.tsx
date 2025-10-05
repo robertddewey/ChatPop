@@ -115,25 +115,24 @@ export default function ChatPage() {
   };
 
   // Theme state with hierarchy: URL > localStorage > host default > system default
-  // Initialize from URL or localStorage immediately to avoid flash
-  const [designVariant, setDesignVariant] = useState<'pink-dream' | 'ocean-blue' | 'dark-mode'>(() => {
-    // Check URL parameter first
-    const urlTheme = searchParams.get('design');
-    if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
-      return urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
-    }
+  // Initialize from URL parameter only (available on both server and client)
+  const urlTheme = searchParams.get('design');
+  const initialTheme = (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme))
+    ? (urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode')
+    : 'pink-dream';
 
-    // Check localStorage
-    if (typeof window !== 'undefined') {
+  const [designVariant, setDesignVariant] = useState<'pink-dream' | 'ocean-blue' | 'dark-mode'>(initialTheme);
+
+  // After hydration, check localStorage and update if needed
+  useEffect(() => {
+    // Only run on client after hydration
+    if (!urlTheme) {
       const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
       if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
-        return localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
+        setDesignVariant(localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
       }
     }
-
-    // Default fallback
-    return 'pink-dream';
-  });
+  }, []); // Run once after mount
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -582,12 +581,17 @@ export default function ChatPage() {
         return;
       }
 
-      // Upload voice message
-      await messageApi.uploadVoiceMessage(code, audioBlob, messageUsername);
+      // Upload voice message file and get the URL
+      const { voice_url } = await messageApi.uploadVoiceMessage(code, audioBlob, messageUsername);
 
-      // Reload messages to show the voice message
+      // Send the voice message via WebSocket with the voice_url
+      sendMessage(JSON.stringify({
+        message: '', // Empty message text for voice-only messages
+        voice_url: voice_url,
+      }));
+
+      // Auto-scroll to show new message
       shouldAutoScrollRef.current = true;
-      await loadMessages();
     } catch (err: any) {
       console.error('Failed to upload voice message:', err);
       alert('Failed to send voice message. Please try again.');

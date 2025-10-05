@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { Mic, Square, Loader2, Play, Trash2, Send } from 'lucide-react';
 
 interface VoiceRecorderProps {
@@ -76,60 +77,44 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
       };
 
       // Request microphone access (fresh stream each time)
+      console.log('[VoiceRecorder] Requesting microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('[VoiceRecorder] Microphone access granted, stream obtained');
       streamRef.current = stream;
 
-      // Handle stream ending unexpectedly (iOS Safari bug)
-      stream.getTracks().forEach(track => {
-        track.onended = () => {
-          console.error('MediaStreamTrack ended unexpectedly');
-          // Stop recording if stream dies
-          if (mediaRecorderRef.current && recordingState === 'recording') {
-            try {
-              mediaRecorderRef.current.stop();
-            } catch (e) {
-              console.error('Error stopping recorder after track ended:', e);
-            }
-          }
-          setRecordingState('idle');
-          alert('Recording stopped: microphone access was lost. This can happen if you switch apps or lock your screen.');
-        };
-      });
-
-      // Determine MIME type
-      let mimeType = 'audio/webm;codecs=opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'audio/mp4';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = ''; // Let browser choose
-        }
-      }
+      // CRITICAL: Immediately create AudioContext and connect stream
+      // This tells iOS Safari we're actively using the microphone - keeps stream alive!
+      console.log('[VoiceRecorder] Creating AudioContext to keep stream alive...');
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const microphone = audioContext.createMediaStreamSource(stream);
+      console.log('[VoiceRecorder] AudioContext created, stream actively being used');
 
       // Create MediaRecorder
-      const mediaRecorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
-
+      console.log('[VoiceRecorder] Creating MediaRecorder...');
+      const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
+      // Set handlers BEFORE starting
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunksRef.current.push(event.data);
+          console.log('[VoiceRecorder] Data chunk received, size:', event.data.size);
         }
       };
 
       mediaRecorder.onstop = () => {
-        const blobType = mediaRecorder.mimeType || mimeType || 'audio/webm';
-        const blob = new Blob(chunksRef.current, { type: blobType });
+        console.log('[VoiceRecorder] MediaRecorder onstop fired');
+        const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
         const url = URL.createObjectURL(blob);
 
+        console.log('[VoiceRecorder] Setting preview state with blob size:', blob.size);
         setAudioBlob(blob);
         setAudioUrl(url);
         setRecordingState('preview');
 
-        // Stop stream tracks and clear reference
         if (streamRef.current) {
+          console.log('[VoiceRecorder] Stopping stream tracks');
           streamRef.current.getTracks().forEach(track => track.stop());
           streamRef.current = null;
         }
@@ -139,21 +124,34 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
         }
       };
 
-      // Reset recording time before starting
-      setRecordingTime(0);
-
-      mediaRecorder.start();
-      console.log('MediaRecorder started, state:', mediaRecorder.state);
-      setRecordingState('recording');
-      console.log('Recording state set to recording');
+      // Update UI state FIRST using flushSync for IMMEDIATE synchronous render
+      // This forces React to update the DOM RIGHT NOW, not in the next tick
+      console.log('[VoiceRecorder] Setting recording state to recording (IMMEDIATE with flushSync)');
+      flushSync(() => {
+        setRecordingTime(0);
+        setRecordingState('recording');
+      });
+      console.log('[VoiceRecorder] UI state updated, DOM rendered');
 
       // Start timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
+      // Now start MediaRecorder IMMEDIATELY (iOS Safari requires this!)
+      console.log('[VoiceRecorder] Starting MediaRecorder NOW');
+      mediaRecorder.start(100);
+      console.log('[VoiceRecorder] MediaRecorder started, state:', mediaRecorder.state);
+
     } catch (error: any) {
       console.error('Error accessing microphone:', error);
+
+      // Reset state on error
+      setRecordingState('idle');
+      setRecordingTime(0);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
 
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         alert('Microphone permission denied. Please allow microphone access and try again.');
