@@ -18,6 +18,7 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -52,7 +53,12 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
         return;
       }
 
-      // Clean up any existing recorder (initialize fresh state)
+      // Clean up any existing stream and recorder (initialize fresh state)
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+
       if (mediaRecorderRef.current) {
         if (mediaRecorderRef.current.state === 'recording') {
           mediaRecorderRef.current.stop();
@@ -71,6 +77,24 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
 
       // Request microphone access (fresh stream each time)
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      // Handle stream ending unexpectedly (iOS Safari bug)
+      stream.getTracks().forEach(track => {
+        track.onended = () => {
+          console.error('MediaStreamTrack ended unexpectedly');
+          // Stop recording if stream dies
+          if (mediaRecorderRef.current && recordingState === 'recording') {
+            try {
+              mediaRecorderRef.current.stop();
+            } catch (e) {
+              console.error('Error stopping recorder after track ended:', e);
+            }
+          }
+          setRecordingState('idle');
+          alert('Recording stopped: microphone access was lost. This can happen if you switch apps or lock your screen.');
+        };
+      });
 
       // Determine MIME type
       let mimeType = 'audio/webm;codecs=opus';
@@ -104,16 +128,24 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
         setAudioUrl(url);
         setRecordingState('preview');
 
-        // Stop stream tracks
-        stream.getTracks().forEach(track => track.stop());
+        // Stop stream tracks and clear reference
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
 
         if (timerRef.current) {
           clearInterval(timerRef.current);
         }
       };
 
+      // Reset recording time before starting
+      setRecordingTime(0);
+
       mediaRecorder.start();
+      console.log('MediaRecorder started, state:', mediaRecorder.state);
       setRecordingState('recording');
+      console.log('Recording state set to recording');
 
       // Start timer
       timerRef.current = setInterval(() => {
