@@ -1,8 +1,8 @@
 // Theme configuration for ChatPop
 // Centralizes theme definitions and provides helper utilities
 
-export type ThemeId = 'pink-dream' | 'ocean-blue' | 'dark-mode';
-export type ThemeType = 'light' | 'dark';
+export type ThemeId = 'dark-mode';
+export type ThemeType = 'dark';
 
 export interface ThemeConfig {
   id: ThemeId;
@@ -12,18 +12,6 @@ export interface ThemeConfig {
 }
 
 export const themes: Record<ThemeId, ThemeConfig> = {
-  'pink-dream': {
-    id: 'pink-dream',
-    name: 'Pink Dream',
-    type: 'light',
-    description: 'Pink and rose gradients on a clean white background',
-  },
-  'ocean-blue': {
-    id: 'ocean-blue',
-    name: 'Ocean Blue',
-    type: 'light',
-    description: 'Blue and cyan gradients with a fresh, airy feel',
-  },
   'dark-mode': {
     id: 'dark-mode',
     name: 'Dark Mode',
@@ -34,30 +22,30 @@ export const themes: Record<ThemeId, ThemeConfig> = {
 
 // Helper to check if a theme is dark mode
 export const isDarkTheme = (themeId: string | undefined): boolean => {
-  if (!themeId) return false;
-  const theme = themes[themeId as ThemeId];
-  return theme?.type === 'dark';
+  // Always return true since dark-mode is the only theme
+  return true;
 };
 
 // Get theme config by ID, with fallback
 export const getTheme = (themeId: string | undefined): ThemeConfig => {
-  return themes[(themeId as ThemeId)] || themes['pink-dream'];
+  return themes['dark-mode'];
 };
 
 // Default theme
-export const DEFAULT_THEME: ThemeId = 'pink-dream';
+export const DEFAULT_THEME: ThemeId = 'dark-mode';
 
 // Legacy mapping for backward compatibility (URLs with old design1/2/3 and old theme names)
 export const legacyThemeMapping: Record<string, ThemeId> = {
-  'design1': 'pink-dream',
-  'purple-dream': 'pink-dream',
-  'midnight-rose': 'pink-dream',
-  'design2': 'ocean-blue',
+  'design1': 'dark-mode',
+  'design2': 'dark-mode',
   'design3': 'dark-mode',
+  'purple-dream': 'dark-mode',
+  'pink-dream': 'dark-mode',
+  'ocean-blue': 'dark-mode',
+  'midnight-rose': 'dark-mode',
 };
 
 // Convert legacy theme ID to new ID
 export const migrateLegacyTheme = (themeId: string | null): ThemeId => {
-  if (!themeId) return DEFAULT_THEME;
-  return legacyThemeMapping[themeId] || (themeId as ThemeId) || DEFAULT_THEME;
+  return 'dark-mode';
 };

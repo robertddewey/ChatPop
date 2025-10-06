@@ -15,90 +15,36 @@ import VoiceRecorder from '@/components/VoiceRecorder';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
-import { Settings, BadgeCheck } from 'lucide-react';
+import { Settings, BadgeCheck, Crown } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 
-// Design configurations
-const designs = {
-  'pink-dream': {
-    themeColor: {
-      light: '#fce7f3',
-      dark: '#1e1b4b',
-    },
-    container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-pink-50 dark:bg-indigo-950",
-    header: "border-b border-pink-200 dark:border-indigo-800 bg-pink-100/80 dark:bg-indigo-900/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
-    headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
-    headerTitleFade: "bg-gradient-to-l from-pink-100/80 via-pink-100/60 dark:from-indigo-900/80 dark:via-indigo-900/60 to-pink-100/0 dark:to-indigo-900/0",
-    headerSubtitle: "text-sm text-gray-600 dark:text-gray-300",
-    stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-pink-200 dark:border-indigo-800 bg-pink-100/80 dark:bg-indigo-900/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
-    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3",
-    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.04] [filter:sepia(1)_hue-rotate(310deg)_saturate(3)]",
-    hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-pink-500 via-rose-500 to-red-500 text-white shadow-lg border-2 border-white/20 dark:border-pink-400/20",
-    hostText: "text-white",
-    hostMessageFade: "bg-gradient-to-l from-red-500 to-transparent",
-    pinnedMessage: "rounded-2xl px-5 py-3 bg-pink-200 dark:bg-gradient-to-r dark:from-rose-900/50 dark:to-pink-900/50 border border-pink-500 dark:border-pink-500",
-    pinnedText: "text-rose-900 dark:text-rose-200",
-    pinnedMessageFade: "bg-gradient-to-l from-pink-200 dark:from-rose-900/50 to-transparent",
-    regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-indigo-900/90 backdrop-blur-sm border border-pink-100 dark:border-indigo-700 shadow-sm",
-    regularText: "text-gray-700 dark:text-gray-200",
-    filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg border-2 border-white/30 dark:border-pink-400/30",
-    filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-indigo-800/70 text-black dark:text-white backdrop-blur-sm border-2 border-pink-200 dark:border-indigo-700",
-    inputArea: "border-t border-pink-200 dark:border-indigo-800 bg-pink-50 dark:bg-indigo-950 px-4 py-3 flex-shrink-0",
-    inputField: "flex-1 px-4 py-2 border border-pink-300 dark:border-indigo-700 rounded-lg focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 focus:border-transparent bg-white dark:bg-indigo-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-400",
+// Design configuration (dark-mode only)
+const design = {
+  themeColor: {
+    light: '#18181b',
+    dark: '#18181b',
   },
-  'ocean-blue': {
-    themeColor: {
-      light: '#ffffff',
-      dark: '#1f2937',
-    },
-    container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-900/20 dark:to-cyan-900/20",
-    header: "border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl px-4 py-3 flex-shrink-0 shadow-sm",
-    headerTitle: "text-lg font-bold text-gray-900 dark:text-white",
-    headerTitleFade: "bg-gradient-to-l from-white/80 via-white/60 dark:from-gray-800/80 dark:via-gray-800/60 to-white/0 dark:to-gray-800/0",
-    headerSubtitle: "text-sm text-gray-500 dark:text-gray-400",
-    stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
-    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-3",
-    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.04] [filter:sepia(1)_hue-rotate(180deg)_saturate(3)]",
-    hostMessage: "rounded-2xl px-5 py-3 bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500 text-white shadow-lg border-2 border-white/20",
-    hostText: "text-white",
-    hostMessageFade: "bg-gradient-to-l from-cyan-500 to-transparent",
-    pinnedMessage: "rounded-2xl px-5 py-3 bg-cyan-200 dark:bg-gradient-to-r dark:from-cyan-900/50 dark:to-blue-900/50 border border-cyan-500 dark:border-cyan-400",
-    pinnedText: "text-cyan-900 dark:text-cyan-200",
-    pinnedMessageFade: "bg-gradient-to-l from-cyan-200 dark:from-cyan-900/50 to-transparent",
-    regularMessage: "max-w-[80%] rounded-2xl px-4 py-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-blue-100 dark:border-blue-800 shadow-sm",
-    regularText: "text-gray-700 dark:text-gray-300",
-    filterButtonActive: "px-4 py-2 rounded-full text-xs bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg border-2 border-white/30",
-    filterButtonInactive: "px-4 py-2 rounded-full text-xs bg-white/70 dark:bg-gray-700/70 text-black dark:text-white backdrop-blur-sm border-2 border-blue-200 dark:border-blue-700",
-    inputArea: "border-t border-gray-200 dark:border-gray-700 bg-sky-50 dark:bg-gray-900 px-4 py-3 flex-shrink-0",
-    inputField: "flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white",
-  },
-  'dark-mode': {
-    themeColor: {
-      light: '#18181b',
-      dark: '#18181b',
-    },
-    container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
-    header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
-    headerTitle: "text-lg font-bold text-zinc-100",
-    headerTitleFade: "bg-gradient-to-l from-zinc-900 to-transparent",
-    headerSubtitle: "text-sm text-zinc-400",
-    stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
-    messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
-    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.06] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
-    hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
-    hostText: "text-cyan-950",
-    hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
-    pinnedMessage: "rounded px-3 py-2 bg-yellow-400 font-medium",
-    pinnedText: "text-yellow-950",
-    pinnedMessageFade: "bg-gradient-to-l from-yellow-400 to-transparent",
-    regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
-    regularText: "text-zinc-100",
-    filterButtonActive: "px-3 py-1.5 rounded text-xs tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
-    filterButtonInactive: "px-3 py-1.5 rounded text-xs tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
-    inputArea: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
-    inputField: "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
-  },
+  container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
+  header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
+  headerTitle: "text-lg font-bold text-zinc-100",
+  headerTitleFade: "bg-gradient-to-l from-zinc-900 to-transparent",
+  headerSubtitle: "text-sm text-zinc-400",
+  stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
+  messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
+  messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.06] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
+  hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
+  hostText: "text-cyan-950",
+  hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
+  pinnedMessage: "rounded px-3 py-2 bg-yellow-400 font-medium",
+  pinnedText: "text-yellow-950",
+  pinnedMessageFade: "bg-gradient-to-l from-yellow-400 to-transparent",
+  regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
+  regularText: "text-zinc-100",
+  filterButtonActive: "px-3 py-1.5 rounded text-xs tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
+  filterButtonInactive: "px-3 py-1.5 rounded text-xs tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
+  inputArea: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
+  inputField: "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
 };
 
 export default function ChatPage() {
@@ -116,34 +62,7 @@ export default function ChatPage() {
     router.replace(`${window.location.pathname}?${newParams.toString()}`);
   };
 
-  // Theme state with hierarchy: URL > localStorage > system default
-  const urlTheme = searchParams.get('design');
-
-  // Initialize theme state - will be corrected after hydration
-  // NOTE: This matches the logic in layout.tsx to prevent flash
-  const [designVariant, setDesignVariant] = useState<'pink-dream' | 'ocean-blue' | 'dark-mode'>(() => {
-    // During SSR, we can't access localStorage, so default to pink-dream
-    // The layout script will set the correct body background before React hydrates
-    return 'pink-dream';
-  });
-
-  // Read theme from localStorage/URL after hydration
-  useEffect(() => {
-    // Priority 1: URL parameter
-    if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
-      setDesignVariant(urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
-      return;
-    }
-
-    // Priority 2: localStorage (matching layout.tsx logic)
-    const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
-    if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
-      setDesignVariant(localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
-      return;
-    }
-
-    // Fallback to default (already set in state initialization)
-  }, [code, urlTheme]);
+  // No theme switching - always use dark-mode
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -375,63 +294,7 @@ export default function ChatPage() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [hasJoined]);
 
-  // Determine theme based on hierarchy: URL param > localStorage > host default > system default
-  useEffect(() => {
-    if (!chatRoom) return;
-
-    const determineTheme = (): 'pink-dream' | 'ocean-blue' | 'dark-mode' => {
-      // If theme is locked by host, use host's default theme
-      if (chatRoom.theme_locked) {
-        return (chatRoom.default_theme as 'pink-dream' | 'ocean-blue' | 'dark-mode') || 'pink-dream';
-      }
-
-      // Check URL parameter first (from searchParams hook)
-      const urlTheme = searchParams.get('design');
-      if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
-        return urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
-      }
-
-      // Check localStorage for user preference
-      if (typeof window !== 'undefined') {
-        const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
-        if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
-          return localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
-        }
-      }
-
-      // Use host's default theme
-      if (chatRoom.default_theme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(chatRoom.default_theme)) {
-        return chatRoom.default_theme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
-      }
-
-      // Fall back to system default
-      return 'pink-dream';
-    };
-
-    const theme = determineTheme();
-    setDesignVariant(theme);
-
-    // Save to localStorage if not locked (so it persists for next visit)
-    if (!chatRoom.theme_locked && typeof window !== 'undefined') {
-      localStorage.setItem(`chatpop_theme_${code}`, theme);
-    }
-  }, [chatRoom, code, searchParams]);
-
-  // Update body background when theme changes
-  // Theme-color meta tags are set in layout.tsx before page loads
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const currentThemeDesign = designs[designVariant as keyof typeof designs];
-    if (!currentThemeDesign?.themeColor) return;
-
-    // Detect system dark mode preference
-    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const themeColor = isDarkMode ? currentThemeDesign.themeColor.dark : currentThemeDesign.themeColor.light;
-
-    // Update body background (iOS Safari derives tint from topmost background at scroll edge)
-    document.body.style.backgroundColor = themeColor;
-  }, [designVariant]);
+  // No theme switching - body background set in layout.tsx
 
   // Load Back Room data if it exists
   useEffect(() => {
@@ -840,7 +703,7 @@ export default function ChatPage() {
   }, [filteredMessages.length, idsToObserve]);
 
   if (loading) {
-    const currentDesign = designs[designVariant as keyof typeof designs] || designs['pink-dream'];
+    const currentDesign = design;
     return (
       <div className={`${currentDesign.container} flex items-center justify-center`}>
         <div className="text-gray-600 dark:text-gray-400">Loading chat...</div>
@@ -849,7 +712,7 @@ export default function ChatPage() {
   }
 
   if (error) {
-    const currentDesign = designs[designVariant as keyof typeof designs] || designs['pink-dream'];
+    const currentDesign = design;
     return (
       <div className={currentDesign.container}>
         <Header />
@@ -862,7 +725,7 @@ export default function ChatPage() {
     );
   }
 
-  const currentDesign = designs[designVariant as keyof typeof designs] || designs['pink-dream'];
+  const currentDesign = design;
 
   // Main chat interface
   return (
@@ -875,7 +738,7 @@ export default function ChatPage() {
           hasJoinedBefore={hasJoinedBefore}
           isLoggedIn={!!currentUserId}
           hasReservedUsername={hasReservedUsername}
-          design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
+          design={'dark-mode'}
           onJoin={handleJoinChat}
         />
       )}
@@ -898,8 +761,7 @@ export default function ChatPage() {
               chatRoom={chatRoom}
               currentUserId={currentUserId}
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
-              onThemeChange={(theme) => setDesignVariant(theme)}
-              design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
+              design={'dark-mode'}
             >
               <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
                 <Settings className={`${currentDesign.headerTitle} flex-shrink-0`} size={18} />
@@ -922,13 +784,14 @@ export default function ChatPage() {
                 }
               }, 0);
             }}
-            className={`transition-all whitespace-nowrap ${
+            className={`transition-all whitespace-nowrap flex items-center gap-1.5 ${
               filterMode === 'focus'
                 ? currentDesign.filterButtonActive
                 : currentDesign.filterButtonInactive
             }`}
           >
-            Focus
+            <Crown size={16} />
+            VIP
           </button>
         </div>
       </div>
@@ -948,7 +811,7 @@ export default function ChatPage() {
                 message={message}
                 currentUsername={username}
                 isHost={chatRoom?.host.id === currentUserId}
-                design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
+                design={'dark-mode'}
                 onPinSelf={handlePinSelf}
                 onPinOther={handlePinOther}
                 onBlock={handleBlockUser}
@@ -985,7 +848,7 @@ export default function ChatPage() {
                 message={stickyPinnedMessage}
                 currentUsername={username}
                 isHost={chatRoom?.host.id === currentUserId}
-                design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
+                design={'dark-mode'}
                 onPinSelf={handlePinSelf}
                 onPinOther={handlePinOther}
                 onBlock={handleBlockUser}
@@ -1080,7 +943,7 @@ export default function ChatPage() {
             <div key={message.id} data-message-id={message.id}>
               {/* Show username header for first message in thread */}
               {isFirstInThread && !message.is_from_host && !message.is_pinned && (
-                <div className={`text-xs mb-1 flex items-center gap-1 ${designVariant === 'dark-mode' ? 'text-red-500' : 'text-gray-700 dark:text-zinc-100'}`}>
+                <div className={`text-xs mb-1 flex items-center gap-1 text-red-500`}>
                   <span className="font-semibold">
                     {message.username}
                   </span>
@@ -1105,7 +968,7 @@ export default function ChatPage() {
                   message={message}
                   currentUsername={username}
                   isHost={chatRoom?.host.id === currentUserId}
-                  design={designVariant as 'pink-dream' | 'ocean-blue' | 'dark-mode'}
+                  design={'dark-mode'}
                   onPinSelf={handlePinSelf}
                   onPinOther={handlePinOther}
                   onBlock={handleBlockUser}
@@ -1200,7 +1063,7 @@ export default function ChatPage() {
             currentUserId={currentUserId}
             isMember={isBackRoomMember}
             onBack={() => setIsInBackRoom(false)}
-            design={designVariant}
+            design={'dark-mode'}
           />
         ) : null}
       </div>
@@ -1247,7 +1110,7 @@ export default function ChatPage() {
             setIsInBackRoom(!isInBackRoom);
           }}
           hasNewMessages={false}
-          design={designVariant}
+          design={'dark-mode'}
         />
       )}
       </div>
@@ -1257,14 +1120,14 @@ export default function ChatPage() {
         <LoginModal
           onClose={closeModal}
           theme="chat"
-          chatTheme={designVariant}
+          chatTheme={'dark-mode'}
         />
       )}
       {authMode === 'register' && (
         <RegisterModal
           onClose={closeModal}
           theme="chat"
-          chatTheme={designVariant}
+          chatTheme={'dark-mode'}
         />
       )}
     </>

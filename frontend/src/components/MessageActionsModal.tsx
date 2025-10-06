@@ -11,7 +11,7 @@ interface MessageActionsModalProps {
   message: Message;
   currentUsername?: string;
   isHost?: boolean;
-  design?: 'pink-dream' | 'ocean-blue' | 'dark-mode';
+  design?: 'dark-mode';
   children: React.ReactNode;
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
@@ -20,7 +20,7 @@ interface MessageActionsModalProps {
 }
 
 // Get theme-aware modal styles
-const getModalStyles = (design: 'pink-dream' | 'ocean-blue' | 'dark-mode') => {
+const getModalStyles = (design: 'dark-mode') => {
   const useDarkMode = isDarkTheme(design);
 
   if (useDarkMode) {
@@ -54,7 +54,7 @@ export default function MessageActionsModal({
   message,
   currentUsername,
   isHost = false,
-  design = 'pink-dream',
+  design = 'dark-mode',
   children,
   onPinSelf,
   onPinOther,

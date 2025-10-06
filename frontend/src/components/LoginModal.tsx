@@ -10,7 +10,7 @@ import { isDarkTheme } from '@/lib/themes';
 interface LoginModalProps {
   onClose: () => void;
   theme?: 'homepage' | 'chat';
-  chatTheme?: 'pink-dream' | 'ocean-blue' | 'dark-mode';
+  chatTheme?: 'dark-mode';
 }
 
 export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: LoginModalProps) {

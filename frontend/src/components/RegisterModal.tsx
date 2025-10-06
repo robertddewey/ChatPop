@@ -12,7 +12,7 @@ import { isDarkTheme } from '@/lib/themes';
 interface RegisterModalProps {
   onClose: () => void;
   theme?: 'homepage' | 'chat';
-  chatTheme?: 'pink-dream' | 'ocean-blue' | 'dark-mode';
+  chatTheme?: 'dark-mode';
 }
 
 export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }: RegisterModalProps) {

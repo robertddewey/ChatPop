@@ -12,7 +12,7 @@ interface BackRoomViewProps {
   currentUserId?: string;
   isMember: boolean;
   onBack: () => void;
-  design?: 'pink-dream' | 'ocean-blue' | 'dark-mode';
+  design?: 'dark-mode';
 }
 
 export default function BackRoomView({
@@ -22,7 +22,7 @@ export default function BackRoomView({
   currentUserId,
   isMember,
   onBack,
-  design = 'pink-dream',
+  design = 'dark-mode',
 }: BackRoomViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');

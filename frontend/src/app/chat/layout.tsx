@@ -29,32 +29,8 @@ export default function ChatLayout({
       <Script id="theme-bg-init" strategy="beforeInteractive">
         {`
           (function() {
-            // Body background colors (match container backgrounds)
-            const backgroundColors = {
-              'pink-dream': { light: '#fdf2f8', dark: '#1e1b4b' },
-              'ocean-blue': { light: '#f0f9ff', dark: '#111827' },
-              'dark-mode': { light: '#09090b', dark: '#09090b' }
-            };
-
-            // Get theme from URL or localStorage
-            function getTheme() {
-              const params = new URLSearchParams(window.location.search);
-              const urlTheme = params.get('design');
-              if (urlTheme && backgroundColors[urlTheme]) return urlTheme;
-
-              const match = window.location.pathname.match(/\\/chat\\/([^\\/]+)/);
-              if (match) {
-                const code = match[1];
-                const stored = localStorage.getItem('chatpop_theme_' + code);
-                if (stored && backgroundColors[stored]) return stored;
-              }
-
-              return 'pink-dream';
-            }
-
-            const theme = getTheme();
-            const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const bgColor = isDark ? backgroundColors[theme].dark : backgroundColors[theme].light;
+            // Only dark-mode theme available - use zinc-900 background
+            const bgColor = '#09090b';
 
             // Inject style tag to set body and all page containers immediately
             // This targets body, Next.js root, and any divs with height/flex classes (the main container)
@@ -69,32 +45,8 @@ export default function ChatLayout({
       <Script id="theme-color-init" strategy="beforeInteractive">
         {`
           (function() {
-            // Theme color mapping (for browser URL bar)
-            const themeColors = {
-              'pink-dream': { light: '#fce7f3', dark: '#1e1b4b' },
-              'ocean-blue': { light: '#ffffff', dark: '#1f2937' },
-              'dark-mode': { light: '#18181b', dark: '#18181b' }
-            };
-
-            // Get theme from URL or localStorage
-            function getTheme() {
-              const params = new URLSearchParams(window.location.search);
-              const urlTheme = params.get('design');
-              if (urlTheme && themeColors[urlTheme]) return urlTheme;
-
-              const match = window.location.pathname.match(/\\/chat\\/([^\\/]+)/);
-              if (match) {
-                const code = match[1];
-                const stored = localStorage.getItem('chatpop_theme_' + code);
-                if (stored && themeColors[stored]) return stored;
-              }
-
-              return 'pink-dream';
-            }
-
-            const theme = getTheme();
-            const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const themeColor = isDark ? themeColors[theme].dark : themeColors[theme].light;
+            // Only dark-mode theme - always use zinc-900 color
+            const themeColor = '#18181b';
 
             // Find existing theme-color meta tag (from server-side metadata)
             let existingMeta = document.querySelector('meta[name="theme-color"]:not([media])');
@@ -107,7 +59,7 @@ export default function ChatLayout({
               document.head.appendChild(defaultMeta);
             }
 
-            // Add media-query specific meta tags for Safari
+            // Add media-query specific meta tags for Safari (same color for both modes)
             let lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
             if (!lightMeta) {
               lightMeta = document.createElement('meta');
@@ -115,7 +67,7 @@ export default function ChatLayout({
               lightMeta.setAttribute('media', '(prefers-color-scheme: light)');
               document.head.appendChild(lightMeta);
             }
-            lightMeta.setAttribute('content', themeColors[theme].light);
+            lightMeta.setAttribute('content', themeColor);
 
             let darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
             if (!darkMeta) {
@@ -124,7 +76,7 @@ export default function ChatLayout({
               darkMeta.setAttribute('media', '(prefers-color-scheme: dark)');
               document.head.appendChild(darkMeta);
             }
-            darkMeta.setAttribute('content', themeColors[theme].dark);
+            darkMeta.setAttribute('content', themeColor);
           })();
         `}
       </Script>

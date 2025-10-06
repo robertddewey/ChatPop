@@ -11,7 +11,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { chatApi, backRoomApi, type ChatRoom, type BackRoom } from '@/lib/api';
-import { Copy, Check, BadgeCheck, Sun, Moon, Smartphone } from 'lucide-react';
+import { Copy, Check, BadgeCheck, Moon } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 interface ChatSettingsSheetProps {
@@ -19,7 +19,7 @@ interface ChatSettingsSheetProps {
   currentUserId?: string;
   onUpdate?: (chatRoom: ChatRoom) => void;
   onThemeChange?: (theme: ThemeId) => void;
-  design?: 'pink-dream' | 'ocean-blue' | 'dark-mode';
+  design?: 'dark-mode';
   children: React.ReactNode;
 }
 
@@ -28,7 +28,7 @@ export default function ChatSettingsSheet({
   currentUserId,
   onUpdate,
   onThemeChange,
-  design = 'pink-dream',
+  design = 'dark-mode',
   children,
 }: ChatSettingsSheetProps) {
   const router = useRouter();
@@ -54,46 +54,6 @@ export default function ChatSettingsSheet({
     card: 'bg-gray-50 dark:bg-zinc-800',
     button: 'bg-purple-600 dark:bg-cyan-400 hover:bg-purple-700 dark:hover:bg-cyan-500 text-white dark:text-cyan-950',
     border: 'border-gray-200 dark:border-zinc-700',
-  };
-
-  // Theme card styles with explicit border colors for better visibility
-  const getThemeCardStyles = (themeId: ThemeId) => {
-    const isSelected = currentTheme === themeId;
-
-    if (useDarkMode) {
-      // Dark Mode theme - use bright borders for visibility
-      if (themeId === 'pink-dream') {
-        return isSelected
-          ? 'border-2 border-purple-400 bg-purple-900/20'
-          : 'border-2 border-gray-600 bg-gray-800';
-      } else if (themeId === 'ocean-blue') {
-        return isSelected
-          ? 'border-2 border-blue-400 bg-blue-900/20'
-          : 'border-2 border-gray-600 bg-gray-800';
-      } else if (themeId === 'dark-mode') {
-        return isSelected
-          ? 'border-2 border-cyan-400 bg-cyan-900/20'
-          : 'border-2 border-gray-600 bg-gray-800';
-      }
-    } else {
-      // Light themes - adapt to system mode
-      if (themeId === 'pink-dream') {
-        return isSelected
-          ? 'border-2 border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-          : 'border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800';
-      } else if (themeId === 'ocean-blue') {
-        return isSelected
-          ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-          : 'border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800';
-      } else if (themeId === 'dark-mode') {
-        return isSelected
-          ? 'border-2 border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
-          : 'border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800';
-      }
-    }
-
-    // Fallback
-    return 'border-2 border-gray-300 bg-white';
   };
 
   const [isOpen, setIsOpen] = useState(false);
@@ -169,32 +129,6 @@ export default function ChatSettingsSheet({
 
   const shareLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/chat/${chatRoom.code}`;
 
-  // Get current theme from localStorage (matching page.tsx logic)
-  const [currentTheme, setCurrentTheme] = useState<ThemeId>(DEFAULT_THEME);
-
-  useEffect(() => {
-    // Update when sheet opens to ensure it's fresh
-    if (isOpen) {
-      // Priority 1: URL parameter
-      const params = new URLSearchParams(window.location.search);
-      const urlTheme = params.get('design');
-      if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
-        setCurrentTheme(urlTheme as ThemeId);
-        return;
-      }
-
-      // Priority 2: localStorage
-      const localTheme = localStorage.getItem(`chatpop_theme_${chatRoom.code}`);
-      if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
-        setCurrentTheme(localTheme as ThemeId);
-        return;
-      }
-
-      // Fallback to default
-      setCurrentTheme(DEFAULT_THEME);
-    }
-  }, [isOpen, chatRoom.code]);
-
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>{children}</SheetTrigger>
@@ -220,74 +154,14 @@ export default function ChatSettingsSheet({
           {/* Theme Selection */}
           <div className="space-y-4">
             <h3 className={`text-sm font-semibold ${styles.title}`}>
-              Theme <span className={`text-xs font-normal ${styles.subtext}`}>(chat will reload)</span>
+              Theme <span className={`text-xs font-normal ${styles.subtext}`}>(coming soon)</span>
             </h3>
 
             <div className="grid grid-cols-3 gap-3">
+              {/* Dark Mode - Currently Active */}
               <button
-                onClick={() => {
-                  // Extract chat code from URL
-                  const match = window.location.pathname.match(/\/chat\/([^\/]+)/);
-                  if (match) {
-                    const code = match[1];
-                    localStorage.setItem('chatpop_theme_' + code, 'pink-dream');
-                  }
-                  // Remove design parameter from URL and reload
-                  const url = new URL(window.location.href);
-                  url.searchParams.delete('design');
-                  window.location.href = url.pathname + url.search;
-                }}
-                className={`p-3 rounded-lg transition-all focus:outline-none ${getThemeCardStyles('pink-dream')}`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className={`text-xs font-semibold ${styles.text}`}>Pink Dream</div>
-                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${useDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400'}`}>
-                    <Smartphone size={10} />
-                    <span>Auto</span>
-                  </div>
-                </div>
-                <div className="h-8 rounded bg-gradient-to-r from-purple-500 via-pink-500 to-red-500"></div>
-              </button>
-
-              <button
-                onClick={() => {
-                  // Extract chat code from URL
-                  const match = window.location.pathname.match(/\/chat\/([^\/]+)/);
-                  if (match) {
-                    const code = match[1];
-                    localStorage.setItem('chatpop_theme_' + code, 'ocean-blue');
-                  }
-                  // Remove design parameter from URL and reload
-                  const url = new URL(window.location.href);
-                  url.searchParams.delete('design');
-                  window.location.href = url.pathname + url.search;
-                }}
-                className={`p-3 rounded-lg transition-all focus:outline-none ${getThemeCardStyles('ocean-blue')}`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className={`text-xs font-semibold ${styles.text}`}>Ocean Blue</div>
-                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${useDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400'}`}>
-                    <Smartphone size={10} />
-                    <span>Auto</span>
-                  </div>
-                </div>
-                <div className="h-8 rounded bg-gradient-to-r from-blue-500 via-sky-500 to-cyan-500"></div>
-              </button>
-
-              <button
-                onClick={() => {
-                  // Extract chat code from URL
-                  const match = window.location.pathname.match(/\/chat\/([^\/]+)/);
-                  if (match) {
-                    const code = match[1];
-                    localStorage.setItem('chatpop_theme_' + code, 'dark-mode');
-                  }
-                  // Remove design parameter from URL and reload
-                  const url = new URL(window.location.href);
-                  url.searchParams.delete('design');
-                  window.location.href = url.pathname + url.search;
-                }}
-                className={`p-3 rounded-lg transition-all focus:outline-none ${getThemeCardStyles('dark-mode')}`}
+                disabled
+                className={`p-3 rounded-lg transition-all focus:outline-none border-2 border-cyan-400 bg-cyan-900/20 opacity-60 cursor-not-allowed`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className={`text-xs font-semibold ${styles.text}`}>Dark Mode</div>
@@ -301,6 +175,19 @@ export default function ChatSettingsSheet({
                   <div className="h-4 w-8 rounded bg-yellow-400"></div>
                 </div>
               </button>
+
+              {/* Placeholder slots for future themes */}
+              <div className="p-3 rounded-lg border-2 border-dashed border-zinc-700 opacity-30">
+                <div className="flex items-center justify-center h-full">
+                  <span className="text-xs text-zinc-500">Coming Soon</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg border-2 border-dashed border-zinc-700 opacity-30">
+                <div className="flex items-center justify-center h-full">
+                  <span className="text-xs text-zinc-500">Coming Soon</span>
+                </div>
+              </div>
             </div>
           </div>
 

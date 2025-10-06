@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Gamepad2, MessageSquare } from 'lucide-react';
 
 interface BackRoomTabProps {
   isInBackRoom: boolean;
@@ -16,7 +16,7 @@ export default function BackRoomTab({
   hasBackRoom,
   onClick,
   hasNewMessages = false,
-  design = 'pink-dream',
+  design = 'dark-mode',
 }: BackRoomTabProps) {
   if (!hasBackRoom) return null;
 
@@ -39,10 +39,10 @@ export default function BackRoomTab({
         };
       case 'dark-mode':
         return {
-          baseClasses: 'px-2 py-3 rounded-l-md border-l-4',
-          backRoomColors: 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950 border-cyan-300',
-          mainChatColors: 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border-zinc-700',
-          shadow: 'shadow-md',
+          baseClasses: 'px-1 py-4 rounded-l-xl',
+          backRoomColors: 'bg-gradient-to-br from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-white border-l-[3px] border-t-[0.5px] border-b border-cyan-300',
+          mainChatColors: 'bg-gradient-to-br from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-white border-l-[3px] border-t-[0.5px] border-b border-slate-500',
+          shadow: '',
         };
       default:
         return {
@@ -61,25 +61,30 @@ export default function BackRoomTab({
     <button
       onClick={onClick}
       className={`
-        fixed right-0 top-1/2 -translate-y-1/2 z-40
-        flex items-center justify-center
+        fixed right-0 top-1/2 -translate-y-1/2 z-50
+        flex flex-col items-center justify-center gap-1
         ${styles.baseClasses}
         transition-all duration-300
         ${colorClasses}
         ${hasNewMessages && !isInBackRoom ? 'animate-pulse' : ''}
         ${styles.shadow}
+        h-auto min-h-[90px]
       `}
       aria-label={isInBackRoom ? 'Return to Main Chat' : 'Open Back Room'}
     >
-      <div className="flex flex-col items-center justify-center gap-1 h-24">
-        {hasNewMessages && !isInBackRoom && (
-          <div className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-white" />
-        )}
-        <ChevronLeft className={`w-4 h-4 transition-transform ${isInBackRoom ? '' : 'rotate-180'}`} />
-        <span className="text-xs font-semibold whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-          {isInBackRoom ? 'Main Chat' : 'Back Room'}
-        </span>
-      </div>
+      {hasNewMessages && !isInBackRoom && (
+        <div className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+      )}
+
+      {isInBackRoom ? (
+        <MessageSquare className="w-6 h-6 stroke-[2.5]" />
+      ) : (
+        <Gamepad2 className="w-6 h-6 stroke-[2.5] rotate-90" />
+      )}
+
+      <div className="w-8 h-[1px] bg-current opacity-30 my-1" />
+
+      <ChevronLeft className={`w-5 h-5 transition-transform ${isInBackRoom ? '' : 'rotate-180'} stroke-[2.5]`} />
     </button>
   );
 }
