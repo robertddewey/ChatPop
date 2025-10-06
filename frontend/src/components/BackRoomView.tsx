@@ -139,7 +139,15 @@ export default function BackRoomView({
           </>
         ) : (
           <div className="h-full flex items-center justify-center">
-            {/* Empty state for non-members - content TBD */}
+            {/* Large yellow Pac-Man */}
+            <div className="relative w-32 h-32">
+              <div
+                className="absolute inset-0 bg-yellow-400 rounded-full"
+                style={{
+                  clipPath: 'polygon(50% 50%, 100% 0%, 100% 40%, 50% 50%, 100% 60%, 100% 100%, 0% 100%, 0% 0%)'
+                }}
+              />
+            </div>
           </div>
         )}
       </div>
