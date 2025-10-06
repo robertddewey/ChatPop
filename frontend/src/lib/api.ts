@@ -67,6 +67,7 @@ export interface Message {
   user: User | null;
   message_type: 'normal' | 'host' | 'system';
   content: string;
+  voice_url: string | null;
   reply_to: string | null;
   reply_to_message: ReplyToMessage | null;
   is_pinned: boolean;
@@ -277,6 +278,25 @@ export const messageApi = {
       amount,
       duration_minutes,
     });
+    return response.data;
+  },
+
+  uploadVoiceMessage: async (code: string, audioBlob: Blob, username: string): Promise<{ voice_url: string; storage_path: string; storage_type: string }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
+    const formData = new FormData();
+    formData.append('voice_message', audioBlob, 'voice.webm');
+    formData.append('session_token', sessionToken || '');
+
+    const response = await axios.post(
+      `${API_BASE_URL}/api/chats/${code}/voice/upload/`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
     return response.data;
   },
 };

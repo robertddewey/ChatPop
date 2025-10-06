@@ -32,11 +32,14 @@ export function useChatWebSocket({
     setIsConnecting(true);
 
     // Determine WebSocket URL based on environment
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = process.env.NEXT_PUBLIC_WS_HOST || window.location.hostname;
-    const port = process.env.NEXT_PUBLIC_WS_PORT || '9000';
-    const wsUrl = `${protocol}//${host}:${port}/ws/chat/${chatCode}/?session_token=${sessionToken}`;
+    // Use WSS (secure WebSocket) when page is HTTPS, WS when HTTP
+    const isSecure = window.location.protocol === 'https:';
+    const wsProtocol = isSecure ? 'wss:' : 'ws:';
+    const wsHost = isSecure ? window.location.hostname : 'localhost';
+    const wsPort = '9000';
+    const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws/chat/${chatCode}/?session_token=${sessionToken}`;
 
+    console.log('[WebSocket] Connecting to:', wsUrl);
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
@@ -147,10 +150,31 @@ export function useChatWebSocket({
     };
   }, [enabled, sessionToken, connect, disconnect]);
 
+  const sendRawMessage = useCallback(
+    (data: object) => {
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+        throw new Error('WebSocket is not connected');
+      }
+
+      if (!sessionToken) {
+        throw new Error('Session token is required');
+      }
+
+      ws.current.send(
+        JSON.stringify({
+          ...data,
+          session_token: sessionToken,
+        })
+      );
+    },
+    [sessionToken]
+  );
+
   return {
     isConnected,
     isConnecting,
     sendMessage,
+    sendRawMessage,
     reconnect: connect,
     disconnect,
   };

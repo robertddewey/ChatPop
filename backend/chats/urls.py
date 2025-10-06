@@ -3,7 +3,8 @@ from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
     MessageListView, MessageCreateView, MessagePinView,
     BackRoomDetailView, BackRoomJoinView, BackRoomMessagesView, BackRoomMessageSendView, BackRoomMembersView,
-    FingerprintUsernameView, UsernameValidationView, MyParticipationView, SuggestUsernameView, CheckRateLimitView
+    FingerprintUsernameView, UsernameValidationView, MyParticipationView, SuggestUsernameView, CheckRateLimitView,
+    VoiceUploadView, VoiceStreamView
 )
 
 app_name = 'chats'
@@ -42,4 +43,8 @@ urlpatterns = [
 
     # Rate Limit Check
     path('<str:code>/check-rate-limit/', CheckRateLimitView.as_view(), name='check-rate-limit'),
+
+    # Voice Messages
+    path('<str:code>/voice/upload/', VoiceUploadView.as_view(), name='voice-upload'),
+    path('media/<path:storage_path>', VoiceStreamView.as_view(), name='voice-stream'),
 ]

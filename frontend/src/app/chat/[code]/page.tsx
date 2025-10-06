@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type Message, type BackRoom } from '@/lib/api';
 import Header from '@/components/Header';
@@ -11,10 +11,13 @@ import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
 import LoginModal from '@/components/LoginModal';
 import RegisterModal from '@/components/RegisterModal';
+import VoiceRecorder from '@/components/VoiceRecorder';
+import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
 import { Settings, BadgeCheck } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
+import { type RecordingMetadata } from '@/lib/waveform';
 
 // Design configurations
 const designs = {
@@ -82,7 +85,7 @@ const designs = {
     headerSubtitle: "text-sm text-zinc-400",
     stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
     messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
-    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.03] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
+    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.06] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
     hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
     hostText: "text-cyan-950",
     hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
@@ -113,26 +116,34 @@ export default function ChatPage() {
     router.replace(`${window.location.pathname}?${newParams.toString()}`);
   };
 
-  // Theme state with hierarchy: URL > localStorage > host default > system default
-  // Initialize from URL or localStorage immediately to avoid flash
+  // Theme state with hierarchy: URL > localStorage > system default
+  const urlTheme = searchParams.get('design');
+
+  // Initialize theme state - will be corrected after hydration
+  // NOTE: This matches the logic in layout.tsx to prevent flash
   const [designVariant, setDesignVariant] = useState<'pink-dream' | 'ocean-blue' | 'dark-mode'>(() => {
-    // Check URL parameter first
-    const urlTheme = searchParams.get('design');
-    if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
-      return urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
-    }
-
-    // Check localStorage
-    if (typeof window !== 'undefined') {
-      const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
-      if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
-        return localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode';
-      }
-    }
-
-    // Default fallback
+    // During SSR, we can't access localStorage, so default to pink-dream
+    // The layout script will set the correct body background before React hydrates
     return 'pink-dream';
   });
+
+  // Read theme from localStorage/URL after hydration
+  useEffect(() => {
+    // Priority 1: URL parameter
+    if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
+      setDesignVariant(urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
+      return;
+    }
+
+    // Priority 2: localStorage (matching layout.tsx logic)
+    const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
+    if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
+      setDesignVariant(localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
+      return;
+    }
+
+    // Fallback to default (already set in state initialization)
+  }, [code, urlTheme]);
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -151,6 +162,7 @@ export default function ChatPage() {
   // Message input
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
 
   // Message filter
   const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
@@ -168,6 +180,8 @@ export default function ChatPage() {
 
   // Handle incoming WebSocket messages
   const handleWebSocketMessage = useCallback((message: Message) => {
+    console.log('[WebSocket] Received message:', JSON.stringify(message, null, 2));
+    console.log('[WebSocket] voice_url present?', !!message.voice_url, message.voice_url);
     setMessages((prev) => {
       // Check if message already exists (avoid duplicates)
       if (prev.some((m) => m.id === message.id)) {
@@ -180,7 +194,7 @@ export default function ChatPage() {
   }, []);
 
   // WebSocket connection
-  const { sendMessage: wsSendMessage, isConnected } = useChatWebSocket({
+  const { sendMessage: wsSendMessage, sendRawMessage, isConnected } = useChatWebSocket({
     chatCode: code,
     sessionToken,
     onMessage: handleWebSocketMessage,
@@ -511,6 +525,13 @@ export default function ChatPage() {
   // Send message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // If there's a voice recording ready, send it via the global method
+    if (hasVoiceRecording && (window as any).__voiceRecorderSendMethod) {
+      (window as any).__voiceRecorderSendMethod();
+      return;
+    }
+
     if (!newMessage.trim() || sending) return;
 
     setSending(true);
@@ -549,6 +570,67 @@ export default function ChatPage() {
       }
     } catch (err: any) {
       console.error('Failed to send message:', err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Handle voice message upload
+  const handleVoiceRecording = async (audioBlob: Blob, metadata: RecordingMetadata) => {
+    if (sending) return;
+
+    setSending(true);
+    try {
+      let messageUsername = username;
+
+      if (!messageUsername) {
+        const token = localStorage.getItem('auth_token');
+        const isLoggedIn = !!token;
+        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+      }
+
+      if (!messageUsername && chatRoom) {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          messageUsername = chatRoom.host.reserved_username || chatRoom.host.email.split('@')[0];
+        }
+      }
+
+      if (!messageUsername) {
+        console.error('No username available');
+        alert('Please join the chat first');
+        return;
+      }
+
+      // Upload voice message file and get the URL
+      const { voice_url } = await messageApi.uploadVoiceMessage(code, audioBlob, messageUsername);
+
+      console.log('[Voice Upload] Sending voice message with metadata:', {
+        voice_url,
+        duration: metadata.duration,
+        waveformSamples: metadata.waveformData.length
+      });
+
+      // Send the voice message via WebSocket with metadata
+      sendRawMessage({
+        message: '', // Empty message text for voice-only messages
+        voice_url: voice_url,
+        voice_duration: metadata.duration,
+        voice_waveform: metadata.waveformData,
+      });
+
+      // Auto-scroll to show new message
+      shouldAutoScrollRef.current = true;
+    } catch (err: any) {
+      console.error('Failed to upload voice message:', err);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        stack: err.stack
+      });
+      const errorMsg = err.response?.data?.error || err.message || 'Unknown error occurred';
+      alert(`Failed to send voice message: ${errorMsg}`);
     } finally {
       setSending(false);
     }
@@ -618,14 +700,14 @@ export default function ChatPage() {
     : messages;
 
   // Filter messages for sticky section (useMemo to prevent infinite loops)
-  const allStickyHostMessages = React.useMemo(() => {
+  const allStickyHostMessages = useMemo(() => {
     return filteredMessages
       .filter(m => m.is_from_host)
       .slice(-1)  // Get 1 most recent
       .reverse(); // Show newest first
   }, [filteredMessages]);
 
-  const topPinnedMessage = React.useMemo(() => {
+  const topPinnedMessage = useMemo(() => {
     return filteredMessages
       .filter(m => m.is_pinned && !m.is_from_host)
       .sort((a, b) => parseFloat(b.pin_amount_paid) - parseFloat(a.pin_amount_paid))
@@ -633,7 +715,7 @@ export default function ChatPage() {
   }, [filteredMessages]);
 
   // Get IDs to observe (useMemo to prevent infinite loops)
-  const idsToObserve = React.useMemo(() => {
+  const idsToObserve = useMemo(() => {
     const hostIds = allStickyHostMessages.map(m => m.id);
     const pinnedId = topPinnedMessage?.id;
     const ids = [...hostIds];
@@ -998,7 +1080,7 @@ export default function ChatPage() {
             <div key={message.id} data-message-id={message.id}>
               {/* Show username header for first message in thread */}
               {isFirstInThread && !message.is_from_host && !message.is_pinned && (
-                <div className="text-xs mb-1 flex items-center gap-1 text-gray-700 dark:text-zinc-100">
+                <div className={`text-xs mb-1 flex items-center gap-1 ${designVariant === 'dark-mode' ? 'text-red-500' : 'text-gray-700 dark:text-zinc-100'}`}>
                   <span className="font-semibold">
                     {message.username}
                   </span>
@@ -1079,9 +1161,25 @@ export default function ChatPage() {
                     )}
 
                     {/* Message content */}
-                    <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
-                      {message.content}
-                    </p>
+                    {message.voice_url ? (
+                      <div className="-mt-px">
+                        <VoiceMessagePlayer
+                          voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                          duration={message.voice_duration || 0}
+                          waveformData={message.voice_waveform || []}
+                        />
+                      </div>
+                    ) : message.content ? (
+                      <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
+                        {message.content}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">
+                        [Voice message - loading...]
+                        <br />
+                        <small>Debug: voice_url={JSON.stringify(message.voice_url)}, id={message.id}</small>
+                      </p>
+                    )}
                   </div>
                 </MessageActionsModal>
               </div>
@@ -1122,9 +1220,16 @@ export default function ChatPage() {
               userSelect: 'text',
             }}
           />
+          {chatRoom?.voice_enabled && (
+            <VoiceRecorder
+              onRecordingComplete={handleVoiceRecording}
+              onRecordingReady={setHasVoiceRecording}
+              disabled={sending || !hasJoined}
+            />
+          )}
           <button
             type="submit"
-            disabled={sending || !newMessage.trim()}
+            disabled={sending || (!newMessage.trim() && !hasVoiceRecording)}
             className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send

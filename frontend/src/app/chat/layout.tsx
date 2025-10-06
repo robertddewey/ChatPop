@@ -1,6 +1,6 @@
 import type { Viewport, Metadata } from "next";
 import Script from "next/script";
-import "../chat-layout.css";
+import '../chat-layout.css';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -25,7 +25,47 @@ export default function ChatLayout({
 }>) {
   return (
     <>
-      {/* Set theme-color and body background BEFORE React hydration */}
+      {/* Inject inline style in head to set body background BEFORE rendering */}
+      <Script id="theme-bg-init" strategy="beforeInteractive">
+        {`
+          (function() {
+            // Body background colors (match container backgrounds)
+            const backgroundColors = {
+              'pink-dream': { light: '#fdf2f8', dark: '#1e1b4b' },
+              'ocean-blue': { light: '#f0f9ff', dark: '#111827' },
+              'dark-mode': { light: '#09090b', dark: '#09090b' }
+            };
+
+            // Get theme from URL or localStorage
+            function getTheme() {
+              const params = new URLSearchParams(window.location.search);
+              const urlTheme = params.get('design');
+              if (urlTheme && backgroundColors[urlTheme]) return urlTheme;
+
+              const match = window.location.pathname.match(/\\/chat\\/([^\\/]+)/);
+              if (match) {
+                const code = match[1];
+                const stored = localStorage.getItem('chatpop_theme_' + code);
+                if (stored && backgroundColors[stored]) return stored;
+              }
+
+              return 'pink-dream';
+            }
+
+            const theme = getTheme();
+            const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const bgColor = isDark ? backgroundColors[theme].dark : backgroundColors[theme].light;
+
+            // Inject style tag to set body and all page containers immediately
+            // This targets body, Next.js root, and any divs with height/flex classes (the main container)
+            const style = document.createElement('style');
+            style.innerHTML = 'html, body { background-color: ' + bgColor + ' !important; } #__next, #__next > div, [class*="h-\\\\[100dvh\\\\]"], [class*="flex-col"] { background: ' + bgColor + ' !important; background-image: none !important; }';
+            document.head.appendChild(style);
+          })();
+        `}
+      </Script>
+
+      {/* Set theme-color meta tags after DOM is ready */}
       <Script id="theme-color-init" strategy="beforeInteractive">
         {`
           (function() {
@@ -36,20 +76,12 @@ export default function ChatLayout({
               'dark-mode': { light: '#18181b', dark: '#18181b' }
             };
 
-            // Body background colors (match container backgrounds)
-            const backgroundColors = {
-              'pink-dream': { light: '#fdf2f8', dark: '#1e1b4b' }, // pink-50 / indigo-950
-              'ocean-blue': { light: '#f0f9ff', dark: '#111827' },   // sky-50 / gray-900
-              'dark-mode': { light: '#09090b', dark: '#09090b' }     // zinc-950 / zinc-950
-            };
-
             // Get theme from URL or localStorage
             function getTheme() {
               const params = new URLSearchParams(window.location.search);
               const urlTheme = params.get('design');
               if (urlTheme && themeColors[urlTheme]) return urlTheme;
 
-              // Extract chat code from URL path
               const match = window.location.pathname.match(/\\/chat\\/([^\\/]+)/);
               if (match) {
                 const code = match[1];
@@ -57,23 +89,18 @@ export default function ChatLayout({
                 if (stored && themeColors[stored]) return stored;
               }
 
-              return 'pink-dream'; // default
+              return 'pink-dream';
             }
 
             const theme = getTheme();
             const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             const themeColor = isDark ? themeColors[theme].dark : themeColors[theme].light;
-            const bgColor = isDark ? backgroundColors[theme].dark : backgroundColors[theme].light;
-
-            // Update or create theme-color meta tags
-            // Chrome on iOS needs existing meta tag to be updated, not dynamically created
 
             // Find existing theme-color meta tag (from server-side metadata)
             let existingMeta = document.querySelector('meta[name="theme-color"]:not([media])');
             if (existingMeta) {
               existingMeta.setAttribute('content', themeColor);
             } else {
-              // Fallback: create if doesn't exist
               const defaultMeta = document.createElement('meta');
               defaultMeta.name = 'theme-color';
               defaultMeta.content = themeColor;
@@ -98,9 +125,6 @@ export default function ChatLayout({
               document.head.appendChild(darkMeta);
             }
             darkMeta.setAttribute('content', themeColors[theme].dark);
-
-            // Set body background to match theme (suppressHydrationWarning in root layout handles the warning)
-            document.body.style.backgroundColor = bgColor;
           })();
         `}
       </Script>

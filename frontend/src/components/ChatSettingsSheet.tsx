@@ -45,12 +45,6 @@ export default function ChatSettingsSheet({
     card: 'bg-zinc-800',
     button: 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950',
     border: 'border-zinc-700',
-    themeCard: {
-      selected: (isSelected: boolean, color: string) =>
-        isSelected
-          ? `border-${color}-400 bg-${color}-900/20`
-          : 'border-gray-600 bg-gray-800',
-    },
   } : {
     title: 'text-gray-900 dark:text-white',
     subtitle: 'text-gray-600 dark:text-zinc-400',
@@ -60,12 +54,46 @@ export default function ChatSettingsSheet({
     card: 'bg-gray-50 dark:bg-zinc-800',
     button: 'bg-purple-600 dark:bg-cyan-400 hover:bg-purple-700 dark:hover:bg-cyan-500 text-white dark:text-cyan-950',
     border: 'border-gray-200 dark:border-zinc-700',
-    themeCard: {
-      selected: (isSelected: boolean, color: string) =>
-        isSelected
-          ? `border-${color}-500 bg-${color}-50 dark:bg-${color}-900/20`
-          : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800',
-    },
+  };
+
+  // Theme card styles with explicit border colors for better visibility
+  const getThemeCardStyles = (themeId: ThemeId) => {
+    const isSelected = currentTheme === themeId;
+
+    if (useDarkMode) {
+      // Dark Mode theme - use bright borders for visibility
+      if (themeId === 'pink-dream') {
+        return isSelected
+          ? 'border-2 border-purple-400 bg-purple-900/20'
+          : 'border-2 border-gray-600 bg-gray-800';
+      } else if (themeId === 'ocean-blue') {
+        return isSelected
+          ? 'border-2 border-blue-400 bg-blue-900/20'
+          : 'border-2 border-gray-600 bg-gray-800';
+      } else if (themeId === 'dark-mode') {
+        return isSelected
+          ? 'border-2 border-cyan-400 bg-cyan-900/20'
+          : 'border-2 border-gray-600 bg-gray-800';
+      }
+    } else {
+      // Light themes - adapt to system mode
+      if (themeId === 'pink-dream') {
+        return isSelected
+          ? 'border-2 border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+          : 'border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800';
+      } else if (themeId === 'ocean-blue') {
+        return isSelected
+          ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+          : 'border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800';
+      } else if (themeId === 'dark-mode') {
+        return isSelected
+          ? 'border-2 border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
+          : 'border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800';
+      }
+    }
+
+    // Fallback
+    return 'border-2 border-gray-300 bg-white';
   };
 
   const [isOpen, setIsOpen] = useState(false);
@@ -141,21 +169,31 @@ export default function ChatSettingsSheet({
 
   const shareLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/chat/${chatRoom.code}`;
 
-  // Get current theme directly from URL - only on client side
-  const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => {
-    if (typeof window === 'undefined') return DEFAULT_THEME;
-    const params = new URLSearchParams(window.location.search);
-    return migrateLegacyTheme(params.get('design'));
-  });
+  // Get current theme from localStorage (matching page.tsx logic)
+  const [currentTheme, setCurrentTheme] = useState<ThemeId>(DEFAULT_THEME);
 
   useEffect(() => {
     // Update when sheet opens to ensure it's fresh
     if (isOpen) {
+      // Priority 1: URL parameter
       const params = new URLSearchParams(window.location.search);
-      const theme = migrateLegacyTheme(params.get('design'));
-      setCurrentTheme(theme);
+      const urlTheme = params.get('design');
+      if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
+        setCurrentTheme(urlTheme as ThemeId);
+        return;
+      }
+
+      // Priority 2: localStorage
+      const localTheme = localStorage.getItem(`chatpop_theme_${chatRoom.code}`);
+      if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
+        setCurrentTheme(localTheme as ThemeId);
+        return;
+      }
+
+      // Fallback to default
+      setCurrentTheme(DEFAULT_THEME);
     }
-  }, [isOpen]);
+  }, [isOpen, chatRoom.code]);
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -188,14 +226,18 @@ export default function ChatSettingsSheet({
             <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={() => {
+                  // Extract chat code from URL
+                  const match = window.location.pathname.match(/\/chat\/([^\/]+)/);
+                  if (match) {
+                    const code = match[1];
+                    localStorage.setItem('chatpop_theme_' + code, 'pink-dream');
+                  }
+                  // Remove design parameter from URL and reload
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'pink-dream');
-                  // Reload page to apply theme-color (iOS Safari requirement)
+                  url.searchParams.delete('design');
                   window.location.href = url.pathname + url.search;
                 }}
-                className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
-                  styles.themeCard.selected(currentTheme === 'pink-dream', 'purple')
-                }`}
+                className={`p-3 rounded-lg transition-all focus:outline-none ${getThemeCardStyles('pink-dream')}`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className={`text-xs font-semibold ${styles.text}`}>Pink Dream</div>
@@ -209,14 +251,18 @@ export default function ChatSettingsSheet({
 
               <button
                 onClick={() => {
+                  // Extract chat code from URL
+                  const match = window.location.pathname.match(/\/chat\/([^\/]+)/);
+                  if (match) {
+                    const code = match[1];
+                    localStorage.setItem('chatpop_theme_' + code, 'ocean-blue');
+                  }
+                  // Remove design parameter from URL and reload
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'ocean-blue');
-                  // Reload page to apply theme-color (iOS Safari requirement)
+                  url.searchParams.delete('design');
                   window.location.href = url.pathname + url.search;
                 }}
-                className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
-                  styles.themeCard.selected(currentTheme === 'ocean-blue', 'blue')
-                }`}
+                className={`p-3 rounded-lg transition-all focus:outline-none ${getThemeCardStyles('ocean-blue')}`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className={`text-xs font-semibold ${styles.text}`}>Ocean Blue</div>
@@ -230,14 +276,18 @@ export default function ChatSettingsSheet({
 
               <button
                 onClick={() => {
+                  // Extract chat code from URL
+                  const match = window.location.pathname.match(/\/chat\/([^\/]+)/);
+                  if (match) {
+                    const code = match[1];
+                    localStorage.setItem('chatpop_theme_' + code, 'dark-mode');
+                  }
+                  // Remove design parameter from URL and reload
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'dark-mode');
-                  // Reload page to apply theme-color (iOS Safari requirement)
+                  url.searchParams.delete('design');
                   window.location.href = url.pathname + url.search;
                 }}
-                className={`p-3 rounded-lg border-2 transition-all focus:outline-none ${
-                  styles.themeCard.selected(currentTheme === 'dark-mode', 'cyan')
-                }`}
+                className={`p-3 rounded-lg transition-all focus:outline-none ${getThemeCardStyles('dark-mode')}`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className={`text-xs font-semibold ${styles.text}`}>Dark Mode</div>

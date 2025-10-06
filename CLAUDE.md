@@ -110,22 +110,40 @@ Verify containers are running:
 docker ps --filter "name=chatpop"
 ```
 
-**2. Start Backend (Django on port 9000):**
+**2. Start Backend (Django with SSL/HTTPS on port 9000):**
+
+**⚠️ CRITICAL: Backend MUST be started with SSL/HTTPS support using Daphne!**
+
+Voice message recording requires HTTPS due to browser security policies for MediaRecorder API access. The backend must be started with Daphne and SSL certificates.
+
 ```bash
 cd backend
 ./venv/bin/python manage.py migrate  # Run migrations (first time only)
-./venv/bin/python manage.py runserver 9000
+
+# Start with Daphne and SSL (REQUIRED for voice messages)
+ALLOWED_HOSTS=localhost,127.0.0.1,10.0.0.135 \
+CORS_ALLOWED_ORIGINS="http://localhost:4000,http://127.0.0.1:4000,http://10.0.0.135:4000,https://localhost:4000,https://127.0.0.1:4000,https://10.0.0.135:4000" \
+./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
 ```
 
-Backend API: http://localhost:9000
+Backend API: https://localhost:9000
 
-**3. Start Frontend (Next.js on port 4000):**
+**3. Start Frontend (Next.js with HTTPS on port 4000):**
+
+**⚠️ CRITICAL: Frontend MUST also use HTTPS to match the backend!**
+
 ```bash
 cd frontend
-npm run dev
+npm run dev:https
 ```
 
-Frontend: http://localhost:4000
+Frontend: https://localhost:4000
+
+**Why SSL/HTTPS is Required:**
+- **Voice Messages:** Browser MediaRecorder API requires a secure context (HTTPS)
+- **WebSocket Security:** Secure WebSocket (WSS) connections require HTTPS
+- **Mobile Testing:** iOS Safari requires HTTPS for microphone access
+- **Production Parity:** Matches production environment configuration
 
 ### Repository Structure
 - Monorepo containing both backend and frontend
