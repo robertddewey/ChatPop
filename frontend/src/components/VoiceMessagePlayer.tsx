@@ -262,7 +262,7 @@ export default function VoiceMessagePlayer({
     displayWaveform = Array(FIXED_BAR_COUNT).fill(0).map(() => Math.random() * 0.8 + 0.2);
   }
 
-  console.log('[VoiceMessagePlayer] Render - duration:', duration, 'waveformData length:', waveformData?.length, 'displayWaveform length:', displayWaveform.length, 'voiceUrl:', voiceUrl);
+  // Debug logging removed - component renders multiple times during page load which is normal React behavior
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>

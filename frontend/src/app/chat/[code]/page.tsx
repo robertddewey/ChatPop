@@ -1071,7 +1071,7 @@ export default function ChatPage() {
             <div key={message.id} data-message-id={message.id}>
               {/* Show username header for first message in thread */}
               {isFirstInThread && !message.is_from_host && !message.is_pinned && (
-                <div className="text-xs mb-1 flex items-center gap-1 text-gray-700 dark:text-zinc-100">
+                <div className={`text-xs mb-1 flex items-center gap-1 ${designVariant === 'dark-mode' ? 'text-red-500' : 'text-gray-700 dark:text-zinc-100'}`}>
                   <span className="font-semibold">
                     {message.username}
                   </span>
