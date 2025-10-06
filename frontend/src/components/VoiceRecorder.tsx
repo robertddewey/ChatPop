@@ -3,9 +3,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { Mic, Square, Loader2, Play, Trash2, Send } from 'lucide-react';
+import { WaveformAnalyzer, downsampleWaveform, type RecordingMetadata } from '@/lib/waveform';
 
 interface VoiceRecorderProps {
-  onRecordingComplete: (audioBlob: Blob) => void;
+  onRecordingComplete: (audioBlob: Blob, metadata: RecordingMetadata) => void;
   disabled?: boolean;
   className?: string;
 }
@@ -18,11 +19,15 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [recordingMetadata, setRecordingMetadata] = useState<RecordingMetadata | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const waveformAnalyzerRef = useRef<WaveformAnalyzer | null>(null);
+  const recordingStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
@@ -32,10 +37,16 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
       }
+      if (waveformAnalyzerRef.current) {
+        waveformAnalyzerRef.current.dispose();
+      }
     };
   }, [audioUrl]);
 
   const startRecording = async () => {
+    const startTime = performance.now();
+    console.log('[VoiceRecorder] ⏱️ START - Recording button clicked at t=0ms');
+
     try {
       // Check if already recording
       if (recordingState === 'recording') {
@@ -54,17 +65,35 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
         return;
       }
 
-      // Clean up any existing stream and recorder (initialize fresh state)
+      // CRITICAL CLEANUP ORDER (matches MessagingApp exactly):
+      // 1. Stop stream tracks FIRST (disconnect from AudioContext)
+      // 2. Close AudioContext SECOND (after stream is disconnected)
+      // 3. Clean up MediaRecorder
+      // This prevents iOS Safari from getting confused about audio resources
+
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Starting cleanup...`);
+
+      // Step 1: Stop stream tracks first
       if (streamRef.current) {
+        console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Stopping old stream tracks...`);
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
 
+      // Step 2: Clean up MediaRecorder
       if (mediaRecorderRef.current) {
         if (mediaRecorderRef.current.state === 'recording') {
           mediaRecorderRef.current.stop();
         }
         mediaRecorderRef.current = null;
+      }
+
+      // Step 3: Close AudioContext LAST (after stream is disconnected)
+      if (audioContextRef.current) {
+        console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Closing old AudioContext...`);
+        await audioContextRef.current.close();
+        console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Old AudioContext closed successfully`);
+        audioContextRef.current = null;
       }
 
       // Simple constraints - iOS Safari works best with this
@@ -76,21 +105,55 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
         }
       };
 
-      // Request microphone access (fresh stream each time)
-      console.log('[VoiceRecorder] Requesting microphone access...');
+      // Request microphone access with timeout detection
+      // iOS Safari sometimes takes 10+ seconds to return getUserMedia, which then gets killed immediately
+      // If it takes more than 3 seconds, something is wrong - abort and show error
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Requesting microphone access...`);
+
+      const getUserMediaStart = performance.now();
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('[VoiceRecorder] Microphone access granted, stream obtained');
+      const getUserMediaDuration = Math.round(performance.now() - getUserMediaStart);
+
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Microphone access granted, stream obtained (took ${getUserMediaDuration}ms)`);
+
+      // If getUserMedia took more than 3 seconds, iOS is likely going to kill the stream
+      // Stop it immediately and show error instead of letting user experience a broken recording
+      if (getUserMediaDuration > 3000) {
+        console.error(`[VoiceRecorder] ⚠️ getUserMedia took ${getUserMediaDuration}ms (>3s) - iOS Safari will likely kill this stream. Aborting.`);
+        stream.getTracks().forEach(track => track.stop());
+        alert('Microphone access took too long. This is an iOS Safari issue. Please try recording again.');
+        setRecordingState('idle');
+        return;
+      }
+
       streamRef.current = stream;
 
-      // CRITICAL: Immediately create AudioContext and connect stream
+      // CRITICAL: Immediately create NEW AudioContext and connect stream
       // This tells iOS Safari we're actively using the microphone - keeps stream alive!
-      console.log('[VoiceRecorder] Creating AudioContext to keep stream alive...');
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Creating AudioContext to keep stream alive...`);
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContextRef.current = audioContext;
       const microphone = audioContext.createMediaStreamSource(stream);
-      console.log('[VoiceRecorder] AudioContext created, stream actively being used');
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - AudioContext created, stream actively being used`);
+
+      // Initialize waveform analyzer to capture amplitude data
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Creating WaveformAnalyzer...`);
+      const waveformAnalyzer = new WaveformAnalyzer(stream, 50); // Target 50 samples
+      waveformAnalyzerRef.current = waveformAnalyzer;
+      waveformAnalyzer.start();
+      recordingStartTimeRef.current = Date.now();
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - WaveformAnalyzer started`);
+
+      // CRITICAL: Detect when iOS Safari kills the microphone stream
+      stream.getTracks().forEach(track => {
+        track.onended = () => {
+          const killedAt = Math.round(performance.now() - startTime);
+          console.error(`[VoiceRecorder] ⏱️ ❌ MICROPHONE KILLED at t=${killedAt}ms - iOS Safari terminated the stream!`);
+        };
+      });
 
       // Create MediaRecorder
-      console.log('[VoiceRecorder] Creating MediaRecorder...');
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Creating MediaRecorder...`);
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
@@ -108,9 +171,30 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
         const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
         const url = URL.createObjectURL(blob);
 
+        // Capture waveform data and duration
+        let metadata: RecordingMetadata | null = null;
+        if (waveformAnalyzerRef.current) {
+          const waveformData = waveformAnalyzerRef.current.stop();
+          const duration = (Date.now() - recordingStartTimeRef.current) / 1000; // Convert to seconds
+
+          // Downsample to ~50 bars for consistent visualization
+          const downsampledWaveform = downsampleWaveform(waveformData.amplitudes, 50);
+
+          metadata = {
+            duration,
+            waveformData: downsampledWaveform
+          };
+
+          console.log('[VoiceRecorder] Captured metadata:', {
+            duration: metadata.duration.toFixed(2),
+            waveformSamples: metadata.waveformData.length
+          });
+        }
+
         console.log('[VoiceRecorder] Setting preview state with blob size:', blob.size);
         setAudioBlob(blob);
         setAudioUrl(url);
+        setRecordingMetadata(metadata);
         setRecordingState('preview');
 
         if (streamRef.current) {
@@ -124,24 +208,24 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
         }
       };
 
-      // Update UI state FIRST using flushSync for IMMEDIATE synchronous render
-      // This forces React to update the DOM RIGHT NOW, not in the next tick
-      console.log('[VoiceRecorder] Setting recording state to recording (IMMEDIATE with flushSync)');
+      // CRITICAL: Start MediaRecorder IMMEDIATELY (before UI updates!)
+      // iOS Safari requires this to happen ASAP after AudioContext creation
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Starting MediaRecorder NOW`);
+      mediaRecorder.start(100);
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - MediaRecorder started, state:`, mediaRecorder.state);
+
+      // Update UI state AFTER starting (use flushSync for immediate render)
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Updating UI state after MediaRecorder start`);
       flushSync(() => {
         setRecordingTime(0);
         setRecordingState('recording');
       });
-      console.log('[VoiceRecorder] UI state updated, DOM rendered');
+      console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - ✅ UI state updated - Recording UI should be visible now`);
 
       // Start timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
-
-      // Now start MediaRecorder IMMEDIATELY (iOS Safari requires this!)
-      console.log('[VoiceRecorder] Starting MediaRecorder NOW');
-      mediaRecorder.start(100);
-      console.log('[VoiceRecorder] MediaRecorder started, state:', mediaRecorder.state);
 
     } catch (error: any) {
       console.error('Error accessing microphone:', error);
@@ -204,6 +288,7 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
 
     setAudioBlob(null);
     setAudioUrl(null);
+    setRecordingMetadata(null);
     setRecordingTime(0);
     setIsPlaying(false);
     setRecordingState('idle');
@@ -211,10 +296,10 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
   };
 
   const sendRecording = () => {
-    if (!audioBlob) return;
+    if (!audioBlob || !recordingMetadata) return;
 
-    // Call parent callback with the blob
-    onRecordingComplete(audioBlob);
+    // Call parent callback with the blob and metadata
+    onRecordingComplete(audioBlob, recordingMetadata);
 
     // Reset to idle state
     deleteRecording();

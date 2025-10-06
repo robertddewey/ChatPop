@@ -54,6 +54,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         data = json.loads(text_data)
         message_text = data.get('message', '')
         reply_to_id = data.get('reply_to_id')  # Optional message ID to reply to
+        voice_url = data.get('voice_url')  # Optional voice message URL
+        voice_duration = data.get('voice_duration')  # Optional voice message duration (seconds)
+        voice_waveform = data.get('voice_waveform')  # Optional voice waveform data (array of floats 0-1)
 
         # Validate session token on each message (optional extra security)
         session_token = data.get('session_token', self.session_token)
@@ -72,7 +75,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 username=session_data['username'],
                 user_id=session_data.get('user_id'),
                 content=message_text,
-                reply_to_id=reply_to_id
+                reply_to_id=reply_to_id,
+                voice_url=voice_url,
+                voice_duration=voice_duration,
+                voice_waveform=voice_waveform
             )
 
             # Serialize for broadcast (includes username_is_reserved)
@@ -110,7 +116,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def save_message(self, chat_code, username, user_id, content, reply_to_id=None):
+    def save_message(self, chat_code, username, user_id, content, reply_to_id=None, voice_url=None, voice_duration=None, voice_waveform=None):
         """
         Save message to PostgreSQL and Redis (dual-write).
 
@@ -145,7 +151,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             user=user,
             content=content,
             message_type=message_type,
-            reply_to=reply_to
+            reply_to=reply_to,
+            voice_url=voice_url,
+            voice_duration=voice_duration,
+            voice_waveform=voice_waveform
         )
 
         # Add to Redis cache (dual-write)
@@ -176,6 +185,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'user_id': str(message.user.id) if message.user else None,
             'message_type': message.message_type,
             'content': message.content,
+            'voice_url': message.voice_url,
+            'voice_duration': float(message.voice_duration) if message.voice_duration else None,
+            'voice_waveform': message.voice_waveform,
             'reply_to_id': str(message.reply_to.id) if message.reply_to else None,
             'is_pinned': message.is_pinned,
             'created_at': message.created_at.isoformat(),

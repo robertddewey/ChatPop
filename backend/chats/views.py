@@ -263,7 +263,7 @@ class MessageListView(APIView):
         # Always fetch from PostgreSQL for REST API
         # Redis is only used for WebSocket broadcast (real-time messaging)
         # This ensures complete message history with no gaps or cache complexity
-        messages = self._fetch_from_db(chat_room, limit, before_timestamp)
+        messages = self._fetch_from_db(chat_room, limit, before_timestamp, request)
 
         # Fetch pinned messages from Redis (pinned messages are ephemeral)
         pinned_messages = MessageCache.get_pinned_messages(code)
@@ -275,7 +275,7 @@ class MessageListView(APIView):
             'count': len(messages)
         })
 
-    def _fetch_from_db(self, chat_room, limit, before_timestamp=None):
+    def _fetch_from_db(self, chat_room, limit, before_timestamp=None, request=None):
         """
         Fallback: fetch messages from PostgreSQL.
 
@@ -299,6 +299,12 @@ class MessageListView(APIView):
         serialized = []
         for msg in messages:
             username_is_reserved = MessageCache._compute_username_is_reserved(msg)
+
+            # Convert relative voice_url to absolute URL if present
+            voice_url = msg.voice_url
+            if voice_url and request:
+                voice_url = request.build_absolute_uri(voice_url)
+
             serialized.append({
                 'id': str(msg.id),
                 'chat_code': msg.chat_room.code,
@@ -308,6 +314,9 @@ class MessageListView(APIView):
                 'message_type': msg.message_type,
                 'is_from_host': msg.message_type == "host",
                 'content': msg.content,
+                'voice_url': voice_url,
+                'voice_duration': float(msg.voice_duration) if msg.voice_duration else None,
+                'voice_waveform': msg.voice_waveform,
                 'reply_to_id': str(msg.reply_to.id) if msg.reply_to else None,
                 'is_pinned': msg.is_pinned,
                 'pinned_at': msg.pinned_at.isoformat() if msg.pinned_at else None,
@@ -913,8 +922,11 @@ class VoiceUploadView(APIView):
             # Save file to storage
             storage_path, storage_type = save_voice_message(voice_file)
 
-            # Get proxy URL for accessing the file
-            voice_url = get_voice_message_url(storage_path)
+            # Get proxy URL for accessing the file (relative path)
+            relative_url = get_voice_message_url(storage_path)
+
+            # Build absolute URL for cross-origin access (frontend at port 4000, backend at port 9000)
+            voice_url = request.build_absolute_uri(relative_url)
 
             return Response({
                 'voice_url': voice_url,
@@ -934,6 +946,17 @@ class VoiceStreamView(APIView):
     Provides access control - only chat participants can access voice messages.
     """
     permission_classes = [permissions.AllowAny]
+
+    def options(self, request, storage_path):
+        """Handle CORS preflight requests"""
+        from django.http import HttpResponse
+
+        response = HttpResponse()
+        response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'X-Chat-Session-Token, Content-Type'
+        response['Access-Control-Max-Age'] = '86400'  # 24 hours
+        return response
 
     def get(self, request, storage_path):
         from django.http import FileResponse, Http404
@@ -985,6 +1008,14 @@ class VoiceStreamView(APIView):
             response = FileResponse(file_obj, content_type=content_type)
             response['Content-Disposition'] = f'inline; filename="{storage_path.split("/")[-1]}"'
             response['Cache-Control'] = 'private, max-age=3600'  # Cache for 1 hour
+
+            # Add CORS headers for audio element playback
+            response['Access-Control-Allow-Origin'] = '*'
+            response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+            response['Access-Control-Allow-Headers'] = 'X-Chat-Session-Token, Content-Type'
+
+            # Add Accept-Ranges header for media streaming
+            response['Accept-Ranges'] = 'bytes'
 
             return response
 

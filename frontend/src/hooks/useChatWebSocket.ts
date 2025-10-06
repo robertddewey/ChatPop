@@ -150,10 +150,31 @@ export function useChatWebSocket({
     };
   }, [enabled, sessionToken, connect, disconnect]);
 
+  const sendRawMessage = useCallback(
+    (data: object) => {
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+        throw new Error('WebSocket is not connected');
+      }
+
+      if (!sessionToken) {
+        throw new Error('Session token is required');
+      }
+
+      ws.current.send(
+        JSON.stringify({
+          ...data,
+          session_token: sessionToken,
+        })
+      );
+    },
+    [sessionToken]
+  );
+
   return {
     isConnected,
     isConnecting,
     sendMessage,
+    sendRawMessage,
     reconnect: connect,
     disconnect,
   };

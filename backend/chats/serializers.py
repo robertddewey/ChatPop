@@ -108,13 +108,14 @@ class MessageSerializer(serializers.ModelSerializer):
         model = Message
         fields = [
             'id', 'chat_room', 'username', 'user', 'message_type', 'content', 'voice_url',
+            'voice_duration', 'voice_waveform',
             'reply_to', 'reply_to_message',
             'is_pinned', 'pinned_at', 'pinned_until', 'pin_amount_paid',
             'is_from_host', 'username_is_reserved', 'time_until_unpin', 'created_at', 'is_deleted'
         ]
         read_only_fields = [
-            'id', 'user', 'message_type', 'voice_url', 'is_pinned', 'pinned_at',
-            'pinned_until', 'pin_amount_paid', 'created_at', 'is_deleted'
+            'id', 'user', 'message_type', 'voice_url', 'voice_duration', 'voice_waveform',
+            'is_pinned', 'pinned_at', 'pinned_until', 'pin_amount_paid', 'created_at', 'is_deleted'
         ]
 
     def get_is_from_host(self, obj):
@@ -250,10 +251,12 @@ class BackRoomMessageSerializer(serializers.ModelSerializer):
         model = BackRoomMessage
         fields = [
             'id', 'back_room', 'username', 'user', 'message_type', 'content', 'voice_url',
+            'voice_duration', 'voice_waveform',
             'reply_to', 'reply_to_message', 'is_from_host', 'username_is_reserved', 'created_at', 'is_deleted'
         ]
         read_only_fields = [
-            'id', 'user', 'message_type', 'voice_url', 'created_at', 'is_deleted'
+            'id', 'user', 'message_type', 'voice_url', 'voice_duration', 'voice_waveform',
+            'created_at', 'is_deleted'
         ]
 
     def get_is_from_host(self, obj):

@@ -88,8 +88,8 @@ class MediaStorage:
             str: Relative URL path for Django proxy endpoint
         """
         # Return proxy URL path (actual URL generation happens in views)
-        # Format: /api/media/voice_messages/<filename>
-        return f"/api/media/{storage_path}"
+        # Format: /api/chats/media/voice_messages/<filename>
+        return f"/api/chats/media/{storage_path}"
 
     @staticmethod
     def get_file(storage_path: str) -> Optional[BinaryIO]:

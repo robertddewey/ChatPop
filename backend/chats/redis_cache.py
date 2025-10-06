@@ -54,6 +54,7 @@ class MessageCache:
             "message_type": message.message_type,
             "is_from_host": message.message_type == "host",
             "content": message.content,
+            "voice_url": message.voice_url,
             "reply_to_id": str(message.reply_to.id) if message.reply_to else None,
             "is_pinned": message.is_pinned,
             "pinned_at": message.pinned_at.isoformat() if message.pinned_at else None,

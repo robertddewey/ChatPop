@@ -12,10 +12,12 @@ import JoinChatModal from '@/components/JoinChatModal';
 import LoginModal from '@/components/LoginModal';
 import RegisterModal from '@/components/RegisterModal';
 import VoiceRecorder from '@/components/VoiceRecorder';
+import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
 import { Settings, BadgeCheck } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
+import { type RecordingMetadata } from '@/lib/waveform';
 
 // Design configurations
 const designs = {
@@ -168,6 +170,8 @@ export default function ChatPage() {
 
   // Handle incoming WebSocket messages
   const handleWebSocketMessage = useCallback((message: Message) => {
+    console.log('[WebSocket] Received message:', JSON.stringify(message, null, 2));
+    console.log('[WebSocket] voice_url present?', !!message.voice_url, message.voice_url);
     setMessages((prev) => {
       // Check if message already exists (avoid duplicates)
       if (prev.some((m) => m.id === message.id)) {
@@ -180,7 +184,7 @@ export default function ChatPage() {
   }, []);
 
   // WebSocket connection
-  const { sendMessage: wsSendMessage, isConnected } = useChatWebSocket({
+  const { sendMessage: wsSendMessage, sendRawMessage, isConnected } = useChatWebSocket({
     chatCode: code,
     sessionToken,
     onMessage: handleWebSocketMessage,
@@ -555,7 +559,7 @@ export default function ChatPage() {
   };
 
   // Handle voice message upload
-  const handleVoiceRecording = async (audioBlob: Blob) => {
+  const handleVoiceRecording = async (audioBlob: Blob, metadata: RecordingMetadata) => {
     if (sending) return;
 
     setSending(true);
@@ -584,17 +588,32 @@ export default function ChatPage() {
       // Upload voice message file and get the URL
       const { voice_url } = await messageApi.uploadVoiceMessage(code, audioBlob, messageUsername);
 
-      // Send the voice message via WebSocket with the voice_url
-      sendMessage(JSON.stringify({
+      console.log('[Voice Upload] Sending voice message with metadata:', {
+        voice_url,
+        duration: metadata.duration,
+        waveformSamples: metadata.waveformData.length
+      });
+
+      // Send the voice message via WebSocket with metadata
+      sendRawMessage({
         message: '', // Empty message text for voice-only messages
         voice_url: voice_url,
-      }));
+        voice_duration: metadata.duration,
+        voice_waveform: metadata.waveformData,
+      });
 
       // Auto-scroll to show new message
       shouldAutoScrollRef.current = true;
     } catch (err: any) {
       console.error('Failed to upload voice message:', err);
-      alert('Failed to send voice message. Please try again.');
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        stack: err.stack
+      });
+      const errorMsg = err.response?.data?.error || err.message || 'Unknown error occurred';
+      alert(`Failed to send voice message: ${errorMsg}`);
     } finally {
       setSending(false);
     }
@@ -1125,9 +1144,25 @@ export default function ChatPage() {
                     )}
 
                     {/* Message content */}
-                    <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
-                      {message.content}
-                    </p>
+                    {message.voice_url ? (
+                      <div className="mt-0.5">
+                        <VoiceMessagePlayer
+                          voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                          duration={message.voice_duration || 0}
+                          waveformData={message.voice_waveform || []}
+                        />
+                      </div>
+                    ) : message.content ? (
+                      <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
+                        {message.content}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">
+                        [Voice message - loading...]
+                        <br />
+                        <small>Debug: voice_url={JSON.stringify(message.voice_url)}, id={message.id}</small>
+                      </p>
+                    )}
                   </div>
                 </MessageActionsModal>
               </div>
