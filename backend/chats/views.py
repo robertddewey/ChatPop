@@ -7,11 +7,10 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
 from accounts.models import User
-from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, AnonymousUserFingerprint, ChatParticipation
+from .models import ChatRoom, Message, AnonymousUserFingerprint, ChatParticipation
 from .serializers import (
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomUpdateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
-    BackRoomSerializer, BackRoomMemberSerializer, BackRoomMessageSerializer, BackRoomMessageCreateSerializer,
     ChatParticipationSerializer
 )
 from .security import ChatSessionValidator
@@ -392,72 +391,6 @@ class MessagePinView(APIView):
         })
 
 
-class BackRoomDetailView(APIView):
-    """Get back room details for a chat"""
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
-
-        if not hasattr(chat_room, 'back_room'):
-            return Response(
-                {'detail': 'This chat room does not have a back room'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = BackRoomSerializer(chat_room.back_room)
-        return Response(serializer.data)
-
-
-class BackRoomJoinView(APIView):
-    """Join a back room (requires payment)"""
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
-
-        if not hasattr(chat_room, 'back_room'):
-            return Response(
-                {'detail': 'This chat room does not have a back room'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        back_room = chat_room.back_room
-
-        if not back_room.is_active:
-            raise ValidationError("Back room is not active")
-
-        if back_room.is_full:
-            raise ValidationError("Back room is full")
-
-        username = request.data.get('username')
-        if not username:
-            raise ValidationError("Username is required")
-
-        # Check if user already joined
-        if BackRoomMember.objects.filter(back_room=back_room, username=username, is_active=True).exists():
-            raise ValidationError("You have already joined this back room")
-
-        # TODO: Process payment with Stripe here
-        # For now, just add the member
-
-        member = BackRoomMember.objects.create(
-            back_room=back_room,
-            username=username,
-            user=request.user if request.user.is_authenticated else None,
-            amount_paid=back_room.price_per_seat
-        )
-
-        # Update seats occupied
-        back_room.seats_occupied += 1
-        back_room.save()
-
-        return Response({
-            'member': BackRoomMemberSerializer(member).data,
-            'message': 'Successfully joined back room'
-        }, status=status.HTTP_201_CREATED)
-
-
 class FingerprintUsernameView(APIView):
     """Get or set username by fingerprint for anonymous users"""
     permission_classes = [permissions.AllowAny]
@@ -530,115 +463,6 @@ class FingerprintUsernameView(APIView):
             'created': created,
             'message': 'Username saved successfully'
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
-
-
-class BackRoomMessagesView(APIView):
-    """Get messages for a back room (members and host only)"""
-
-    def get(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code)
-
-        try:
-            back_room = chat_room.back_room
-        except BackRoom.DoesNotExist:
-            return Response(
-                {'detail': 'Back room does not exist for this chat'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        # Check if user is host or back room member
-        is_host = request.user.is_authenticated and request.user == chat_room.host
-        is_member = BackRoomMember.objects.filter(
-            back_room=back_room,
-            is_active=True,
-            username=request.data.get('username')  # Get username from request
-        ).exists()
-
-        if not (is_host or is_member):
-            raise PermissionDenied("Only back room members and the host can view messages")
-
-        messages = BackRoomMessage.objects.filter(
-            back_room=back_room,
-            is_deleted=False
-        ).select_related('user', 'reply_to').order_by('created_at')
-
-        serializer = BackRoomMessageSerializer(messages, many=True)
-        return Response(serializer.data)
-
-
-class BackRoomMessageSendView(APIView):
-    """Send a message to the back room (members and host only)"""
-
-    def post(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code)
-
-        try:
-            back_room = chat_room.back_room
-        except BackRoom.DoesNotExist:
-            return Response(
-                {'detail': 'Back room does not exist for this chat'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = BackRoomMessageCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        username = serializer.validated_data['username']
-
-        # Check if user is host or back room member
-        is_host = request.user.is_authenticated and request.user == chat_room.host
-        is_member = BackRoomMember.objects.filter(
-            back_room=back_room,
-            is_active=True,
-            username=username
-        ).exists()
-
-        if not (is_host or is_member):
-            raise PermissionDenied("Only back room members and the host can send messages")
-
-        # Determine message type
-        message_type = BackRoomMessage.MESSAGE_HOST if is_host else BackRoomMessage.MESSAGE_NORMAL
-
-        # Create the message
-        message = BackRoomMessage.objects.create(
-            back_room=back_room,
-            username=username,
-            user=request.user if request.user.is_authenticated else None,
-            content=serializer.validated_data['content'],
-            message_type=message_type,
-            reply_to=serializer.validated_data.get('reply_to')
-        )
-
-        response_serializer = BackRoomMessageSerializer(message)
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
-
-
-class BackRoomMembersView(APIView):
-    """Get back room members (host only)"""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code)
-
-        # Verify user is the host
-        if request.user != chat_room.host:
-            raise PermissionDenied("Only the host can view back room members")
-
-        try:
-            back_room = chat_room.back_room
-        except BackRoom.DoesNotExist:
-            return Response(
-                {'detail': 'Back room does not exist for this chat'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        members = BackRoomMember.objects.filter(
-            back_room=back_room,
-            is_active=True
-        ).select_related('user').order_by('-joined_at')
-
-        serializer = BackRoomMemberSerializer(members, many=True)
-        return Response(serializer.data)
 
 
 class MyParticipationView(APIView):

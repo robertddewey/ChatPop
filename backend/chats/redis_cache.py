@@ -27,7 +27,6 @@ class MessageCache:
     # Cache key patterns
     MESSAGES_KEY = "chat:{chat_code}:messages"
     PINNED_KEY = "chat:{chat_code}:pinned"
-    BACKROOM_KEY = "chat:{chat_code}:backroom:messages"
 
     # Configuration from settings
     MAX_MESSAGES = getattr(settings, 'MESSAGE_CACHE_MAX_COUNT', 500)
@@ -78,13 +77,12 @@ class MessageCache:
         return message.username.lower() == message.user.reserved_username.lower()
 
     @classmethod
-    def add_message(cls, message: Message, is_backroom: bool = False) -> bool:
+    def add_message(cls, message: Message) -> bool:
         """
         Add a message to Redis cache.
 
         Args:
             message: Message instance (already saved to PostgreSQL)
-            is_backroom: Whether this is a back room message
 
         Returns:
             True if successfully cached, False otherwise
@@ -100,8 +98,8 @@ class MessageCache:
             message_data = cls._serialize_message(message, username_is_reserved)
             message_json = json.dumps(message_data)
 
-            # Choose key based on room type
-            key = (cls.BACKROOM_KEY if is_backroom else cls.MESSAGES_KEY).format(chat_code=chat_code)
+            # Use messages key
+            key = cls.MESSAGES_KEY.format(chat_code=chat_code)
 
             # Use microsecond timestamp for ordering
             score = message.created_at.timestamp()
@@ -127,21 +125,20 @@ class MessageCache:
             return False
 
     @classmethod
-    def get_messages(cls, chat_code: str, limit: int = 50, is_backroom: bool = False) -> List[Dict[str, Any]]:
+    def get_messages(cls, chat_code: str, limit: int = 50) -> List[Dict[str, Any]]:
         """
         Get recent messages from Redis cache.
 
         Args:
             chat_code: Chat room code
             limit: Maximum number of messages to return
-            is_backroom: Whether to fetch back room messages
 
         Returns:
             List of message dicts (oldest first, chronological order for chat display)
         """
         try:
             redis_client = cls._get_redis_client()
-            key = (cls.BACKROOM_KEY if is_backroom else cls.MESSAGES_KEY).format(chat_code=chat_code)
+            key = cls.MESSAGES_KEY.format(chat_code=chat_code)
 
             # Get most recent messages in chronological order (ascending)
             # ZRANGE returns lowest scores first (oldest messages first)
@@ -163,7 +160,7 @@ class MessageCache:
             return []
 
     @classmethod
-    def get_messages_before(cls, chat_code: str, before_timestamp: float, limit: int = 50, is_backroom: bool = False) -> List[Dict[str, Any]]:
+    def get_messages_before(cls, chat_code: str, before_timestamp: float, limit: int = 50) -> List[Dict[str, Any]]:
         """
         Get messages before a specific timestamp (for pagination/scroll-up).
 
@@ -171,14 +168,13 @@ class MessageCache:
             chat_code: Chat room code
             before_timestamp: Unix timestamp to query before
             limit: Maximum messages to return
-            is_backroom: Whether to fetch back room messages
 
         Returns:
             List of message dicts (oldest first, chronological order for chat display)
         """
         try:
             redis_client = cls._get_redis_client()
-            key = (cls.BACKROOM_KEY if is_backroom else cls.MESSAGES_KEY).format(chat_code=chat_code)
+            key = cls.MESSAGES_KEY.format(chat_code=chat_code)
 
             # Get messages with score < before_timestamp (exclusive)
             # ZRANGEBYSCORE: ascending order, exclusive max boundary using '(' prefix
@@ -320,7 +316,6 @@ class MessageCache:
 
             keys_to_delete = [
                 cls.MESSAGES_KEY.format(chat_code=chat_code),
-                cls.BACKROOM_KEY.format(chat_code=chat_code),
                 cls.PINNED_KEY.format(chat_code=chat_code),
             ]
 

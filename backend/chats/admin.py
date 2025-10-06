@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ChatRoom, Message, BackRoom, BackRoomMember, BackRoomMessage, Transaction, AnonymousUserFingerprint
+from .models import ChatRoom, Message, Transaction, AnonymousUserFingerprint
 
 
 @admin.register(ChatRoom)
@@ -32,42 +32,6 @@ class MessageAdmin(admin.ModelAdmin):
     list_display = ['username', 'chat_room', 'message_type', 'content_preview', 'is_pinned', 'created_at']
     list_filter = ['message_type', 'is_pinned', 'is_deleted', 'created_at']
     search_fields = ['username', 'content', 'chat_room__name']
-    readonly_fields = ['id', 'created_at', 'updated_at']
-    date_hierarchy = 'created_at'
-
-    def content_preview(self, obj):
-        return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
-    content_preview.short_description = 'Content'
-
-
-@admin.register(BackRoom)
-class BackRoomAdmin(admin.ModelAdmin):
-    list_display = ['chat_room', 'price_per_seat', 'max_seats', 'seats_occupied', 'get_seats_available', 'is_active']
-    list_filter = ['is_active', 'created_at']
-    search_fields = ['chat_room__name']
-    readonly_fields = ['id', 'get_seats_available', 'created_at', 'updated_at']
-
-    def get_seats_available(self, obj):
-        """Display seats available, handling None values for unsaved objects"""
-        if obj.pk:
-            return obj.seats_available
-        return '-'
-    get_seats_available.short_description = 'Seats Available'
-
-
-@admin.register(BackRoomMember)
-class BackRoomMemberAdmin(admin.ModelAdmin):
-    list_display = ['username', 'back_room', 'amount_paid', 'is_active', 'joined_at']
-    list_filter = ['is_active', 'joined_at']
-    search_fields = ['username', 'back_room__chat_room__name']
-    readonly_fields = ['id', 'joined_at']
-
-
-@admin.register(BackRoomMessage)
-class BackRoomMessageAdmin(admin.ModelAdmin):
-    list_display = ['username', 'back_room', 'message_type', 'content_preview', 'created_at']
-    list_filter = ['message_type', 'is_deleted', 'created_at']
-    search_fields = ['username', 'content', 'back_room__chat_room__name']
     readonly_fields = ['id', 'created_at', 'updated_at']
     date_hierarchy = 'created_at'
 

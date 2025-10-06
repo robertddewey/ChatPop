@@ -2,7 +2,6 @@ from django.urls import path
 from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
     MessageListView, MessageCreateView, MessagePinView,
-    BackRoomDetailView, BackRoomJoinView, BackRoomMessagesView, BackRoomMessageSendView, BackRoomMembersView,
     FingerprintUsernameView, UsernameValidationView, MyParticipationView, SuggestUsernameView, CheckRateLimitView,
     VoiceUploadView, VoiceStreamView
 )
@@ -21,13 +20,6 @@ urlpatterns = [
     path('<str:code>/messages/', MessageListView.as_view(), name='message-list'),
     path('<str:code>/messages/send/', MessageCreateView.as_view(), name='message-create'),
     path('<str:code>/messages/<uuid:message_id>/pin/', MessagePinView.as_view(), name='message-pin'),
-
-    # Back Room
-    path('<str:code>/backroom/', BackRoomDetailView.as_view(), name='backroom-detail'),
-    path('<str:code>/backroom/join/', BackRoomJoinView.as_view(), name='backroom-join'),
-    path('<str:code>/backroom/messages/', BackRoomMessagesView.as_view(), name='backroom-messages'),
-    path('<str:code>/backroom/messages/send/', BackRoomMessageSendView.as_view(), name='backroom-message-send'),
-    path('<str:code>/backroom/members/', BackRoomMembersView.as_view(), name='backroom-members'),
 
     # Fingerprint Username
     path('<str:code>/fingerprint-username/', FingerprintUsernameView.as_view(), name='fingerprint-username'),

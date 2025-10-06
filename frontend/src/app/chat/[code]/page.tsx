@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type Message, type BackRoom } from '@/lib/api';
+import { chatApi, messageApi, authApi, type ChatRoom, type Message } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
@@ -92,8 +92,6 @@ export default function ChatPage() {
   // View state - supports multiple feature views
   type ViewType = 'main' | 'backroom';
   const [activeView, setActiveView] = useState<ViewType>('main');
-  const [backRoom, setBackRoom] = useState<BackRoom | null>(null);
-  const [isBackRoomMember, setIsBackRoomMember] = useState(false);
 
   // WebSocket state
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -830,7 +828,6 @@ export default function ChatPage() {
             messagesContainerRef={messagesContainerRef}
             messagesEndRef={messagesEndRef}
             currentDesign={currentDesign}
-            backRoom={backRoom}
             handleScroll={handleScroll}
             scrollToMessage={scrollToMessage}
             handlePinSelf={handlePinSelf}
@@ -840,13 +837,11 @@ export default function ChatPage() {
           />
         )}
 
-        {activeView === 'backroom' && hasJoined && chatRoom?.has_back_room && backRoom && (
+        {activeView === 'backroom' && hasJoined && (
           <GameRoomView
             chatRoom={chatRoom}
-            backRoom={backRoom}
             username={username}
             currentUserId={currentUserId}
-            isMember={isBackRoomMember}
             onBack={() => setActiveView('main')}
             design={'dark-mode'}
           />
@@ -888,7 +883,7 @@ export default function ChatPage() {
       )}
 
       {/* Game Room Tab - only show when user has joined */}
-      {hasJoined && chatRoom?.has_back_room && backRoom && (
+      {hasJoined && (
         <GameRoomTab
           isInBackRoom={activeView === 'backroom'}
           hasBackRoom={true}

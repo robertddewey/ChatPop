@@ -159,7 +159,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Add to Redis cache (dual-write)
         try:
-            success = MessageCache.add_message(message, is_backroom=False)
+            success = MessageCache.add_message(message)
             if not success:
                 print(f"⚠️  Redis cache write failed for message {message.id}")
         except Exception as e:

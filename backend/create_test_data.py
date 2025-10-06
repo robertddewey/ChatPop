@@ -10,7 +10,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'chatpop.settings')
 django.setup()
 
 from accounts.models import User, UserSubscription
-from chats.models import ChatRoom, Message, BackRoom, BackRoomMember, Transaction
+from chats.models import ChatRoom, Message, Transaction
 
 def create_test_data():
     print("Creating test data...")
@@ -143,23 +143,8 @@ def create_test_data():
     else:
         print(f"✓ Chat room already exists: {chat2.name} (/{chat2.code})")
 
-    # Create back room for chat2
-    print("\n5. Creating back room...")
-    backroom, created = BackRoom.objects.get_or_create(
-        chat_room=chat2,
-        defaults={
-            'price_per_seat': 9.99,
-            'max_seats': 10,
-            'is_active': True,
-        }
-    )
-    if created:
-        print(f"✓ Back room created for {chat2.name}: ${backroom.price_per_seat}/seat, {backroom.max_seats} seats")
-    else:
-        print(f"✓ Back room already exists for {chat2.name}")
-
     # Create test messages
-    print("\n6. Creating test messages...")
+    print("\n5. Creating test messages...")
     msg1, created = Message.objects.get_or_create(
         chat_room=chat1,
         username=user1.get_display_name(),
@@ -214,8 +199,7 @@ def create_test_data():
     print("\nChat Rooms:")
     print(f"  • {chat1.name} - Public (code: {chat1.code})")
     print(f"  • {chat2.name} - Private (code: {chat2.code}, access: VIP2024)")
-    print(f"    └─ Back Room: ${backroom.price_per_seat}/seat, {backroom.max_seats} seats max")
-    print("\nDjango Admin: http://localhost:9000/admin")
+    print("\nDjango Admin: https://localhost:9000/admin")
     print("  Login with: admin@chatpop.app / demo123")
     print("="*60)
 

@@ -48,7 +48,6 @@ export interface ChatRoom {
   default_theme: string;
   theme_locked: boolean;
   message_count: number;
-  has_back_room: boolean;
   is_active: boolean;
   created_at: string;
 }
@@ -79,18 +78,6 @@ export interface Message {
   time_until_unpin: number | null;
   created_at: string;
   is_deleted: boolean;
-}
-
-export interface BackRoom {
-  id: string;
-  chat_room: string;
-  price_per_seat: string;
-  max_seats: number;
-  seats_occupied: number;
-  seats_available: number;
-  is_full: boolean;
-  is_active: boolean;
-  created_at: string;
 }
 
 // API Functions
@@ -301,35 +288,3 @@ export const messageApi = {
   },
 };
 
-export const backRoomApi = {
-  getBackRoom: async (code: string): Promise<BackRoom> => {
-    const response = await api.get(`/api/chats/${code}/backroom/`);
-    return response.data;
-  },
-
-  joinBackRoom: async (code: string, username: string) => {
-    const response = await api.post(`/api/chats/${code}/backroom/join/`, { username });
-    return response.data;
-  },
-
-  getMessages: async (code: string, username: string): Promise<Message[]> => {
-    const response = await api.get(`/api/chats/${code}/backroom/messages/`, {
-      data: { username }
-    });
-    return response.data.results || response.data;
-  },
-
-  sendMessage: async (code: string, username: string, content: string, replyTo?: string): Promise<Message> => {
-    const response = await api.post(`/api/chats/${code}/backroom/messages/send/`, {
-      username,
-      content,
-      reply_to: replyTo
-    });
-    return response.data;
-  },
-
-  getMembers: async (code: string) => {
-    const response = await api.get(`/api/chats/${code}/backroom/members/`);
-    return response.data;
-  },
-};

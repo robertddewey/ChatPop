@@ -10,7 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { chatApi, backRoomApi, type ChatRoom, type BackRoom } from '@/lib/api';
+import { chatApi, type ChatRoom } from '@/lib/api';
 import { Copy, Check, BadgeCheck, Moon } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
@@ -57,7 +57,6 @@ export default function ChatSettingsSheet({
   };
 
   const [isOpen, setIsOpen] = useState(false);
-  const [backRoom, setBackRoom] = useState<BackRoom | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -74,22 +73,6 @@ export default function ChatSettingsSheet({
     video_enabled: chatRoom.video_enabled,
     photo_enabled: chatRoom.photo_enabled,
   });
-
-  // Load back room info if available
-  useEffect(() => {
-    if (isOpen && chatRoom.has_back_room) {
-      loadBackRoom();
-    }
-  }, [isOpen, chatRoom.has_back_room]);
-
-  const loadBackRoom = async () => {
-    try {
-      const br = await backRoomApi.getBackRoom(chatRoom.code);
-      setBackRoom(br);
-    } catch (err) {
-      console.error('Failed to load back room:', err);
-    }
-  };
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(chatRoom.code);

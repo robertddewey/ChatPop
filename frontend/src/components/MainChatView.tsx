@@ -18,7 +18,6 @@ interface MainChatViewProps {
   messagesContainerRef: React.RefObject<HTMLDivElement>;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   currentDesign: any;
-  backRoom: any;
   handleScroll: () => void;
   scrollToMessage: (messageId: string) => void;
   handlePinSelf: (messageId: string, amount: number) => void;
@@ -39,7 +38,6 @@ export default function MainChatView({
   messagesContainerRef,
   messagesEndRef,
   currentDesign,
-  backRoom,
   handleScroll,
   scrollToMessage,
   handlePinSelf,
@@ -136,7 +134,7 @@ export default function MainChatView({
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className={`${currentDesign.messagesArea} ${chatRoom?.has_back_room && backRoom ? 'pr-12' : ''}`}
+        className={currentDesign.messagesArea}
       >
         {/* Add padding-top when sticky messages are present to avoid overlap */}
         <div className={`space-y-3 relative z-10 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
