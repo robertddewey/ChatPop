@@ -5,8 +5,8 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type Message, type BackRoom } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
-import BackRoomTab from '@/components/BackRoomTab';
-import BackRoomView from '@/components/BackRoomView';
+import GameRoomTab from '@/components/GameRoomTab';
+import GameRoomView from '@/components/GameRoomView';
 import MainChatView from '@/components/MainChatView';
 import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
@@ -309,7 +309,7 @@ export default function ChatPage() {
         const backRoomData = await backRoomApi.getBackRoom(code);
         setBackRoom(backRoomData);
 
-        // Host always has access; for non-hosts, we'll check via BackRoomView's permission handling
+        // Host always has access; for non-hosts, we'll check via GameRoomView's permission handling
         const isHost = currentUserId && chatRoom.host.id === currentUserId;
         if (isHost) {
           setIsBackRoomMember(true);
@@ -841,7 +841,7 @@ export default function ChatPage() {
         )}
 
         {activeView === 'backroom' && hasJoined && chatRoom?.has_back_room && backRoom && (
-          <BackRoomView
+          <GameRoomView
             chatRoom={chatRoom}
             backRoom={backRoom}
             username={username}
@@ -887,13 +887,13 @@ export default function ChatPage() {
       </div>
       )}
 
-      {/* Back Room Tab - only show when user has joined */}
+      {/* Game Room Tab - only show when user has joined */}
       {hasJoined && chatRoom?.has_back_room && backRoom && (
-        <BackRoomTab
+        <GameRoomTab
           isInBackRoom={activeView === 'backroom'}
           hasBackRoom={true}
           onClick={() => {
-            console.log('🖱️ BackRoomTab clicked! Toggling from', activeView, 'to', activeView === 'backroom' ? 'main' : 'backroom');
+            console.log('🖱️ GameRoomTab clicked! Toggling from', activeView, 'to', activeView === 'backroom' ? 'main' : 'backroom');
             setActiveView(activeView === 'backroom' ? 'main' : 'backroom');
           }}
           hasNewMessages={false}
