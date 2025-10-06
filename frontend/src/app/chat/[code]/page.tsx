@@ -289,7 +289,7 @@ export default function ChatPage() {
       if (hasJoined) {
         setHasJoined(false);
         setMessages([]); // Clear messages to show fresh state
-        setIsInBackRoom(false); // Exit back room view if in there
+        setActiveView('main'); // Exit back room view if in there
         // Note: Settings sheet closes automatically via onClose handler
       }
     };
@@ -719,7 +719,7 @@ export default function ChatPage() {
       }
       container.removeEventListener('scroll', handleScroll);
     };
-  }, [filteredMessages.length, idsToObserve]);
+  }, [filteredMessages.length, idsToObserve, activeView]);
 
   if (loading) {
     const currentDesign = design;
