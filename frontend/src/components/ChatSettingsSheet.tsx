@@ -216,9 +216,15 @@ export default function ChatSettingsSheet({
             <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={() => {
+                  // Extract chat code from URL
+                  const match = window.location.pathname.match(/\/chat\/([^\/]+)/);
+                  if (match) {
+                    const code = match[1];
+                    localStorage.setItem('chatpop_theme_' + code, 'pink-dream');
+                  }
+                  // Remove design parameter from URL and reload
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'pink-dream');
-                  // Reload page to apply theme-color (iOS Safari requirement)
+                  url.searchParams.delete('design');
                   window.location.href = url.pathname + url.search;
                 }}
                 className={`p-3 rounded-lg transition-all focus:outline-none ${getThemeCardStyles('pink-dream')}`}
@@ -235,9 +241,15 @@ export default function ChatSettingsSheet({
 
               <button
                 onClick={() => {
+                  // Extract chat code from URL
+                  const match = window.location.pathname.match(/\/chat\/([^\/]+)/);
+                  if (match) {
+                    const code = match[1];
+                    localStorage.setItem('chatpop_theme_' + code, 'ocean-blue');
+                  }
+                  // Remove design parameter from URL and reload
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'ocean-blue');
-                  // Reload page to apply theme-color (iOS Safari requirement)
+                  url.searchParams.delete('design');
                   window.location.href = url.pathname + url.search;
                 }}
                 className={`p-3 rounded-lg transition-all focus:outline-none ${getThemeCardStyles('ocean-blue')}`}
@@ -254,9 +266,15 @@ export default function ChatSettingsSheet({
 
               <button
                 onClick={() => {
+                  // Extract chat code from URL
+                  const match = window.location.pathname.match(/\/chat\/([^\/]+)/);
+                  if (match) {
+                    const code = match[1];
+                    localStorage.setItem('chatpop_theme_' + code, 'dark-mode');
+                  }
+                  // Remove design parameter from URL and reload
                   const url = new URL(window.location.href);
-                  url.searchParams.set('design', 'dark-mode');
-                  // Reload page to apply theme-color (iOS Safari requirement)
+                  url.searchParams.delete('design');
                   window.location.href = url.pathname + url.search;
                 }}
                 className={`p-3 rounded-lg transition-all focus:outline-none ${getThemeCardStyles('dark-mode')}`}
