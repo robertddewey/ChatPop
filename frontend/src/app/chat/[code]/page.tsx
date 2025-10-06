@@ -116,25 +116,31 @@ export default function ChatPage() {
     router.replace(`${window.location.pathname}?${newParams.toString()}`);
   };
 
-  // Theme state with hierarchy: URL > localStorage > host default > system default
-  // Initialize from URL parameter only (available on both server and client)
+  // Theme state with hierarchy: URL > localStorage > system default
   const urlTheme = searchParams.get('design');
-  const initialTheme = (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme))
-    ? (urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode')
-    : 'pink-dream';
 
-  const [designVariant, setDesignVariant] = useState<'pink-dream' | 'ocean-blue' | 'dark-mode'>(initialTheme);
+  // Use a ref to track if we've hydrated
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  // After hydration, check localStorage and update if needed
+  const [designVariant, setDesignVariant] = useState<'pink-dream' | 'ocean-blue' | 'dark-mode'>('pink-dream');
+
+  // Read theme from localStorage after hydration
   useEffect(() => {
-    // Only run on client after hydration
-    if (!urlTheme) {
-      const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
-      if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
-        setDesignVariant(localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
-      }
+    // Priority 1: URL parameter
+    if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
+      setDesignVariant(urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
+      setIsHydrated(true);
+      return;
     }
-  }, []); // Run once after mount
+
+    // Priority 2: localStorage
+    const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
+    if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
+      setDesignVariant(localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
+    }
+
+    setIsHydrated(true);
+  }, [code, urlTheme]);
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
