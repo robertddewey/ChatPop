@@ -120,9 +120,12 @@ export default function BackRoomView({
   };
 
   return (
-    <div className="h-full flex flex-col relative">
+    <div className="h-full flex flex-col relative overflow-hidden">
+      {/* Gaming Background - Fixed behind everything */}
+      <div className="absolute inset-0 pointer-events-none bg-[url('/game-room-bg.svg')] bg-center bg-no-repeat bg-cover opacity-30" />
+
       {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative z-10">
         {hasAccess ? (
           <>
             {messages.map((message) => (
@@ -139,15 +142,7 @@ export default function BackRoomView({
           </>
         ) : (
           <div className="h-full flex items-center justify-center">
-            {/* Large yellow Pac-Man */}
-            <div className="relative w-32 h-32">
-              <div
-                className="absolute inset-0 bg-yellow-400 rounded-full"
-                style={{
-                  clipPath: 'polygon(50% 50%, 100% 0%, 100% 40%, 50% 50%, 100% 60%, 100% 100%, 0% 100%, 0% 0%)'
-                }}
-              />
-            </div>
+            {/* Empty state for non-members */}
           </div>
         )}
       </div>
