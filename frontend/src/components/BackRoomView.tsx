@@ -121,40 +121,28 @@ export default function BackRoomView({
 
   return (
     <div className="h-full flex flex-col relative">
-      {/* Header */}
-      <div className={`flex items-center justify-between p-4 border-b dark:border-gray-700 ${styles.header}`}>
-        <h1 className="text-xl font-bold">Back Room</h1>
-        <div className="text-sm opacity-90">
-          {backRoom.seats_available} seats left
-        </div>
-      </div>
-
       {/* Messages Container */}
-      <div className={`flex-1 overflow-y-auto p-4 space-y-4 ${!hasAccess ? 'blur-md pointer-events-none' : ''}`}>
-        {messages.map((message) => (
-          <ChatMessage
-            key={message.id}
-            message={message}
-            chatRoom={chatRoom}
-            currentUserId={currentUserId}
-            onReply={() => {}}
-            onPin={() => {}}
-          />
-        ))}
-        <div ref={messagesEndRef} />
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {hasAccess ? (
+          <>
+            {messages.map((message) => (
+              <ChatMessage
+                key={message.id}
+                message={message}
+                chatRoom={chatRoom}
+                currentUserId={currentUserId}
+                onReply={() => {}}
+                onPin={() => {}}
+              />
+            ))}
+            <div ref={messagesEndRef} />
+          </>
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            {/* Empty state for non-members - content TBD */}
+          </div>
+        )}
       </div>
-
-      {/* Join Overlay for non-members */}
-      {!hasAccess && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-          <button
-            onClick={() => setShowJoinModal(true)}
-            className={`px-8 py-4 rounded-xl font-bold text-lg shadow-2xl transition-all transform hover:scale-105 ${styles.joinButton}`}
-          >
-            Join Back Room - ${backRoom.price_per_seat}
-          </button>
-        </div>
-      )}
 
       {/* Message Input */}
       {hasAccess && (
