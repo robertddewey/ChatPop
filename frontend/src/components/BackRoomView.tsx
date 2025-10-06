@@ -144,29 +144,6 @@ export default function BackRoomView({
         )}
       </div>
 
-      {/* Message Input */}
-      {hasAccess && (
-        <form onSubmit={handleSendMessage} className="p-4 border-t dark:border-gray-700">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type your message..."
-              className={`flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 ${styles.inputFocus} focus:border-transparent`}
-              disabled={loading}
-            />
-            <button
-              type="submit"
-              disabled={loading || !newMessage.trim()}
-              className={`px-6 py-3 disabled:bg-gray-400 rounded-xl font-semibold transition-colors ${styles.sendButton}`}
-            >
-              Send
-            </button>
-          </div>
-        </form>
-      )}
-
       {/* Join Modal */}
       {showJoinModal && (
         <BackRoomJoinModal

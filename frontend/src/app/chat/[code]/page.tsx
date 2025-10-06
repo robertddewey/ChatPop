@@ -853,9 +853,10 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Message Input */}
-      <div className={currentDesign.inputArea}>
-        <form onSubmit={handleSendMessage} className="flex gap-2">
+      {/* Message Input - Only show in main chat view */}
+      {activeView === 'main' && (
+        <div className={currentDesign.inputArea}>
+          <form onSubmit={handleSendMessage} className="flex gap-2">
           <input
             type="text"
             value={newMessage}
@@ -884,6 +885,7 @@ export default function ChatPage() {
           </button>
         </form>
       </div>
+      )}
 
       {/* Back Room Tab - only show when user has joined */}
       {hasJoined && chatRoom?.has_back_room && backRoom && (
