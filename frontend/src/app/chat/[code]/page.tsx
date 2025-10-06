@@ -33,13 +33,15 @@ const design = {
   stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
   messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
   messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.06] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
-  hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
+  hostMessage: "max-w-[95%] rounded px-3 py-2 bg-cyan-400 font-medium transition-all duration-300",
+  stickyHostMessage: "w-full rounded px-3 py-2 bg-cyan-400 font-medium transition-all duration-300",
   hostText: "text-cyan-950",
   hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
-  pinnedMessage: "rounded px-3 py-2 bg-yellow-400 font-medium",
+  pinnedMessage: "max-w-[95%] rounded px-3 py-2 bg-yellow-400 font-medium transition-all duration-300",
+  stickyPinnedMessage: "w-full rounded px-3 py-2 bg-yellow-400 font-medium transition-all duration-300",
   pinnedText: "text-yellow-950",
   pinnedMessageFade: "bg-gradient-to-l from-yellow-400 to-transparent",
-  regularMessage: "max-w-[85%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
+  regularMessage: "max-w-[95%] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
   regularText: "text-zinc-100",
   filterButtonActive: "px-3 py-1.5 rounded text-xs tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
   filterButtonInactive: "px-3 py-1.5 rounded text-xs tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
@@ -625,80 +627,95 @@ export default function ChatPage() {
     return () => clearInterval(interval);
   }, [hasJoined, code, isConnected]);
 
-  // IntersectionObserver to track when sticky host messages are visible in scroll
+  // Scroll-based tracking to determine which messages should be in sticky area
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container || filteredMessages.length === 0) return;
 
-    // Check if we're scrolled to the very top
-    const checkScrollPosition = () => {
-      if (!container) return;
-      const isAtTop = container.scrollTop <= 50; // Within 50px of top
+    let rafId: number | null = null;
 
-      if (isAtTop && idsToObserve.length > 0) {
-        // When at top, mark all messages as visible
-        setVisibleMessageIds((prev) => {
-          const newSet = new Set(prev);
-          let hasChanges = false;
-          idsToObserve.forEach(id => {
-            if (!newSet.has(id)) {
-              newSet.add(id);
-              hasChanges = true;
-            }
-          });
-          return hasChanges ? newSet : prev;
-        });
+    const handleScroll = () => {
+      // Cancel any pending frame
+      if (rafId) {
+        cancelAnimationFrame(rafId);
       }
-    };
 
-    const observer = new IntersectionObserver(
-      (entries) => {
+      // Use requestAnimationFrame for smoother updates
+      rafId = requestAnimationFrame(() => {
         setVisibleMessageIds((prev) => {
-          const newVisibleIds = new Set(prev);
+          const newVisibleIds = new Set<string>();
           let hasChanges = false;
-          entries.forEach((entry) => {
-            const messageId = entry.target.getAttribute('data-message-id');
-            if (messageId) {
-              if (entry.isIntersecting) {
-                if (!newVisibleIds.has(messageId)) {
+
+          // Get the chat header element as our fixed reference point
+          const chatHeader = document.querySelector('[data-chat-header]') as HTMLElement;
+          let headerBottom = 0;
+
+          if (chatHeader) {
+            // Get the bottom edge of the header relative to container
+            const headerRect = chatHeader.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            headerBottom = headerRect.bottom - containerRect.top;
+          } else {
+            // Fallback: estimate based on typical header size
+            headerBottom = 60;
+          }
+
+          // Hysteresis buffer to prevent flickering at the boundary
+          const ENTER_BUFFER = 20; // Message must be 20px past header to leave sticky
+          const EXIT_BUFFER = 5;   // Message must be 5px above header to enter sticky
+
+          // Check each message that should be observed
+          idsToObserve.forEach((messageId) => {
+            const messageElement = container.querySelector(`[data-message-id="${messageId}"]`);
+            if (messageElement) {
+              const rect = messageElement.getBoundingClientRect();
+              const containerRect = container.getBoundingClientRect();
+              const relativeTop = rect.top - containerRect.top;
+              const messageBottom = relativeTop + messageElement.clientHeight;
+
+              const wasVisible = prev.has(messageId);
+
+              if (wasVisible) {
+                // Message is currently visible in scroll - keep it visible unless it scrolls well past header
+                // Use EXIT_BUFFER to prevent premature exit
+                if (messageBottom > headerBottom - EXIT_BUFFER) {
                   newVisibleIds.add(messageId);
-                  hasChanges = true;
                 }
               } else {
-                // Only remove if we're not at the top (prevent overscroll issues)
-                if (container.scrollTop > 50 && newVisibleIds.has(messageId)) {
-                  newVisibleIds.delete(messageId);
-                  hasChanges = true;
+                // Message is currently in sticky - only make it visible if it scrolls well below header
+                // Use ENTER_BUFFER to prevent premature entry
+                if (messageBottom > headerBottom + ENTER_BUFFER) {
+                  newVisibleIds.add(messageId);
                 }
               }
             }
           });
+
+          // Check if there are any changes
+          if (newVisibleIds.size !== prev.size) {
+            hasChanges = true;
+          } else {
+            newVisibleIds.forEach(id => {
+              if (!prev.has(id)) {
+                hasChanges = true;
+              }
+            });
+          }
+
           return hasChanges ? newVisibleIds : prev;
         });
-      },
-      {
-        root: container,
-        threshold: 0.1, // Message must be 10% visible (more sensitive)
-        rootMargin: '0px',
-      }
-    );
+      });
+    };
 
-    // Check scroll position initially and on scroll
-    checkScrollPosition();
-    container.addEventListener('scroll', checkScrollPosition);
-
-    // Observe all sticky host messages and pinned messages in the scroll area
-    const messageElements = container.querySelectorAll('[data-message-id]');
-    messageElements.forEach((el) => {
-      const messageId = el.getAttribute('data-message-id');
-      if (messageId && idsToObserve.includes(messageId)) {
-        observer.observe(el);
-      }
-    });
+    // Initial check and add scroll listener
+    handleScroll();
+    container.addEventListener('scroll', handleScroll, { passive: true });
 
     return () => {
-      observer.disconnect();
-      container.removeEventListener('scroll', checkScrollPosition);
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      container.removeEventListener('scroll', handleScroll);
     };
   }, [filteredMessages.length, idsToObserve]);
 
@@ -753,7 +770,7 @@ export default function ChatPage() {
         }}
       >
         {/* Chat Header */}
-        <div className={currentDesign.header}>
+        <div data-chat-header className={currentDesign.header}>
         <div className="flex items-center justify-between gap-3">
           {chatRoom && (
             <ChatSettingsSheet
@@ -803,7 +820,7 @@ export default function ChatPage() {
           <div className="h-full overflow-hidden relative">
         {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
         {hasJoined && (stickyHostMessages.length > 0 || stickyPinnedMessage) && (
-          <div className={currentDesign.stickySection}>
+          <div data-sticky-section className={currentDesign.stickySection}>
             {/* Host Messages */}
             {stickyHostMessages.map((message) => (
               <MessageActionsModal
@@ -818,7 +835,7 @@ export default function ChatPage() {
                 onTip={handleTipUser}
               >
                 <div
-                  className={`${currentDesign.hostMessage} cursor-pointer hover:opacity-90 transition-opacity`}
+                  className={`${currentDesign.stickyHostMessage} cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
                   onClick={() => scrollToMessage(message.id)}
                 >
                   <div className="flex items-center gap-1 mb-1">
@@ -855,7 +872,7 @@ export default function ChatPage() {
                 onTip={handleTipUser}
               >
                 <div
-                  className={`${currentDesign.pinnedMessage} cursor-pointer hover:opacity-90 transition-opacity`}
+                  className={`${currentDesign.stickyPinnedMessage} cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
                   onClick={() => scrollToMessage(stickyPinnedMessage.id)}
                 >
                   <div className="flex items-center gap-1 mb-1">

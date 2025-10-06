@@ -39,9 +39,9 @@ export default function BackRoomTab({
         };
       case 'dark-mode':
         return {
-          baseClasses: 'px-1 py-4 rounded-l-xl',
-          backRoomColors: 'bg-gradient-to-br from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-white border-l-[3px] border-t-[0.5px] border-b border-cyan-300',
-          mainChatColors: 'bg-gradient-to-br from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-white border-l-[3px] border-t-[0.5px] border-b border-slate-500',
+          baseClasses: 'p-2 rounded-full',
+          backRoomColors: 'text-white hover:text-zinc-200',
+          mainChatColors: 'text-white hover:text-zinc-200',
           shadow: '',
         };
       default:
@@ -62,29 +62,22 @@ export default function BackRoomTab({
       onClick={onClick}
       className={`
         fixed right-0 top-1/2 -translate-y-1/2 z-50
-        flex flex-col items-center justify-center gap-1
-        ${styles.baseClasses}
         transition-all duration-300
+        ${styles.baseClasses}
         ${colorClasses}
         ${hasNewMessages && !isInBackRoom ? 'animate-pulse' : ''}
-        ${styles.shadow}
-        h-auto min-h-[90px]
       `}
       aria-label={isInBackRoom ? 'Return to Main Chat' : 'Open Back Room'}
     >
       {hasNewMessages && !isInBackRoom && (
-        <div className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+        <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-zinc-950 animate-pulse" />
       )}
 
       {isInBackRoom ? (
-        <MessageSquare className="w-6 h-6 stroke-[2.5]" />
+        <MessageSquare className="w-10 h-10 stroke-[2.5]" />
       ) : (
-        <Gamepad2 className="w-6 h-6 stroke-[2.5] rotate-90" />
+        <Gamepad2 className="w-10 h-10 stroke-[2.5] rotate-90" />
       )}
-
-      <div className="w-8 h-[1px] bg-current opacity-30 my-1" />
-
-      <ChevronLeft className={`w-5 h-5 transition-transform ${isInBackRoom ? '' : 'rotate-180'} stroke-[2.5]`} />
     </button>
   );
 }

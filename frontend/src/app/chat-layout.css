@@ -44,3 +44,22 @@ html {
 [data-radix-portal] {
   touch-action: pan-x pan-y;
 }
+
+/* Bounce-in animation for sticky messages */
+@keyframes bounce-in {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
