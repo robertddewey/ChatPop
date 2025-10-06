@@ -10,6 +10,31 @@ interface VoiceMessagePlayerProps {
   className?: string;
 }
 
+// Global audio manager to ensure only one audio plays at a time
+class GlobalAudioManager {
+  private static currentAudio: HTMLAudioElement | null = null;
+  private static currentStopCallback: (() => void) | null = null;
+
+  static play(audio: HTMLAudioElement, stopCallback: () => void) {
+    // Stop any currently playing audio
+    if (this.currentAudio && this.currentAudio !== audio) {
+      this.currentAudio.pause();
+      if (this.currentStopCallback) {
+        this.currentStopCallback();
+      }
+    }
+    this.currentAudio = audio;
+    this.currentStopCallback = stopCallback;
+  }
+
+  static stop(audio: HTMLAudioElement) {
+    if (this.currentAudio === audio) {
+      this.currentAudio = null;
+      this.currentStopCallback = null;
+    }
+  }
+}
+
 export default function VoiceMessagePlayer({
   voiceUrl,
   duration,
@@ -89,7 +114,12 @@ export default function VoiceMessagePlayer({
       if (isPlaying) {
         audioRef.current.pause();
         setIsPlaying(false);
+        GlobalAudioManager.stop(audioRef.current);
       } else {
+        // Register with global manager before playing
+        GlobalAudioManager.play(audioRef.current, () => {
+          setIsPlaying(false);
+        });
         await audioRef.current.play();
         setIsPlaying(true);
       }
