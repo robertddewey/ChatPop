@@ -119,27 +119,30 @@ export default function ChatPage() {
   // Theme state with hierarchy: URL > localStorage > system default
   const urlTheme = searchParams.get('design');
 
-  // Use a ref to track if we've hydrated
-  const [isHydrated, setIsHydrated] = useState(false);
+  // Initialize theme state - will be corrected after hydration
+  // NOTE: This matches the logic in layout.tsx to prevent flash
+  const [designVariant, setDesignVariant] = useState<'pink-dream' | 'ocean-blue' | 'dark-mode'>(() => {
+    // During SSR, we can't access localStorage, so default to pink-dream
+    // The layout script will set the correct body background before React hydrates
+    return 'pink-dream';
+  });
 
-  const [designVariant, setDesignVariant] = useState<'pink-dream' | 'ocean-blue' | 'dark-mode'>('pink-dream');
-
-  // Read theme from localStorage after hydration
+  // Read theme from localStorage/URL after hydration
   useEffect(() => {
     // Priority 1: URL parameter
     if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
       setDesignVariant(urlTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
-      setIsHydrated(true);
       return;
     }
 
-    // Priority 2: localStorage
+    // Priority 2: localStorage (matching layout.tsx logic)
     const localTheme = localStorage.getItem(`chatpop_theme_${code}`);
     if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
       setDesignVariant(localTheme as 'pink-dream' | 'ocean-blue' | 'dark-mode');
+      return;
     }
 
-    setIsHydrated(true);
+    // Fallback to default (already set in state initialization)
   }, [code, urlTheme]);
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);

@@ -56,9 +56,10 @@ export default function ChatLayout({
             const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             const bgColor = isDark ? backgroundColors[theme].dark : backgroundColors[theme].light;
 
-            // Inject style tag to set body background immediately
+            // Inject style tag to set body and all page containers immediately
+            // This targets body, Next.js root, and any divs with height/flex classes (the main container)
             const style = document.createElement('style');
-            style.innerHTML = 'body { background-color: ' + bgColor + ' !important; }';
+            style.innerHTML = 'html, body { background-color: ' + bgColor + ' !important; } #__next, #__next > div, [class*="h-\\\\[100dvh\\\\]"], [class*="flex-col"] { background: ' + bgColor + ' !important; background-image: none !important; }';
             document.head.appendChild(style);
           })();
         `}

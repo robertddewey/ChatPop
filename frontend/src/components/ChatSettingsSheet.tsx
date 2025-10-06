@@ -169,21 +169,31 @@ export default function ChatSettingsSheet({
 
   const shareLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/chat/${chatRoom.code}`;
 
-  // Get current theme directly from URL - only on client side
-  const [currentTheme, setCurrentTheme] = useState<ThemeId>(() => {
-    if (typeof window === 'undefined') return DEFAULT_THEME;
-    const params = new URLSearchParams(window.location.search);
-    return migrateLegacyTheme(params.get('design'));
-  });
+  // Get current theme from localStorage (matching page.tsx logic)
+  const [currentTheme, setCurrentTheme] = useState<ThemeId>(DEFAULT_THEME);
 
   useEffect(() => {
     // Update when sheet opens to ensure it's fresh
     if (isOpen) {
+      // Priority 1: URL parameter
       const params = new URLSearchParams(window.location.search);
-      const theme = migrateLegacyTheme(params.get('design'));
-      setCurrentTheme(theme);
+      const urlTheme = params.get('design');
+      if (urlTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(urlTheme)) {
+        setCurrentTheme(urlTheme as ThemeId);
+        return;
+      }
+
+      // Priority 2: localStorage
+      const localTheme = localStorage.getItem(`chatpop_theme_${chatRoom.code}`);
+      if (localTheme && ['pink-dream', 'ocean-blue', 'dark-mode'].includes(localTheme)) {
+        setCurrentTheme(localTheme as ThemeId);
+        return;
+      }
+
+      // Fallback to default
+      setCurrentTheme(DEFAULT_THEME);
     }
-  }, [isOpen]);
+  }, [isOpen, chatRoom.code]);
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
