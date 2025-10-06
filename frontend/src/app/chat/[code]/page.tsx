@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import BackRoomTab from '@/components/BackRoomTab';
 import BackRoomView from '@/components/BackRoomView';
+import MainChatView from '@/components/MainChatView';
 import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
 import LoginModal from '@/components/LoginModal';
@@ -88,8 +89,9 @@ export default function ChatPage() {
   // Message filter
   const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
 
-  // Back Room state
-  const [isInBackRoom, setIsInBackRoom] = useState(false);
+  // View state - supports multiple feature views
+  type ViewType = 'main' | 'backroom';
+  const [activeView, setActiveView] = useState<ViewType>('main');
   const [backRoom, setBackRoom] = useState<BackRoom | null>(null);
   const [isBackRoomMember, setIsBackRoomMember] = useState(false);
 
@@ -140,7 +142,7 @@ export default function ChatPage() {
         container.scrollTop = container.scrollHeight;
       }
     });
-  }, [filterMode, isInBackRoom]);
+  }, [filterMode, activeView]);
 
   // Load chat room details
   useEffect(() => {
@@ -813,276 +815,42 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Content Area Wrapper - Contains both Main Chat and Back Room */}
+      {/* Content Area Wrapper - View Router for Main Chat, Back Room, and future features */}
       <div className="flex-1 relative overflow-hidden">
-        {!isInBackRoom ? (
-          /* Main Chat Content */
-          <div className="h-full overflow-hidden relative">
-        {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
-        {hasJoined && (stickyHostMessages.length > 0 || stickyPinnedMessage) && (
-          <div data-sticky-section className={currentDesign.stickySection}>
-            {/* Host Messages */}
-            {stickyHostMessages.map((message) => (
-              <MessageActionsModal
-                key={`sticky-${message.id}`}
-                message={message}
-                currentUsername={username}
-                isHost={chatRoom?.host.id === currentUserId}
-                design={'dark-mode'}
-                onPinSelf={handlePinSelf}
-                onPinOther={handlePinOther}
-                onBlock={handleBlockUser}
-                onTip={handleTipUser}
-              >
-                <div
-                  className={`${currentDesign.stickyHostMessage} cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
-                  onClick={() => scrollToMessage(message.id)}
-                >
-                  <div className="flex items-center gap-1 mb-1">
-                    <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
-                      {message.username}
-                    </span>
-                    {message.username_is_reserved && (
-                      <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
-                    )}
-                    <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
-                      👑
-                    </span>
-                    <span className={`text-xs ${currentDesign.hostText} opacity-60 ml-auto`}>
-                      {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <p className={`text-sm ${currentDesign.hostText} truncate`}>
-                    {message.content}
-                  </p>
-                </div>
-              </MessageActionsModal>
-            ))}
-
-            {/* Pinned Message */}
-            {stickyPinnedMessage && (
-              <MessageActionsModal
-                message={stickyPinnedMessage}
-                currentUsername={username}
-                isHost={chatRoom?.host.id === currentUserId}
-                design={'dark-mode'}
-                onPinSelf={handlePinSelf}
-                onPinOther={handlePinOther}
-                onBlock={handleBlockUser}
-                onTip={handleTipUser}
-              >
-                <div
-                  className={`${currentDesign.stickyPinnedMessage} cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
-                  onClick={() => scrollToMessage(stickyPinnedMessage.id)}
-                >
-                  <div className="flex items-center gap-1 mb-1">
-                    <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
-                      {stickyPinnedMessage.username}
-                    </span>
-                    {stickyPinnedMessage.username_is_reserved && (
-                      <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
-                    )}
-                    <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
-                      📌 ${stickyPinnedMessage.pin_amount_paid}
-                    </span>
-                    <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
-                      {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
-                    {stickyPinnedMessage.content}
-                  </p>
-                </div>
-              </MessageActionsModal>
-            )}
-          </div>
+        {activeView === 'main' && (
+          <MainChatView
+            chatRoom={chatRoom}
+            currentUserId={currentUserId}
+            username={username}
+            hasJoined={hasJoined}
+            sessionToken={sessionToken}
+            filteredMessages={filteredMessages}
+            stickyHostMessages={stickyHostMessages}
+            stickyPinnedMessage={stickyPinnedMessage}
+            messagesContainerRef={messagesContainerRef}
+            messagesEndRef={messagesEndRef}
+            currentDesign={currentDesign}
+            backRoom={backRoom}
+            handleScroll={handleScroll}
+            scrollToMessage={scrollToMessage}
+            handlePinSelf={handlePinSelf}
+            handlePinOther={handlePinOther}
+            handleBlockUser={handleBlockUser}
+            handleTipUser={handleTipUser}
+          />
         )}
 
-      {/* Background Pattern Layer - Fixed behind everything */}
-      <div className={`absolute inset-0 pointer-events-none ${currentDesign.messagesAreaBg}`} />
-
-      {/* Messages Area */}
-      <div
-        ref={messagesContainerRef}
-        onScroll={handleScroll}
-        className={`${currentDesign.messagesArea} ${chatRoom?.has_back_room && backRoom ? 'pr-12' : ''}`}
-      >
-        {/* Add padding-top when sticky messages are present to avoid overlap */}
-        <div className={`space-y-3 relative z-10 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
-        {hasJoined && filteredMessages.map((message, index) => {
-          const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
-
-          // Time-based threading: break thread if >5 minutes gap
-          // TODO: Make this dynamic based on chat velocity when WebSockets are implemented
-          const THREAD_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-          const timeDiff = prevMessage ?
-            new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime() :
-            Infinity;
-
-          const isFirstInThread = !prevMessage ||
-            prevMessage.username !== message.username ||
-            prevMessage.is_from_host ||
-            message.is_from_host ||
-            message.is_pinned ||
-            timeDiff > THREAD_WINDOW_MS;
-
-          const nextMessage = index < filteredMessages.length - 1 ? filteredMessages[index + 1] : null;
-          const nextTimeDiff = nextMessage ?
-            new Date(nextMessage.created_at).getTime() - new Date(message.created_at).getTime() :
-            Infinity;
-
-          const isLastInThread = !nextMessage ||
-            nextMessage.username !== message.username ||
-            nextMessage.is_from_host ||
-            message.is_from_host ||
-            message.is_pinned ||
-            nextTimeDiff > THREAD_WINDOW_MS;
-
-          // Find the last message in this thread to get its timestamp
-          let lastMessageInThread = message;
-          if (isFirstInThread && !isLastInThread && !message.is_from_host && !message.is_pinned) {
-            for (let i = index + 1; i < filteredMessages.length; i++) {
-              const futureMsg = filteredMessages[i];
-              const futureMsgTimeDiff = new Date(futureMsg.created_at).getTime() - new Date(lastMessageInThread.created_at).getTime();
-
-              if (futureMsg.username === message.username &&
-                  !futureMsg.is_from_host &&
-                  !futureMsg.is_pinned &&
-                  futureMsgTimeDiff <= THREAD_WINDOW_MS) {
-                lastMessageInThread = futureMsg;
-              } else {
-                break;
-              }
-            }
-          }
-
-          return (
-            <div key={message.id} data-message-id={message.id}>
-              {/* Show username header for first message in thread */}
-              {isFirstInThread && !message.is_from_host && !message.is_pinned && (
-                <div className={`text-xs mb-1 flex items-center gap-1 text-red-500`}>
-                  <span className="font-semibold">
-                    {message.username}
-                  </span>
-                  {message.username_is_reserved && (
-                    <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
-                  )}
-                  <span className="opacity-80">
-                    {new Date(lastMessageInThread.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                  </span>
-                </div>
-              )}
-
-              {/* Message with threading line */}
-              <div className="flex gap-0">
-                {/* Vertical thread line for consecutive messages */}
-                {!isFirstInThread && !message.is_from_host && !message.is_pinned && (
-                  <div className="w-0.5 mr-2 bg-gray-400 dark:bg-gray-600 opacity-30"></div>
-                )}
-
-                {/* Message bubble with action modal */}
-                <MessageActionsModal
-                  message={message}
-                  currentUsername={username}
-                  isHost={chatRoom?.host.id === currentUserId}
-                  design={'dark-mode'}
-                  onPinSelf={handlePinSelf}
-                  onPinOther={handlePinOther}
-                  onBlock={handleBlockUser}
-                  onTip={handleTipUser}
-                >
-                  <div
-                    className={
-                      message.is_from_host
-                        ? currentDesign.hostMessage + ' flex-1'
-                        : message.is_pinned
-                        ? currentDesign.pinnedMessage
-                        : currentDesign.regularMessage
-                    }
-                  >
-                    {/* Host message header */}
-                    {message.is_from_host && (
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-1">
-                          <span className={`text-sm font-semibold ${currentDesign.hostText}`}>
-                            {message.username}
-                          </span>
-                          {message.username_is_reserved && (
-                            <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
-                          )}
-                          <span className={`text-sm ${currentDesign.hostText} opacity-80`}>
-                            👑
-                          </span>
-                        </div>
-                        <span className={`text-xs ${currentDesign.hostText} opacity-60`}>
-                          {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Pinned message header */}
-                    {message.is_pinned && !message.is_from_host && (
-                      <div className="flex items-center justify-between mb-1 gap-3">
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <span className={`text-sm font-semibold ${currentDesign.pinnedText}`}>
-                            {message.username}
-                          </span>
-                          {message.username_is_reserved && (
-                            <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
-                          )}
-                          <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
-                            📌 ${message.pin_amount_paid}
-                          </span>
-                        </div>
-                        <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
-                          {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Message content */}
-                    {message.voice_url ? (
-                      <div className="-mt-px">
-                        <VoiceMessagePlayer
-                          voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                          duration={message.voice_duration || 0}
-                          waveformData={message.voice_waveform || []}
-                        />
-                      </div>
-                    ) : message.content ? (
-                      <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
-                        {message.content}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic">
-                        [Voice message - loading...]
-                        <br />
-                        <small>Debug: voice_url={JSON.stringify(message.voice_url)}, id={message.id}</small>
-                      </p>
-                    )}
-                  </div>
-                </MessageActionsModal>
-              </div>
-
-            </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
-        </div>
-      </div>
-      </div>
-        ) : hasJoined && chatRoom?.has_back_room && backRoom ? (
-          /* Back Room View - only when joined */
+        {activeView === 'backroom' && hasJoined && chatRoom?.has_back_room && backRoom && (
           <BackRoomView
             chatRoom={chatRoom}
             backRoom={backRoom}
             username={username}
             currentUserId={currentUserId}
             isMember={isBackRoomMember}
-            onBack={() => setIsInBackRoom(false)}
+            onBack={() => setActiveView('main')}
             design={'dark-mode'}
           />
-        ) : null}
+        )}
       </div>
 
       {/* Message Input */}
@@ -1120,11 +888,11 @@ export default function ChatPage() {
       {/* Back Room Tab - only show when user has joined */}
       {hasJoined && chatRoom?.has_back_room && backRoom && (
         <BackRoomTab
-          isInBackRoom={isInBackRoom}
+          isInBackRoom={activeView === 'backroom'}
           hasBackRoom={true}
           onClick={() => {
-            console.log('🖱️ BackRoomTab clicked! Toggling from', isInBackRoom, 'to', !isInBackRoom);
-            setIsInBackRoom(!isInBackRoom);
+            console.log('🖱️ BackRoomTab clicked! Toggling from', activeView, 'to', activeView === 'backroom' ? 'main' : 'backroom');
+            setActiveView(activeView === 'backroom' ? 'main' : 'backroom');
           }}
           hasNewMessages={false}
           design={'dark-mode'}
