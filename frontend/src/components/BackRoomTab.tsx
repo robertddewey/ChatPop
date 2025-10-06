@@ -19,6 +19,7 @@ export default function BackRoomTab({
   design = 'dark-mode',
 }: BackRoomTabProps) {
   const [showInitialBounce, setShowInitialBounce] = useState(false);
+  const [isClicked, setIsClicked] = useState(false);
 
   useEffect(() => {
     if (hasBackRoom) {
@@ -32,6 +33,12 @@ export default function BackRoomTab({
       return () => clearTimeout(timer);
     }
   }, [hasBackRoom]);
+
+  const handleClick = () => {
+    setIsClicked(true);
+    setTimeout(() => setIsClicked(false), 300);
+    onClick();
+  };
 
   if (!hasBackRoom) return null;
 
@@ -74,12 +81,12 @@ export default function BackRoomTab({
 
   return (
     <button
-      onClick={onClick}
+      onClick={handleClick}
       style={showInitialBounce ? { animation: 'pulsate 1s ease-in-out' } : undefined}
       className={`
         fixed right-[2.5%] top-1/2 -translate-y-1/2 z-50
         transition-all duration-300
-        active:scale-90 active:rotate-12
+        ${isClicked ? 'scale-90 rotate-12' : ''}
         ${styles.baseClasses}
         ${colorClasses}
         ${styles.shadow}
