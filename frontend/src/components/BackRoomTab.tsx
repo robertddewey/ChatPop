@@ -107,7 +107,7 @@ export default function BackRoomTab({
       {isInBackRoom ? (
         <MessageSquare className="w-8 h-8 stroke-[1.5]" />
       ) : (
-        <Gamepad2 className="w-8 h-8 stroke-[1.5] rotate-90" />
+        <Gamepad2 className="w-8 h-8 stroke-[1.5]" />
       )}
     </button>
   );
