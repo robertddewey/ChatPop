@@ -85,7 +85,7 @@ const designs = {
     headerSubtitle: "text-sm text-zinc-400",
     stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
     messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
-    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.03] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
+    messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.06] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
     hostMessage: "rounded px-3 py-2 bg-cyan-400 font-medium",
     hostText: "text-cyan-950",
     hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
@@ -153,6 +153,7 @@ export default function ChatPage() {
   // Message input
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
 
   // Message filter
   const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
@@ -515,6 +516,13 @@ export default function ChatPage() {
   // Send message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // If there's a voice recording ready, send it via the global method
+    if (hasVoiceRecording && (window as any).__voiceRecorderSendMethod) {
+      (window as any).__voiceRecorderSendMethod();
+      return;
+    }
+
     if (!newMessage.trim() || sending) return;
 
     setSending(true);
@@ -1145,7 +1153,7 @@ export default function ChatPage() {
 
                     {/* Message content */}
                     {message.voice_url ? (
-                      <div className="mt-0.5">
+                      <div className="-mt-px">
                         <VoiceMessagePlayer
                           voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
                           duration={message.voice_duration || 0}
@@ -1206,12 +1214,13 @@ export default function ChatPage() {
           {chatRoom?.voice_enabled && (
             <VoiceRecorder
               onRecordingComplete={handleVoiceRecording}
+              onRecordingReady={setHasVoiceRecording}
               disabled={sending || !hasJoined}
             />
           )}
           <button
             type="submit"
-            disabled={sending || !newMessage.trim()}
+            disabled={sending || (!newMessage.trim() && !hasVoiceRecording)}
             className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send

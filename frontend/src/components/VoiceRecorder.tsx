@@ -2,18 +2,19 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { flushSync } from 'react-dom';
-import { Mic, Square, Loader2, Play, Trash2, Send } from 'lucide-react';
+import { Mic, Square, Play, Trash2 } from 'lucide-react';
 import { WaveformAnalyzer, downsampleWaveform, type RecordingMetadata } from '@/lib/waveform';
 
 interface VoiceRecorderProps {
   onRecordingComplete: (audioBlob: Blob, metadata: RecordingMetadata) => void;
+  onRecordingReady?: (hasRecording: boolean) => void;
   disabled?: boolean;
   className?: string;
 }
 
 type RecordingState = 'idle' | 'recording' | 'preview';
 
-export default function VoiceRecorder({ onRecordingComplete, disabled, className }: VoiceRecorderProps) {
+export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, disabled, className }: VoiceRecorderProps) {
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -42,6 +43,13 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
       }
     };
   }, [audioUrl]);
+
+  // Notify parent when recording state changes
+  useEffect(() => {
+    if (onRecordingReady) {
+      onRecordingReady(recordingState === 'preview' && !!audioBlob && !!recordingMetadata);
+    }
+  }, [recordingState, audioBlob, recordingMetadata, onRecordingReady]);
 
   const startRecording = async () => {
     const startTime = performance.now();
@@ -152,11 +160,30 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
         };
       });
 
-      // Create MediaRecorder
+      // Create MediaRecorder with iOS-compatible codec
       console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Creating MediaRecorder...`);
-      const mediaRecorder = new MediaRecorder(stream);
+
+      // iOS Safari CRITICAL FIX: Must use audio/mp4 with AAC codec
+      // WebM/Opus (default on iOS) cannot be played back on iOS itself!
+      // Desktop Chrome can play WebM, but iOS cannot.
+      let mimeType = 'audio/webm;codecs=opus'; // Default for desktop
+
+      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        // iOS Safari supports audio/mp4 recording AND playback
+        mimeType = 'audio/mp4';
+        console.log('[VoiceRecorder] ✅ Using audio/mp4 (iOS-compatible)');
+      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+        console.log('[VoiceRecorder] ⚠️ Using audio/webm;codecs=opus (desktop)');
+      } else {
+        console.warn('[VoiceRecorder] ⚠️ No preferred codec supported, using browser default');
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
+
+      console.log('[VoiceRecorder] 📝 MediaRecorder mimeType:', mediaRecorder.mimeType);
 
       // Set handlers BEFORE starting
       mediaRecorder.ondataavailable = (event) => {
@@ -168,7 +195,8 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
 
       mediaRecorder.onstop = () => {
         console.log('[VoiceRecorder] MediaRecorder onstop fired');
-        const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType });
+        console.log('[VoiceRecorder] 📦 Created blob with type:', blob.type, 'size:', blob.size);
         const url = URL.createObjectURL(blob);
 
         // Capture waveform data and duration
@@ -295,6 +323,7 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
     chunksRef.current = [];
   };
 
+  // Expose send method for parent to call
   const sendRecording = () => {
     if (!audioBlob || !recordingMetadata) return;
 
@@ -305,6 +334,14 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
     deleteRecording();
   };
 
+  // Expose send method to parent via a method they can call
+  useEffect(() => {
+    (window as any).__voiceRecorderSendMethod = sendRecording;
+    return () => {
+      delete (window as any).__voiceRecorderSendMethod;
+    };
+  }, [audioBlob, recordingMetadata]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -312,7 +349,7 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
   };
 
   return (
-    <div className={className}>
+    <div className={`flex items-center gap-2 ${className}`}>
       {recordingState === 'idle' && (
         <button
           type="button"
@@ -326,61 +363,54 @@ export default function VoiceRecorder({ onRecordingComplete, disabled, className
       )}
 
       {recordingState === 'recording' && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white rounded-lg">
+        <>
           <button
             onClick={stopRecording}
-            className="hover:bg-red-600 rounded p-1 transition-colors"
+            className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
             title="Stop recording"
           >
-            <Square size={20} fill="white" />
+            <Square size={18} fill="white" />
           </button>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="flex gap-0.5">
               {[...Array(3)].map((_, i) => (
                 <div
                   key={i}
-                  className="w-1 bg-white rounded-full animate-pulse"
+                  className="w-0.5 bg-red-500 rounded-full animate-pulse"
                   style={{
-                    height: '12px',
+                    height: '10px',
                     animationDelay: `${i * 150}ms`,
                   }}
                 />
               ))}
             </div>
-            <span className="text-sm font-mono">{formatTime(recordingTime)}</span>
+            <span className="text-xs font-mono text-red-500">{formatTime(recordingTime)}</span>
           </div>
-        </div>
+        </>
       )}
 
       {recordingState === 'preview' && (
-        <div className="flex items-center gap-2 p-2 bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/30 rounded-lg">
+        <>
           <button
+            type="button"
             onClick={playRecording}
-            className="p-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all"
             title="Play recording"
           >
-            <Play size={18} fill={isPlaying ? 'currentColor' : 'none'} />
+            <Play size={18} fill={isPlaying ? 'white' : 'none'} strokeWidth={isPlaying ? 0 : 2} />
           </button>
-          <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
+          <span className="text-xs font-mono text-gray-600 dark:text-gray-400">
             {formatTime(recordingTime)}
           </span>
-          <div className="flex gap-1 ml-auto">
-            <button
-              onClick={deleteRecording}
-              className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-              title="Delete recording"
-            >
-              <Trash2 size={18} />
-            </button>
-            <button
-              onClick={sendRecording}
-              className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all"
-              title="Send voice message"
-            >
-              <Send size={18} />
-            </button>
-          </div>
-        </div>
+          <button
+            type="button"
+            onClick={deleteRecording}
+            className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+            title="Delete recording"
+          >
+            <Trash2 size={18} />
+          </button>
+        </>
       )}
     </div>
   );

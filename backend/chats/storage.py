@@ -124,18 +124,36 @@ class MediaStorage:
         return default_storage.exists(storage_path)
 
 
+# Content-Type to file extension mapping for voice messages
+VOICE_CONTENT_TYPE_TO_EXT = {
+    'audio/mp4': 'm4a',      # iOS Safari recording format (M4A/AAC)
+    'audio/webm': 'webm',     # Desktop Chrome recording format (WebM/Opus)
+    'audio/mpeg': 'mp3',      # MP3 format
+    'audio/ogg': 'ogg',       # Ogg Vorbis
+    'audio/wav': 'wav',       # WAV format
+    'audio/x-m4a': 'm4a',     # Alternative M4A MIME type
+}
+
+
 # Convenience functions for voice messages specifically
-def save_voice_message(file_obj: BinaryIO, filename: Optional[str] = None) -> tuple[str, str]:
+def save_voice_message(file_obj: BinaryIO, filename: Optional[str] = None, content_type: Optional[str] = None) -> tuple[str, str]:
     """
-    Save a voice message file.
+    Save a voice message file with correct extension based on content type.
 
     Args:
         file_obj: Voice message file object
-        filename: Optional custom filename
+        filename: Optional custom filename (if not provided, auto-generated)
+        content_type: MIME type of the audio file (e.g., 'audio/mp4', 'audio/webm')
 
     Returns:
         tuple: (storage_path, storage_type)
     """
+    # Auto-generate filename with correct extension if not provided
+    if filename is None and content_type:
+        # Map content type to file extension
+        ext = VOICE_CONTENT_TYPE_TO_EXT.get(content_type, 'webm')  # Default to webm if unknown
+        filename = f"{uuid.uuid4()}.{ext}"
+
     return MediaStorage.save_file(file_obj, 'voice_messages', filename)
 
 

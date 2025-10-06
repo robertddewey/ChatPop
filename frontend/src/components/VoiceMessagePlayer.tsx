@@ -3,6 +3,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause } from 'lucide-react';
 
+// Backend API URL (same as api.ts)
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://localhost:9000';
+
 interface VoiceMessagePlayerProps {
   voiceUrl: string;
   duration: number;
@@ -45,6 +48,7 @@ export default function VoiceMessagePlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const srcSetRef = useRef<boolean>(false); // Track if we've explicitly set the src
 
   // Initialize audio element
   useEffect(() => {
@@ -53,25 +57,28 @@ export default function VoiceMessagePlayer({
       return;
     }
 
+    // Create audio WITHOUT source initially (iOS Safari workaround)
+    // Setting src will happen lazily when user clicks play
     const audio = new Audio();
     audioRef.current = audio;
+    srcSetRef.current = false; // Reset the flag
 
     audio.addEventListener('ended', () => {
       setIsPlaying(false);
       setCurrentTime(0);
     });
 
+    // Only log errors if we've explicitly set the src (avoid logging errors from empty audio element)
     audio.addEventListener('error', (e) => {
-      console.error('[VoiceMessagePlayer] Audio load error for URL:', voiceUrl, e);
-      setIsPlaying(false);
+      if (srcSetRef.current) {
+        console.error('[VoiceMessagePlayer] Audio load error for URL:', voiceUrl, e);
+        setIsPlaying(false);
+      }
     });
 
     audio.addEventListener('loadedmetadata', () => {
       console.log('[VoiceMessagePlayer] Audio loaded successfully, duration:', audio.duration);
     });
-
-    // Set the source after setting up event listeners
-    audio.src = voiceUrl;
 
     return () => {
       if (animationFrameRef.current) {
@@ -79,6 +86,7 @@ export default function VoiceMessagePlayer({
       }
       audio.pause();
       audio.src = '';
+      srcSetRef.current = false;
     };
   }, [voiceUrl]);
 
@@ -108,23 +116,86 @@ export default function VoiceMessagePlayer({
   }, [isPlaying]);
 
   const togglePlayPause = async () => {
-    if (!audioRef.current) return;
+    console.log('[VoiceMessagePlayer] 🎵 togglePlayPause called for URL:', voiceUrl);
+
+    if (!audioRef.current) {
+      console.error('[VoiceMessagePlayer] ❌ audioRef.current is null! Cannot play audio.');
+      return;
+    }
 
     try {
       if (isPlaying) {
+        console.log('[VoiceMessagePlayer] ⏸️ Pausing audio');
         audioRef.current.pause();
         setIsPlaying(false);
         GlobalAudioManager.stop(audioRef.current);
       } else {
+        console.log('[VoiceMessagePlayer] ▶️ Attempting to play audio...');
+
+        // iOS Safari workaround: Set src lazily on first play
+        // This avoids preload issues that can cause readyState to stay at 0
+        if (!srcSetRef.current) {
+          console.log('[VoiceMessagePlayer] 🔗 Setting audio src on first play (iOS workaround)');
+          // Convert relative URL to absolute URL pointing to backend
+          const absoluteUrl = voiceUrl.startsWith('http') ? voiceUrl : `${API_BASE_URL}${voiceUrl}`;
+          console.log('[VoiceMessagePlayer] 🔗 Absolute URL:', absoluteUrl);
+          audioRef.current.src = absoluteUrl;
+          srcSetRef.current = true; // Mark that we've set the source
+        }
+
+        console.log('[VoiceMessagePlayer] 🎵 Audio element state:', {
+          src: audioRef.current.src,
+          readyState: audioRef.current.readyState,
+          networkState: audioRef.current.networkState,
+          error: audioRef.current.error,
+        });
+
+        // iOS Safari requires the audio to have loaded enough data before playing
+        // readyState 0 = HAVE_NOTHING (no data loaded)
+        // readyState 1+ = HAVE_METADATA or better (can start playing)
+        if (audioRef.current.readyState === 0) {
+          console.log('[VoiceMessagePlayer] ⏳ Audio not loaded yet (readyState=0), calling load()...');
+          audioRef.current.load(); // Force reload the audio
+
+          // Wait for metadata to load before playing
+          await new Promise<void>((resolve, reject) => {
+            const audio = audioRef.current!;
+            const onCanPlay = () => {
+              console.log('[VoiceMessagePlayer] ✅ Audio loaded, readyState:', audio.readyState);
+              audio.removeEventListener('canplay', onCanPlay);
+              audio.removeEventListener('error', onError);
+              resolve();
+            };
+            const onError = (e: Event) => {
+              console.error('[VoiceMessagePlayer] ❌ Audio load error:', e);
+              audio.removeEventListener('canplay', onCanPlay);
+              audio.removeEventListener('error', onError);
+              reject(new Error('Failed to load audio'));
+            };
+            audio.addEventListener('canplay', onCanPlay);
+            audio.addEventListener('error', onError);
+          });
+        }
+
         // Register with global manager before playing
         GlobalAudioManager.play(audioRef.current, () => {
+          console.log('[VoiceMessagePlayer] 🛑 GlobalAudioManager called stop callback');
           setIsPlaying(false);
         });
+
+        console.log('[VoiceMessagePlayer] 🔊 Calling audio.play()...');
         await audioRef.current.play();
+        console.log('[VoiceMessagePlayer] ✅ Audio.play() succeeded!');
         setIsPlaying(true);
       }
     } catch (error) {
-      console.error('[VoiceMessagePlayer] Playback error:', error);
+      console.error('[VoiceMessagePlayer] ❌ Playback error:', error);
+      console.error('[VoiceMessagePlayer] ❌ Error details:', {
+        name: (error as Error).name,
+        message: (error as Error).message,
+        audioSrc: audioRef.current?.src,
+        audioReadyState: audioRef.current?.readyState,
+      });
       setIsPlaying(false);
     }
   };
@@ -150,7 +221,10 @@ export default function VoiceMessagePlayer({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progress = duration > 0 && isFinite(duration) ? currentTime / duration : 0;
+  // Use the duration from the database prop instead of audio.duration
+  // This fixes iOS Safari WebM metadata parsing issues
+  const actualDuration = duration > 0 && isFinite(duration) ? duration : (audioRef.current?.duration || 0);
+  const progress = actualDuration > 0 ? currentTime / actualDuration : 0;
 
   // Always normalize to exactly 50 bars for consistent width
   const FIXED_BAR_COUNT = 50;
@@ -234,7 +308,7 @@ export default function VoiceMessagePlayer({
 
       {/* Time Display */}
       <div className="flex-shrink-0 text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums min-w-[32px] text-right">
-        {formatTime(isPlaying ? currentTime : duration)}
+        {formatTime(isPlaying ? currentTime : actualDuration)}
       </div>
     </div>
   );

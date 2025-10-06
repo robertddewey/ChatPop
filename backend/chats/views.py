@@ -919,14 +919,36 @@ class VoiceUploadView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Save file to storage
-            storage_path, storage_type = save_voice_message(voice_file)
+            import logging
+            logger = logging.getLogger(__name__)
+
+            # Log incoming file info
+            logger.info(f"[VoiceUpload] Received file with content_type: {voice_file.content_type}, size: {voice_file.size} bytes")
+
+            # Track the actual content type for file extension
+            actual_content_type = voice_file.content_type
+
+            # iOS Safari workaround: Transcode WebM to M4A for compatibility
+            # iOS Safari MediaRecorder produces WebM/Opus that iOS cannot play
+            if voice_file.content_type == 'audio/webm':
+                from .audio_utils import transcode_webm_to_m4a
+                logger.info(f"[VoiceUpload] ✅ TRANSCODING WebM to M4A for iOS compatibility...")
+                voice_file = transcode_webm_to_m4a(voice_file)
+                transcoded_size = len(voice_file.read())
+                logger.info(f"[VoiceUpload] ✅ TRANSCODING COMPLETE, new file size: {transcoded_size} bytes")
+                voice_file.seek(0)  # Reset file pointer after read
+                actual_content_type = 'audio/mp4'  # Transcoded file is M4A/AAC
+            else:
+                logger.info(f"[VoiceUpload] ⏭️ Skipping transcoding (content_type is {voice_file.content_type}, not audio/webm)")
+
+            # Save file to storage with correct extension based on content type
+            storage_path, storage_type = save_voice_message(voice_file, content_type=actual_content_type)
+            logger.info(f"[VoiceUpload] Saved to storage: {storage_path} (content_type: {actual_content_type})")
 
             # Get proxy URL for accessing the file (relative path)
-            relative_url = get_voice_message_url(storage_path)
-
-            # Build absolute URL for cross-origin access (frontend at port 4000, backend at port 9000)
-            voice_url = request.build_absolute_uri(relative_url)
+            # The URL route is: path('media/<path:storage_path>', VoiceStreamView.as_view())
+            # So we just need the storage_path part: voice_messages/filename.m4a
+            voice_url = get_voice_message_url(storage_path)
 
             return Response({
                 'voice_url': voice_url,
@@ -935,6 +957,8 @@ class VoiceUploadView(APIView):
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return Response({
                 'error': f'Failed to upload voice message: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -959,10 +983,20 @@ class VoiceStreamView(APIView):
         return response
 
     def get(self, request, storage_path):
-        from django.http import FileResponse, Http404
+        from django.http import HttpResponse, Http404, JsonResponse
         from .storage import MediaStorage
         from .security import ChatSessionValidator
         from rest_framework.exceptions import PermissionDenied
+        import os
+        import re
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Log incoming request
+        logger.info(f"🎵 [VoiceStream] Incoming request for: {storage_path}")
+        logger.info(f"🎵 [VoiceStream] Range header: {request.META.get('HTTP_RANGE', 'NONE')}")
+        logger.info(f"🎵 [VoiceStream] User-Agent: {request.META.get('HTTP_USER_AGENT', 'NONE')[:100]}")
 
         # Extract chat code and validate session
         # Storage path format: voice_messages/<uuid>.webm
@@ -972,30 +1006,34 @@ class VoiceStreamView(APIView):
         session_token = request.GET.get('session_token') or request.headers.get('X-Chat-Session-Token')
 
         if not session_token:
-            return Response({
+            logger.warning(f"🎵 [VoiceStream] No session token provided for: {storage_path}")
+            return JsonResponse({
                 'error': 'Session token required to access voice messages'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+            }, status=401)
 
         # Validate session (this will raise PermissionDenied if invalid)
         try:
             session_data = ChatSessionValidator.validate_session_token(session_token)
             chat_code = session_data.get('chat_code')
+            logger.info(f"🎵 [VoiceStream] Session validated for chat: {chat_code}")
 
             # Get chat room to verify it exists
             chat_room = get_object_or_404(ChatRoom, code=chat_code)
 
             # Check if file exists in storage
             if not MediaStorage.file_exists(storage_path):
+                logger.error(f"🎵 [VoiceStream] File not found: {storage_path}")
                 raise Http404("Voice message not found")
 
             # Get file from storage
             file_obj = MediaStorage.get_file(storage_path)
             if not file_obj:
+                logger.error(f"🎵 [VoiceStream] Failed to get file object: {storage_path}")
                 raise Http404("Voice message not found")
 
             # Determine content type from file extension
             content_type = 'audio/webm'  # default
-            if storage_path.endswith('.mp4'):
+            if storage_path.endswith('.m4a') or storage_path.endswith('.mp4'):
                 content_type = 'audio/mp4'
             elif storage_path.endswith('.mp3') or storage_path.endswith('.mpeg'):
                 content_type = 'audio/mpeg'
@@ -1004,30 +1042,82 @@ class VoiceStreamView(APIView):
             elif storage_path.endswith('.wav'):
                 content_type = 'audio/wav'
 
-            # Stream the file
-            response = FileResponse(file_obj, content_type=content_type)
+            # Get file size
+            file_obj.seek(0, os.SEEK_END)
+            file_size = file_obj.tell()
+            file_obj.seek(0)
+            logger.info(f"🎵 [VoiceStream] File size: {file_size} bytes, Content-Type: {content_type}")
+
+            # Parse Range header for iOS Safari compatibility
+            range_header = request.META.get('HTTP_RANGE', '')
+
+            if range_header:
+                logger.info(f"🎵 [VoiceStream] Processing Range Request: {range_header}")
+                # Parse range header (format: "bytes=start-end")
+                range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+                if range_match:
+                    start = int(range_match.group(1))
+                    end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
+                    logger.info(f"🎵 [VoiceStream] Range: bytes {start}-{end}/{file_size}")
+
+                    # Validate range
+                    if start >= file_size or end >= file_size or start > end:
+                        logger.error(f"🎵 [VoiceStream] Invalid range: {start}-{end} for file size {file_size}")
+                        response = HttpResponse(status=416)  # Range Not Satisfiable
+                        response['Content-Range'] = f'bytes */{file_size}'
+                        return response
+
+                    # Read the requested range
+                    file_obj.seek(start)
+                    chunk_size = end - start + 1
+                    content = file_obj.read(chunk_size)
+                    logger.info(f"🎵 [VoiceStream] Returning 206 Partial Content: {chunk_size} bytes")
+
+                    # Return HTTP 206 Partial Content
+                    response = HttpResponse(content, content_type=content_type, status=206)
+                    response['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+                    response['Content-Length'] = str(chunk_size)
+                else:
+                    logger.warning(f"🎵 [VoiceStream] Invalid range format: {range_header}, returning full file")
+                    # Invalid range format, return full file
+                    content = file_obj.read()
+                    response = HttpResponse(content, content_type=content_type)
+                    response['Content-Length'] = str(file_size)
+            else:
+                logger.info(f"🎵 [VoiceStream] No Range header, returning full file ({file_size} bytes)")
+                # No range header, return full file
+                content = file_obj.read()
+                response = HttpResponse(content, content_type=content_type)
+                response['Content-Length'] = str(file_size)
+
+            # Common headers for all responses
             response['Content-Disposition'] = f'inline; filename="{storage_path.split("/")[-1]}"'
             response['Cache-Control'] = 'private, max-age=3600'  # Cache for 1 hour
+            response['Accept-Ranges'] = 'bytes'
 
             # Add CORS headers for audio element playback
             response['Access-Control-Allow-Origin'] = '*'
             response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
-            response['Access-Control-Allow-Headers'] = 'X-Chat-Session-Token, Content-Type'
+            response['Access-Control-Allow-Headers'] = 'X-Chat-Session-Token, Content-Type, Range'
+            response['Access-Control-Expose-Headers'] = 'Content-Range, Accept-Ranges, Content-Length'
 
-            # Add Accept-Ranges header for media streaming
-            response['Accept-Ranges'] = 'bytes'
-
+            logger.info(f"🎵 [VoiceStream] Success! Returning {response.status_code} response")
             return response
 
         except PermissionDenied:
-            return Response({
+            logger.error(f"🎵 [VoiceStream] Permission denied for: {storage_path}")
+            return JsonResponse({
                 'error': 'Invalid session token'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+            }, status=401)
         except Http404:
-            return Response({
+            logger.error(f"🎵 [VoiceStream] File not found (404): {storage_path}")
+            return JsonResponse({
                 'error': 'Voice message not found'
-            }, status=status.HTTP_404_NOT_FOUND)
+            }, status=404)
         except Exception as e:
-            return Response({
+            logger.error(f"🎵 [VoiceStream] Unexpected error for {storage_path}: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
                 'error': f'Failed to stream voice message: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            }, status=500)
