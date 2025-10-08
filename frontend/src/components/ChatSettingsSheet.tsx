@@ -150,8 +150,15 @@ export default function ChatSettingsSheet({
                 onClick={async () => {
                   if (chatRoom.theme_locked) return;
                   try {
-                    await chatApi.updateMyTheme(chatRoom.code, 'dark-mode', fingerprint);
-                    window.location.reload(); // Reload to apply theme
+                    const response = await chatApi.updateMyTheme(chatRoom.code, 'dark-mode', fingerprint);
+
+                    // Immediately update localStorage with new theme colors before reload
+                    if (response.theme?.theme_color) {
+                      localStorage.setItem('chat_theme_color', JSON.stringify(response.theme.theme_color));
+                    }
+
+                    // Reload to apply theme (browser reads meta tags on page load)
+                    window.location.reload();
                   } catch (err) {
                     console.error('Failed to update theme:', err);
                   }
@@ -181,8 +188,15 @@ export default function ChatSettingsSheet({
                 onClick={async () => {
                   if (chatRoom.theme_locked) return;
                   try {
-                    await chatApi.updateMyTheme(chatRoom.code, 'light-mode', fingerprint);
-                    window.location.reload(); // Reload to apply theme
+                    const response = await chatApi.updateMyTheme(chatRoom.code, 'light-mode', fingerprint);
+
+                    // Immediately update localStorage with new theme colors before reload
+                    if (response.theme?.theme_color) {
+                      localStorage.setItem('chat_theme_color', JSON.stringify(response.theme.theme_color));
+                    }
+
+                    // Reload to apply theme (browser reads meta tags on page load)
+                    window.location.reload();
                   } catch (err) {
                     console.error('Failed to update theme:', err);
                   }

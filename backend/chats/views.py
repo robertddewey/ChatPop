@@ -552,13 +552,13 @@ class UpdateMyThemeView(APIView):
         # Find the user's participation
         participation = None
         if request.user.is_authenticated:
-            participation = ChatParticipation.objects.filter(
+            participation = ChatParticipation.objects.select_related('theme').filter(
                 chat_room=chat_room,
                 user=request.user,
                 is_active=True
             ).first()
         elif fingerprint:
-            participation = ChatParticipation.objects.filter(
+            participation = ChatParticipation.objects.select_related('theme').filter(
                 chat_room=chat_room,
                 fingerprint=fingerprint,
                 user__isnull=True,
