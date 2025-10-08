@@ -14,6 +14,18 @@ import { chatApi, type ChatRoom } from '@/lib/api';
 import { Copy, Check, BadgeCheck, Moon, Sun } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
+// Theme color constants for optimistic updates
+const THEME_COLORS = {
+  'dark-mode': {
+    light: '#18181b', // zinc-900
+    dark: '#18181b',
+  },
+  'light-mode': {
+    light: '#ffffff', // white
+    dark: '#1f2937', // gray-800
+  },
+} as const;
+
 interface ChatSettingsSheetProps {
   chatRoom: ChatRoom;
   currentUserId?: string;
@@ -141,7 +153,7 @@ export default function ChatSettingsSheet({
           {/* Theme Selection */}
           <div className="space-y-4">
             <h3 className={`text-sm font-semibold ${styles.title}`}>
-              Theme {chatRoom.theme_locked && <span className={`text-xs font-normal ${styles.subtext}`}>(locked by host)</span>}
+              Theme <span className={`text-xs font-normal ${useDarkMode ? 'text-gray-500' : 'text-gray-500 dark:text-gray-500'}`}>(will reload the chat)</span> {chatRoom.theme_locked && <span className={`text-xs font-normal ${styles.subtext}`}>(locked by host)</span>}
             </h3>
 
             <div className="grid grid-cols-3 gap-3">
@@ -149,18 +161,34 @@ export default function ChatSettingsSheet({
               <button
                 onClick={async () => {
                   if (chatRoom.theme_locked) return;
+
+                  // Store current theme for rollback on error
+                  const currentThemeColors = localStorage.getItem('chat_theme_color');
+
                   try {
-                    const response = await chatApi.updateMyTheme(chatRoom.code, 'dark-mode', fingerprint);
+                    // Start API call
+                    const apiPromise = chatApi.updateMyTheme(chatRoom.code, 'dark-mode', fingerprint);
 
-                    // Immediately update localStorage with new theme colors before reload
-                    if (response.theme?.theme_color) {
-                      localStorage.setItem('chat_theme_color', JSON.stringify(response.theme.theme_color));
-                    }
+                    // Optimistically update localStorage immediately with known colors
+                    localStorage.setItem('chat_theme_color', JSON.stringify(THEME_COLORS['dark-mode']));
 
-                    // Reload to apply theme (browser reads meta tags on page load)
+                    // Wait for API OR timeout (whichever comes first)
+                    const result = await Promise.race([
+                      apiPromise.then(() => ({ success: true })),
+                      new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 200))
+                    ]);
+
+                    // Reload to apply theme (API succeeded or is still processing)
                     window.location.reload();
                   } catch (err) {
+                    // API failed - revert localStorage to prevent mismatch
+                    if (currentThemeColors) {
+                      localStorage.setItem('chat_theme_color', currentThemeColors);
+                    } else {
+                      localStorage.removeItem('chat_theme_color');
+                    }
                     console.error('Failed to update theme:', err);
+                    // Don't reload - keep user in current state
                   }
                 }}
                 disabled={chatRoom.theme_locked || activeThemeId === 'dark-mode'}
@@ -187,18 +215,34 @@ export default function ChatSettingsSheet({
               <button
                 onClick={async () => {
                   if (chatRoom.theme_locked) return;
+
+                  // Store current theme for rollback on error
+                  const currentThemeColors = localStorage.getItem('chat_theme_color');
+
                   try {
-                    const response = await chatApi.updateMyTheme(chatRoom.code, 'light-mode', fingerprint);
+                    // Start API call
+                    const apiPromise = chatApi.updateMyTheme(chatRoom.code, 'light-mode', fingerprint);
 
-                    // Immediately update localStorage with new theme colors before reload
-                    if (response.theme?.theme_color) {
-                      localStorage.setItem('chat_theme_color', JSON.stringify(response.theme.theme_color));
-                    }
+                    // Optimistically update localStorage immediately with known colors
+                    localStorage.setItem('chat_theme_color', JSON.stringify(THEME_COLORS['light-mode']));
 
-                    // Reload to apply theme (browser reads meta tags on page load)
+                    // Wait for API OR timeout (whichever comes first)
+                    const result = await Promise.race([
+                      apiPromise.then(() => ({ success: true })),
+                      new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 200))
+                    ]);
+
+                    // Reload to apply theme (API succeeded or is still processing)
                     window.location.reload();
                   } catch (err) {
+                    // API failed - revert localStorage to prevent mismatch
+                    if (currentThemeColors) {
+                      localStorage.setItem('chat_theme_color', currentThemeColors);
+                    } else {
+                      localStorage.removeItem('chat_theme_color');
+                    }
                     console.error('Failed to update theme:', err);
+                    // Don't reload - keep user in current state
                   }
                 }}
                 disabled={chatRoom.theme_locked || activeThemeId === 'light-mode'}
