@@ -7,7 +7,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
 from accounts.models import User
-from .models import ChatRoom, Message, AnonymousUserFingerprint, ChatParticipation
+from .models import ChatRoom, Message, AnonymousUserFingerprint, ChatParticipation, ChatTheme
 from .serializers import (
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomUpdateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
