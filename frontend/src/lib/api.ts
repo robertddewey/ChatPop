@@ -202,6 +202,7 @@ export interface ChatParticipation {
   username_is_reserved?: boolean;
   first_joined_at?: string;
   last_seen_at?: string;
+  theme?: ChatTheme | null;
 }
 
 export const chatApi = {
@@ -296,8 +297,17 @@ export const chatApi = {
     video_enabled?: boolean;
     photo_enabled?: boolean;
     is_active?: boolean;
+    theme_id?: string;
   }): Promise<ChatRoom> => {
     const response = await api.put(`/api/chats/${code}/update/`, data);
+    return response.data;
+  },
+
+  updateMyTheme: async (code: string, themeId: string, fingerprint?: string): Promise<{ success: boolean; theme: ChatTheme | null }> => {
+    const response = await api.post(`/api/chats/${code}/update-my-theme/`, {
+      theme_id: themeId,
+      fingerprint,
+    });
     return response.data;
   },
 };

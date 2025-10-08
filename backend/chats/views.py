@@ -477,13 +477,86 @@ class MyParticipationView(APIView):
 
         # Dual sessions: Priority 1 - logged-in user participation
         if request.user.is_authenticated:
-            participation = ChatParticipation.objects.filter(
+            participation = ChatParticipation.objects.select_related('theme').filter(
                 chat_room=chat_room,
                 user=request.user,
                 is_active=True
             ).first()
             # Don't fallback to anonymous if logged in
         # Priority 2 - Anonymous user (fingerprint-based)
+        elif fingerprint:
+            participation = ChatParticipation.objects.select_related('theme').filter(
+                chat_room=chat_room,
+                fingerprint=fingerprint,
+                user__isnull=True,
+                is_active=True
+            ).first()
+
+        if participation:
+            # Check if this username is a reserved username
+            username_is_reserved = False
+            if participation.user and participation.user.reserved_username:
+                username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
+
+            # Serialize theme if present (BEFORE save to preserve select_related)
+            theme_data = None
+            if participation.theme:
+                from .serializers import ChatThemeSerializer
+                theme_data = ChatThemeSerializer(participation.theme).data
+
+            # Update last_seen timestamp (do this AFTER accessing theme)
+            participation.save()  # auto_now updates last_seen_at
+
+            return Response({
+                'has_joined': True,
+                'username': participation.username,
+                'username_is_reserved': username_is_reserved,
+                'first_joined_at': participation.first_joined_at,
+                'last_seen_at': participation.last_seen_at,
+                'theme': theme_data
+            })
+
+        return Response({
+            'has_joined': False
+        })
+
+
+class UpdateMyThemeView(APIView):
+    """Update user's theme preference for a chat"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code):
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+
+        # Check if theme is locked
+        if chat_room.theme_locked:
+            return Response(
+                {'detail': 'Theme is locked for this chat'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        theme_id = request.data.get('theme_id')
+        fingerprint = request.data.get('fingerprint')
+
+        # Get the theme
+        theme = None
+        if theme_id:
+            try:
+                theme = ChatTheme.objects.get(theme_id=theme_id)
+            except ChatTheme.DoesNotExist:
+                return Response(
+                    {'detail': 'Theme not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        # Find the user's participation
+        participation = None
+        if request.user.is_authenticated:
+            participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                user=request.user,
+                is_active=True
+            ).first()
         elif fingerprint:
             participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
@@ -492,25 +565,25 @@ class MyParticipationView(APIView):
                 is_active=True
             ).first()
 
-        if participation:
-            # Update last_seen timestamp
-            participation.save()  # auto_now updates last_seen_at
+        if not participation:
+            return Response(
+                {'detail': 'You must join the chat before setting a theme'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            # Check if this username is a reserved username
-            username_is_reserved = False
-            if participation.user and participation.user.reserved_username:
-                username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
+        # Update theme
+        participation.theme = theme
+        participation.save()
 
-            return Response({
-                'has_joined': True,
-                'username': participation.username,
-                'username_is_reserved': username_is_reserved,
-                'first_joined_at': participation.first_joined_at,
-                'last_seen_at': participation.last_seen_at
-            })
+        # Serialize theme if present
+        theme_data = None
+        if participation.theme:
+            from .serializers import ChatThemeSerializer
+            theme_data = ChatThemeSerializer(participation.theme).data
 
         return Response({
-            'has_joined': False
+            'success': True,
+            'theme': theme_data
         })
 
 

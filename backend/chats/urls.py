@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
     MessageListView, MessageCreateView, MessagePinView,
-    FingerprintUsernameView, UsernameValidationView, MyParticipationView, SuggestUsernameView, CheckRateLimitView,
+    FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
     VoiceUploadView, VoiceStreamView
 )
 
@@ -32,6 +32,7 @@ urlpatterns = [
 
     # Chat Participation
     path('<str:code>/my-participation/', MyParticipationView.as_view(), name='my-participation'),
+    path('<str:code>/update-my-theme/', UpdateMyThemeView.as_view(), name='update-my-theme'),
 
     # Rate Limit Check
     path('<str:code>/check-rate-limit/', CheckRateLimitView.as_view(), name='check-rate-limit'),

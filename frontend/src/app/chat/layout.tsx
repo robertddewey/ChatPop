@@ -1,4 +1,4 @@
-import type { Viewport, Metadata } from "next";
+import type { Viewport } from "next";
 import Script from "next/script";
 import '../chat-layout.css';
 
@@ -10,13 +10,9 @@ export const viewport: Viewport = {
   viewportFit: 'cover', // iOS Safari needs this for theme-color to work properly
 };
 
-// Server-side metadata with default theme colors
-// Note: This will be overridden client-side based on actual theme
-export const metadata: Metadata = {
-  other: {
-    'theme-color': '#ffffff',
-  },
-};
+// Note: Layout doesn't receive params in Next.js App Router
+// Metadata generation must be in page.tsx, not layout.tsx
+// We'll use client-side scripts to set theme-color dynamically instead
 
 export default function ChatLayout({
   children,
@@ -29,8 +25,22 @@ export default function ChatLayout({
       <Script id="theme-bg-init" strategy="beforeInteractive">
         {`
           (function() {
-            // Only dark-mode theme available - use zinc-900 background
-            const bgColor = '#09090b';
+            // Default to white for light mode, dark for dark mode
+            let bgColor = '#ffffff';
+
+            try {
+              // Try to get theme from localStorage (set by page.tsx)
+              const storedTheme = localStorage.getItem('chat_theme_color');
+              if (storedTheme) {
+                const parsed = JSON.parse(storedTheme);
+                // Detect system color scheme preference
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                bgColor = prefersDark ? (parsed.dark || '#09090b') : (parsed.light || '#ffffff');
+              }
+            } catch (e) {
+              // Fallback to white background
+              bgColor = '#ffffff';
+            }
 
             // Inject style tag to set body and all page containers immediately
             // This targets body, Next.js root, and any divs with height/flex classes (the main container)
@@ -45,8 +55,25 @@ export default function ChatLayout({
       <Script id="theme-color-init" strategy="beforeInteractive">
         {`
           (function() {
-            // Only dark-mode theme - always use zinc-900 color
-            const themeColor = '#18181b';
+            // Check if there's a stored theme in localStorage for this chat
+            let lightColor = '#ffffff';  // Default light theme color
+            let darkColor = '#18181b';   // Default dark theme color
+
+            try {
+              // Try to get theme from localStorage (set by page.tsx)
+              const storedTheme = localStorage.getItem('chat_theme_color');
+              if (storedTheme) {
+                const parsed = JSON.parse(storedTheme);
+                lightColor = parsed.light || lightColor;
+                darkColor = parsed.dark || darkColor;
+              }
+            } catch (e) {
+              console.warn('Failed to parse stored theme color:', e);
+            }
+
+            // Detect system color scheme preference
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const themeColor = prefersDark ? darkColor : lightColor;
 
             // Find existing theme-color meta tag (from server-side metadata)
             let existingMeta = document.querySelector('meta[name="theme-color"]:not([media])');
@@ -59,7 +86,7 @@ export default function ChatLayout({
               document.head.appendChild(defaultMeta);
             }
 
-            // Add media-query specific meta tags for Safari (same color for both modes)
+            // Add media-query specific meta tags for Safari
             let lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
             if (!lightMeta) {
               lightMeta = document.createElement('meta');
@@ -67,7 +94,7 @@ export default function ChatLayout({
               lightMeta.setAttribute('media', '(prefers-color-scheme: light)');
               document.head.appendChild(lightMeta);
             }
-            lightMeta.setAttribute('content', themeColor);
+            lightMeta.setAttribute('content', lightColor);
 
             let darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
             if (!darkMeta) {
@@ -76,7 +103,7 @@ export default function ChatLayout({
               darkMeta.setAttribute('media', '(prefers-color-scheme: dark)');
               document.head.appendChild(darkMeta);
             }
-            darkMeta.setAttribute('content', themeColor);
+            darkMeta.setAttribute('content', darkColor);
           })();
         `}
       </Script>

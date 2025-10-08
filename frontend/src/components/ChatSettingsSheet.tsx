@@ -11,12 +11,14 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { chatApi, type ChatRoom } from '@/lib/api';
-import { Copy, Check, BadgeCheck, Moon } from 'lucide-react';
+import { Copy, Check, BadgeCheck, Moon, Sun } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 interface ChatSettingsSheetProps {
   chatRoom: ChatRoom;
   currentUserId?: string;
+  fingerprint?: string;
+  activeThemeId?: string;
   onUpdate?: (chatRoom: ChatRoom) => void;
   onThemeChange?: (theme: ThemeId) => void;
   design?: 'dark-mode';
@@ -26,6 +28,8 @@ interface ChatSettingsSheetProps {
 export default function ChatSettingsSheet({
   chatRoom,
   currentUserId,
+  fingerprint,
+  activeThemeId,
   onUpdate,
   onThemeChange,
   design = 'dark-mode',
@@ -137,14 +141,27 @@ export default function ChatSettingsSheet({
           {/* Theme Selection */}
           <div className="space-y-4">
             <h3 className={`text-sm font-semibold ${styles.title}`}>
-              Theme <span className={`text-xs font-normal ${styles.subtext}`}>(coming soon)</span>
+              Theme {chatRoom.theme_locked && <span className={`text-xs font-normal ${styles.subtext}`}>(locked by host)</span>}
             </h3>
 
             <div className="grid grid-cols-3 gap-3">
-              {/* Dark Mode - Currently Active */}
+              {/* Dark Mode */}
               <button
-                disabled
-                className={`p-3 rounded-lg transition-all focus:outline-none border-2 border-cyan-400 bg-cyan-900/20 opacity-60 cursor-not-allowed`}
+                onClick={async () => {
+                  if (chatRoom.theme_locked) return;
+                  try {
+                    await chatApi.updateMyTheme(chatRoom.code, 'dark-mode', fingerprint);
+                    window.location.reload(); // Reload to apply theme
+                  } catch (err) {
+                    console.error('Failed to update theme:', err);
+                  }
+                }}
+                disabled={chatRoom.theme_locked || activeThemeId === 'dark-mode'}
+                className={`p-3 rounded-lg transition-all focus:outline-none border-2 ${
+                  activeThemeId === 'dark-mode'
+                    ? 'border-cyan-400 bg-cyan-400/10'
+                    : `${styles.border} hover:border-cyan-400/50`
+                } ${chatRoom.theme_locked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className={`text-xs font-semibold ${styles.text}`}>Dark Mode</div>
@@ -159,16 +176,41 @@ export default function ChatSettingsSheet({
                 </div>
               </button>
 
-              {/* Placeholder slots for future themes */}
-              <div className="p-3 rounded-lg border-2 border-dashed border-zinc-700 opacity-30">
-                <div className="flex items-center justify-center h-full">
-                  <span className="text-xs text-zinc-500">Coming Soon</span>
+              {/* Light Mode */}
+              <button
+                onClick={async () => {
+                  if (chatRoom.theme_locked) return;
+                  try {
+                    await chatApi.updateMyTheme(chatRoom.code, 'light-mode', fingerprint);
+                    window.location.reload(); // Reload to apply theme
+                  } catch (err) {
+                    console.error('Failed to update theme:', err);
+                  }
+                }}
+                disabled={chatRoom.theme_locked || activeThemeId === 'light-mode'}
+                className={`p-3 rounded-lg transition-all focus:outline-none border-2 ${
+                  activeThemeId === 'light-mode'
+                    ? 'border-blue-500 bg-blue-500/10'
+                    : `${styles.border} hover:border-blue-500/50`
+                } ${chatRoom.theme_locked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className={`text-xs font-semibold ${styles.text}`}>Light Mode</div>
+                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${useDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-200 text-gray-700'}`}>
+                    <Sun size={10} />
+                    <span>Auto</span>
+                  </div>
                 </div>
-              </div>
+                <div className="h-8 rounded bg-white border border-gray-300 flex items-center justify-center gap-1">
+                  <div className="h-4 w-12 rounded bg-blue-500"></div>
+                  <div className="h-4 w-8 rounded bg-gray-300"></div>
+                </div>
+              </button>
 
-              <div className="p-3 rounded-lg border-2 border-dashed border-zinc-700 opacity-30">
+              {/* Placeholder for future theme */}
+              <div className={`p-3 rounded-lg border-2 border-dashed ${styles.border} opacity-30`}>
                 <div className="flex items-center justify-center h-full">
-                  <span className="text-xs text-zinc-500">Coming Soon</span>
+                  <span className={`text-xs ${styles.subtext}`}>Coming Soon</span>
                 </div>
               </div>
             </div>

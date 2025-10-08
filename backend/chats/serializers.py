@@ -251,11 +251,12 @@ class TransactionSerializer(serializers.ModelSerializer):
 class ChatParticipationSerializer(serializers.ModelSerializer):
     """Serializer for ChatParticipation"""
     user = UserSerializer(read_only=True)
+    theme = ChatThemeSerializer(read_only=True)
 
     class Meta:
         model = ChatParticipation
         fields = [
-            'id', 'chat_room', 'user', 'fingerprint', 'username',
+            'id', 'chat_room', 'user', 'fingerprint', 'username', 'theme',
             'first_joined_at', 'last_seen_at', 'is_active'
         ]
         read_only_fields = ['id', 'chat_room', 'user', 'first_joined_at', 'last_seen_at']

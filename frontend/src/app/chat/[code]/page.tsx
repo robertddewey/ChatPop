@@ -117,6 +117,8 @@ export default function ChatPage() {
   const [hasReservedUsername, setHasReservedUsername] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [fingerprint, setFingerprint] = useState<string | undefined>(undefined);
+  const [participationTheme, setParticipationTheme] = useState<ChatTheme | null>(null);
 
   // Join state for guests
   const [hasJoined, setHasJoined] = useState(false);
@@ -195,7 +197,7 @@ export default function ChatPage() {
 
         // Check if user is already logged in
         const token = localStorage.getItem('auth_token');
-        let fingerprint: string | undefined;
+        let fpValue: string | undefined;
 
         console.log('=== Chat Session Debug Info ===');
         console.log('Logged In:', !!token);
@@ -208,14 +210,20 @@ export default function ChatPage() {
 
             // Get fingerprint for logged-in users too
             try {
-              fingerprint = await getFingerprint();
-              console.log('Fingerprint:', fingerprint);
+              fpValue = await getFingerprint();
+              setFingerprint(fpValue);
+              console.log('Fingerprint:', fpValue);
             } catch (fpErr) {
               console.error('❌ Error getting fingerprint:', fpErr);
             }
 
             // Check ChatParticipation to see if they've joined before
-            const participation = await chatApi.getMyParticipation(code, fingerprint);
+            const participation = await chatApi.getMyParticipation(code, fpValue);
+
+            // Store participation theme if present
+            if (participation.theme) {
+              setParticipationTheme(participation.theme);
+            }
 
             if (participation.has_joined && participation.username) {
               // Returning user - use their locked username
@@ -240,9 +248,15 @@ export default function ChatPage() {
         } else {
           // Anonymous user - check fingerprint participation
           try {
-            fingerprint = await getFingerprint();
-            console.log('Fingerprint:', fingerprint);
-            const participation = await chatApi.getMyParticipation(code, fingerprint);
+            fpValue = await getFingerprint();
+            setFingerprint(fpValue);
+            console.log('Fingerprint:', fpValue);
+            const participation = await chatApi.getMyParticipation(code, fpValue);
+
+            // Store participation theme if present
+            if (participation.theme) {
+              setParticipationTheme(participation.theme);
+            }
 
             if (participation.has_joined && participation.username) {
               // Returning anonymous user
@@ -290,15 +304,22 @@ export default function ChatPage() {
           setHasReservedUsername(!!currentUser.reserved_username);
 
           // Get fingerprint
-          let fingerprint: string | undefined;
+          let fpValue: string | undefined;
           try {
-            fingerprint = await getFingerprint();
+            fpValue = await getFingerprint();
+            setFingerprint(fpValue);
           } catch (fpErr) {
             console.warn('Failed to get fingerprint:', fpErr);
           }
 
           // Check if they've already joined this chat
-          const participation = await chatApi.getMyParticipation(code, fingerprint);
+          const participation = await chatApi.getMyParticipation(code, fpValue);
+
+          // Store participation theme if present
+          if (participation.theme) {
+            setParticipationTheme(participation.theme);
+          }
+
           if (participation.has_joined && participation.username) {
             // They already joined - update username and badge
             setUsername(participation.username);
@@ -671,6 +692,65 @@ export default function ChatPage() {
     return () => clearInterval(interval);
   }, [hasJoined, code, isConnected]);
 
+  // Update theme-color meta tags when theme changes
+  useEffect(() => {
+    if (!chatRoom?.theme) return;
+
+    const themeColor = chatRoom.theme.theme_color;
+
+    // Store theme colors in localStorage for layout.tsx to use on next load
+    localStorage.setItem('chat_theme_color', JSON.stringify(themeColor));
+
+    // Detect system color scheme preference
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const currentColor = prefersDark ? themeColor.dark : themeColor.light;
+
+    console.log('[Theme Color] Updating meta tags:', {
+      light: themeColor.light,
+      dark: themeColor.dark,
+      currentColor,
+      prefersDark
+    });
+
+    // Update default meta tag
+    let defaultMeta = document.querySelector('meta[name="theme-color"]:not([media])');
+    if (defaultMeta) {
+      defaultMeta.setAttribute('content', currentColor);
+    } else {
+      defaultMeta = document.createElement('meta');
+      defaultMeta.setAttribute('name', 'theme-color');
+      defaultMeta.setAttribute('content', currentColor);
+      document.head.appendChild(defaultMeta);
+    }
+
+    // Update light mode meta tag
+    let lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
+    if (lightMeta) {
+      lightMeta.setAttribute('content', themeColor.light);
+    } else {
+      lightMeta = document.createElement('meta');
+      lightMeta.setAttribute('name', 'theme-color');
+      lightMeta.setAttribute('media', '(prefers-color-scheme: light)');
+      lightMeta.setAttribute('content', themeColor.light);
+      document.head.appendChild(lightMeta);
+    }
+
+    // Update dark mode meta tag
+    let darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
+    if (darkMeta) {
+      darkMeta.setAttribute('content', themeColor.dark);
+    } else {
+      darkMeta = document.createElement('meta');
+      darkMeta.setAttribute('name', 'theme-color');
+      darkMeta.setAttribute('media', '(prefers-color-scheme: dark)');
+      darkMeta.setAttribute('content', themeColor.dark);
+      document.head.appendChild(darkMeta);
+    }
+
+    // Also update body background to match theme
+    document.body.style.backgroundColor = currentColor;
+  }, [chatRoom?.theme]);
+
   // Scroll-based tracking to determine which messages should be in sticky area
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -764,7 +844,7 @@ export default function ChatPage() {
   }, [filteredMessages.length, idsToObserve, activeView]);
 
   if (loading) {
-    const currentDesign = convertThemeToCamelCase(chatRoom?.theme || defaultTheme);
+    const currentDesign = convertThemeToCamelCase(participationTheme || chatRoom?.theme || defaultTheme);
     return (
       <div className={`${currentDesign.container} flex items-center justify-center`}>
         <div className="text-gray-600 dark:text-gray-400">Loading chat...</div>
@@ -773,7 +853,7 @@ export default function ChatPage() {
   }
 
   if (error) {
-    const currentDesign = convertThemeToCamelCase(chatRoom?.theme || defaultTheme);
+    const currentDesign = convertThemeToCamelCase(participationTheme || chatRoom?.theme || defaultTheme);
     return (
       <div className={currentDesign.container}>
         <Header />
@@ -786,7 +866,7 @@ export default function ChatPage() {
     );
   }
 
-  const currentDesign = convertThemeToCamelCase(chatRoom?.theme || defaultTheme);
+  const currentDesign = convertThemeToCamelCase(participationTheme || chatRoom?.theme || defaultTheme);
 
   // Main chat interface
   return (
@@ -821,6 +901,8 @@ export default function ChatPage() {
               key={hasJoined ? 'joined' : 'not-joined'}
               chatRoom={chatRoom}
               currentUserId={currentUserId}
+              fingerprint={fingerprint}
+              activeThemeId={(participationTheme || chatRoom.theme)?.theme_id}
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
               design={'dark-mode'}
             >

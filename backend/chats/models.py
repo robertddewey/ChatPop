@@ -239,6 +239,16 @@ class ChatParticipation(models.Model):
     # Username locked for this chat
     username = models.CharField(max_length=100, help_text="Username chosen for this chat (locked)")
 
+    # Theme preference (nullable - if null, use chat room's theme)
+    theme = models.ForeignKey(
+        'ChatTheme',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='user_preferences',
+        help_text="User's preferred theme override (only if chat.theme_locked=False)"
+    )
+
     # IP address tracking
     ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Last known IP address")
 
