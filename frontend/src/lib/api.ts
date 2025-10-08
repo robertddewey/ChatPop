@@ -49,6 +49,7 @@ export interface ChatTheme {
   header_subtitle: string;
   sticky_section: string;
   messages_area: string;
+  messages_area_container: string;
   messages_area_bg: string;
   host_message: string;
   sticky_host_message: string;

@@ -1,10 +1,50 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { BadgeCheck } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import { ChatRoom, Message } from '@/types';
+
+// Extract inline styles from Tailwind classes (opacity and filter)
+function extractInlineStyles(classString: string): { classes: string; style: React.CSSProperties } {
+  const classes: string[] = [];
+  const style: React.CSSProperties = {};
+
+  // Split by spaces and process each class
+  classString.split(' ').forEach(cls => {
+    // Match opacity-[value] or opacity-{number}
+    const opacityMatch = cls.match(/^opacity-(?:\[([0-9.]+)\]|(\d+))$/);
+    if (opacityMatch) {
+      const value = opacityMatch[1] || (parseInt(opacityMatch[2]) / 100);
+      style.opacity = parseFloat(value);
+      return;
+    }
+
+    // Match [filter:...] arbitrary value
+    const filterMatch = cls.match(/^\[filter:(.+)\]$/);
+    if (filterMatch) {
+      // Convert underscore-separated filters to space-separated CSS
+      const filterValue = filterMatch[1].replace(/_/g, ' ');
+      console.log('[FILTER EXTRACTED]', filterValue);
+      style.filter = filterValue;
+      return;
+    }
+
+    // Match [mix-blend-mode:...] arbitrary value
+    const blendModeMatch = cls.match(/^\[mix-blend-mode:(.+)\]$/);
+    if (blendModeMatch) {
+      style.mixBlendMode = blendModeMatch[1] as any;
+      console.log('[BLEND MODE EXTRACTED]', blendModeMatch[1]);
+      return;
+    }
+
+    // Keep all other classes
+    classes.push(cls);
+  });
+
+  return { classes: classes.join(' '), style };
+}
 
 interface MainChatViewProps {
   chatRoom: ChatRoom | null;
@@ -45,8 +85,22 @@ export default function MainChatView({
   handleBlockUser,
   handleTipUser,
 }: MainChatViewProps) {
+  // Extract inline styles from messagesAreaBg for dynamic opacity/filter support
+  const backgroundStyles = useMemo(() => {
+    if (!currentDesign?.messagesAreaBg) return { classes: '', style: {} };
+    const result = extractInlineStyles(currentDesign.messagesAreaBg);
+    console.log('[BACKGROUND STYLES]', {
+      input: currentDesign.messagesAreaBg,
+      extractedClasses: result.classes,
+      extractedStyle: JSON.stringify(result.style)
+    });
+    return result;
+  }, [currentDesign?.messagesAreaBg]);
+
+  console.log('[MESSAGES AREA CONTAINER]', currentDesign.messagesAreaContainer);
+
   return (
-    <div className="h-full overflow-hidden relative">
+    <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-white'}`}>
       {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
       {hasJoined && (stickyHostMessages.length > 0 || stickyPinnedMessage) && (
         <div data-sticky-section className={currentDesign.stickySection}>
@@ -128,7 +182,10 @@ export default function MainChatView({
       )}
 
       {/* Background Pattern Layer - Fixed behind everything */}
-      <div className={`absolute inset-0 pointer-events-none ${currentDesign.messagesAreaBg}`} />
+      <div
+        className={`absolute inset-0 pointer-events-none ${backgroundStyles.classes}`}
+        style={backgroundStyles.style}
+      />
 
       {/* Messages Area */}
       <div

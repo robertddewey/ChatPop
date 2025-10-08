@@ -33,6 +33,7 @@ class ChatTheme(models.Model):
     # Messages Area
     sticky_section = models.TextField(help_text="Sticky messages container classes")
     messages_area = models.TextField(help_text="Scrollable messages container classes")
+    messages_area_container = models.TextField(default='bg-white', help_text="Background classes for messages area container (parent of pattern layer)")
     messages_area_bg = models.TextField(blank=True, help_text="Background pattern/SVG configuration")
 
     # Host Messages

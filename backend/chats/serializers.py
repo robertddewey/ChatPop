@@ -15,7 +15,7 @@ class ChatThemeSerializer(serializers.ModelSerializer):
         fields = [
             'theme_id', 'name', 'is_dark_mode', 'theme_color',
             'container', 'header', 'header_title', 'header_title_fade', 'header_subtitle',
-            'sticky_section', 'messages_area', 'messages_area_bg',
+            'sticky_section', 'messages_area', 'messages_area_container', 'messages_area_bg',
             'host_message', 'sticky_host_message', 'host_text', 'host_message_fade',
             'pinned_message', 'sticky_pinned_message', 'pinned_text', 'pinned_message_fade',
             'regular_message', 'regular_text',

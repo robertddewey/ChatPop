@@ -22,6 +22,8 @@ import { type RecordingMetadata } from '@/lib/waveform';
 
 // Convert snake_case API theme to camelCase for component compatibility
 function convertThemeToCamelCase(theme: ChatTheme): any {
+  console.log('[THEME DEBUG] messagesAreaBg from API:', theme.messages_area_bg);
+  console.log('[THEME DEBUG] messagesAreaContainer from API:', theme.messages_area_container);
   return {
     themeColor: theme.theme_color,
     container: theme.container,
@@ -31,6 +33,7 @@ function convertThemeToCamelCase(theme: ChatTheme): any {
     headerSubtitle: theme.header_subtitle,
     stickySection: theme.sticky_section,
     messagesArea: theme.messages_area,
+    messagesAreaContainer: theme.messages_area_container,
     messagesAreaBg: theme.messages_area_bg,
     hostMessage: theme.host_message,
     stickyHostMessage: theme.sticky_host_message,
