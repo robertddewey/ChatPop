@@ -11,6 +11,12 @@ interface VoiceMessagePlayerProps {
   duration: number;
   waveformData: number[];
   className?: string;
+  isMyMessage?: boolean;
+  voicePlayButton?: string;
+  voicePlayIconColor?: string;
+  voiceWaveformActive?: string;
+  voiceWaveformInactive?: string;
+  durationTextColor?: string;
 }
 
 // Global audio manager to ensure only one audio plays at a time
@@ -42,13 +48,28 @@ export default function VoiceMessagePlayer({
   voiceUrl,
   duration,
   waveformData,
-  className = ''
+  className = '',
+  isMyMessage = false,
+  voicePlayButton = 'bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600',
+  voicePlayIconColor = 'white',
+  voiceWaveformActive = 'bg-gradient-to-t from-purple-500 to-blue-500',
+  voiceWaveformInactive = 'bg-gray-400 dark:bg-gray-500',
+  durationTextColor = 'text-gray-500 dark:text-gray-400'
 }: VoiceMessagePlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const srcSetRef = useRef<boolean>(false); // Track if we've explicitly set the src
+
+  // Debug: Log received styling props
+  console.log('[VoiceMessagePlayer] Styling props:', {
+    isMyMessage,
+    voicePlayButton,
+    voicePlayIconColor,
+    voiceWaveformActive,
+    voiceWaveformInactive
+  });
 
   // Initialize audio element
   useEffect(() => {
@@ -269,13 +290,13 @@ export default function VoiceMessagePlayer({
       {/* Play/Pause Button */}
       <button
         onClick={togglePlayPause}
-        className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 transition-all flex items-center justify-center text-white shadow-sm"
+        className={`flex-shrink-0 w-8 h-8 rounded-full transition-all flex items-center justify-center shadow-sm ${voicePlayButton}`}
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isPlaying ? (
-          <Pause size={13} fill="white" strokeWidth={0} />
+          <Pause size={13} fill={voicePlayIconColor} strokeWidth={0} />
         ) : (
-          <Play size={13} fill="white" strokeWidth={0} className="ml-0.5" />
+          <Play size={13} fill={voicePlayIconColor} strokeWidth={0} className="ml-0.5" />
         )}
       </button>
 
@@ -296,9 +317,7 @@ export default function VoiceMessagePlayer({
             <div
               key={index}
               className={`w-[2px] rounded-full transition-colors ${
-                isActive
-                  ? 'bg-gradient-to-t from-purple-500 to-blue-500'
-                  : 'bg-gray-400 dark:bg-gray-500'
+                isActive ? voiceWaveformActive : voiceWaveformInactive
               }`}
               style={{ height: `${height}px` }}
             />
@@ -307,7 +326,7 @@ export default function VoiceMessagePlayer({
       </div>
 
       {/* Time Display */}
-      <div className="flex-shrink-0 text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums min-w-[32px] text-right">
+      <div className={`flex-shrink-0 text-[11px] font-mono tabular-nums min-w-[32px] text-right ${durationTextColor}`}>
         {formatTime(isPlaying ? currentTime : actualDuration)}
       </div>
     </div>

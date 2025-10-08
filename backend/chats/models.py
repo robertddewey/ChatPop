@@ -52,6 +52,16 @@ class ChatTheme(models.Model):
     regular_message = models.TextField(help_text="Regular user message bubble classes")
     regular_text = models.TextField(help_text="Regular message text color classes")
 
+    # My Messages (current user)
+    my_message = models.TextField(default='max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-2.5 bg-blue-500 shadow-md', help_text="Message bubble classes for current user's own messages")
+    my_text = models.TextField(default='text-white', help_text="Text color classes for current user's own messages")
+
+    # Voice Message Player Styling (JSON fields for flexibility)
+    voice_message_styles = models.JSONField(default=dict, blank=True, help_text="Styling for other users' voice messages (playButton, playIconColor, waveformActive, waveformInactive)")
+    my_voice_message_styles = models.JSONField(default=dict, blank=True, help_text="Styling for current user's voice messages")
+    host_voice_message_styles = models.JSONField(default=dict, blank=True, help_text="Styling for host voice messages")
+    pinned_voice_message_styles = models.JSONField(default=dict, blank=True, help_text="Styling for pinned voice messages")
+
     # Filter Buttons
     filter_button_active = models.TextField(help_text="Active filter button style")
     filter_button_inactive = models.TextField(help_text="Inactive filter button style")

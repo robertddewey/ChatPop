@@ -98,6 +98,9 @@ export default function MainChatView({
   }, [currentDesign?.messagesAreaBg]);
 
   console.log('[MESSAGES AREA CONTAINER]', currentDesign.messagesAreaContainer);
+  console.log('[MY MESSAGE STYLE]', currentDesign.myMessage);
+  console.log('[REGULAR MESSAGE STYLE]', currentDesign.regularMessage);
+  console.log('[CURRENT USERNAME]', username);
 
   return (
     <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-white'}`}>
@@ -277,13 +280,19 @@ export default function MainChatView({
                   onTip={handleTipUser}
                 >
                   <div
-                    className={
-                      message.is_from_host
+                    className={(() => {
+                      const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                      const selectedStyle = message.is_from_host
                         ? currentDesign.hostMessage + ' flex-1'
                         : message.is_pinned
                         ? currentDesign.pinnedMessage
-                        : currentDesign.regularMessage
-                    }
+                        : isMyMessage
+                        ? currentDesign.myMessage
+                        : currentDesign.regularMessage;
+
+                      console.log(`[MSG ${message.id.slice(0,8)}] username: "${message.username}", currentUser: "${username}", isMyMessage: ${isMyMessage}, style: ${selectedStyle?.slice(0, 50)}`);
+                      return selectedStyle;
+                    })()}
                   >
                     {/* Host message header */}
                     {message.is_from_host && (
@@ -332,10 +341,64 @@ export default function MainChatView({
                           voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
                           duration={message.voice_duration || 0}
                           waveformData={message.voice_waveform || []}
+                          isMyMessage={message.username.toLowerCase() === username.toLowerCase()}
+                          voicePlayButton={
+                            message.is_from_host
+                              ? currentDesign.hostVoiceMessageStyles?.playButton
+                              : message.is_pinned
+                              ? currentDesign.pinnedVoiceMessageStyles?.playButton
+                              : message.username.toLowerCase() === username.toLowerCase()
+                              ? currentDesign.myVoiceMessageStyles?.playButton
+                              : currentDesign.voiceMessageStyles?.playButton
+                          }
+                          voicePlayIconColor={
+                            message.is_from_host
+                              ? currentDesign.hostVoiceMessageStyles?.playIconColor
+                              : message.is_pinned
+                              ? currentDesign.pinnedVoiceMessageStyles?.playIconColor
+                              : message.username.toLowerCase() === username.toLowerCase()
+                              ? currentDesign.myVoiceMessageStyles?.playIconColor
+                              : currentDesign.voiceMessageStyles?.playIconColor
+                          }
+                          voiceWaveformActive={
+                            message.is_from_host
+                              ? currentDesign.hostVoiceMessageStyles?.waveformActive
+                              : message.is_pinned
+                              ? currentDesign.pinnedVoiceMessageStyles?.waveformActive
+                              : message.username.toLowerCase() === username.toLowerCase()
+                              ? currentDesign.myVoiceMessageStyles?.waveformActive
+                              : currentDesign.voiceMessageStyles?.waveformActive
+                          }
+                          voiceWaveformInactive={
+                            message.is_from_host
+                              ? currentDesign.hostVoiceMessageStyles?.waveformInactive
+                              : message.is_pinned
+                              ? currentDesign.pinnedVoiceMessageStyles?.waveformInactive
+                              : message.username.toLowerCase() === username.toLowerCase()
+                              ? currentDesign.myVoiceMessageStyles?.waveformInactive
+                              : currentDesign.voiceMessageStyles?.waveformInactive
+                          }
+                          durationTextColor={
+                            message.is_from_host
+                              ? currentDesign.hostVoiceMessageStyles?.durationTextColor
+                              : message.is_pinned
+                              ? currentDesign.pinnedVoiceMessageStyles?.durationTextColor
+                              : message.username.toLowerCase() === username.toLowerCase()
+                              ? currentDesign.myVoiceMessageStyles?.durationTextColor
+                              : currentDesign.voiceMessageStyles?.durationTextColor
+                          }
                         />
                       </div>
                     ) : message.content ? (
-                      <p className={`text-sm ${message.is_from_host ? currentDesign.hostText : message.is_pinned ? currentDesign.pinnedText : currentDesign.regularText}`}>
+                      <p className={`text-sm ${
+                        message.is_from_host
+                          ? currentDesign.hostText
+                          : message.is_pinned
+                          ? currentDesign.pinnedText
+                          : message.username.toLowerCase() === username.toLowerCase()
+                          ? currentDesign.myText
+                          : currentDesign.regularText
+                      }`}>
                         {message.content}
                       </p>
                     ) : (

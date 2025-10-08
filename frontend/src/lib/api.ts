@@ -61,6 +61,36 @@ export interface ChatTheme {
   pinned_message_fade: string;
   regular_message: string;
   regular_text: string;
+  my_message: string;
+  my_text: string;
+  voice_message_styles: {
+    playButton?: string;
+    playIconColor?: string;
+    waveformActive?: string;
+    waveformInactive?: string;
+    durationTextColor?: string;
+  };
+  my_voice_message_styles: {
+    playButton?: string;
+    playIconColor?: string;
+    waveformActive?: string;
+    waveformInactive?: string;
+    durationTextColor?: string;
+  };
+  host_voice_message_styles: {
+    playButton?: string;
+    playIconColor?: string;
+    waveformActive?: string;
+    waveformInactive?: string;
+    durationTextColor?: string;
+  };
+  pinned_voice_message_styles: {
+    playButton?: string;
+    playIconColor?: string;
+    waveformActive?: string;
+    waveformInactive?: string;
+    durationTextColor?: string;
+  };
   filter_button_active: string;
   filter_button_inactive: string;
   input_area: string;
