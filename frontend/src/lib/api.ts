@@ -34,6 +34,38 @@ export interface User {
   last_active: string;
 }
 
+export interface ChatTheme {
+  theme_id: string;
+  name: string;
+  is_dark_mode: boolean;
+  theme_color: {
+    light: string;
+    dark: string;
+  };
+  container: string;
+  header: string;
+  header_title: string;
+  header_title_fade: string;
+  header_subtitle: string;
+  sticky_section: string;
+  messages_area: string;
+  messages_area_bg: string;
+  host_message: string;
+  sticky_host_message: string;
+  host_text: string;
+  host_message_fade: string;
+  pinned_message: string;
+  sticky_pinned_message: string;
+  pinned_text: string;
+  pinned_message_fade: string;
+  regular_message: string;
+  regular_text: string;
+  filter_button_active: string;
+  filter_button_inactive: string;
+  input_area: string;
+  input_field: string;
+}
+
 export interface ChatRoom {
   id: string;
   code: string;
@@ -45,7 +77,7 @@ export interface ChatRoom {
   voice_enabled: boolean;
   video_enabled: boolean;
   photo_enabled: boolean;
-  default_theme: string;
+  theme: ChatTheme | null;
   theme_locked: boolean;
   message_count: number;
   is_active: boolean;

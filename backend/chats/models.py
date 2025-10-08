@@ -12,6 +12,66 @@ def generate_chat_code(length=8):
     return ''.join(random.choices(chars, k=length))
 
 
+class ChatTheme(models.Model):
+    """Theme configuration for chat rooms"""
+    # Metadata
+    theme_id = models.CharField(max_length=50, unique=True, db_index=True, help_text="Unique theme identifier (e.g., 'dark-mode')")
+    name = models.CharField(max_length=100, help_text="Display name for the theme")
+    is_dark_mode = models.BooleanField(default=True, help_text="Whether this is a dark theme")
+
+    # Mobile browser theme colors
+    theme_color_light = models.CharField(max_length=7, default='#ffffff', help_text="Hex color for light system mode")
+    theme_color_dark = models.CharField(max_length=7, default='#18181b', help_text="Hex color for dark system mode")
+
+    # Layout & Container
+    container = models.TextField(help_text="Main container Tailwind classes")
+    header = models.TextField(help_text="Header bar Tailwind classes")
+    header_title = models.TextField(help_text="Header title text Tailwind classes")
+    header_title_fade = models.TextField(help_text="Gradient fade for title")
+    header_subtitle = models.TextField(help_text="Subtitle text Tailwind classes")
+
+    # Messages Area
+    sticky_section = models.TextField(help_text="Sticky messages container classes")
+    messages_area = models.TextField(help_text="Scrollable messages container classes")
+    messages_area_bg = models.TextField(blank=True, help_text="Background pattern/SVG configuration")
+
+    # Host Messages
+    host_message = models.TextField(help_text="Regular host message bubble classes")
+    sticky_host_message = models.TextField(help_text="Sticky host message bubble classes")
+    host_text = models.TextField(help_text="Host message text color classes")
+    host_message_fade = models.TextField(help_text="Gradient fade for host messages")
+
+    # Pinned Messages
+    pinned_message = models.TextField(help_text="Regular pinned message bubble classes")
+    sticky_pinned_message = models.TextField(help_text="Sticky pinned message bubble classes")
+    pinned_text = models.TextField(help_text="Pinned message text color classes")
+    pinned_message_fade = models.TextField(help_text="Gradient fade for pinned messages")
+
+    # Regular Messages
+    regular_message = models.TextField(help_text="Regular user message bubble classes")
+    regular_text = models.TextField(help_text="Regular message text color classes")
+
+    # Filter Buttons
+    filter_button_active = models.TextField(help_text="Active filter button style")
+    filter_button_inactive = models.TextField(help_text="Inactive filter button style")
+
+    # Input Area
+    input_area = models.TextField(help_text="Message input container classes")
+    input_field = models.TextField(help_text="Message input field classes")
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Chat Theme'
+        verbose_name_plural = 'Chat Themes'
+
+    def __str__(self):
+        return f"{self.name} ({self.theme_id})"
+
+
 class ChatRoom(models.Model):
     """Main chat room model"""
     ACCESS_PUBLIC = 'public'
@@ -39,7 +99,7 @@ class ChatRoom(models.Model):
     photo_enabled = models.BooleanField(default=True)
 
     # Theme settings
-    default_theme = models.CharField(max_length=20, default='design1', help_text="Default theme for this chat room (design1, design2, design3)")
+    theme = models.ForeignKey('ChatTheme', on_delete=models.SET_NULL, null=True, related_name='chat_rooms', help_text="Theme for this chat room")
     theme_locked = models.BooleanField(default=False, help_text="If true, users cannot override the theme")
 
     # Timestamps

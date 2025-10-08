@@ -1,5 +1,13 @@
 from django.contrib import admin
-from .models import ChatRoom, Message, Transaction, AnonymousUserFingerprint
+from .models import ChatRoom, Message, Transaction, AnonymousUserFingerprint, ChatTheme
+
+
+@admin.register(ChatTheme)
+class ChatThemeAdmin(admin.ModelAdmin):
+    list_display = ['name', 'theme_id', 'is_dark_mode', 'created_at']
+    list_filter = ['is_dark_mode', 'created_at']
+    search_fields = ['name', 'theme_id']
+    readonly_fields = ['created_at', 'updated_at']
 
 
 @admin.register(ChatRoom)

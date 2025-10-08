@@ -1,9 +1,34 @@
 from rest_framework import serializers
 from django.utils import timezone
 from django.core.exceptions import ValidationError as DjangoValidationError
-from .models import ChatRoom, Message, Transaction, ChatParticipation
+from .models import ChatRoom, Message, Transaction, ChatParticipation, ChatTheme
 from .validators import validate_username
 from accounts.serializers import UserSerializer
+
+
+class ChatThemeSerializer(serializers.ModelSerializer):
+    """Serializer for ChatTheme model"""
+    theme_color = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChatTheme
+        fields = [
+            'theme_id', 'name', 'is_dark_mode', 'theme_color',
+            'container', 'header', 'header_title', 'header_title_fade', 'header_subtitle',
+            'sticky_section', 'messages_area', 'messages_area_bg',
+            'host_message', 'sticky_host_message', 'host_text', 'host_message_fade',
+            'pinned_message', 'sticky_pinned_message', 'pinned_text', 'pinned_message_fade',
+            'regular_message', 'regular_text',
+            'filter_button_active', 'filter_button_inactive',
+            'input_area', 'input_field'
+        ]
+
+    def get_theme_color(self, obj):
+        """Return theme_color as an object with light and dark values"""
+        return {
+            'light': obj.theme_color_light,
+            'dark': obj.theme_color_dark
+        }
 
 
 class ChatRoomSerializer(serializers.ModelSerializer):
@@ -11,13 +36,14 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     host = UserSerializer(read_only=True)
     url = serializers.CharField(read_only=True)
     message_count = serializers.SerializerMethodField()
+    theme = ChatThemeSerializer(read_only=True)
 
     class Meta:
         model = ChatRoom
         fields = [
             'id', 'code', 'name', 'description', 'host', 'url',
             'access_mode', 'voice_enabled', 'video_enabled', 'photo_enabled',
-            'default_theme', 'theme_locked',
+            'theme', 'theme_locked',
             'message_count', 'is_active', 'created_at'
         ]
         read_only_fields = ['id', 'code', 'host', 'url', 'created_at']
@@ -28,12 +54,14 @@ class ChatRoomSerializer(serializers.ModelSerializer):
 
 class ChatRoomCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating a chat room"""
+    theme_id = serializers.CharField(write_only=True, required=False, default='dark-mode')
+
     class Meta:
         model = ChatRoom
         fields = [
             'name', 'description', 'access_mode', 'access_code',
             'voice_enabled', 'video_enabled', 'photo_enabled',
-            'default_theme', 'theme_locked'
+            'theme_id', 'theme_locked'
         ]
 
     def validate_access_code(self, value):
@@ -46,6 +74,16 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context.get('request')
         validated_data['host'] = request.user
+
+        # Get theme by theme_id
+        theme_id = validated_data.pop('theme_id', 'dark-mode')
+        try:
+            theme = ChatTheme.objects.get(theme_id=theme_id)
+            validated_data['theme'] = theme
+        except ChatTheme.DoesNotExist:
+            # Fallback to dark-mode if theme not found
+            validated_data['theme'] = ChatTheme.objects.get(theme_id='dark-mode')
+
         return super().create(validated_data)
 
 

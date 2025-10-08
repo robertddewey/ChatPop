@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { chatApi, messageApi, authApi, type ChatRoom, type Message } from '@/lib/api';
+import { chatApi, messageApi, authApi, type ChatRoom, type ChatTheme, type Message } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
@@ -20,34 +20,66 @@ import { Settings, BadgeCheck, Crown } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 
-// Design configuration (dark-mode only)
-const design = {
-  themeColor: {
+// Convert snake_case API theme to camelCase for component compatibility
+function convertThemeToCamelCase(theme: ChatTheme): any {
+  return {
+    themeColor: theme.theme_color,
+    container: theme.container,
+    header: theme.header,
+    headerTitle: theme.header_title,
+    headerTitleFade: theme.header_title_fade,
+    headerSubtitle: theme.header_subtitle,
+    stickySection: theme.sticky_section,
+    messagesArea: theme.messages_area,
+    messagesAreaBg: theme.messages_area_bg,
+    hostMessage: theme.host_message,
+    stickyHostMessage: theme.sticky_host_message,
+    hostText: theme.host_text,
+    hostMessageFade: theme.host_message_fade,
+    pinnedMessage: theme.pinned_message,
+    stickyPinnedMessage: theme.sticky_pinned_message,
+    pinnedText: theme.pinned_text,
+    pinnedMessageFade: theme.pinned_message_fade,
+    regularMessage: theme.regular_message,
+    regularText: theme.regular_text,
+    filterButtonActive: theme.filter_button_active,
+    filterButtonInactive: theme.filter_button_inactive,
+    inputArea: theme.input_area,
+    inputField: theme.input_field,
+  };
+}
+
+// Fallback theme if chat room has no theme assigned
+const defaultTheme: ChatTheme = {
+  theme_id: 'dark-mode',
+  name: 'Dark Mode',
+  is_dark_mode: true,
+  theme_color: {
     light: '#18181b',
     dark: '#18181b',
   },
   container: "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
   header: "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
-  headerTitle: "text-lg font-bold text-zinc-100",
-  headerTitleFade: "bg-gradient-to-l from-zinc-900 to-transparent",
-  headerSubtitle: "text-sm text-zinc-400",
-  stickySection: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
-  messagesArea: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
-  messagesAreaBg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.06] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
-  hostMessage: "max-w-[calc(100%-2.5%-5rem+5px)] rounded px-3 py-2 bg-cyan-400 font-medium transition-all duration-300",
-  stickyHostMessage: "w-full rounded px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-cyan-400 font-medium transition-all duration-300",
-  hostText: "text-cyan-950",
-  hostMessageFade: "bg-gradient-to-l from-cyan-400 to-transparent",
-  pinnedMessage: "max-w-[calc(100%-2.5%-5rem+5px)] rounded px-3 py-2 bg-yellow-400 font-medium transition-all duration-300",
-  stickyPinnedMessage: "w-full rounded px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-yellow-400 font-medium transition-all duration-300",
-  pinnedText: "text-yellow-950",
-  pinnedMessageFade: "bg-gradient-to-l from-yellow-400 to-transparent",
-  regularMessage: "max-w-[calc(100%-2.5%-5rem+5px)] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
-  regularText: "text-zinc-100",
-  filterButtonActive: "px-3 py-1.5 rounded text-xs tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
-  filterButtonInactive: "px-3 py-1.5 rounded text-xs tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
-  inputArea: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
-  inputField: "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
+  header_title: "text-lg font-bold text-zinc-100",
+  header_title_fade: "bg-gradient-to-l from-zinc-900 to-transparent",
+  header_subtitle: "text-sm text-zinc-400",
+  sticky_section: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
+  messages_area: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
+  messages_area_bg: "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.06] [filter:invert(1)_sepia(1)_hue-rotate(180deg)_saturate(3)]",
+  host_message: "max-w-[calc(100%-2.5%-5rem+5px)] rounded px-3 py-2 bg-cyan-400 font-medium transition-all duration-300",
+  sticky_host_message: "w-full rounded px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-cyan-400 font-medium transition-all duration-300",
+  host_text: "text-cyan-950",
+  host_message_fade: "bg-gradient-to-l from-cyan-400 to-transparent",
+  pinned_message: "max-w-[calc(100%-2.5%-5rem+5px)] rounded px-3 py-2 bg-yellow-400 font-medium transition-all duration-300",
+  sticky_pinned_message: "w-full rounded px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-yellow-400 font-medium transition-all duration-300",
+  pinned_text: "text-yellow-950",
+  pinned_message_fade: "bg-gradient-to-l from-yellow-400 to-transparent",
+  regular_message: "max-w-[calc(100%-2.5%-5rem+5px)] rounded px-3 py-2 bg-zinc-800 border-l-2 border-cyan-500/50",
+  regular_text: "text-zinc-100",
+  filter_button_active: "px-3 py-1.5 rounded text-xs tracking-wider bg-cyan-400 text-cyan-950 border border-cyan-300",
+  filter_button_inactive: "px-3 py-1.5 rounded text-xs tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
+  input_area: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
+  input_field: "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
 };
 
 export default function ChatPage() {
@@ -720,7 +752,7 @@ export default function ChatPage() {
   }, [filteredMessages.length, idsToObserve, activeView]);
 
   if (loading) {
-    const currentDesign = design;
+    const currentDesign = convertThemeToCamelCase(chatRoom?.theme || defaultTheme);
     return (
       <div className={`${currentDesign.container} flex items-center justify-center`}>
         <div className="text-gray-600 dark:text-gray-400">Loading chat...</div>
@@ -729,7 +761,7 @@ export default function ChatPage() {
   }
 
   if (error) {
-    const currentDesign = design;
+    const currentDesign = convertThemeToCamelCase(chatRoom?.theme || defaultTheme);
     return (
       <div className={currentDesign.container}>
         <Header />
@@ -742,7 +774,7 @@ export default function ChatPage() {
     );
   }
 
-  const currentDesign = design;
+  const currentDesign = convertThemeToCamelCase(chatRoom?.theme || defaultTheme);
 
   // Main chat interface
   return (
