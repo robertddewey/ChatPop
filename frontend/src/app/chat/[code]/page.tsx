@@ -694,9 +694,11 @@ export default function ChatPage() {
 
   // Update theme-color meta tags when theme changes
   useEffect(() => {
-    if (!chatRoom?.theme) return;
+    // Use participation theme if available, otherwise fall back to chat room theme
+    const activeTheme = participationTheme || chatRoom?.theme;
+    if (!activeTheme) return;
 
-    const themeColor = chatRoom.theme.theme_color;
+    const themeColor = activeTheme.theme_color;
 
     // Store theme colors in localStorage for layout.tsx to use on next load
     localStorage.setItem('chat_theme_color', JSON.stringify(themeColor));
@@ -749,7 +751,7 @@ export default function ChatPage() {
 
     // Also update body background to match theme
     document.body.style.backgroundColor = currentColor;
-  }, [chatRoom?.theme]);
+  }, [participationTheme, chatRoom?.theme]);
 
   // Scroll-based tracking to determine which messages should be in sticky area
   useEffect(() => {
