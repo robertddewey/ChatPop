@@ -138,9 +138,23 @@ export default function MainChatView({
                     {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <p className={`text-sm ${currentDesign.hostText} truncate`}>
-                  {message.content}
-                </p>
+                {message.voice_url ? (
+                  <VoiceMessagePlayer
+                    voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                    duration={message.voice_duration || 0}
+                    waveformData={message.voice_waveform || []}
+                    isMyMessage={false}
+                    voicePlayButton={currentDesign.hostVoiceMessageStyles?.playButton}
+                    voicePlayIconColor={currentDesign.hostVoiceMessageStyles?.playIconColor}
+                    voiceWaveformActive={currentDesign.hostVoiceMessageStyles?.waveformActive}
+                    voiceWaveformInactive={currentDesign.hostVoiceMessageStyles?.waveformInactive}
+                    durationTextColor={currentDesign.hostVoiceMessageStyles?.durationTextColor}
+                  />
+                ) : (
+                  <p className={`text-sm ${currentDesign.hostText} truncate`}>
+                    {message.content}
+                  </p>
+                )}
               </div>
             </MessageActionsModal>
           ))}
@@ -175,9 +189,23 @@ export default function MainChatView({
                     {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
-                  {stickyPinnedMessage.content}
-                </p>
+                {stickyPinnedMessage.voice_url ? (
+                  <VoiceMessagePlayer
+                    voiceUrl={`${stickyPinnedMessage.voice_url}${stickyPinnedMessage.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                    duration={stickyPinnedMessage.voice_duration || 0}
+                    waveformData={stickyPinnedMessage.voice_waveform || []}
+                    isMyMessage={false}
+                    voicePlayButton={currentDesign.pinnedVoiceMessageStyles?.playButton}
+                    voicePlayIconColor={currentDesign.pinnedVoiceMessageStyles?.playIconColor}
+                    voiceWaveformActive={currentDesign.pinnedVoiceMessageStyles?.waveformActive}
+                    voiceWaveformInactive={currentDesign.pinnedVoiceMessageStyles?.waveformInactive}
+                    durationTextColor={currentDesign.pinnedVoiceMessageStyles?.durationTextColor}
+                  />
+                ) : (
+                  <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
+                    {stickyPinnedMessage.content}
+                  </p>
+                )}
               </div>
             </MessageActionsModal>
           )}
