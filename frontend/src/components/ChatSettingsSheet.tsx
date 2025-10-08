@@ -33,7 +33,7 @@ interface ChatSettingsSheetProps {
   activeThemeId?: string;
   onUpdate?: (chatRoom: ChatRoom) => void;
   onThemeChange?: (theme: ThemeId) => void;
-  design?: 'dark-mode';
+  themeIsDarkMode?: boolean;
   children: React.ReactNode;
 }
 
@@ -44,12 +44,26 @@ export default function ChatSettingsSheet({
   activeThemeId,
   onUpdate,
   onThemeChange,
-  design = 'dark-mode',
+  themeIsDarkMode = true,
   children,
 }: ChatSettingsSheetProps) {
   const router = useRouter();
   const isHost = chatRoom.host.id === currentUserId;
-  const useDarkMode = isDarkTheme(design);
+
+  // If theme is dark-only, always use dark mode
+  // If theme is system-aware (light mode), honor system preference
+  const [prefersDark, setPrefersDark] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setPrefersDark(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setPrefersDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  const useDarkMode = themeIsDarkMode ? true : prefersDark;
 
   // Theme-aware styles
   const styles = useDarkMode ? {

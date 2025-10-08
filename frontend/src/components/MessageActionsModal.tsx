@@ -11,7 +11,7 @@ interface MessageActionsModalProps {
   message: Message;
   currentUsername?: string;
   isHost?: boolean;
-  design?: 'dark-mode';
+  themeIsDarkMode?: boolean;
   children: React.ReactNode;
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
@@ -20,9 +20,7 @@ interface MessageActionsModalProps {
 }
 
 // Get theme-aware modal styles
-const getModalStyles = (design: 'dark-mode') => {
-  const useDarkMode = isDarkTheme(design);
-
+const getModalStyles = (useDarkMode: boolean) => {
   if (useDarkMode) {
     // Always use dark mode for dark-type themes
     return {
@@ -54,7 +52,7 @@ export default function MessageActionsModal({
   message,
   currentUsername,
   isHost = false,
-  design = 'dark-mode',
+  themeIsDarkMode = true,
   children,
   onPinSelf,
   onPinOther,
@@ -67,7 +65,22 @@ export default function MessageActionsModal({
   const dragStartY = React.useRef(0);
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
-  const modalStyles = getModalStyles(design);
+
+  // If theme is dark-only, always use dark mode
+  // If theme is system-aware (light mode), honor system preference
+  const [prefersDark, setPrefersDark] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setPrefersDark(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setPrefersDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  const useDarkMode = themeIsDarkMode ? true : prefersDark;
+  const modalStyles = getModalStyles(useDarkMode);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css

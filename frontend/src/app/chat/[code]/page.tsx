@@ -692,10 +692,13 @@ export default function ChatPage() {
     return () => clearInterval(interval);
   }, [hasJoined, code, isConnected]);
 
+  // Calculate theme dark mode setting (used by modals)
+  const activeTheme = participationTheme || chatRoom?.theme;
+  const themeIsDarkMode = activeTheme?.is_dark_mode ?? true; // Default to dark if no theme
+
   // Update theme-color meta tags when theme changes
   useEffect(() => {
     // Use participation theme if available, otherwise fall back to chat room theme
-    const activeTheme = participationTheme || chatRoom?.theme;
     if (!activeTheme) return;
 
     const themeColor = activeTheme.theme_color;
@@ -881,7 +884,7 @@ export default function ChatPage() {
           hasJoinedBefore={hasJoinedBefore}
           isLoggedIn={!!currentUserId}
           hasReservedUsername={hasReservedUsername}
-          design={'dark-mode'}
+          themeIsDarkMode={themeIsDarkMode}
           onJoin={handleJoinChat}
         />
       )}
@@ -906,7 +909,7 @@ export default function ChatPage() {
               fingerprint={fingerprint}
               activeThemeId={(participationTheme || chatRoom.theme)?.theme_id}
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
-              design={'dark-mode'}
+              themeIsDarkMode={themeIsDarkMode}
             >
               <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
                 <Settings className={`${currentDesign.headerTitle} flex-shrink-0`} size={18} />
@@ -956,6 +959,7 @@ export default function ChatPage() {
             messagesContainerRef={messagesContainerRef}
             messagesEndRef={messagesEndRef}
             currentDesign={currentDesign}
+            themeIsDarkMode={themeIsDarkMode}
             handleScroll={handleScroll}
             scrollToMessage={scrollToMessage}
             handlePinSelf={handlePinSelf}

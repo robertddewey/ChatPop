@@ -16,23 +16,9 @@ interface JoinChatModalProps {
   hasJoinedBefore: boolean;
   isLoggedIn: boolean;
   hasReservedUsername?: boolean;
-  design?: 'dark-mode';
+  themeIsDarkMode?: boolean;
   onJoin: (username: string, accessCode?: string) => void;
 }
-
-// Get modal styles (dark-mode only)
-const modalStyles = {
-  overlay: 'bg-transparent',
-  container: 'bg-zinc-900 border border-zinc-800',
-  title: 'text-zinc-50',
-  subtitle: 'text-zinc-400',
-  input: 'bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400',
-  primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
-  secondaryButton: 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700',
-  divider: 'border-zinc-700',
-  dividerText: 'bg-zinc-900',
-  error: 'text-red-400',
-};
 
 export default function JoinChatModal({
   chatRoom,
@@ -40,10 +26,50 @@ export default function JoinChatModal({
   hasJoinedBefore,
   isLoggedIn,
   hasReservedUsername = false,
-  design = 'dark-mode',
+  themeIsDarkMode = true,
   onJoin,
 }: JoinChatModalProps) {
   const router = useRouter();
+
+  // If theme is dark-only, always use dark mode
+  // If theme is system-aware (light mode), honor system preference
+  const [prefersDark, setPrefersDark] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setPrefersDark(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setPrefersDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  const useDarkMode = themeIsDarkMode ? true : prefersDark;
+
+  // Get modal styles based on theme
+  const modalStyles = useDarkMode ? {
+    overlay: 'bg-transparent',
+    container: 'bg-zinc-900 border border-zinc-800',
+    title: 'text-zinc-50',
+    subtitle: 'text-zinc-400',
+    input: 'bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400',
+    primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
+    secondaryButton: 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700',
+    divider: 'border-zinc-700',
+    dividerText: 'bg-zinc-900',
+    error: 'text-red-400',
+  } : {
+    overlay: 'bg-transparent',
+    container: 'bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800',
+    title: 'text-gray-900 dark:text-zinc-50',
+    subtitle: 'text-gray-600 dark:text-zinc-400',
+    input: 'bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-zinc-50 placeholder-gray-400 dark:placeholder-zinc-500 focus:ring-2 focus:ring-purple-500 dark:focus:ring-cyan-400 focus:border-purple-500 dark:focus:border-cyan-400',
+    primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
+    secondaryButton: 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-900 dark:text-zinc-100 border border-gray-300 dark:border-zinc-700',
+    divider: 'border-gray-200 dark:border-zinc-700',
+    dividerText: 'bg-white dark:bg-zinc-900',
+    error: 'text-red-600 dark:text-red-400',
+  };
 
   const [username, setUsername] = useState('');
   const [accessCode, setAccessCode] = useState('');

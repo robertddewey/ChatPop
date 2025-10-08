@@ -58,6 +58,7 @@ interface MainChatViewProps {
   messagesContainerRef: React.RefObject<HTMLDivElement>;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   currentDesign: any;
+  themeIsDarkMode?: boolean;
   handleScroll: () => void;
   scrollToMessage: (messageId: string) => void;
   handlePinSelf: (messageId: string, amount: number) => void;
@@ -78,6 +79,7 @@ export default function MainChatView({
   messagesContainerRef,
   messagesEndRef,
   currentDesign,
+  themeIsDarkMode = true,
   handleScroll,
   scrollToMessage,
   handlePinSelf,
@@ -114,7 +116,7 @@ export default function MainChatView({
               message={message}
               currentUsername={username}
               isHost={chatRoom?.host.id === currentUserId}
-              design={'dark-mode'}
+              themeIsDarkMode={themeIsDarkMode}
               onPinSelf={handlePinSelf}
               onPinOther={handlePinOther}
               onBlock={handleBlockUser}
@@ -165,7 +167,7 @@ export default function MainChatView({
               message={stickyPinnedMessage}
               currentUsername={username}
               isHost={chatRoom?.host.id === currentUserId}
-              design={'dark-mode'}
+              themeIsDarkMode={themeIsDarkMode}
               onPinSelf={handlePinSelf}
               onPinOther={handlePinOther}
               onBlock={handleBlockUser}
@@ -301,7 +303,7 @@ export default function MainChatView({
                   message={message}
                   currentUsername={username}
                   isHost={chatRoom?.host.id === currentUserId}
-                  design={'dark-mode'}
+                  themeIsDarkMode={themeIsDarkMode}
                   onPinSelf={handlePinSelf}
                   onPinOther={handlePinOther}
                   onBlock={handleBlockUser}
