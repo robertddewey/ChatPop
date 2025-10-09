@@ -593,6 +593,7 @@ export default function ChatPage() {
         voice_url: voice_url,
         voice_duration: metadata.duration,
         voice_waveform: metadata.waveformData,
+        reply_to_id: replyingTo?.id, // Include reply context if replying
       });
 
       // Auto-scroll to show new message
@@ -609,6 +610,7 @@ export default function ChatPage() {
       alert(`Failed to send voice message: ${errorMsg}`);
     } finally {
       setSending(false);
+      setReplyingTo(null); // Clear reply state after sending (success or failure)
     }
   };
 
