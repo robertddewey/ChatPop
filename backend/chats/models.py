@@ -90,6 +90,14 @@ class ChatTheme(models.Model):
     host_timestamp = models.CharField(max_length=200, default='text-xs opacity-60', help_text="Tailwind classes for host message timestamp (used with host_text for color)")
     pinned_timestamp = models.CharField(max_length=200, default='text-xs opacity-60', help_text="Tailwind classes for pinned message timestamp (used with pinned_text for color)")
 
+    # Reply Preview Styling (shown above input area when replying to a message)
+    reply_preview_container = models.CharField(max_length=300, default='flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700', help_text="Tailwind classes for reply preview container")
+    reply_preview_icon = models.CharField(max_length=200, default='w-4 h-4 flex-shrink-0 text-blue-500', help_text="Tailwind classes for reply preview icon")
+    reply_preview_username = models.CharField(max_length=200, default='text-xs font-semibold text-gray-700 dark:text-gray-300', help_text="Tailwind classes for reply preview username")
+    reply_preview_content = models.CharField(max_length=200, default='text-xs text-gray-600 dark:text-gray-400 truncate', help_text="Tailwind classes for reply preview message content")
+    reply_preview_close_button = models.CharField(max_length=200, default='p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded', help_text="Tailwind classes for reply preview close button")
+    reply_preview_close_icon = models.CharField(max_length=200, default='w-4 h-4 text-gray-500', help_text="Tailwind classes for reply preview close icon (X)")
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

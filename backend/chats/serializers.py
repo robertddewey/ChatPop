@@ -26,7 +26,9 @@ class ChatThemeSerializer(serializers.ModelSerializer):
             'pin_icon_color', 'crown_icon_color', 'badge_icon_color', 'reply_icon_color',
             'my_username', 'regular_username', 'host_username', 'pinned_username',
             'sticky_host_username', 'sticky_pinned_username',
-            'my_timestamp', 'regular_timestamp', 'host_timestamp', 'pinned_timestamp'
+            'my_timestamp', 'regular_timestamp', 'host_timestamp', 'pinned_timestamp',
+            'reply_preview_container', 'reply_preview_icon', 'reply_preview_username',
+            'reply_preview_content', 'reply_preview_close_button', 'reply_preview_close_icon'
         ]
 
     def get_theme_color(self, obj):

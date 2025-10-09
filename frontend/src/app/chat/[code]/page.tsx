@@ -68,6 +68,12 @@ function convertThemeToCamelCase(theme: ChatTheme): any {
     regularTimestamp: theme.regular_timestamp,
     hostTimestamp: theme.host_timestamp,
     pinnedTimestamp: theme.pinned_timestamp,
+    replyPreviewContainer: theme.reply_preview_container,
+    replyPreviewIcon: theme.reply_preview_icon,
+    replyPreviewUsername: theme.reply_preview_username,
+    replyPreviewContent: theme.reply_preview_content,
+    replyPreviewCloseButton: theme.reply_preview_close_button,
+    replyPreviewCloseIcon: theme.reply_preview_close_icon,
   };
 }
 
@@ -1028,14 +1034,14 @@ export default function ChatPage() {
         <div className={currentDesign.inputArea}>
           {/* Reply Preview Bar */}
           {replyingTo && (
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <div className={currentDesign.replyPreviewContainer}>
               <div className="flex items-center gap-2 flex-1 min-w-0">
-                <Reply className="w-4 h-4 flex-shrink-0 text-blue-500" />
+                <Reply className={currentDesign.replyPreviewIcon} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  <div className={currentDesign.replyPreviewUsername}>
                     Replying to {replyingTo.username}
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                  <div className={currentDesign.replyPreviewContent}>
                     {replyingTo.content}
                   </div>
                 </div>
@@ -1043,14 +1049,14 @@ export default function ChatPage() {
               <button
                 type="button"
                 onClick={() => setReplyingTo(null)}
-                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                className={currentDesign.replyPreviewCloseButton}
                 aria-label="Cancel reply"
               >
-                <X className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <X className={currentDesign.replyPreviewCloseIcon} />
               </button>
             </div>
           )}
-          <form onSubmit={handleSendMessage} className="flex gap-2">
+          <form onSubmit={handleSendMessage} className={`flex gap-2 ${replyingTo ? 'mt-2' : ''}`}>
           <input
             type="text"
             value={newMessage}
