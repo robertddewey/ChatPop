@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { BadgeCheck } from 'lucide-react';
+import { BadgeCheck, Reply } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import { ChatRoom, Message } from '@/types';
@@ -353,6 +353,24 @@ export default function MainChatView({
                         <span className={`text-xs ${currentDesign.pinnedText} opacity-60 ml-auto`}>
                           {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                         </span>
+                      </div>
+                    )}
+
+                    {/* Reply context preview */}
+                    {message.reply_to_message && (
+                      <div
+                        className="mb-2 p-2 rounded-lg bg-black/10 dark:bg-white/10 border-l-2 border-blue-500 cursor-pointer hover:bg-black/15 dark:hover:bg-white/15 transition-colors"
+                        onClick={() => scrollToMessage(message.reply_to_message!.id)}
+                      >
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <Reply className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                            {message.reply_to_message.username}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                          {message.reply_to_message.content || '[Voice message]'}
+                        </p>
                       </div>
                     )}
 
