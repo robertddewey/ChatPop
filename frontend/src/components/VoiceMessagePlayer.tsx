@@ -62,6 +62,11 @@ export default function VoiceMessagePlayer({
   const animationFrameRef = useRef<number | null>(null);
   const srcSetRef = useRef<boolean>(false); // Track if we've explicitly set the src
 
+  // Tailwind safelist: Ensure these dynamic classes from database are generated
+  // bg-slate-700 hover:bg-slate-800 active:bg-slate-900 bg-slate-800 bg-slate-800/50
+  // bg-zinc-800 hover:bg-zinc-900 active:bg-black bg-zinc-950 bg-zinc-950/60
+  // text-white text-yellow-950 text-gray-900
+
   // Debug: Log received styling props
   console.log('[VoiceMessagePlayer] Styling props:', {
     isMyMessage,
@@ -294,9 +299,9 @@ export default function VoiceMessagePlayer({
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isPlaying ? (
-          <Pause size={13} fill={voicePlayIconColor} strokeWidth={0} />
+          <Pause size={13} className={voicePlayIconColor} fill="currentColor" strokeWidth={0} />
         ) : (
-          <Play size={13} fill={voicePlayIconColor} strokeWidth={0} className="ml-0.5" />
+          <Play size={13} className={`${voicePlayIconColor} ml-0.5`} fill="currentColor" strokeWidth={0} />
         )}
       </button>
 

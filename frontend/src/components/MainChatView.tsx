@@ -192,17 +192,20 @@ export default function MainChatView({
                   </span>
                 </div>
                 {stickyPinnedMessage.voice_url ? (
-                  <VoiceMessagePlayer
-                    voiceUrl={`${stickyPinnedMessage.voice_url}${stickyPinnedMessage.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                    duration={stickyPinnedMessage.voice_duration || 0}
-                    waveformData={stickyPinnedMessage.voice_waveform || []}
-                    isMyMessage={false}
-                    voicePlayButton={currentDesign.pinnedVoiceMessageStyles?.playButton}
-                    voicePlayIconColor={currentDesign.pinnedVoiceMessageStyles?.playIconColor}
-                    voiceWaveformActive={currentDesign.pinnedVoiceMessageStyles?.waveformActive}
-                    voiceWaveformInactive={currentDesign.pinnedVoiceMessageStyles?.waveformInactive}
-                    durationTextColor={currentDesign.pinnedVoiceMessageStyles?.durationTextColor}
-                  />
+                  <>
+                    {console.log('[PINNED VOICE RENDER] pinnedVoiceMessageStyles:', currentDesign.pinnedVoiceMessageStyles)}
+                    <VoiceMessagePlayer
+                      voiceUrl={`${stickyPinnedMessage.voice_url}${stickyPinnedMessage.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                      duration={stickyPinnedMessage.voice_duration || 0}
+                      waveformData={stickyPinnedMessage.voice_waveform || []}
+                      isMyMessage={false}
+                      voicePlayButton={currentDesign.pinnedVoiceMessageStyles?.playButton}
+                      voicePlayIconColor={currentDesign.pinnedVoiceMessageStyles?.playIconColor}
+                      voiceWaveformActive={currentDesign.pinnedVoiceMessageStyles?.waveformActive}
+                      voiceWaveformInactive={currentDesign.pinnedVoiceMessageStyles?.waveformInactive}
+                      durationTextColor={currentDesign.pinnedVoiceMessageStyles?.durationTextColor}
+                    />
+                  </>
                 ) : (
                   <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
                     {stickyPinnedMessage.content}

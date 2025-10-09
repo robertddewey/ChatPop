@@ -24,6 +24,7 @@ import { type RecordingMetadata } from '@/lib/waveform';
 function convertThemeToCamelCase(theme: ChatTheme): any {
   console.log('[THEME DEBUG] messagesAreaBg from API:', theme.messages_area_bg);
   console.log('[THEME DEBUG] messagesAreaContainer from API:', theme.messages_area_container);
+  console.log('[PINNED VOICE DEBUG] pinnedVoiceMessageStyles from API:', theme.pinned_voice_message_styles);
   return {
     themeColor: theme.theme_color,
     container: theme.container,
