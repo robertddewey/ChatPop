@@ -203,7 +203,7 @@ export default function ChatSettingsSheet({
           {/* Theme Selection */}
           <div className="space-y-4">
             <h3 className={`text-sm font-semibold ${styles.title}`}>
-              Theme <span className={`text-xs font-normal ${themeIsDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>(will reload the chat)</span> {chatRoom.theme_locked && <span className={`text-xs font-normal ${styles.subtext}`}>(locked by host)</span>}
+              Change Theme <span className={`text-xs font-normal ${themeIsDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>(will reload the chat)</span> {chatRoom.theme_locked && <span className={`text-xs font-normal ${styles.subtext}`}>(locked by host)</span>}
             </h3>
 
             <div className="grid grid-cols-3 gap-3">
@@ -252,15 +252,15 @@ export default function ChatSettingsSheet({
                   }
                 }}
                 disabled={chatRoom.theme_locked || activeThemeId === 'dark-mode'}
-                className={`p-3 rounded-lg transition-all focus:outline-none border-2 ${
+                className={`p-3 rounded-lg transition-all focus:outline-none border-2 bg-zinc-950 ${
                   activeThemeId === 'dark-mode'
                     ? 'border-cyan-400 bg-cyan-400/10'
-                    : `${styles.border} hover:border-cyan-400/50`
+                    : 'border-zinc-800 hover:border-cyan-400/50'
                 } ${chatRoom.theme_locked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <div className={`text-xs font-semibold ${styles.text}`}>Dark Mode</div>
-                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${themeIsDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-100 text-gray-600'}`}>
+                  <div className="text-xs font-semibold text-white">Dark Mode</div>
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 text-zinc-300">
                     <Moon size={10} />
                     <span>Dark</span>
                   </div>
@@ -316,20 +316,20 @@ export default function ChatSettingsSheet({
                   }
                 }}
                 disabled={chatRoom.theme_locked || activeThemeId === 'light-mode'}
-                className={`p-3 rounded-lg transition-all focus:outline-none border-2 ${
+                className={`p-3 rounded-lg transition-all focus:outline-none border-2 bg-white ${
                   activeThemeId === 'light-mode'
                     ? 'border-blue-500 bg-blue-500/10'
-                    : `${styles.border} hover:border-blue-500/50`
+                    : 'border-gray-300 hover:border-blue-500/50'
                 } ${chatRoom.theme_locked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <div className={`text-xs font-semibold ${styles.text}`}>Light Mode</div>
-                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${themeIsDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-200 text-gray-700'}`}>
+                  <div className="text-xs font-semibold text-gray-900">Light Mode</div>
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-700">
                     <Sun size={10} />
-                    <span>Auto</span>
+                    <span>Light</span>
                   </div>
                 </div>
-                <div className="h-8 rounded bg-white border border-gray-300 flex items-center justify-center gap-1">
+                <div className="h-8 rounded bg-gray-50 border border-gray-200 flex items-center justify-center gap-1">
                   <div className="h-4 w-12 rounded bg-blue-500"></div>
                   <div className="h-4 w-8 rounded bg-gray-300"></div>
                 </div>
