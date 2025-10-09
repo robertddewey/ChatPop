@@ -496,6 +496,207 @@ Inconsistent modal styling creates a jarring user experience. A dark theme with 
 
 ---
 
+## ChatTheme Field Reference
+
+### Overview
+
+ChatPop themes are database-driven through the `ChatTheme` model (`backend/chats/models.py`). All visual styling is defined using Tailwind CSS classes stored in the database, allowing for complete customization without code changes.
+
+**Architecture Pattern:**
+1. **Database** (`ChatTheme` model) → Stores Tailwind CSS classes
+2. **API** (`ChatThemeSerializer`) → Exposes fields via REST API
+3. **Frontend** (`page.tsx`) → Maps API fields to design object
+4. **Components** → Apply styles using `currentDesign.fieldName`
+
+### Complete Field Reference
+
+All 60+ theme fields organized by category:
+
+#### Basic Information
+- `theme_id` (CharField) - Unique identifier (e.g., "dark-mode", "purple-dream")
+- `name` (CharField) - Display name shown in theme selector
+- `is_dark_mode` (BooleanField) - Theme classification (light=False, dark=True)
+
+#### Layout & Containers
+- `container` - Main chat container wrapper
+- `header` - Header bar at top of chat
+- `header_title` - Primary title styling
+- `header_title_fade` - Title fade-out effect (gradient mask)
+- `header_subtitle` - Subtitle/secondary text styling
+- `sticky_section` - Container for sticky host/pinned messages (must use z-20)
+- `messages_area` - Scrollable messages container
+- `messages_area_container` - Wrapper for messages area
+- `messages_area_bg` - Background pattern/texture layer (optional SVG)
+- `input_area` - Bottom input section container
+- `input_field` - Text input field styling
+
+#### Message Bubbles
+- `regular_message` - Standard user message bubble
+- `regular_text` - Text color for regular messages
+- `my_message` - Current user's message bubble
+- `my_text` - Text color for user's own messages
+- `host_message` - Host message bubble (always highlighted)
+- `host_text` - Text color for host messages
+- `sticky_host_message` - Host message in sticky area
+- `host_message_fade` - Host message fade effect
+- `pinned_message` - Pinned message bubble
+- `pinned_text` - Text color for pinned messages
+- `sticky_pinned_message` - Pinned message in sticky area
+- `pinned_message_fade` - Pinned message fade effect
+
+#### Username Styling
+- `regular_username` - Username for regular messages
+- `my_username` - Username for user's own messages
+- `host_username` - Username for host messages (scrollable area)
+- `sticky_host_username` - Username for host in sticky area
+- `pinned_username` - Username for pinned messages (scrollable area)
+- `sticky_pinned_username` - Username for pinned in sticky area
+
+#### Timestamp Styling
+- `regular_timestamp` - Timestamp for regular messages
+- `my_timestamp` - Timestamp for user's own messages
+- `host_timestamp` - Timestamp for host messages
+- `pinned_timestamp` - Timestamp for pinned messages
+
+#### Icons & Visual Elements
+- `pin_icon_color` - Color for pin icon (📌)
+- `crown_icon_color` - Color for host crown icon (👑)
+- `badge_icon_color` - Color for verified badge icon (✓)
+- `reply_icon_color` - Color for reply arrow icon (↩️)
+- `filter_button_active` - Active filter button styling
+- `filter_button_inactive` - Inactive filter button styling
+
+#### Voice Message Styling
+- `voice_message_styles` - Regular voice message player
+- `my_voice_message_styles` - User's own voice messages
+- `host_voice_message_styles` - Host voice messages
+- `pinned_voice_message_styles` - Pinned voice messages
+
+#### Reply Preview Styling
+Reply preview bar appears above text input when replying to a message:
+- `reply_preview_container` - Outer container with background/border
+- `reply_preview_icon` - Reply arrow icon (↩️)
+- `reply_preview_username` - "Replying to {username}" text
+- `reply_preview_content` - Message preview text
+- `reply_preview_close_button` - X button to cancel reply
+- `reply_preview_close_icon` - X icon styling
+
+#### Theme Colors (Mobile Browser Integration)
+- `theme_color_light` (CharField, max 7) - Hex color for light system mode (e.g., "#ffffff")
+- `theme_color_dark` (CharField, max 7) - Hex color for dark system mode (e.g., "#1f2937")
+
+### Implementation Example
+
+**Step 1: Define in Database Migration**
+```python
+migrations.AddField(
+    model_name='chattheme',
+    name='reply_preview_container',
+    field=models.CharField(
+        default='flex items-center justify-between px-4 py-2 bg-gray-100',
+        help_text='Tailwind classes for reply preview container',
+        max_length=300,
+    ),
+)
+```
+
+**Step 2: Add to Serializer** (`serializers.py:30-31`)
+```python
+fields = [
+    # ... other fields ...
+    'reply_preview_container', 'reply_preview_icon', 'reply_preview_username',
+    'reply_preview_content', 'reply_preview_close_button', 'reply_preview_close_icon'
+]
+```
+
+**Step 3: Map in Frontend** (`page.tsx:71-76`)
+```typescript
+const currentDesign = {
+  // ... other mappings ...
+  replyPreviewContainer: theme.reply_preview_container,
+  replyPreviewIcon: theme.reply_preview_icon,
+  replyPreviewUsername: theme.reply_preview_username,
+  replyPreviewContent: theme.reply_preview_content,
+  replyPreviewCloseButton: theme.reply_preview_close_button,
+  replyPreviewCloseIcon: theme.reply_preview_close_icon,
+}
+```
+
+**Step 4: Apply in Component** (`page.tsx:1037-1057`)
+```typescript
+{replyingTo && (
+  <div className={currentDesign.replyPreviewContainer}>
+    <div className="flex items-center gap-2 flex-1 min-w-0">
+      <Reply className={currentDesign.replyPreviewIcon} />
+      <div className="flex-1 min-w-0">
+        <div className={currentDesign.replyPreviewUsername}>
+          Replying to {replyingTo.username}
+        </div>
+        <div className={currentDesign.replyPreviewContent}>
+          {replyingTo.content}
+        </div>
+      </div>
+    </div>
+    <button onClick={() => setReplyingTo(null)} className={currentDesign.replyPreviewCloseButton}>
+      <X className={currentDesign.replyPreviewCloseIcon} />
+    </button>
+  </div>
+)}
+```
+
+### Modifying Theme Styles
+
+**Option 1: Direct Database Update** (for quick testing)
+```bash
+./venv/bin/python manage.py shell -c "
+from chats.models import ChatTheme
+theme = ChatTheme.objects.get(theme_id='dark-mode')
+theme.reply_preview_container = 'flex items-center gap-2 px-4 py-2 bg-zinc-800 border-b border-zinc-700'
+theme.save()
+print('Updated reply preview styling')
+"
+```
+
+**Option 2: Database Migration** (for permanent changes)
+```python
+# Create migration file: backend/chats/migrations/00XX_update_theme_styling.py
+from django.db import migrations
+
+def update_theme_styling(apps, schema_editor):
+    ChatTheme = apps.get_model('chats', 'ChatTheme')
+    theme = ChatTheme.objects.get(theme_id='dark-mode')
+    theme.reply_preview_container = 'flex items-center gap-2 px-4 py-2 bg-zinc-800'
+    theme.save()
+
+class Migration(migrations.Migration):
+    dependencies = [('chats', '00XX_previous_migration')]
+    operations = [migrations.RunPython(update_theme_styling)]
+```
+
+### Best Practices
+
+1. **Always Use Tailwind Classes**: Never use inline styles or custom CSS
+2. **Preserve Existing Layouts**: When updating styles, maintain the same layout structure (flexbox, positioning, etc.)
+3. **Test on Mobile**: Verify styles on iOS Safari and Chrome Mobile
+4. **Check Contrast**: Ensure text meets WCAG accessibility standards
+5. **Use Dark Mode Variants**: Apply `dark:` classes for themes that support system preferences
+6. **Mind Z-Index**: Sticky section must use `z-20`, messages use `z-10`, background has no z-index
+7. **Consider Touch Targets**: Buttons should be at least 44px × 44px for mobile usability
+
+### Adding New Theme Fields
+
+When you need to make a new UI element database-driven:
+
+1. **Add field to model** (`models.py`)
+2. **Create migration** (`./venv/bin/python manage.py makemigrations`)
+3. **Run migration** (`./venv/bin/python manage.py migrate`)
+4. **Update serializer** (`serializers.py` - add to `fields` list)
+5. **Map in frontend** (`page.tsx` - add to design object)
+6. **Apply in component** (use `currentDesign.newField`)
+7. **Update this documentation** (add field to appropriate category)
+
+---
+
 ## SVG Background Patterns
 
 ### Overview
