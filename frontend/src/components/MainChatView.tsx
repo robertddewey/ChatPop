@@ -204,8 +204,8 @@ export default function MainChatView({
               >
                 <div className="flex items-center gap-1 mb-1">
                   <span
-                    className="text-sm font-semibold"
-                    style={{ color: getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff' }}
+                    className={currentDesign.stickyHostUsername || 'text-sm font-semibold'}
+                    style={{ color: getTextColor(currentDesign.stickyHostUsername || currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff' }}
                   >
                     {message.username}
                   </span>
@@ -262,8 +262,8 @@ export default function MainChatView({
               >
                 <div className="flex items-center gap-1 mb-1">
                   <span
-                    className="text-sm font-semibold"
-                    style={{ color: getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
+                    className={currentDesign.stickyPinnedUsername || 'text-sm font-semibold'}
+                    style={{ color: getTextColor(currentDesign.stickyPinnedUsername || currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
                   >
                     {stickyPinnedMessage.username}
                   </span>

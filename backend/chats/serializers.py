@@ -25,6 +25,7 @@ class ChatThemeSerializer(serializers.ModelSerializer):
             'input_area', 'input_field',
             'pin_icon_color', 'crown_icon_color', 'badge_icon_color', 'reply_icon_color',
             'my_username', 'regular_username', 'host_username', 'pinned_username',
+            'sticky_host_username', 'sticky_pinned_username',
             'my_timestamp', 'regular_timestamp', 'host_timestamp', 'pinned_timestamp'
         ]
 

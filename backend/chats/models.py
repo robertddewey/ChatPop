@@ -81,6 +81,8 @@ class ChatTheme(models.Model):
     regular_username = models.CharField(max_length=200, default='text-xs font-semibold text-white', help_text="Tailwind classes for other users' usernames")
     host_username = models.CharField(max_length=200, default='text-sm font-semibold', help_text="Tailwind classes for host username (used with host_text for color)")
     pinned_username = models.CharField(max_length=200, default='text-sm font-semibold', help_text="Tailwind classes for pinned message username (used with pinned_text for color)")
+    sticky_host_username = models.CharField(max_length=200, default='text-sm font-semibold text-white', help_text="Tailwind classes for host username in sticky area")
+    sticky_pinned_username = models.CharField(max_length=200, default='text-sm font-semibold text-white', help_text="Tailwind classes for pinned message username in sticky area")
 
     # Timestamp Styling (per message type)
     my_timestamp = models.CharField(max_length=200, default='text-xs text-white opacity-60', help_text="Tailwind classes for current user's message timestamp")

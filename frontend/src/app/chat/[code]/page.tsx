@@ -62,6 +62,8 @@ function convertThemeToCamelCase(theme: ChatTheme): any {
     regularUsername: theme.regular_username,
     hostUsername: theme.host_username,
     pinnedUsername: theme.pinned_username,
+    stickyHostUsername: theme.sticky_host_username,
+    stickyPinnedUsername: theme.sticky_pinned_username,
     myTimestamp: theme.my_timestamp,
     regularTimestamp: theme.regular_timestamp,
     hostTimestamp: theme.host_timestamp,
