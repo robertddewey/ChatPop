@@ -64,6 +64,7 @@ export interface ChatTheme {
   my_message: string;
   my_text: string;
   voice_message_styles: {
+    containerBg?: string;
     playButton?: string;
     playIconColor?: string;
     waveformActive?: string;
@@ -71,6 +72,7 @@ export interface ChatTheme {
     durationTextColor?: string;
   };
   my_voice_message_styles: {
+    containerBg?: string;
     playButton?: string;
     playIconColor?: string;
     waveformActive?: string;
@@ -78,6 +80,7 @@ export interface ChatTheme {
     durationTextColor?: string;
   };
   host_voice_message_styles: {
+    containerBg?: string;
     playButton?: string;
     playIconColor?: string;
     waveformActive?: string;
@@ -85,6 +88,7 @@ export interface ChatTheme {
     durationTextColor?: string;
   };
   pinned_voice_message_styles: {
+    containerBg?: string;
     playButton?: string;
     playIconColor?: string;
     waveformActive?: string;
@@ -95,6 +99,18 @@ export interface ChatTheme {
   filter_button_inactive: string;
   input_area: string;
   input_field: string;
+  pin_icon_color: string;
+  crown_icon_color: string;
+  badge_icon_color: string;
+  reply_icon_color: string;
+  my_username: string;
+  regular_username: string;
+  host_username: string;
+  pinned_username: string;
+  my_timestamp: string;
+  regular_timestamp: string;
+  host_timestamp: string;
+  pinned_timestamp: string;
 }
 
 export interface ChatRoom {

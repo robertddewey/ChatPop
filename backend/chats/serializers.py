@@ -22,7 +22,10 @@ class ChatThemeSerializer(serializers.ModelSerializer):
             'my_message', 'my_text',
             'voice_message_styles', 'my_voice_message_styles', 'host_voice_message_styles', 'pinned_voice_message_styles',
             'filter_button_active', 'filter_button_inactive',
-            'input_area', 'input_field'
+            'input_area', 'input_field',
+            'pin_icon_color', 'crown_icon_color', 'badge_icon_color', 'reply_icon_color',
+            'my_username', 'regular_username', 'host_username', 'pinned_username',
+            'my_timestamp', 'regular_timestamp', 'host_timestamp', 'pinned_timestamp'
         ]
 
     def get_theme_color(self, obj):

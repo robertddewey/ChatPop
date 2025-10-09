@@ -70,6 +70,24 @@ class ChatTheme(models.Model):
     input_area = models.TextField(help_text="Message input container classes")
     input_field = models.TextField(help_text="Message input field classes")
 
+    # Icon Colors
+    pin_icon_color = models.CharField(max_length=100, default='text-yellow-400', help_text="Tailwind classes for pin icon color")
+    crown_icon_color = models.CharField(max_length=100, default='text-yellow-400', help_text="Tailwind classes for crown (host) icon color")
+    badge_icon_color = models.CharField(max_length=100, default='text-blue-400', help_text="Tailwind classes for verified badge icon color")
+    reply_icon_color = models.CharField(max_length=100, default='text-cyan-400', help_text="Tailwind classes for reply icon color")
+
+    # Username Styling (per message type)
+    my_username = models.CharField(max_length=200, default='text-xs font-semibold text-white', help_text="Tailwind classes for current user's username")
+    regular_username = models.CharField(max_length=200, default='text-xs font-semibold text-white', help_text="Tailwind classes for other users' usernames")
+    host_username = models.CharField(max_length=200, default='text-sm font-semibold', help_text="Tailwind classes for host username (used with host_text for color)")
+    pinned_username = models.CharField(max_length=200, default='text-sm font-semibold', help_text="Tailwind classes for pinned message username (used with pinned_text for color)")
+
+    # Timestamp Styling (per message type)
+    my_timestamp = models.CharField(max_length=200, default='text-xs text-white opacity-60', help_text="Tailwind classes for current user's message timestamp")
+    regular_timestamp = models.CharField(max_length=200, default='text-xs text-white opacity-60', help_text="Tailwind classes for other users' message timestamp")
+    host_timestamp = models.CharField(max_length=200, default='text-xs opacity-60', help_text="Tailwind classes for host message timestamp (used with host_text for color)")
+    pinned_timestamp = models.CharField(max_length=200, default='text-xs opacity-60', help_text="Tailwind classes for pinned message timestamp (used with pinned_text for color)")
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
