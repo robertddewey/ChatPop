@@ -1021,7 +1021,19 @@ export default function ChatPage() {
       </div>
       )}
 
-      {/* Game Room Tab - only show when user has joined */}
+      {/* Crown Button - Grid centered at 50%, first icon at top of grid */}
+      {hasJoined && (
+        <FloatingActionButton
+          icon={Crown}
+          onClick={() => {}}
+          position="right"
+          customPosition="right-[2.5%] top-[calc(50%-92px)]"
+          ariaLabel="Host Actions"
+          design={'dark-mode'}
+        />
+      )}
+
+      {/* Game Room Tab - Center icon of 3-icon grid */}
       {hasJoined && (
         <FloatingActionButton
           icon={Gamepad2}
@@ -1033,7 +1045,7 @@ export default function ChatPage() {
           isToggled={activeView === 'backroom'}
           hasNotification={false}
           position="right"
-          verticalPosition="center"
+          customPosition="right-[2.5%] top-[calc(50%-28px)]"
           ariaLabel="Open Game Room"
           toggledAriaLabel="Return to Main Chat"
           design={'dark-mode'}
@@ -1041,13 +1053,13 @@ export default function ChatPage() {
         />
       )}
 
-      {/* Settings Button - positioned below Game Room icon */}
+      {/* Settings Button - Bottom icon of grid */}
       {hasJoined && (
         <FloatingActionButton
           icon={Settings}
           onClick={() => setShowSettingsSheet(true)}
           position="right"
-          customPosition="right-[2.5%] top-[calc(50%+48px)]"
+          customPosition="right-[2.5%] top-[calc(50%+36px)]"
           ariaLabel="Open Settings"
           design={'dark-mode'}
         />
