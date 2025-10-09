@@ -67,15 +67,6 @@ export default function VoiceMessagePlayer({
   // bg-zinc-800 hover:bg-zinc-900 active:bg-black bg-zinc-950 bg-zinc-950/60
   // text-white text-yellow-950 text-gray-900
 
-  // Debug: Log received styling props
-  console.log('[VoiceMessagePlayer] Styling props:', {
-    isMyMessage,
-    voicePlayButton,
-    voicePlayIconColor,
-    voiceWaveformActive,
-    voiceWaveformInactive
-  });
-
   // Initialize audio element
   useEffect(() => {
     if (!voiceUrl) {
