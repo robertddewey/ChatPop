@@ -11,7 +11,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { chatApi, type ChatRoom } from '@/lib/api';
-import { Copy, Check, BadgeCheck, Moon, Sun } from 'lucide-react';
+import { Copy, Check, BadgeCheck, Moon, Sun, ArrowLeft } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 // Theme color constants for optimistic updates

@@ -17,7 +17,7 @@ import VoiceRecorder from '@/components/VoiceRecorder';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 
@@ -907,24 +907,18 @@ export default function ChatPage() {
         <div data-chat-header className={currentDesign.header}>
         <div className="flex items-center justify-between gap-3">
           {chatRoom && (
-            <ChatSettingsSheet
-              key={hasJoined ? 'joined' : 'not-joined'}
-              chatRoom={chatRoom}
-              currentUserId={currentUserId}
-              fingerprint={fingerprint}
-              activeThemeId={(participationTheme || chatRoom.theme)?.theme_id}
-              onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
-              themeIsDarkMode={themeIsDarkMode}
-              open={showSettingsSheet}
-              onOpenChange={setShowSettingsSheet}
-            >
-              <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
-                <Settings className={`${currentDesign.headerTitle} flex-shrink-0`} size={18} />
-                <h1 className={`${currentDesign.headerTitle} truncate`}>
-                  {chatRoom.name}
-                </h1>
-              </div>
-            </ChatSettingsSheet>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <button
+                onClick={() => {/* TODO: Add navigation */}}
+                className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
+                aria-label="Back"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <h1 className={`${currentDesign.headerTitle} truncate text-base`}>
+                {chatRoom.name}
+              </h1>
+            </div>
           )}
           {/* Filter Toggle */}
           <button
@@ -945,8 +939,8 @@ export default function ChatPage() {
                 : currentDesign.filterButtonInactive
             }`}
           >
-            <Crown size={16} />
-            VIP
+            <Sparkles size={16} />
+            Focus
           </button>
         </div>
       </div>
@@ -1080,6 +1074,24 @@ export default function ChatPage() {
           theme="chat"
           chatTheme={'dark-mode'}
         />
+      )}
+
+      {/* Chat Settings Sheet - opened by floating Settings button */}
+      {chatRoom && (
+        <ChatSettingsSheet
+          key={hasJoined ? 'joined' : 'not-joined'}
+          chatRoom={chatRoom}
+          currentUserId={currentUserId}
+          fingerprint={fingerprint}
+          activeThemeId={(participationTheme || chatRoom.theme)?.theme_id}
+          onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
+          themeIsDarkMode={themeIsDarkMode}
+          open={showSettingsSheet}
+          onOpenChange={setShowSettingsSheet}
+        >
+          {/* Empty trigger - controlled by Settings button */}
+          <div />
+        </ChatSettingsSheet>
       )}
     </>
   );
