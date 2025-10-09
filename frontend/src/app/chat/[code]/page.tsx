@@ -6,6 +6,7 @@ import { chatApi, messageApi, authApi, type ChatRoom, type ChatTheme, type Messa
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
+import FloatingActionButton from '@/components/FloatingActionButton';
 import GameRoomView from '@/components/GameRoomView';
 import MainChatView from '@/components/MainChatView';
 import MessageActionsModal from '@/components/MessageActionsModal';
@@ -16,7 +17,7 @@ import VoiceRecorder from '@/components/VoiceRecorder';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 
@@ -139,6 +140,9 @@ export default function ChatPage() {
   // View state - supports multiple feature views
   type ViewType = 'main' | 'backroom';
   const [activeView, setActiveView] = useState<ViewType>('main');
+
+  // Settings sheet state
+  const [showSettingsSheet, setShowSettingsSheet] = useState(false);
 
   // WebSocket state
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -911,6 +915,8 @@ export default function ChatPage() {
               activeThemeId={(participationTheme || chatRoom.theme)?.theme_id}
               onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
               themeIsDarkMode={themeIsDarkMode}
+              open={showSettingsSheet}
+              onOpenChange={setShowSettingsSheet}
             >
               <div className="flex-1 min-w-0 flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity">
                 <Settings className={`${currentDesign.headerTitle} flex-shrink-0`} size={18} />
@@ -1017,14 +1023,32 @@ export default function ChatPage() {
 
       {/* Game Room Tab - only show when user has joined */}
       {hasJoined && (
-        <GameRoomTab
-          isInBackRoom={activeView === 'backroom'}
-          hasBackRoom={true}
+        <FloatingActionButton
+          icon={Gamepad2}
+          toggledIcon={MessageSquare}
           onClick={() => {
             console.log('🖱️ GameRoomTab clicked! Toggling from', activeView, 'to', activeView === 'backroom' ? 'main' : 'backroom');
             setActiveView(activeView === 'backroom' ? 'main' : 'backroom');
           }}
-          hasNewMessages={false}
+          isToggled={activeView === 'backroom'}
+          hasNotification={false}
+          position="right"
+          verticalPosition="center"
+          ariaLabel="Open Game Room"
+          toggledAriaLabel="Return to Main Chat"
+          design={'dark-mode'}
+          initialBounce={false}
+        />
+      )}
+
+      {/* Settings Button - positioned below Game Room icon */}
+      {hasJoined && (
+        <FloatingActionButton
+          icon={Settings}
+          onClick={() => setShowSettingsSheet(true)}
+          position="right"
+          customPosition="right-[2.5%] top-[calc(50%+48px)]"
+          ariaLabel="Open Settings"
           design={'dark-mode'}
         />
       )}

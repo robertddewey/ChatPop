@@ -86,6 +86,8 @@ interface ChatSettingsSheetProps {
   onThemeChange?: (theme: ThemeId) => void;
   themeIsDarkMode?: boolean;
   children: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export default function ChatSettingsSheet({
@@ -97,6 +99,8 @@ export default function ChatSettingsSheet({
   onThemeChange,
   themeIsDarkMode = true,
   children,
+  open,
+  onOpenChange,
 }: ChatSettingsSheetProps) {
   const router = useRouter();
   const isHost = chatRoom.host.id === currentUserId;
@@ -122,7 +126,10 @@ export default function ChatSettingsSheet({
     border: 'border-gray-200',
   };
 
-  const [isOpen, setIsOpen] = useState(false);
+  // Use controlled state if provided, otherwise use internal state
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = open !== undefined ? open : internalIsOpen;
+  const setIsOpen = onOpenChange || setInternalIsOpen;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
