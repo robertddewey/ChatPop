@@ -133,6 +133,7 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // Message filter
   const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
@@ -605,6 +606,11 @@ export default function ChatPage() {
     // TODO: Implement pin other logic (host only)
   };
 
+  const handleReply = (message: Message) => {
+    console.log('Replying to message:', message);
+    setReplyingTo(message);
+  };
+
   const handleBlockUser = (username: string) => {
     console.log('Block user:', username);
     // TODO: Implement block user logic
@@ -963,6 +969,7 @@ export default function ChatPage() {
             themeIsDarkMode={themeIsDarkMode}
             handleScroll={handleScroll}
             scrollToMessage={scrollToMessage}
+            handleReply={handleReply}
             handlePinSelf={handlePinSelf}
             handlePinOther={handlePinOther}
             handleBlockUser={handleBlockUser}
