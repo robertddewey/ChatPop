@@ -593,31 +593,31 @@ export default function ChatPage() {
   // Track which sticky messages are visible in scroll area
   const [visibleMessageIds, setVisibleMessageIds] = useState<Set<string>>(new Set());
 
-  // Message action handlers (placeholders for now)
-  const handlePinSelf = (messageId: string) => {
+  // Message action handlers (wrapped in useCallback to prevent re-renders)
+  const handlePinSelf = useCallback((messageId: string) => {
     console.log('Pin self message:', messageId);
     // TODO: Implement pin self logic with payment
-  };
+  }, []);
 
-  const handlePinOther = (messageId: string) => {
+  const handlePinOther = useCallback((messageId: string) => {
     console.log('Pin other message:', messageId);
     // TODO: Implement pin other logic (host only)
-  };
+  }, []);
 
-  const handleReply = (message: Message) => {
+  const handleReply = useCallback((message: Message) => {
     console.log('Replying to message:', message);
     setReplyingTo(message);
-  };
+  }, []);
 
-  const handleBlockUser = (username: string) => {
+  const handleBlockUser = useCallback((username: string) => {
     console.log('Block user:', username);
     // TODO: Implement block user logic
-  };
+  }, []);
 
-  const handleTipUser = (username: string) => {
+  const handleTipUser = useCallback((username: string) => {
     console.log('Tip user:', username);
     // TODO: Implement tip user logic with payment
-  };
+  }, []);
 
   // Filter messages based on mode
   const filteredMessages = filterMode === 'focus'

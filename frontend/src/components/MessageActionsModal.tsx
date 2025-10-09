@@ -152,17 +152,14 @@ export default function MessageActionsModal({
 
   // Reply (always available, always first)
   if (onReply) {
-    console.log('[MessageActionsModal] Adding Reply button to actions');
     actions.push({
       icon: Reply,
       label: 'Reply',
-      action: () => handleAction(() => {
-        console.log('[MessageActionsModal] Reply action triggered!');
+      action: () => {
         onReply(message);
-      }),
+        handleClose();
+      },
     });
-  } else {
-    console.log('[MessageActionsModal] onReply is undefined, Reply button not added');
   }
 
   // Pin self (own message, not pinned)
@@ -170,7 +167,10 @@ export default function MessageActionsModal({
     actions.push({
       icon: Pin,
       label: 'Pin My Message',
-      action: () => handleAction(() => onPinSelf(message.id)),
+      action: () => {
+        onPinSelf(message.id);
+        handleClose();
+      },
     });
   }
 
@@ -179,7 +179,10 @@ export default function MessageActionsModal({
     actions.push({
       icon: Pin,
       label: 'Keep My Message Pinned',
-      action: () => handleAction(() => onPinSelf(message.id)),
+      action: () => {
+        onPinSelf(message.id);
+        handleClose();
+      },
     });
   }
 
@@ -188,7 +191,10 @@ export default function MessageActionsModal({
     actions.push({
       icon: Pin,
       label: 'Pin Message',
-      action: () => handleAction(() => onPinOther(message.id)),
+      action: () => {
+        onPinOther(message.id);
+        handleClose();
+      },
     });
   }
 
@@ -197,7 +203,10 @@ export default function MessageActionsModal({
     actions.push({
       icon: Pin,
       label: 'Keep Message Pinned',
-      action: () => handleAction(() => onPinOther(message.id)),
+      action: () => {
+        onPinOther(message.id);
+        handleClose();
+      },
     });
   }
 
@@ -205,7 +214,10 @@ export default function MessageActionsModal({
     actions.push({
       icon: DollarSign,
       label: 'Tip User',
-      action: () => handleAction(() => onTip(message.username)),
+      action: () => {
+        onTip(message.username);
+        handleClose();
+      },
     });
   }
 
@@ -214,7 +226,10 @@ export default function MessageActionsModal({
     actions.push({
       icon: Ban,
       label: 'Block User',
-      action: () => handleAction(() => onBlock(message.username)),
+      action: () => {
+        onBlock(message.username);
+        handleClose();
+      },
     });
   }
 
@@ -283,7 +298,13 @@ export default function MessageActionsModal({
                 return (
                   <button
                     key={index}
-                    onClick={action.action}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      action.action();
+                    }}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onTouchMove={(e) => e.stopPropagation()}
+                    onTouchEnd={(e) => e.stopPropagation()}
                     className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 ${modalStyles.actionButton}`}
                   >
                     <Icon className={`w-6 h-6 ${modalStyles.actionIcon}`} />
