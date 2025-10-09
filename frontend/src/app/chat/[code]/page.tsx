@@ -177,6 +177,10 @@ export default function ChatPage() {
   // Message input
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+
+  // Infinite scroll state
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
@@ -442,8 +446,56 @@ export default function ChatPage() {
     try {
       const msgs = await messageApi.getMessages(code);
       setMessages(msgs);
+      setHasMoreMessages(true); // Reset when loading fresh messages
+      shouldAutoScrollRef.current = true; // Scroll to bottom when loading initial messages
     } catch (err) {
       console.error('Failed to load messages:', err);
+    }
+  };
+
+  // Load older messages for infinite scroll
+  const loadOlderMessages = async () => {
+    if (loadingOlder || !hasMoreMessages || messages.length === 0) return;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    try {
+      setLoadingOlder(true);
+
+      // Save scroll position relative to current scroll height
+      const previousScrollHeight = container.scrollHeight;
+      const previousScrollTop = container.scrollTop;
+
+      // Get the oldest message timestamp
+      const oldestMessage = messages[0];
+      const beforeTimestamp = new Date(oldestMessage.created_at).getTime() / 1000;
+
+      // Fetch older messages
+      const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(code, beforeTimestamp, 50);
+
+      if (olderMessages.length > 0) {
+        // Prepend older messages
+        setMessages(prev => [...olderMessages, ...prev]);
+
+        // Use requestAnimationFrame to ensure DOM has updated
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (container) {
+              // Calculate new scroll position to maintain visual position
+              const newScrollHeight = container.scrollHeight;
+              const heightDifference = newScrollHeight - previousScrollHeight;
+              container.scrollTop = previousScrollTop + heightDifference;
+            }
+          });
+        });
+      }
+
+      setHasMoreMessages(hasMore);
+    } catch (err) {
+      console.error('Failed to load older messages:', err);
+    } finally {
+      setLoadingOlder(false);
     }
   };
 
@@ -731,6 +783,12 @@ export default function ChatPage() {
   // Handle scroll events
   const handleScroll = () => {
     shouldAutoScrollRef.current = checkIfNearBottom();
+
+    // Check if scrolled to top for infinite scroll
+    const container = messagesContainerRef.current;
+    if (container && container.scrollTop < 100 && hasMoreMessages && !loadingOlder) {
+      loadOlderMessages();
+    }
   };
 
   // Only auto-scroll if user is near bottom
@@ -1015,6 +1073,7 @@ export default function ChatPage() {
             handlePinOther={handlePinOther}
             handleBlockUser={handleBlockUser}
             handleTipUser={handleTipUser}
+            loadingOlder={loadingOlder}
           />
         )}
 

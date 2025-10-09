@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
+from constance import config
 from accounts.models import User
 from .models import ChatRoom, Message, AnonymousUserFingerprint, ChatParticipation, ChatTheme
 from .serializers import (
@@ -271,7 +272,11 @@ class MessageListView(APIView):
             'messages': messages,
             'pinned_messages': pinned_messages,
             'source': 'postgresql',  # Always PostgreSQL for REST API
-            'count': len(messages)
+            'count': len(messages),
+            'history_limits': {
+                'max_days': config.MESSAGE_HISTORY_MAX_DAYS,
+                'max_count': config.MESSAGE_HISTORY_MAX_COUNT
+            }
         })
 
     def _fetch_from_db(self, chat_room, limit, before_timestamp=None, request=None):
@@ -287,8 +292,8 @@ class MessageListView(APIView):
 
         # Filter by timestamp if paginating
         if before_timestamp:
-            from datetime.datetime import fromtimestamp
-            before_dt = fromtimestamp(float(before_timestamp))
+            from datetime import datetime
+            before_dt = datetime.fromtimestamp(float(before_timestamp))
             queryset = queryset.filter(created_at__lt=before_dt)
 
         # Order and limit (newest first to get last N messages)
