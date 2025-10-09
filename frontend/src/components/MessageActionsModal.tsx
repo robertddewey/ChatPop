@@ -19,10 +19,10 @@ interface MessageActionsModalProps {
   onTip?: (username: string) => void;
 }
 
-// Get theme-aware modal styles
-const getModalStyles = (useDarkMode: boolean) => {
-  if (useDarkMode) {
-    // Always use dark mode for dark-type themes
+// Get theme-aware modal styles (no system preference - force theme mode)
+const getModalStyles = (themeIsDarkMode: boolean) => {
+  if (themeIsDarkMode) {
+    // Dark theme styles
     return {
       overlay: 'bg-black/60 backdrop-blur-sm',
       container: 'bg-zinc-900',
@@ -34,16 +34,16 @@ const getModalStyles = (useDarkMode: boolean) => {
       usernameText: 'text-gray-300',
     };
   } else {
-    // Use system preference for light-type themes
+    // Light theme styles
     return {
-      overlay: 'bg-black/20 dark:bg-black/60 backdrop-blur-sm',
-      container: 'bg-white dark:bg-zinc-900',
-      messagePreview: 'bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-2xl dark:rounded-lg shadow-sm dark:shadow-xl',
-      messageText: 'text-gray-800 dark:text-zinc-50',
-      actionButton: 'bg-gray-100 dark:bg-zinc-700 hover:bg-gray-200 dark:hover:bg-zinc-600 active:bg-gray-300 dark:active:bg-zinc-500 text-gray-900 dark:text-zinc-50 dark:border dark:border-zinc-600',
-      actionIcon: 'text-purple-600 dark:text-cyan-400',
-      dragHandle: 'bg-gray-300 dark:bg-gray-600',
-      usernameText: 'text-gray-700 dark:text-gray-300',
+      overlay: 'bg-black/20 backdrop-blur-sm',
+      container: 'bg-white',
+      messagePreview: 'bg-gray-50 border border-gray-200 rounded-2xl shadow-sm',
+      messageText: 'text-gray-800',
+      actionButton: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-900',
+      actionIcon: 'text-purple-600',
+      dragHandle: 'bg-gray-300',
+      usernameText: 'text-gray-700',
     };
   }
 };
@@ -66,21 +66,7 @@ export default function MessageActionsModal({
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
 
-  // If theme is dark-only, always use dark mode
-  // If theme is system-aware (light mode), honor system preference
-  const [prefersDark, setPrefersDark] = useState(false);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    setPrefersDark(mediaQuery.matches);
-
-    const handler = (e: MediaQueryListEvent) => setPrefersDark(e.matches);
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
-  }, []);
-
-  const useDarkMode = themeIsDarkMode ? true : prefersDark;
-  const modalStyles = getModalStyles(useDarkMode);
+  const modalStyles = getModalStyles(themeIsDarkMode);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css

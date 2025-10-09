@@ -15,16 +15,67 @@ import { Copy, Check, BadgeCheck, Moon, Sun } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 // Theme color constants for optimistic updates
+// IMPORTANT: For both themes, light and dark values MUST be the same
+// to override system preference and force the browser chrome color
 const THEME_COLORS = {
   'dark-mode': {
-    light: '#18181b', // zinc-900
-    dark: '#18181b',
+    light: '#18181b', // zinc-900 (both same - force dark)
+    dark: '#18181b',  // zinc-900
   },
   'light-mode': {
-    light: '#ffffff', // white
-    dark: '#1f2937', // gray-800
+    light: '#ffffff', // white (both same - force light)
+    dark: '#ffffff',  // white (NOT gray-800 - must match to override system dark mode)
   },
 } as const;
+
+// Helper function to update theme-color meta tags (iOS Safari requirement)
+// IMPORTANT: For light-mode theme, we force BOTH light and dark to white (#ffffff)
+// because iOS Safari uses the dark meta tag when system is in dark mode,
+// but we want to override system preference with our theme choice.
+const updateThemeColorMetaTags = (themeColors: { light: string; dark: string }) => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  // For light-mode theme: force both to the light color (white)
+  // For dark-mode theme: both are already the same (zinc-900)
+  // This ensures the theme color matches the theme, not the system preference
+  const forcedLightColor = themeColors.light;
+  const forcedDarkColor = themeColors.light; // Use light color for dark too (override system)
+
+  // Update default meta tag
+  let defaultMeta = document.querySelector('meta[name="theme-color"]:not([media])') as HTMLMetaElement;
+  if (defaultMeta) {
+    defaultMeta.content = forcedLightColor;
+  } else {
+    defaultMeta = document.createElement('meta');
+    defaultMeta.name = 'theme-color';
+    defaultMeta.content = forcedLightColor;
+    document.head.appendChild(defaultMeta);
+  }
+
+  // Update light mode meta tag (use light color)
+  let lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]') as HTMLMetaElement;
+  if (lightMeta) {
+    lightMeta.content = forcedLightColor;
+  } else {
+    lightMeta = document.createElement('meta');
+    lightMeta.name = 'theme-color';
+    lightMeta.setAttribute('media', '(prefers-color-scheme: light)');
+    lightMeta.content = forcedLightColor;
+    document.head.appendChild(lightMeta);
+  }
+
+  // Update dark mode meta tag (ALSO use light color to override system dark mode)
+  let darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]') as HTMLMetaElement;
+  if (darkMeta) {
+    darkMeta.content = forcedDarkColor;
+  } else {
+    darkMeta = document.createElement('meta');
+    darkMeta.name = 'theme-color';
+    darkMeta.setAttribute('media', '(prefers-color-scheme: dark)');
+    darkMeta.content = forcedDarkColor;
+    document.head.appendChild(darkMeta);
+  }
+};
 
 interface ChatSettingsSheetProps {
   chatRoom: ChatRoom;
@@ -50,40 +101,25 @@ export default function ChatSettingsSheet({
   const router = useRouter();
   const isHost = chatRoom.host.id === currentUserId;
 
-  // If theme is dark-only, always use dark mode
-  // If theme is system-aware (light mode), honor system preference
-  const [prefersDark, setPrefersDark] = useState(false);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    setPrefersDark(mediaQuery.matches);
-
-    const handler = (e: MediaQueryListEvent) => setPrefersDark(e.matches);
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
-  }, []);
-
-  const useDarkMode = themeIsDarkMode ? true : prefersDark;
-
-  // Theme-aware styles
-  const styles = useDarkMode ? {
-    title: 'text-white',
-    subtitle: 'text-zinc-400',
-    text: 'text-white',
-    subtext: 'text-gray-400',
-    input: 'bg-zinc-800 border-zinc-700 text-zinc-100 focus:ring-cyan-400',
+  // Theme-aware styles (no system preference detection - force theme mode)
+  const styles = themeIsDarkMode ? {
+    title: '!text-white',
+    subtitle: '!text-zinc-400',
+    text: '!text-white',
+    subtext: '!text-gray-400',
+    input: 'bg-zinc-800 border-zinc-700 !text-zinc-100 focus:ring-cyan-400',
     card: 'bg-zinc-800',
     button: 'bg-cyan-400 hover:bg-cyan-500 text-cyan-950',
     border: 'border-zinc-700',
   } : {
-    title: 'text-gray-900 dark:text-white',
-    subtitle: 'text-gray-600 dark:text-zinc-400',
-    text: 'text-black dark:text-white',
-    subtext: 'text-gray-500 dark:text-gray-400',
-    input: 'bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-zinc-100 focus:ring-purple-500 dark:focus:ring-cyan-400',
-    card: 'bg-gray-50 dark:bg-zinc-800',
-    button: 'bg-purple-600 dark:bg-cyan-400 hover:bg-purple-700 dark:hover:bg-cyan-500 text-white dark:text-cyan-950',
-    border: 'border-gray-200 dark:border-zinc-700',
+    title: '!text-gray-900',
+    subtitle: '!text-gray-600',
+    text: '!text-black',
+    subtext: '!text-gray-500',
+    input: 'bg-white border-gray-300 !text-gray-900 focus:ring-purple-500',
+    card: 'bg-gray-50',
+    button: 'bg-purple-600 hover:bg-purple-700 text-white',
+    border: 'border-gray-200',
   };
 
   const [isOpen, setIsOpen] = useState(false);
@@ -148,11 +184,11 @@ export default function ChatSettingsSheet({
       <SheetContent
         side="bottom"
         className={`h-[100dvh] overflow-y-auto pt-2 ${
-          useDarkMode
+          themeIsDarkMode
             ? 'bg-zinc-900 border-t-zinc-800'
-            : 'bg-white dark:bg-zinc-900 border-t-white dark:border-t-zinc-800'
+            : 'bg-white border-t-white'
         }`}
-        closeButtonClassName={useDarkMode ? 'text-white' : 'text-gray-900 dark:text-white'}
+        closeButtonClassName={themeIsDarkMode ? '!text-white' : '!text-gray-900'}
       >
           <SheetHeader>
             <SheetTitle className={styles.title}>
@@ -167,7 +203,7 @@ export default function ChatSettingsSheet({
           {/* Theme Selection */}
           <div className="space-y-4">
             <h3 className={`text-sm font-semibold ${styles.title}`}>
-              Theme <span className={`text-xs font-normal ${useDarkMode ? 'text-gray-500' : 'text-gray-500 dark:text-gray-500'}`}>(will reload the chat)</span> {chatRoom.theme_locked && <span className={`text-xs font-normal ${styles.subtext}`}>(locked by host)</span>}
+              Theme <span className={`text-xs font-normal ${themeIsDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>(will reload the chat)</span> {chatRoom.theme_locked && <span className={`text-xs font-normal ${styles.subtext}`}>(locked by host)</span>}
             </h3>
 
             <div className="grid grid-cols-3 gap-3">
@@ -186,6 +222,9 @@ export default function ChatSettingsSheet({
                     // Optimistically update localStorage immediately with known colors
                     localStorage.setItem('chat_theme_color', JSON.stringify(THEME_COLORS['dark-mode']));
 
+                    // Update theme-color meta tags immediately (iOS Safari requirement)
+                    updateThemeColorMetaTags(THEME_COLORS['dark-mode']);
+
                     // Wait for API OR timeout (whichever comes first)
                     const result = await Promise.race([
                       apiPromise.then(() => ({ success: true })),
@@ -198,6 +237,13 @@ export default function ChatSettingsSheet({
                     // API failed - revert localStorage to prevent mismatch
                     if (currentThemeColors) {
                       localStorage.setItem('chat_theme_color', currentThemeColors);
+                      // Revert meta tags too
+                      try {
+                        const parsed = JSON.parse(currentThemeColors);
+                        updateThemeColorMetaTags(parsed);
+                      } catch (e) {
+                        // Ignore parse errors
+                      }
                     } else {
                       localStorage.removeItem('chat_theme_color');
                     }
@@ -214,7 +260,7 @@ export default function ChatSettingsSheet({
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className={`text-xs font-semibold ${styles.text}`}>Dark Mode</div>
-                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${useDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400'}`}>
+                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${themeIsDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-100 text-gray-600'}`}>
                     <Moon size={10} />
                     <span>Dark</span>
                   </div>
@@ -240,6 +286,9 @@ export default function ChatSettingsSheet({
                     // Optimistically update localStorage immediately with known colors
                     localStorage.setItem('chat_theme_color', JSON.stringify(THEME_COLORS['light-mode']));
 
+                    // Update theme-color meta tags immediately (iOS Safari requirement)
+                    updateThemeColorMetaTags(THEME_COLORS['light-mode']);
+
                     // Wait for API OR timeout (whichever comes first)
                     const result = await Promise.race([
                       apiPromise.then(() => ({ success: true })),
@@ -252,6 +301,13 @@ export default function ChatSettingsSheet({
                     // API failed - revert localStorage to prevent mismatch
                     if (currentThemeColors) {
                       localStorage.setItem('chat_theme_color', currentThemeColors);
+                      // Revert meta tags too
+                      try {
+                        const parsed = JSON.parse(currentThemeColors);
+                        updateThemeColorMetaTags(parsed);
+                      } catch (e) {
+                        // Ignore parse errors
+                      }
                     } else {
                       localStorage.removeItem('chat_theme_color');
                     }
@@ -268,7 +324,7 @@ export default function ChatSettingsSheet({
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className={`text-xs font-semibold ${styles.text}`}>Light Mode</div>
-                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${useDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-200 text-gray-700'}`}>
+                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${themeIsDarkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-200 text-gray-700'}`}>
                     <Sun size={10} />
                     <span>Auto</span>
                   </div>
@@ -310,12 +366,12 @@ export default function ChatSettingsSheet({
               </div>
               <button
                 onClick={handleCopyCode}
-                className={`p-2 rounded-lg transition-colors ${useDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                className={`p-2 rounded-lg transition-colors ${themeIsDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
               >
                 {copiedCode ? (
                   <Check className="w-4 h-4 text-green-600" />
                 ) : (
-                  <Copy className={`w-4 h-4 ${useDarkMode ? 'text-gray-400' : 'text-gray-600 dark:text-gray-400'}`} />
+                  <Copy className={`w-4 h-4 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
                 )}
               </button>
             </div>
@@ -328,12 +384,12 @@ export default function ChatSettingsSheet({
               </div>
               <button
                 onClick={handleCopyLink}
-                className={`ml-2 p-2 rounded-lg transition-colors flex-shrink-0 ${useDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                className={`ml-2 p-2 rounded-lg transition-colors flex-shrink-0 ${themeIsDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
               >
                 {copiedLink ? (
                   <Check className="w-4 h-4 text-green-600" />
                 ) : (
-                  <Copy className={`w-4 h-4 ${useDarkMode ? 'text-gray-400' : 'text-gray-600 dark:text-gray-400'}`} />
+                  <Copy className={`w-4 h-4 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
                 )}
               </button>
             </div>
@@ -372,20 +428,20 @@ export default function ChatSettingsSheet({
               </h3>
 
               {error && (
-                <div className={`p-3 rounded-lg text-sm ${useDarkMode ? 'bg-red-900/20 border border-red-800 text-red-400' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'}`}>
+                <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-red-900/20 border border-red-800 text-red-400' : 'bg-red-50 border border-red-200 text-red-600'}`}>
                   {error}
                 </div>
               )}
 
               {success && (
-                <div className={`p-3 rounded-lg text-sm ${useDarkMode ? 'bg-green-900/20 border border-green-800 text-green-400' : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400'}`}>
+                <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-green-900/20 border border-green-800 text-green-400' : 'bg-green-50 border border-green-200 text-green-600'}`}>
                   {success}
                 </div>
               )}
 
               {/* Chat Name */}
               <div>
-                <label className={`block text-sm font-medium mb-1 ${useDarkMode ? 'text-zinc-300' : 'text-gray-700 dark:text-zinc-300'}`}>
+                <label className={`block text-sm font-medium mb-1 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
                   Chat Name
                 </label>
                 <input
@@ -399,7 +455,7 @@ export default function ChatSettingsSheet({
 
               {/* Access Mode */}
               <div>
-                <label className={`block text-sm font-medium mb-2 ${useDarkMode ? 'text-zinc-300' : 'text-gray-700 dark:text-zinc-300'}`}>
+                <label className={`block text-sm font-medium mb-2 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
                   Access Mode
                 </label>
                 <div className="flex gap-4">
@@ -411,7 +467,7 @@ export default function ChatSettingsSheet({
                       onChange={(e) =>
                         setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
                       }
-                      className={useDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400'}
+                      className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
                     />
                     <span className={`text-sm ${styles.text}`}>Public</span>
                   </label>
@@ -423,7 +479,7 @@ export default function ChatSettingsSheet({
                       onChange={(e) =>
                         setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
                       }
-                      className={useDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400'}
+                      className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
                     />
                     <span className={`text-sm ${styles.text}`}>Private</span>
                   </label>
@@ -433,7 +489,7 @@ export default function ChatSettingsSheet({
               {/* Access Code (if private) */}
               {formData.access_mode === 'private' && (
                 <div>
-                  <label className={`block text-sm font-medium mb-1 ${useDarkMode ? 'text-zinc-300' : 'text-gray-700 dark:text-zinc-300'}`}>
+                  <label className={`block text-sm font-medium mb-1 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
                     Access Code
                   </label>
                   <input
@@ -449,34 +505,34 @@ export default function ChatSettingsSheet({
 
               {/* Media Settings */}
               <div className="space-y-2">
-                <label className={`block text-sm font-medium ${useDarkMode ? 'text-zinc-300' : 'text-gray-700 dark:text-zinc-300'}`}>
+                <label className={`block text-sm font-medium ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
                   Media Settings
                 </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${useDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100 dark:hover:bg-zinc-700'}`}>
+                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
                   <span className={`text-sm ${styles.text}`}>Voice enabled</span>
                   <input
                     type="checkbox"
                     checked={formData.voice_enabled}
                     onChange={(e) => setFormData({ ...formData, voice_enabled: e.target.checked })}
-                    className={useDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400'}
+                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
                   />
                 </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${useDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100 dark:hover:bg-zinc-700'}`}>
+                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
                   <span className={`text-sm ${styles.text}`}>Video enabled</span>
                   <input
                     type="checkbox"
                     checked={formData.video_enabled}
                     onChange={(e) => setFormData({ ...formData, video_enabled: e.target.checked })}
-                    className={useDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400'}
+                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
                   />
                 </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${useDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100 dark:hover:bg-zinc-700'}`}>
+                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
                   <span className={`text-sm ${styles.text}`}>Photo enabled</span>
                   <input
                     type="checkbox"
                     checked={formData.photo_enabled}
                     onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
-                    className={useDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 dark:text-cyan-400 focus:ring-purple-500 dark:focus:ring-cyan-400'}
+                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
                   />
                 </label>
               </div>
@@ -487,7 +543,7 @@ export default function ChatSettingsSheet({
                 disabled={loading}
                 className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
                   loading
-                    ? (useDarkMode ? 'bg-gray-600 cursor-not-allowed text-white' : 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed text-white')
+                    ? (themeIsDarkMode ? 'bg-gray-600 cursor-not-allowed text-white' : 'bg-gray-400 cursor-not-allowed text-white')
                     : styles.button
                 }`}
               >

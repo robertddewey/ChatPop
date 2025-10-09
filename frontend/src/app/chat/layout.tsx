@@ -56,26 +56,27 @@ export default function ChatLayout({
         {`
           (function() {
             // Check if there's a stored theme in localStorage for this chat
-            let lightColor = '#ffffff';  // Default light theme color
-            let darkColor = '#18181b';   // Default dark theme color
+            let themeColor = '#ffffff';  // Default to white (light theme)
 
             try {
-              // Try to get theme from localStorage (set by page.tsx)
+              // Try to get theme from localStorage (set by page.tsx and ChatSettingsSheet)
               const storedTheme = localStorage.getItem('chat_theme_color');
               if (storedTheme) {
                 const parsed = JSON.parse(storedTheme);
-                lightColor = parsed.light || lightColor;
-                darkColor = parsed.dark || darkColor;
+                // IMPORTANT: Use the 'light' property as the forced theme color
+                // This overrides system preference - both light and dark meta tags get the same value
+                // For light-mode theme: light = '#ffffff' (white)
+                // For dark-mode theme: light = '#18181b' (zinc-900, but still called 'light')
+                themeColor = parsed.light || themeColor;
               }
             } catch (e) {
               console.warn('Failed to parse stored theme color:', e);
             }
 
-            // Detect system color scheme preference
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const themeColor = prefersDark ? darkColor : lightColor;
+            // Force BOTH light and dark meta tags to the same color (override system preference)
+            // This ensures the browser chrome matches our theme, not the OS setting
 
-            // Find existing theme-color meta tag (from server-side metadata)
+            // Update default meta tag
             let existingMeta = document.querySelector('meta[name="theme-color"]:not([media])');
             if (existingMeta) {
               existingMeta.setAttribute('content', themeColor);
@@ -86,7 +87,7 @@ export default function ChatLayout({
               document.head.appendChild(defaultMeta);
             }
 
-            // Add media-query specific meta tags for Safari
+            // Update light mode meta tag (use theme color)
             let lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
             if (!lightMeta) {
               lightMeta = document.createElement('meta');
@@ -94,8 +95,9 @@ export default function ChatLayout({
               lightMeta.setAttribute('media', '(prefers-color-scheme: light)');
               document.head.appendChild(lightMeta);
             }
-            lightMeta.setAttribute('content', lightColor);
+            lightMeta.setAttribute('content', themeColor);
 
+            // Update dark mode meta tag (ALSO use theme color - same as light)
             let darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
             if (!darkMeta) {
               darkMeta = document.createElement('meta');
@@ -103,7 +105,7 @@ export default function ChatLayout({
               darkMeta.setAttribute('media', '(prefers-color-scheme: dark)');
               document.head.appendChild(darkMeta);
             }
-            darkMeta.setAttribute('content', darkColor);
+            darkMeta.setAttribute('content', themeColor);
           })();
         `}
       </Script>
