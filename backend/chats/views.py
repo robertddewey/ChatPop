@@ -304,6 +304,16 @@ class MessageListView(APIView):
             if voice_url and request:
                 voice_url = request.build_absolute_uri(voice_url)
 
+            # Build reply_to_message object if there's a reply
+            reply_to_message = None
+            if msg.reply_to:
+                reply_to_message = {
+                    'id': str(msg.reply_to.id),
+                    'username': msg.reply_to.username,
+                    'content': msg.reply_to.content[:100] if msg.reply_to.content else "",
+                    'is_from_host': msg.reply_to.message_type == "host",
+                }
+
             serialized.append({
                 'id': str(msg.id),
                 'chat_code': msg.chat_room.code,
@@ -317,6 +327,7 @@ class MessageListView(APIView):
                 'voice_duration': float(msg.voice_duration) if msg.voice_duration else None,
                 'voice_waveform': msg.voice_waveform,
                 'reply_to_id': str(msg.reply_to.id) if msg.reply_to else None,
+                'reply_to_message': reply_to_message,
                 'is_pinned': msg.is_pinned,
                 'pinned_at': msg.pinned_at.isoformat() if msg.pinned_at else None,
                 'pinned_until': msg.pinned_until.isoformat() if msg.pinned_until else None,
