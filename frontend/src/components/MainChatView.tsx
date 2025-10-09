@@ -60,10 +60,10 @@ interface MainChatViewProps {
   handleScroll: () => void;
   scrollToMessage: (messageId: string) => void;
   handleReply: (message: Message) => void;
-  handlePinSelf: (messageId: string, amount: number) => void;
-  handlePinOther: (messageId: string, amount: number) => void;
-  handleBlockUser: (messageId: string) => void;
-  handleTipUser: (messageId: string, amount: number) => void;
+  handlePinSelf: (messageId: string) => void;
+  handlePinOther: (messageId: string) => void;
+  handleBlockUser: (username: string) => void;
+  handleTipUser: (username: string) => void;
 }
 
 export default function MainChatView({

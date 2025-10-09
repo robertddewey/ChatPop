@@ -152,11 +152,17 @@ export default function MessageActionsModal({
 
   // Reply (always available, always first)
   if (onReply) {
+    console.log('[MessageActionsModal] Adding Reply button to actions');
     actions.push({
       icon: Reply,
       label: 'Reply',
-      action: () => handleAction(() => onReply(message)),
+      action: () => handleAction(() => {
+        console.log('[MessageActionsModal] Reply action triggered!');
+        onReply(message);
+      }),
     });
+  } else {
+    console.log('[MessageActionsModal] onReply is undefined, Reply button not added');
   }
 
   // Pin self (own message, not pinned)
