@@ -26,7 +26,6 @@ function extractInlineStyles(classString: string): { classes: string; style: Rea
     if (filterMatch) {
       // Convert underscore-separated filters to space-separated CSS
       const filterValue = filterMatch[1].replace(/_/g, ' ');
-      console.log('[FILTER EXTRACTED]', filterValue);
       style.filter = filterValue;
       return;
     }
@@ -35,7 +34,6 @@ function extractInlineStyles(classString: string): { classes: string; style: Rea
     const blendModeMatch = cls.match(/^\[mix-blend-mode:(.+)\]$/);
     if (blendModeMatch) {
       style.mixBlendMode = blendModeMatch[1] as any;
-      console.log('[BLEND MODE EXTRACTED]', blendModeMatch[1]);
       return;
     }
 
@@ -93,18 +91,8 @@ export default function MainChatView({
   const backgroundStyles = useMemo(() => {
     if (!currentDesign?.messagesAreaBg) return { classes: '', style: {} };
     const result = extractInlineStyles(currentDesign.messagesAreaBg);
-    console.log('[BACKGROUND STYLES]', {
-      input: currentDesign.messagesAreaBg,
-      extractedClasses: result.classes,
-      extractedStyle: JSON.stringify(result.style)
-    });
     return result;
   }, [currentDesign?.messagesAreaBg]);
-
-  console.log('[MESSAGES AREA CONTAINER]', currentDesign.messagesAreaContainer);
-  console.log('[MY MESSAGE STYLE]', currentDesign.myMessage);
-  console.log('[REGULAR MESSAGE STYLE]', currentDesign.regularMessage);
-  console.log('[CURRENT USERNAME]', username);
 
   return (
     <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-white'}`}>
@@ -196,20 +184,17 @@ export default function MainChatView({
                   </span>
                 </div>
                 {stickyPinnedMessage.voice_url ? (
-                  <>
-                    {console.log('[PINNED VOICE RENDER] pinnedVoiceMessageStyles:', currentDesign.pinnedVoiceMessageStyles)}
-                    <VoiceMessagePlayer
-                      voiceUrl={`${stickyPinnedMessage.voice_url}${stickyPinnedMessage.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                      duration={stickyPinnedMessage.voice_duration || 0}
-                      waveformData={stickyPinnedMessage.voice_waveform || []}
-                      isMyMessage={false}
-                      voicePlayButton={currentDesign.pinnedVoiceMessageStyles?.playButton}
-                      voicePlayIconColor={currentDesign.pinnedVoiceMessageStyles?.playIconColor}
-                      voiceWaveformActive={currentDesign.pinnedVoiceMessageStyles?.waveformActive}
-                      voiceWaveformInactive={currentDesign.pinnedVoiceMessageStyles?.waveformInactive}
-                      durationTextColor={currentDesign.pinnedVoiceMessageStyles?.durationTextColor}
-                    />
-                  </>
+                  <VoiceMessagePlayer
+                    voiceUrl={`${stickyPinnedMessage.voice_url}${stickyPinnedMessage.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                    duration={stickyPinnedMessage.voice_duration || 0}
+                    waveformData={stickyPinnedMessage.voice_waveform || []}
+                    isMyMessage={false}
+                    voicePlayButton={currentDesign.pinnedVoiceMessageStyles?.playButton}
+                    voicePlayIconColor={currentDesign.pinnedVoiceMessageStyles?.playIconColor}
+                    voiceWaveformActive={currentDesign.pinnedVoiceMessageStyles?.waveformActive}
+                    voiceWaveformInactive={currentDesign.pinnedVoiceMessageStyles?.waveformInactive}
+                    durationTextColor={currentDesign.pinnedVoiceMessageStyles?.durationTextColor}
+                  />
                 ) : (
                   <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
                     {stickyPinnedMessage.content}
@@ -328,7 +313,6 @@ export default function MainChatView({
                         ? currentDesign.myMessage
                         : currentDesign.regularMessage;
 
-                      console.log(`[MSG ${message.id.slice(0,8)}] username: "${message.username}", currentUser: "${username}", isMyMessage: ${isMyMessage}, style: ${selectedStyle?.slice(0, 50)}`);
                       return selectedStyle;
                     })()}
                   >
