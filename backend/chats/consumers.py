@@ -177,6 +177,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Compute username_is_reserved
         username_is_reserved = MessageCache._compute_username_is_reserved(message)
 
+        # Include reply_to_message preview if this is a reply
+        reply_to_message = None
+        if message.reply_to:
+            reply_to_message = {
+                'id': str(message.reply_to.id),
+                'username': message.reply_to.username,
+                'content': message.reply_to.content[:100],  # Truncate for preview
+                'is_from_host': message.reply_to.user == message.reply_to.chat_room.host if message.reply_to.user else False
+            }
+
         return {
             'id': str(message.id),
             'chat_code': message.chat_room.code,
@@ -189,6 +199,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'voice_duration': float(message.voice_duration) if message.voice_duration else None,
             'voice_waveform': message.voice_waveform,
             'reply_to_id': str(message.reply_to.id) if message.reply_to else None,
+            'reply_to_message': reply_to_message,
             'is_pinned': message.is_pinned,
             'created_at': message.created_at.isoformat(),
             'is_deleted': message.is_deleted,

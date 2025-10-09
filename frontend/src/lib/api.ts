@@ -130,6 +130,8 @@ export interface Message {
   message_type: 'normal' | 'host' | 'system';
   content: string;
   voice_url: string | null;
+  voice_duration: number | null;
+  voice_waveform: number[] | null;
   reply_to: string | null;
   reply_to_message: ReplyToMessage | null;
   is_pinned: boolean;

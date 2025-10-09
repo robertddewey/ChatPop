@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
-import { Pin, DollarSign, Ban, X, BadgeCheck } from 'lucide-react';
+import { Pin, DollarSign, Ban, X, BadgeCheck, Reply } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import { isDarkTheme } from '@/lib/themes';
 
@@ -13,6 +13,7 @@ interface MessageActionsModalProps {
   isHost?: boolean;
   themeIsDarkMode?: boolean;
   children: React.ReactNode;
+  onReply?: (message: Message) => void;
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
   onBlock?: (username: string) => void;
@@ -54,6 +55,7 @@ export default function MessageActionsModal({
   isHost = false,
   themeIsDarkMode = true,
   children,
+  onReply,
   onPinSelf,
   onPinOther,
   onBlock,
@@ -147,6 +149,15 @@ export default function MessageActionsModal({
 
   // Filter actions based on context
   const actions = [];
+
+  // Reply (always available, always first)
+  if (onReply) {
+    actions.push({
+      icon: Reply,
+      label: 'Reply',
+      action: () => handleAction(() => onReply(message)),
+    });
+  }
 
   // Pin self (own message, not pinned)
   if (isOwnMessage && !message.is_pinned && onPinSelf) {
