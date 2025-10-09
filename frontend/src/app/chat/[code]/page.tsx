@@ -23,9 +23,6 @@ import { type RecordingMetadata } from '@/lib/waveform';
 
 // Convert snake_case API theme to camelCase for component compatibility
 function convertThemeToCamelCase(theme: ChatTheme): any {
-  console.log('[THEME DEBUG] messagesAreaBg from API:', theme.messages_area_bg);
-  console.log('[THEME DEBUG] messagesAreaContainer from API:', theme.messages_area_container);
-  console.log('[PINNED VOICE DEBUG] pinnedVoiceMessageStyles from API:', theme.pinned_voice_message_styles);
   return {
     themeColor: theme.theme_color,
     container: theme.container,
@@ -721,13 +718,6 @@ export default function ChatPage() {
     // Detect system color scheme preference
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const currentColor = prefersDark ? themeColor.dark : themeColor.light;
-
-    console.log('[Theme Color] Updating meta tags:', {
-      light: themeColor.light,
-      dark: themeColor.dark,
-      currentColor,
-      prefersDark
-    });
 
     // Update default meta tag
     let defaultMeta = document.querySelector('meta[name="theme-color"]:not([media])');
