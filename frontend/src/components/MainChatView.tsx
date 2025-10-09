@@ -61,6 +61,7 @@ interface MainChatViewProps {
   themeIsDarkMode?: boolean;
   handleScroll: () => void;
   scrollToMessage: (messageId: string) => void;
+  handleReply: (message: Message) => void;
   handlePinSelf: (messageId: string, amount: number) => void;
   handlePinOther: (messageId: string, amount: number) => void;
   handleBlockUser: (messageId: string) => void;
@@ -82,6 +83,7 @@ export default function MainChatView({
   themeIsDarkMode = true,
   handleScroll,
   scrollToMessage,
+  handleReply,
   handlePinSelf,
   handlePinOther,
   handleBlockUser,
@@ -117,6 +119,7 @@ export default function MainChatView({
               currentUsername={username}
               isHost={chatRoom?.host.id === currentUserId}
               themeIsDarkMode={themeIsDarkMode}
+              onReply={handleReply}
               onPinSelf={handlePinSelf}
               onPinOther={handlePinOther}
               onBlock={handleBlockUser}
@@ -168,6 +171,7 @@ export default function MainChatView({
               currentUsername={username}
               isHost={chatRoom?.host.id === currentUserId}
               themeIsDarkMode={themeIsDarkMode}
+              onReply={handleReply}
               onPinSelf={handlePinSelf}
               onPinOther={handlePinOther}
               onBlock={handleBlockUser}
@@ -307,6 +311,7 @@ export default function MainChatView({
                   currentUsername={username}
                   isHost={chatRoom?.host.id === currentUserId}
                   themeIsDarkMode={themeIsDarkMode}
+                  onReply={handleReply}
                   onPinSelf={handlePinSelf}
                   onPinOther={handlePinOther}
                   onBlock={handleBlockUser}
