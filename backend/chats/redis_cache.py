@@ -44,6 +44,16 @@ class MessageCache:
 
         Includes username_is_reserved flag for frontend badge display.
         """
+        # Build reply_to_message object if there's a reply
+        reply_to_message = None
+        if message.reply_to:
+            reply_to_message = {
+                "id": str(message.reply_to.id),
+                "username": message.reply_to.username,
+                "content": message.reply_to.content[:100] if message.reply_to.content else "",
+                "is_from_host": message.reply_to.message_type == "host",
+            }
+
         return {
             "id": str(message.id),
             "chat_code": message.chat_room.code,
@@ -54,7 +64,10 @@ class MessageCache:
             "is_from_host": message.message_type == "host",
             "content": message.content,
             "voice_url": message.voice_url,
+            "voice_duration": message.voice_duration,
+            "voice_waveform": message.voice_waveform,
             "reply_to_id": str(message.reply_to.id) if message.reply_to else None,
+            "reply_to_message": reply_to_message,
             "is_pinned": message.is_pinned,
             "pinned_at": message.pinned_at.isoformat() if message.pinned_at else None,
             "pinned_until": message.pinned_until.isoformat() if message.pinned_until else None,
