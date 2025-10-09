@@ -120,7 +120,7 @@ export function useChatWebSocket({
   }, []);
 
   const sendMessage = useCallback(
-    (message: string) => {
+    (message: string, replyToId?: string) => {
       if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
         throw new Error('WebSocket is not connected');
       }
@@ -133,6 +133,7 @@ export function useChatWebSocket({
         JSON.stringify({
           message,
           session_token: sessionToken,
+          reply_to_id: replyToId,
         })
       );
     },

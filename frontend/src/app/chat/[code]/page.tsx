@@ -17,7 +17,7 @@ import VoiceRecorder from '@/components/VoiceRecorder';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft, Reply, X } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 
@@ -474,7 +474,7 @@ export default function ChatPage() {
     try {
       // Send via WebSocket if connected, fallback to REST API
       if (isConnected && wsSendMessage) {
-        wsSendMessage(newMessage.trim());
+        wsSendMessage(newMessage.trim(), replyingTo?.id);
         setNewMessage('');
         shouldAutoScrollRef.current = true; // Always scroll when sending a message
       } else {
@@ -508,6 +508,7 @@ export default function ChatPage() {
       console.error('Failed to send message:', err);
     } finally {
       setSending(false);
+      setReplyingTo(null); // Clear reply state after sending (success or failure)
     }
   };
 
@@ -991,6 +992,30 @@ export default function ChatPage() {
       {/* Message Input - Only show in main chat view */}
       {activeView === 'main' && (
         <div className={currentDesign.inputArea}>
+          {/* Reply Preview Bar */}
+          {replyingTo && (
+            <div className="flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <Reply className="w-4 h-4 flex-shrink-0 text-blue-500" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Replying to {replyingTo.username}
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                    {replyingTo.content}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                aria-label="Cancel reply"
+              >
+                <X className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+              </button>
+            </div>
+          )}
           <form onSubmit={handleSendMessage} className="flex gap-2">
           <input
             type="text"
