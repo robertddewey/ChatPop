@@ -16,16 +16,12 @@ export const initAudioContext = async (): Promise<AudioContext | null> => {
         return null;
       }
       globalAudioContext = new AudioContextClass();
-      console.log('AudioContext created');
     }
 
     // Always resume on iOS (required after page load or context suspension)
     if (globalAudioContext.state === 'suspended') {
       await globalAudioContext.resume();
-      console.log('AudioContext resumed');
     }
-
-    console.log('AudioContext state:', globalAudioContext.state);
     return globalAudioContext;
   } catch (error) {
     console.log('Failed to init AudioContext:', error);
@@ -125,7 +121,6 @@ export const playJoinSound = async () => {
 
     if (playPromise !== undefined) {
       await playPromise;
-      console.log('Join sound played successfully (HTML5 Audio)');
     }
   } catch (htmlError) {
     console.log('HTML5 Audio failed, trying Web Audio API:', htmlError);

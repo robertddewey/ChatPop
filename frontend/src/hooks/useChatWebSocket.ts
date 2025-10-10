@@ -39,11 +39,9 @@ export function useChatWebSocket({
     const wsPort = '9000';
     const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws/chat/${chatCode}/?session_token=${sessionToken}`;
 
-    console.log('[WebSocket] Connecting to:', wsUrl);
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
-      console.log('[WebSocket] Connected to chat:', chatCode);
       setIsConnected(true);
       setIsConnecting(false);
       reconnectAttemptsRef.current = 0;
