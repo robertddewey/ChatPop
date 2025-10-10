@@ -4,7 +4,9 @@ import React, { useMemo } from 'react';
 import { BadgeCheck, Reply, Crown, Pin } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
+import ReactionBar from './ReactionBar';
 import { ChatRoom, Message } from '@/types';
+import { ReactionSummary } from '@/lib/api';
 
 // Extract inline styles from Tailwind classes (opacity and filter)
 function extractInlineStyles(classString: string): { classes: string; style: React.CSSProperties } {
@@ -139,6 +141,8 @@ interface MainChatViewProps {
   handlePinOther: (messageId: string) => void;
   handleBlockUser: (username: string) => void;
   handleTipUser: (username: string) => void;
+  handleReactionToggle: (messageId: string, emoji: string) => void;
+  messageReactions: Record<string, ReactionSummary[]>;
   loadingOlder?: boolean;
 }
 
@@ -162,6 +166,8 @@ export default function MainChatView({
   handlePinOther,
   handleBlockUser,
   handleTipUser,
+  handleReactionToggle,
+  messageReactions,
   loadingOlder = false,
 }: MainChatViewProps) {
   // Extract inline styles from messagesAreaBg for dynamic opacity/filter support
@@ -189,6 +195,7 @@ export default function MainChatView({
               onPinOther={handlePinOther}
               onBlock={handleBlockUser}
               onTip={handleTipUser}
+              onReact={handleReactionToggle}
             >
               <div
                 className={`${currentDesign.stickyHostMessage} cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
@@ -247,6 +254,7 @@ export default function MainChatView({
               onPinOther={handlePinOther}
               onBlock={handleBlockUser}
               onTip={handleTipUser}
+              onReact={handleReactionToggle}
             >
               <div
                 className={`${currentDesign.stickyPinnedMessage} cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
@@ -477,6 +485,7 @@ export default function MainChatView({
                   onPinOther={handlePinOther}
                   onBlock={handleBlockUser}
                   onTip={handleTipUser}
+                  onReact={handleReactionToggle}
                 >
                   <div
                     className={(() => {
@@ -603,6 +612,13 @@ export default function MainChatView({
                     )}
                   </div>
                 </MessageActionsModal>
+
+                  {/* Reaction Bar */}
+                  <ReactionBar
+                    reactions={messageReactions[message.id] || message.reactions || []}
+                    onReactionClick={(emoji) => handleReactionToggle(message.id, emoji)}
+                    themeIsDarkMode={themeIsDarkMode}
+                  />
               </div>
             </div>
           </div>
