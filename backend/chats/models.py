@@ -340,6 +340,64 @@ class AnonymousUserFingerprint(models.Model):
         return f"{self.username} ({self.fingerprint[:8]}...) in {self.chat_room.code}"
 
 
+class MessageReaction(models.Model):
+    """Track emoji reactions to messages"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='reactions')
+
+    # Emoji character (e.g., "👍", "❤️", "😂")
+    emoji = models.CharField(max_length=10, help_text="Emoji character")
+
+    # User identity (one must be present)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='message_reactions',
+        help_text="Logged-in user who reacted"
+    )
+    fingerprint = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Anonymous user fingerprint"
+    )
+
+    # Username at time of reaction (for display)
+    username = models.CharField(max_length=100, help_text="Username at time of reaction")
+
+    # Timestamp
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['message', 'emoji']),
+            models.Index(fields=['message', 'user']),
+            models.Index(fields=['message', 'fingerprint']),
+        ]
+        constraints = [
+            # One reaction per logged-in user per message
+            models.UniqueConstraint(
+                fields=['message', 'user'],
+                condition=models.Q(user__isnull=False),
+                name='unique_message_user_reaction'
+            ),
+            # One reaction per anonymous user per message
+            models.UniqueConstraint(
+                fields=['message', 'fingerprint'],
+                condition=models.Q(user__isnull=True),
+                name='unique_message_fingerprint_reaction'
+            ),
+        ]
+
+    def __str__(self):
+        identifier = f"User {self.user_id}" if self.user else f"Fingerprint {self.fingerprint[:8]}..."
+        return f"{self.emoji} on message {self.message_id} by {identifier}"
+
+
 class Transaction(models.Model):
     """Track all payments in the system"""
     TRANSACTION_PIN = 'pin'

@@ -106,6 +106,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Send message to WebSocket
         await self.send(text_data=json.dumps(event['message_data']))
 
+    async def message_reaction(self, event):
+        # Send reaction update to WebSocket
+        await self.send(text_data=json.dumps(event['reaction_data']))
+
     @database_sync_to_async
     def validate_session(self, token, chat_code, username=None):
         """Validate JWT session token (async wrapper)"""

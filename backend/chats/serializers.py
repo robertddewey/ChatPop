@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.utils import timezone
 from django.core.exceptions import ValidationError as DjangoValidationError
-from .models import ChatRoom, Message, Transaction, ChatParticipation, ChatTheme
+from .models import ChatRoom, Message, Transaction, ChatParticipation, ChatTheme, MessageReaction
 from .validators import validate_username
 from accounts.serializers import UserSerializer
 
@@ -266,3 +266,23 @@ class ChatParticipationSerializer(serializers.ModelSerializer):
             'first_joined_at', 'last_seen_at', 'is_active'
         ]
         read_only_fields = ['id', 'chat_room', 'user', 'first_joined_at', 'last_seen_at']
+
+
+class MessageReactionSerializer(serializers.ModelSerializer):
+    """Serializer for MessageReaction"""
+    class Meta:
+        model = MessageReaction
+        fields = ['id', 'message', 'emoji', 'user', 'fingerprint', 'username', 'created_at']
+        read_only_fields = ['id', 'user', 'fingerprint', 'username', 'created_at']
+
+
+class MessageReactionCreateSerializer(serializers.Serializer):
+    """Serializer for adding a reaction to a message"""
+    emoji = serializers.CharField(max_length=10, required=True)
+
+    def validate_emoji(self, value):
+        """Validate emoji is from allowed set"""
+        ALLOWED_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡']
+        if value not in ALLOWED_EMOJIS:
+            raise serializers.ValidationError(f"Emoji must be one of: {', '.join(ALLOWED_EMOJIS)}")
+        return value

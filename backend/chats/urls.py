@@ -3,7 +3,8 @@ from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
     MessageListView, MessageCreateView, MessagePinView,
     FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
-    VoiceUploadView, VoiceStreamView
+    VoiceUploadView, VoiceStreamView,
+    MessageReactionToggleView, MessageReactionsListView
 )
 
 app_name = 'chats'
@@ -20,6 +21,10 @@ urlpatterns = [
     path('<str:code>/messages/', MessageListView.as_view(), name='message-list'),
     path('<str:code>/messages/send/', MessageCreateView.as_view(), name='message-create'),
     path('<str:code>/messages/<uuid:message_id>/pin/', MessagePinView.as_view(), name='message-pin'),
+
+    # Message Reactions
+    path('<str:code>/messages/<uuid:message_id>/react/', MessageReactionToggleView.as_view(), name='message-react'),
+    path('<str:code>/messages/<uuid:message_id>/reactions/', MessageReactionsListView.as_view(), name='message-reactions-list'),
 
     # Fingerprint Username
     path('<str:code>/fingerprint-username/', FingerprintUsernameView.as_view(), name='fingerprint-username'),

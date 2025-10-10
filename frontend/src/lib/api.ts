@@ -138,6 +138,22 @@ export interface ReplyToMessage {
   is_from_host: boolean;
 }
 
+export interface MessageReaction {
+  id: string;
+  message: string;
+  emoji: string;
+  user: User | null;
+  fingerprint: string | null;
+  username: string;
+  created_at: string;
+}
+
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  users: string[];
+}
+
 export interface Message {
   id: string;
   chat_room: string;
@@ -159,6 +175,7 @@ export interface Message {
   time_until_unpin: number | null;
   created_at: string;
   is_deleted: boolean;
+  reactions?: ReactionSummary[]; // Top 3 reactions for display
 }
 
 // API Functions
@@ -375,6 +392,33 @@ export const messageApi = {
         },
       }
     );
+    return response.data;
+  },
+
+  // Reactions
+  toggleReaction: async (code: string, messageId: string, emoji: string, username: string, fingerprint?: string): Promise<{
+    action: 'added' | 'removed' | 'updated';
+    message: string;
+    emoji: string;
+    reaction: MessageReaction | null;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
+    const response = await api.post(`/api/chats/${code}/messages/${messageId}/react/`, {
+      emoji,
+      session_token: sessionToken,
+      username,
+      fingerprint,
+    });
+    return response.data;
+  },
+
+  getReactions: async (code: string, messageId: string): Promise<{
+    reactions: MessageReaction[];
+    summary: ReactionSummary[];
+    total_count: number;
+  }> => {
+    const response = await api.get(`/api/chats/${code}/messages/${messageId}/reactions/`);
     return response.data;
   },
 };

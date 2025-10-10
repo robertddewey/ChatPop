@@ -8,11 +8,11 @@ from django.core.cache import cache
 from django.db.models import Q
 from constance import config
 from accounts.models import User
-from .models import ChatRoom, Message, AnonymousUserFingerprint, ChatParticipation, ChatTheme
+from .models import ChatRoom, Message, AnonymousUserFingerprint, ChatParticipation, ChatTheme, MessageReaction
 from .serializers import (
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomUpdateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
-    ChatParticipationSerializer
+    ChatParticipationSerializer, MessageReactionSerializer, MessageReactionCreateSerializer
 )
 from .security import ChatSessionValidator
 from .redis_cache import MessageCache
@@ -770,6 +770,137 @@ class SuggestUsernameView(APIView):
         return Response({
             'username': username,
             'remaining': 20 - new_count
+        })
+
+
+class MessageReactionToggleView(APIView):
+    """
+    Toggle a reaction on a message (add or remove).
+    If user already reacted, remove the reaction.
+    If user hasn't reacted, add the new reaction (replacing any existing reaction).
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code, message_id):
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
+
+        # Validate session token
+        session_token = request.data.get('session_token')
+        username = request.data.get('username')
+        fingerprint = request.data.get('fingerprint')
+
+        if not session_token:
+            raise PermissionDenied("Session token is required")
+
+        # Validate the JWT session token
+        session_data = ChatSessionValidator.validate_session_token(
+            token=session_token,
+            chat_code=code,
+            username=username
+        )
+
+        # Validate emoji
+        serializer = MessageReactionCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        emoji = serializer.validated_data['emoji']
+
+        # Determine user identity
+        user = request.user if request.user.is_authenticated else None
+        fingerprint_value = fingerprint if not user else None
+
+        # Check if user already has ANY reaction on this message
+        if user:
+            existing_reaction = MessageReaction.objects.filter(
+                message=message,
+                user=user
+            ).first()
+        else:
+            existing_reaction = MessageReaction.objects.filter(
+                message=message,
+                fingerprint=fingerprint_value
+            ).first()
+
+        # If clicking the same emoji, remove it (toggle off)
+        if existing_reaction and existing_reaction.emoji == emoji:
+            existing_reaction.delete()
+            action = 'removed'
+            reaction_data = None
+        # If user has a different reaction, update it
+        elif existing_reaction:
+            existing_reaction.emoji = emoji
+            existing_reaction.save()
+            action = 'updated'
+            reaction_data = MessageReactionSerializer(existing_reaction).data
+        else:
+            # Create new reaction
+            existing_reaction = MessageReaction.objects.create(
+                message=message,
+                emoji=emoji,
+                user=user,
+                fingerprint=fingerprint_value,
+                username=username
+            )
+            action = 'added'
+            reaction_data = MessageReactionSerializer(existing_reaction).data
+
+        # Broadcast reaction update via WebSocket
+        channel_layer = get_channel_layer()
+        room_group_name = f'chat_{code}'
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'message_reaction',
+                'reaction_data': {
+                    'type': 'reaction',
+                    'action': action,
+                    'message_id': str(message_id),
+                    'emoji': emoji,
+                    'username': username,
+                    'reaction': reaction_data
+                }
+            }
+        )
+
+        return Response({
+            'action': action,
+            'message': f'Reaction {action}',
+            'emoji': emoji,
+            'reaction': reaction_data
+        }, status=status.HTTP_201_CREATED if action == 'added' else status.HTTP_200_OK)
+
+
+class MessageReactionsListView(APIView):
+    """Get all reactions for a specific message"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, code, message_id):
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
+
+        reactions = MessageReaction.objects.filter(message=message).order_by('-created_at')
+        serializer = MessageReactionSerializer(reactions, many=True)
+
+        # Group reactions by emoji with counts
+        from collections import defaultdict
+        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
+
+        for reaction in reactions:
+            emoji = reaction.emoji
+            emoji_counts[emoji]['emoji'] = emoji
+            emoji_counts[emoji]['count'] += 1
+            emoji_counts[emoji]['users'].append(reaction.username)
+
+        # Sort by count (descending) and take top 3
+        top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+
+        return Response({
+            'reactions': serializer.data,
+            'summary': top_reactions,
+            'total_count': len(reactions)
         })
 
 

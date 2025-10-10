@@ -18,6 +18,7 @@ interface MessageActionsModalProps {
   onPinOther?: (messageId: string) => void;
   onBlock?: (username: string) => void;
   onTip?: (username: string) => void;
+  onReact?: (messageId: string, emoji: string) => void;
 }
 
 // Get theme-aware modal styles (no system preference - force theme mode)
@@ -49,6 +50,9 @@ const getModalStyles = (themeIsDarkMode: boolean) => {
   }
 };
 
+// Allowed reaction emojis (matching backend)
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
+
 export default function MessageActionsModal({
   message,
   currentUsername,
@@ -60,6 +64,7 @@ export default function MessageActionsModal({
   onPinOther,
   onBlock,
   onTip,
+  onReact,
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -290,6 +295,32 @@ export default function MessageActionsModal({
                 </p>
               </div>
             </div>
+
+            {/* Emoji Reactions */}
+            {onReact && (
+              <div className="px-6 pb-6">
+                <div className="flex items-center gap-3 justify-center">
+                  {REACTION_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReact(message.id, emoji);
+                        handleClose();
+                      }}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onTouchMove={(e) => e.stopPropagation()}
+                      onTouchEnd={(e) => e.stopPropagation()}
+                      className={`flex items-center justify-center w-12 h-12 rounded-full transition-all active:scale-110 ${
+                        themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
+                      }`}
+                    >
+                      <span className="text-2xl">{emoji}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="px-6 pb-8 space-y-3">
