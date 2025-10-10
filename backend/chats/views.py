@@ -84,7 +84,12 @@ class ChatRoomJoinView(APIView):
     def post(self, request, code):
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
         serializer = ChatRoomJoinSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception as e:
+            print(f"[JOIN ERROR] Validation failed: {type(e).__name__}: {str(e)}")
+            print(f"[JOIN ERROR] Serializer errors: {serializer.errors}")
+            raise
 
         # Validate access code for private rooms
         if chat_room.access_mode == ChatRoom.ACCESS_PRIVATE:
@@ -97,7 +102,18 @@ class ChatRoomJoinView(APIView):
         user_id = str(request.user.id) if request.user.is_authenticated else None
         ip_address = get_client_ip(request)
 
-        # SECURITY CHECK 0: IP-based rate limiting for anonymous users
+        # SECURITY CHECK 0: Check if user is blocked
+        from .blocking_utils import check_if_blocked
+        is_blocked, block_message = check_if_blocked(
+            chat_room=chat_room,
+            username=username,
+            fingerprint=fingerprint,
+            user=request.user if request.user.is_authenticated else None
+        )
+        if is_blocked:
+            raise PermissionDenied(block_message)
+
+        # SECURITY CHECK 1: IP-based rate limiting for anonymous users
         MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT = 3
         if not request.user.is_authenticated and ip_address:
             # Check if this fingerprint already has a participation (they're rejoining)
@@ -139,7 +155,8 @@ class ChatRoomJoinView(APIView):
             # Check if this user already joined this chat
             existing_participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
-                user=request.user
+                user=request.user,
+                is_active=True
             ).first()
             if existing_participation:
                 # User already joined - they must use the same username
@@ -153,7 +170,8 @@ class ChatRoomJoinView(APIView):
             existing_participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 fingerprint=fingerprint,
-                user__isnull=True
+                user__isnull=True,
+                is_active=True
             ).first()
             if existing_participation:
                 # Fingerprint already joined - they must use the same username
@@ -493,19 +511,21 @@ class MyParticipationView(APIView):
 
         # Dual sessions: Priority 1 - logged-in user participation
         if request.user.is_authenticated:
+            # Find participation REGARDLESS of is_active status
+            # We need to check for blocks even on inactive users
             participation = ChatParticipation.objects.select_related('theme').filter(
                 chat_room=chat_room,
-                user=request.user,
-                is_active=True
+                user=request.user
             ).first()
             # Don't fallback to anonymous if logged in
         # Priority 2 - Anonymous user (fingerprint-based)
         elif fingerprint:
+            # Find participation REGARDLESS of is_active status
+            # We need to check for blocks even on inactive users
             participation = ChatParticipation.objects.select_related('theme').filter(
                 chat_room=chat_room,
                 fingerprint=fingerprint,
-                user__isnull=True,
-                is_active=True
+                user__isnull=True
             ).first()
 
         if participation:
@@ -513,6 +533,15 @@ class MyParticipationView(APIView):
             username_is_reserved = False
             if participation.user and participation.user.reserved_username:
                 username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
+
+            # Check if user is blocked from this chat
+            from .blocking_utils import check_if_blocked
+            is_blocked, _ = check_if_blocked(
+                chat_room=chat_room,
+                username=participation.username,
+                fingerprint=participation.fingerprint,
+                user=participation.user
+            )
 
             # Serialize theme if present (BEFORE save to preserve select_related)
             theme_data = None
@@ -527,13 +556,32 @@ class MyParticipationView(APIView):
                 'has_joined': True,
                 'username': participation.username,
                 'username_is_reserved': username_is_reserved,
+                'is_blocked': is_blocked,
                 'first_joined_at': participation.first_joined_at,
                 'last_seen_at': participation.last_seen_at,
                 'theme': theme_data
             })
 
+        # No existing participation - check if this is a first-time visitor who is blocked
+        # Check for blocks by fingerprint (anonymous) or user account (logged-in)
+        from .blocking_utils import check_if_blocked
+
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[BLOCKING CHECK] First-time visitor - chat_code={chat_room.code}, fingerprint={fingerprint}, is_authenticated={request.user.is_authenticated}")
+
+        is_blocked, _ = check_if_blocked(
+            chat_room=chat_room,
+            fingerprint=fingerprint if not request.user.is_authenticated else None,
+            user=request.user if request.user.is_authenticated else None
+        )
+
+        logger.info(f"[BLOCKING CHECK] Result: is_blocked={is_blocked}")
+
         return Response({
-            'has_joined': False
+            'has_joined': False,
+            'is_blocked': is_blocked
         })
 
 
@@ -1034,3 +1082,220 @@ class VoiceStreamView(APIView):
             return JsonResponse({
                 'error': f'Failed to stream voice message: {str(e)}'
             }, status=500)
+
+
+class BlockUserView(APIView):
+    """Block a user from the chat (host only)"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code):
+        from .blocking_utils import block_participation
+        from .security import ChatSessionValidator
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"[BLOCK] Starting block request for chat {code}")
+        logger.info(f"[BLOCK] Request data: {request.data}")
+
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        logger.info(f"[BLOCK] Chat room found: {chat_room.id}, host: {chat_room.host}")
+
+        # Validate session token
+        session_token = request.data.get('session_token')
+        logger.info(f"[BLOCK] Session token present: {bool(session_token)}")
+        if not session_token:
+            logger.error("[BLOCK] Session token is required")
+            raise ValidationError("Session token is required")
+
+        try:
+            session_data = ChatSessionValidator.validate_session_token(
+                token=session_token,
+                chat_code=code
+            )
+            logger.info(f"[BLOCK] Session validated: {session_data}")
+        except Exception as e:
+            logger.error(f"[BLOCK] Session validation failed: {str(e)}")
+            raise PermissionDenied(f"Invalid session: {str(e)}")
+
+        # Get the host's participation (who is doing the blocking)
+        host_participation = None
+        if session_data.get('user_id'):
+            # Logged-in user
+            logger.info(f"[BLOCK] Looking for logged-in host participation: user_id={session_data['user_id']}")
+            host_participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                user_id=session_data['user_id']
+            ).first()
+        else:
+            # Anonymous user (by fingerprint)
+            logger.info(f"[BLOCK] Looking for anonymous host participation: fingerprint={session_data.get('fingerprint')}")
+            host_participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                fingerprint=session_data.get('fingerprint'),
+                user__isnull=True
+            ).first()
+
+        logger.info(f"[BLOCK] Host participation found: {host_participation}")
+        if not host_participation:
+            logger.error("[BLOCK] No host participation found")
+            raise ValidationError("You must be in the chat to block users")
+
+        # Verify user is the host
+        logger.info(f"[BLOCK] Checking host: participation.user={host_participation.user}, chat_room.host={chat_room.host}")
+        if host_participation.user != chat_room.host:
+            logger.error(f"[BLOCK] User is not the host: {host_participation.user} != {chat_room.host}")
+            raise PermissionDenied("Only the host can block users")
+
+        # Get participation to block (by ID or username)
+        participation_id = request.data.get('participation_id')
+        username = request.data.get('username')
+        logger.info(f"[BLOCK] Looking for participation to block: id={participation_id}, username={username}")
+
+        if not participation_id and not username:
+            logger.error("[BLOCK] Neither participation_id nor username provided")
+            raise ValidationError("Either participation_id or username is required")
+
+        # Get the participation to block
+        # NOTE: We do NOT filter by is_active=True because we want to block users
+        # even if they've left the chat (to prevent them from rejoining)
+        if participation_id:
+            logger.info(f"[BLOCK] Searching by participation_id: {participation_id}")
+            participation = get_object_or_404(
+                ChatParticipation,
+                id=participation_id,
+                chat_room=chat_room
+            )
+        else:
+            # Find by username (case-insensitive)
+            logger.info(f"[BLOCK] Searching by username: {username}")
+            participation = get_object_or_404(
+                ChatParticipation,
+                username__iexact=username,
+                chat_room=chat_room
+            )
+
+        logger.info(f"[BLOCK] Participation to block found: {participation}")
+
+        try:
+            # Block the user across all identifiers
+            logger.info(f"[BLOCK] Calling block_participation with chat_room={chat_room.id}, participation={participation.id}, blocked_by={host_participation.id}")
+            blocks_created = block_participation(
+                chat_room=chat_room,
+                participation=participation,
+                blocked_by=host_participation
+            )
+            logger.info(f"[BLOCK] block_participation succeeded, created {len(blocks_created)} blocks")
+
+            # NOTE: We do NOT set is_active=False here because:
+            # 1. ChatBlock table is the source of truth for blocking
+            # 2. We want MyParticipationView to find the participation and return is_blocked=true
+            # 3. This allows the frontend to show a proper "You've been blocked" message
+            # The user will be evicted via WebSocket event below
+
+            # Send WebSocket event to evict the blocked user
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+
+            channel_layer = get_channel_layer()
+            room_group_name = f'chat_{chat_room.code}'
+
+            # Send eviction event to the chat room
+            async_to_sync(channel_layer.group_send)(
+                room_group_name,
+                {
+                    'type': 'user_blocked',
+                    'username': participation.username,
+                    'message': 'You have been removed from this chat by the host.',
+                }
+            )
+
+            return Response({
+                'success': True,
+                'message': f'User {participation.username} has been blocked',
+                'blocks_created': len(blocks_created),
+                'blocked_identifiers': [
+                    'username' if participation.username else None,
+                    'fingerprint' if participation.fingerprint else None,
+                    'user_account' if participation.user else None
+                ]
+            })
+
+        except ValueError as e:
+            logger.error(f"[BLOCK] ValueError: {str(e)}")
+            raise ValidationError(str(e))
+        except Exception as e:
+            logger.error(f"[BLOCK] Unexpected error: {type(e).__name__}: {str(e)}")
+            logger.exception("[BLOCK] Full traceback:")
+            raise ValidationError(f"Failed to block user: {str(e)}")
+
+
+class UnblockUserView(APIView):
+    """Unblock a user from the chat (host only)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, code):
+        from .blocking_utils import unblock_participation
+
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+
+        # Verify user is the host
+        if request.user != chat_room.host:
+            raise PermissionDenied("Only the host can unblock users")
+
+        # Get participation to unblock (by ID or username)
+        participation_id = request.data.get('participation_id')
+        username = request.data.get('username')
+
+        if not participation_id and not username:
+            raise ValidationError("Either participation_id or username is required")
+
+        # Get the participation to unblock (allow inactive participations)
+        if participation_id:
+            participation = get_object_or_404(
+                ChatParticipation,
+                id=participation_id,
+                chat_room=chat_room
+            )
+        else:
+            # Find by username (case-insensitive)
+            participation = get_object_or_404(
+                ChatParticipation,
+                username__iexact=username,
+                chat_room=chat_room
+            )
+
+        # Unblock the user
+        count = unblock_participation(chat_room, participation)
+
+        # Reactivate the participation if it was deactivated
+        if not participation.is_active:
+            participation.is_active = True
+            participation.save()
+
+        return Response({
+            'success': True,
+            'message': f'User {participation.username} has been unblocked',
+            'blocks_removed': count
+        })
+
+
+class BlockedUsersListView(APIView):
+    """Get list of blocked users in a chat (host only)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, code):
+        from .blocking_utils import get_blocked_users
+
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+
+        # Verify user is the host
+        if request.user != chat_room.host:
+            raise PermissionDenied("Only the host can view blocked users")
+
+        # Get all blocked users
+        blocked_users = get_blocked_users(chat_room)
+
+        return Response({
+            'blocked_users': blocked_users,
+            'count': len(blocked_users)
+        })

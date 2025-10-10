@@ -5,6 +5,8 @@ interface UseChatWebSocketOptions {
   chatCode: string;
   sessionToken: string | null;
   onMessage?: (message: Message) => void;
+  onUserBlocked?: (message: string) => void;
+  onReaction?: (data: any) => void;
   onError?: (error: Event) => void;
   enabled?: boolean;
 }
@@ -13,6 +15,8 @@ export function useChatWebSocket({
   chatCode,
   sessionToken,
   onMessage,
+  onUserBlocked,
+  onReaction,
   onError,
   enabled = true,
 }: UseChatWebSocketOptions) {
@@ -57,7 +61,25 @@ export function useChatWebSocket({
           return;
         }
 
-        // Handle chat messages
+        // Handle user_blocked event
+        if (data.type === 'user_blocked') {
+          console.log('[WebSocket] User blocked event received:', data.message);
+          if (onUserBlocked) {
+            onUserBlocked(data.message);
+          }
+          return;
+        }
+
+        // Handle reaction events
+        if (data.type === 'reaction') {
+          console.log('[WebSocket] Reaction event received:', data);
+          if (onReaction) {
+            onReaction(data);
+          }
+          return;
+        }
+
+        // Handle chat messages (has an id field)
         if (onMessage && data.id) {
           onMessage(data as Message);
         }
@@ -99,7 +121,7 @@ export function useChatWebSocket({
     };
 
     ws.current = socket;
-  }, [chatCode, sessionToken, onMessage, onError, enabled]);
+  }, [chatCode, sessionToken, onMessage, onUserBlocked, onReaction, onError, enabled]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {

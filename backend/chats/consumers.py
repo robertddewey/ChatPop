@@ -34,6 +34,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close(code=4003)
             return
 
+        # Check if user is blocked
+        is_blocked = await self.check_if_user_blocked(
+            chat_code=self.chat_code,
+            username=session_data['username'],
+            user_id=session_data.get('user_id')
+        )
+        if is_blocked:
+            # User is blocked - reject connection
+            await self.close(code=4004)
+            return
+
         # Join room group
         await self.channel_layer.group_add(
             self.room_group_name,
@@ -105,6 +116,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def chat_message(self, event):
         # Send message to WebSocket
         await self.send(text_data=json.dumps(event['message_data']))
+
+    async def user_blocked(self, event):
+        """
+        Handle user_blocked event from channel layer.
+        Only send to the blocked user (check username).
+        """
+        # Only send this message to the blocked user
+        if self.username == event['username']:
+            await self.send(text_data=json.dumps({
+                'type': 'user_blocked',
+                'message': event['message'],
+            }))
+            # Close the WebSocket connection after sending the message
+            await self.close(code=4005)
 
     @database_sync_to_async
     def validate_session(self, token, chat_code, username=None):
@@ -204,3 +229,36 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'created_at': message.created_at.isoformat(),
             'is_deleted': message.is_deleted,
         }
+
+    @database_sync_to_async
+    def check_if_user_blocked(self, chat_code, username, user_id=None):
+        """
+        Check if user is blocked from this chat.
+
+        Returns: bool (True if blocked, False otherwise)
+        """
+        from .blocking_utils import check_if_blocked
+        from accounts.models import User
+
+        # Get chat room
+        try:
+            chat_room = ChatRoom.objects.get(code=chat_code, is_active=True)
+        except ChatRoom.DoesNotExist:
+            return False  # Chat doesn't exist, can't be blocked
+
+        # Get user object if user_id provided
+        user = None
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                pass
+
+        # Check if blocked
+        is_blocked, _ = check_if_blocked(
+            chat_room=chat_room,
+            username=username,
+            user=user
+        )
+
+        return is_blocked
