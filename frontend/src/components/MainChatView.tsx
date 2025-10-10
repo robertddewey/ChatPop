@@ -61,11 +61,9 @@ const tailwindColors: Record<string, string> = {
 // Convert Tailwind color class to inline color style
 function getIconColor(tailwindClass: string | undefined): string | undefined {
   if (!tailwindClass) {
-    console.log('getIconColor: no tailwindClass provided');
     return undefined;
   }
   const color = tailwindColors[tailwindClass.trim()];
-  console.log('getIconColor:', tailwindClass, '->', color);
   return color;
 }
 
@@ -141,6 +139,7 @@ interface MainChatViewProps {
   handlePinOther: (messageId: string) => void;
   handleBlockUser: (username: string) => void;
   handleTipUser: (username: string) => void;
+  loadingOlder?: boolean;
 }
 
 export default function MainChatView({
@@ -163,15 +162,8 @@ export default function MainChatView({
   handlePinOther,
   handleBlockUser,
   handleTipUser,
+  loadingOlder = false,
 }: MainChatViewProps) {
-  // Debug: log icon color properties
-  console.log('MainChatView currentDesign icon colors:', {
-    pinIconColor: currentDesign?.pinIconColor,
-    crownIconColor: currentDesign?.crownIconColor,
-    badgeIconColor: currentDesign?.badgeIconColor,
-    replyIconColor: currentDesign?.replyIconColor,
-  });
-
   // Extract inline styles from messagesAreaBg for dynamic opacity/filter support
   const backgroundStyles = useMemo(() => {
     if (!currentDesign?.messagesAreaBg) return { classes: '', style: {} };
@@ -322,6 +314,12 @@ export default function MainChatView({
       >
         {/* Add padding-top when sticky messages are present to avoid overlap */}
         <div className={`space-y-3 relative z-10 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
+        {/* Loading indicator for infinite scroll */}
+        {loadingOlder && (
+          <div className="flex justify-center py-2">
+            <div className="animate-pulse text-gray-400 text-sm">Loading older messages...</div>
+          </div>
+        )}
         {hasJoined && filteredMessages.map((message, index) => {
           const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
 
@@ -381,13 +379,6 @@ export default function MainChatView({
                         const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
                         const field = isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
                         const color = getTextColor(field) || '#ffffff';
-                        console.log('[USERNAME COLOR DEBUG]', {
-                          messageUsername: message.username,
-                          sessionUsername: username,
-                          isMyMessage,
-                          field,
-                          extractedColor: color
-                        });
                         return color;
                       })()
                     }}

@@ -177,6 +177,10 @@ export default function ChatPage() {
   // Message input
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+
+  // Infinite scroll state
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
@@ -442,8 +446,64 @@ export default function ChatPage() {
     try {
       const msgs = await messageApi.getMessages(code);
       setMessages(msgs);
+      setHasMoreMessages(true); // Reset when loading fresh messages
+
+      // Wait for DOM to fully render before scrolling to bottom
+      // This prevents race conditions on mobile/small viewports
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          shouldAutoScrollRef.current = true;
+          scrollToBottom(); // Explicitly scroll after DOM is ready
+        });
+      });
     } catch (err) {
       console.error('Failed to load messages:', err);
+    }
+  };
+
+  // Load older messages for infinite scroll
+  const loadOlderMessages = async () => {
+    if (loadingOlder || !hasMoreMessages || messages.length === 0) return;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    try {
+      setLoadingOlder(true);
+
+      // Save scroll position relative to current scroll height
+      const previousScrollHeight = container.scrollHeight;
+      const previousScrollTop = container.scrollTop;
+
+      // Get the oldest message timestamp
+      const oldestMessage = messages[0];
+      const beforeTimestamp = new Date(oldestMessage.created_at).getTime() / 1000;
+
+      // Fetch older messages
+      const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(code, beforeTimestamp, 50);
+
+      if (olderMessages.length > 0) {
+        // Prepend older messages
+        setMessages(prev => [...olderMessages, ...prev]);
+
+        // Use requestAnimationFrame to ensure DOM has updated
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (container) {
+              // Calculate new scroll position to maintain visual position
+              const newScrollHeight = container.scrollHeight;
+              const heightDifference = newScrollHeight - previousScrollHeight;
+              container.scrollTop = previousScrollTop + heightDifference;
+            }
+          });
+        });
+      }
+
+      setHasMoreMessages(hasMore);
+    } catch (err) {
+      console.error('Failed to load older messages:', err);
+    } finally {
+      setLoadingOlder(false);
     }
   };
 
@@ -642,6 +702,7 @@ export default function ChatPage() {
 
   // Track which sticky messages are visible in scroll area
   const [visibleMessageIds, setVisibleMessageIds] = useState<Set<string>>(new Set());
+  const [aboveViewportMessageIds, setAboveViewportMessageIds] = useState<Set<string>>(new Set());
 
   // Message action handlers (wrapped in useCallback to prevent re-renders)
   const handlePinSelf = useCallback((messageId: string) => {
@@ -712,8 +773,20 @@ export default function ChatPage() {
     return ids;
   }, [allStickyHostMessages, topPinnedMessage]);
 
-  // Only show in sticky if not visible in scroll area
-  const stickyHostMessages = allStickyHostMessages.filter(m => !visibleMessageIds.has(m.id));
+  // Show the most recent host message that is above the viewport (scrolled past)
+  const stickyHostMessages = useMemo(() => {
+    // Get all host messages from filtered messages
+    const hostMessages = filteredMessages.filter(m => m.is_from_host);
+
+    // Find the most recent host message that is above the viewport
+    const aboveViewportHosts = hostMessages
+      .filter(m => aboveViewportMessageIds.has(m.id))
+      .slice(-1); // Get the most recent one
+
+    console.log(`[STICKY SELECTION] Total host messages: ${hostMessages.length}, Above viewport: ${aboveViewportMessageIds.size}, Selected sticky: ${aboveViewportHosts.length > 0 ? aboveViewportHosts[0].id.slice(0, 8) : 'NONE'}`);
+
+    return aboveViewportHosts;
+  }, [filteredMessages, aboveViewportMessageIds]);
 
   // Only show pinned in sticky if not visible in scroll area
   const stickyPinnedMessage = topPinnedMessage && !visibleMessageIds.has(topPinnedMessage.id) ? topPinnedMessage : null;
@@ -730,7 +803,34 @@ export default function ChatPage() {
 
   // Handle scroll events
   const handleScroll = () => {
-    shouldAutoScrollRef.current = checkIfNearBottom();
+    const wasAutoScroll = shouldAutoScrollRef.current;
+    const nearBottom = checkIfNearBottom();
+
+    // Only update shouldAutoScrollRef if:
+    // 1. We're currently NOT auto-scrolling (user is manually scrolling), OR
+    // 2. We're checking and we're still near bottom (maintain auto-scroll state)
+    // This prevents the ref from being set to false when content is added while auto-scrolling
+    if (!wasAutoScroll || nearBottom) {
+      shouldAutoScrollRef.current = nearBottom;
+    }
+
+    if (wasAutoScroll !== shouldAutoScrollRef.current) {
+      console.log(`[AUTO-SCROLL] Changed from ${wasAutoScroll} to ${shouldAutoScrollRef.current}`);
+    }
+
+    // Check if scrolled to top for infinite scroll
+    // Don't trigger if we're trying to auto-scroll (during initial load) or if no messages loaded yet
+    const container = messagesContainerRef.current;
+    if (
+      container &&
+      container.scrollTop < 100 &&
+      hasMoreMessages &&
+      !loadingOlder &&
+      messages.length > 0 &&
+      !shouldAutoScrollRef.current
+    ) {
+      loadOlderMessages();
+    }
   };
 
   // Only auto-scroll if user is near bottom
@@ -823,27 +923,28 @@ export default function ChatPage() {
 
       // Use requestAnimationFrame for smoother updates
       rafId = requestAnimationFrame(() => {
+        // Get the chat header element as our fixed reference point
+        const chatHeader = document.querySelector('[data-chat-header]') as HTMLElement;
+        let headerBottom = 0;
+
+        if (chatHeader) {
+          // Get the bottom edge of the header relative to container
+          const headerRect = chatHeader.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+          headerBottom = headerRect.bottom - containerRect.top;
+        } else {
+          // Fallback: estimate based on typical header size
+          headerBottom = 60;
+        }
+
+        // Hysteresis buffer to prevent flickering at the boundary
+        const ENTER_BUFFER = 20; // Message must be 20px past header to leave sticky
+        const EXIT_BUFFER = 5;   // Message must be 5px above header to enter sticky
+
+        // Update visible messages
         setVisibleMessageIds((prev) => {
           const newVisibleIds = new Set<string>();
           let hasChanges = false;
-
-          // Get the chat header element as our fixed reference point
-          const chatHeader = document.querySelector('[data-chat-header]') as HTMLElement;
-          let headerBottom = 0;
-
-          if (chatHeader) {
-            // Get the bottom edge of the header relative to container
-            const headerRect = chatHeader.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            headerBottom = headerRect.bottom - containerRect.top;
-          } else {
-            // Fallback: estimate based on typical header size
-            headerBottom = 60;
-          }
-
-          // Hysteresis buffer to prevent flickering at the boundary
-          const ENTER_BUFFER = 20; // Message must be 20px past header to leave sticky
-          const EXIT_BUFFER = 5;   // Message must be 5px above header to enter sticky
 
           // Check each message that should be observed
           idsToObserve.forEach((messageId) => {
@@ -884,6 +985,65 @@ export default function ChatPage() {
           }
 
           return hasChanges ? newVisibleIds : prev;
+        });
+
+        // Update above-viewport messages (for host message sticky logic)
+        setAboveViewportMessageIds((prev) => {
+          const newAboveViewportIds = new Set<string>();
+          let hasChanges = false;
+
+          // Hysteresis thresholds for above-viewport detection (prevents jitter)
+          const ABOVE_ENTER_THRESHOLD = 50; // Message must be 50px above header to enter set
+          const ABOVE_EXIT_THRESHOLD = -20; // Message must be 20px below header to leave set
+
+          // Get all host messages
+          const allHostMessages = filteredMessages.filter(m => m.is_from_host);
+
+          // Check each host message
+          allHostMessages.forEach((message) => {
+            const messageElement = container.querySelector(`[data-message-id="${message.id}"]`);
+            if (messageElement) {
+              const rect = messageElement.getBoundingClientRect();
+              const containerRect = container.getBoundingClientRect();
+              const relativeTop = rect.top - containerRect.top;
+              const messageBottom = relativeTop + messageElement.clientHeight;
+
+              const wasAboveViewport = prev.has(message.id);
+
+              console.log(`[STICKY] Message ${message.id.slice(0, 8)}: bottom=${messageBottom.toFixed(0)}px, headerBottom=${headerBottom}, wasAbove=${wasAboveViewport}`);
+
+              if (wasAboveViewport) {
+                // Keep it in set unless it scrolls well below header
+                if (messageBottom < headerBottom + ABOVE_EXIT_THRESHOLD) {
+                  newAboveViewportIds.add(message.id);
+                  console.log(`  ✓ Keeping in above-viewport set (exit threshold: ${headerBottom + ABOVE_EXIT_THRESHOLD})`);
+                } else {
+                  console.log(`  ✗ Removing from above-viewport set (past exit threshold)`);
+                }
+              } else {
+                // Add to set only if it's well above header
+                if (messageBottom < headerBottom - ABOVE_ENTER_THRESHOLD) {
+                  newAboveViewportIds.add(message.id);
+                  console.log(`  ✓ Adding to above-viewport set (enter threshold: ${headerBottom - ABOVE_ENTER_THRESHOLD})`);
+                } else {
+                  console.log(`  ✗ Not above viewport yet (enter threshold: ${headerBottom - ABOVE_ENTER_THRESHOLD})`);
+                }
+              }
+            }
+          });
+
+          // Check if there are any changes
+          if (newAboveViewportIds.size !== prev.size) {
+            hasChanges = true;
+          } else {
+            newAboveViewportIds.forEach(id => {
+              if (!prev.has(id)) {
+                hasChanges = true;
+              }
+            });
+          }
+
+          return hasChanges ? newAboveViewportIds : prev;
         });
       });
     };
@@ -1015,6 +1175,7 @@ export default function ChatPage() {
             handlePinOther={handlePinOther}
             handleBlockUser={handleBlockUser}
             handleTipUser={handleTipUser}
+            loadingOlder={loadingOlder}
           />
         )}
 
