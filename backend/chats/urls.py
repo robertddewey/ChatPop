@@ -4,7 +4,8 @@ from .views import (
     MessageListView, MessageCreateView, MessagePinView,
     FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
     VoiceUploadView, VoiceStreamView,
-    MessageReactionToggleView, MessageReactionsListView
+    MessageReactionToggleView, MessageReactionsListView,
+    BlockUserView, UnblockUserView, BlockedUsersListView
 )
 
 app_name = 'chats'
@@ -45,4 +46,9 @@ urlpatterns = [
     # Voice Messages
     path('<str:code>/voice/upload/', VoiceUploadView.as_view(), name='voice-upload'),
     path('media/<path:storage_path>', VoiceStreamView.as_view(), name='voice-stream'),
+
+    # User Blocking (host only)
+    path('<str:code>/block/', BlockUserView.as_view(), name='block-user'),
+    path('<str:code>/unblock/', UnblockUserView.as_view(), name='unblock-user'),
+    path('<str:code>/blocked-users/', BlockedUsersListView.as_view(), name='blocked-users-list'),
 ]

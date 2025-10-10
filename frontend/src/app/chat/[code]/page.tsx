@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { chatApi, messageApi, authApi, type ChatRoom, type ChatTheme, type Message } from '@/lib/api';
+import { chatApi, messageApi, authApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
@@ -171,6 +171,7 @@ export default function ChatPage() {
   // Join state for guests
   const [hasJoined, setHasJoined] = useState(false);
   const [hasJoinedBefore, setHasJoinedBefore] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
   const [username, setUsername] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [joinError, setJoinError] = useState('');
@@ -187,6 +188,9 @@ export default function ChatPage() {
 
   // Message filter
   const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
+
+  // Emoji reactions state
+  const [messageReactions, setMessageReactions] = useState<Record<string, ReactionSummary[]>>({});
 
   // View state - supports multiple feature views
   type ViewType = 'main' | 'backroom';
@@ -216,11 +220,45 @@ export default function ChatPage() {
     });
   }, []);
 
+  // Handle user blocked event (eviction)
+  const handleUserBlocked = useCallback((message: string) => {
+    console.log('[WebSocket] User blocked:', message);
+
+    // Clear local state
+    localStorage.removeItem(`chat_session_${code}`);
+    setSessionToken(null);
+    setHasJoined(false);
+    setMessages([]);
+
+    // Show alert and redirect to home page
+    alert(message || 'You have been removed from this chat.');
+    window.location.href = '/';
+  }, [code]);
+
+  // Handle reaction WebSocket events
+  const handleReactionEvent = useCallback(async (data: any) => {
+    const { message_id, action, emoji } = data;
+    console.log('[Reactions] WebSocket event:', { message_id, action, emoji });
+
+    // Fetch fresh reaction summary for this message
+    try {
+      const { summary } = await messageApi.getReactions(code, message_id);
+      setMessageReactions(prev => ({
+        ...prev,
+        [message_id]: summary
+      }));
+    } catch (error) {
+      console.error('Failed to fetch reactions:', error);
+    }
+  }, [code]);
+
   // WebSocket connection
   const { sendMessage: wsSendMessage, sendRawMessage, isConnected } = useChatWebSocket({
     chatCode: code,
     sessionToken,
     onMessage: handleWebSocketMessage,
+    onUserBlocked: handleUserBlocked,
+    onReaction: handleReactionEvent,
     enabled: hasJoined && !!sessionToken,
   });
 
@@ -285,13 +323,16 @@ export default function ChatPage() {
               // Returning user - use their locked username
               setUsername(participation.username);
               setHasJoinedBefore(true);
+              setIsBlocked(participation.is_blocked || false);
               setHasReservedUsername(participation.username_is_reserved || false);
               console.log('Username (from participation):', participation.username);
+              console.log('Blocked Status:', participation.is_blocked || false);
               console.log('Reserved Username Badge:', participation.username_is_reserved || false);
             } else {
               // First-time user - pre-fill with reserved_username (they can change it)
               setUsername(currentUser.reserved_username || '');
               setHasJoinedBefore(false);
+              setIsBlocked(false);
               // Badge shows if they have a reserved username
               setHasReservedUsername(!!currentUser.reserved_username);
               console.log('Username (pre-filled from account):', currentUser.reserved_username || '(none)');
@@ -318,14 +359,18 @@ export default function ChatPage() {
               // Returning anonymous user
               setUsername(participation.username);
               setHasJoinedBefore(true);
+              setIsBlocked(participation.is_blocked || false);
               setHasReservedUsername(participation.username_is_reserved || false);
               console.log('Username (from participation):', participation.username);
+              console.log('Blocked Status:', participation.is_blocked || false);
               console.log('Reserved Username Badge:', participation.username_is_reserved || false);
             } else {
-              // First-time anonymous user
+              // First-time anonymous user - check if blocked by fingerprint
               setHasJoinedBefore(false);
+              setIsBlocked(participation.is_blocked || false);
               setHasReservedUsername(false);
               console.log('Username: (not set - first time anonymous user)');
+              console.log('Blocked Status (first-time):', participation.is_blocked || false);
             }
           } catch (err) {
             console.error('❌ Error checking participation:', err);
@@ -380,11 +425,13 @@ export default function ChatPage() {
             // They already joined - update username and badge
             setUsername(participation.username);
             setHasJoinedBefore(true);
+            setIsBlocked(participation.is_blocked || false);
             setHasReservedUsername(participation.username_is_reserved || false);
           } else {
             // Not joined yet - pre-fill with reserved username
             setUsername(currentUser.reserved_username || '');
             setHasJoinedBefore(false);
+            setIsBlocked(false);
             // Badge shows if they have a reserved username
             setHasReservedUsername(!!currentUser.reserved_username);
           }
@@ -400,6 +447,14 @@ export default function ChatPage() {
     window.addEventListener('auth-change', handleAuthChange);
     return () => window.removeEventListener('auth-change', handleAuthChange);
   }, [code]);
+
+  // Redirect blocked users to home page immediately
+  useEffect(() => {
+    if (isBlocked) {
+      console.log('[Blocked] User is blocked from this chat - redirecting to home page');
+      router.replace('/'); // Use replace to avoid adding to browser history
+    }
+  }, [isBlocked, router]);
 
   // Listen for back button to show join modal when user navigates back
   useEffect(() => {
@@ -561,7 +616,61 @@ export default function ChatPage() {
       // Play success sound to verify audio works after user gesture
       playJoinSound();
     } catch (err: any) {
-      throw new Error(err.response?.data?.detail || 'Invalid access code');
+      // Log the full error structure for debugging
+      console.error('[Join Error] Full error:', err);
+      console.error('[Join Error] Response data:', err.response?.data);
+      console.error('[Join Error] Status:', err.response?.status);
+
+      // Extract error message from various DRF error formats
+      let errorMessage = 'Failed to join chat';
+
+      if (err.response?.data) {
+        const data = err.response.data;
+
+        // Direct array response: ["error message"]
+        if (Array.isArray(data) && data.length > 0) {
+          errorMessage = data[0];
+        }
+        // PermissionDenied: { detail: "message" }
+        else if (data.detail) {
+          errorMessage = data.detail;
+        }
+        // ValidationError: { non_field_errors: ["message"] }
+        else if (data.non_field_errors && Array.isArray(data.non_field_errors)) {
+          errorMessage = data.non_field_errors[0];
+        }
+        // ValidationError: direct string message
+        else if (typeof data === 'string') {
+          errorMessage = data;
+        }
+        // Check for field-specific errors (e.g., { username: ["error"] })
+        else if (typeof data === 'object') {
+          // Get first error from any field
+          const firstField = Object.keys(data)[0];
+          if (firstField && Array.isArray(data[firstField])) {
+            errorMessage = data[firstField][0];
+          }
+        }
+      }
+
+      // Check if user is blocked - trigger redirect
+      if (errorMessage.includes('blocked from this chat')) {
+        console.log('[Blocked] User blocked from chat - setting isBlocked to trigger redirect');
+        setIsBlocked(true);
+        // Don't throw error - the redirect will happen via useEffect
+        return;
+      }
+
+      // If this is a username persistence error, extract the username and store it for pre-population
+      const usernameMatch = errorMessage.match(/already joined this chat as '([^']+)'/);
+      if (usernameMatch) {
+        const existingUsername = usernameMatch[1];
+        // Store the suggested username in localStorage so the modal can pick it up
+        localStorage.setItem(`chat_${chatRoom.code}_suggested_username`, existingUsername);
+        errorMessage = `You previously joined as "${existingUsername}". Please use that username to rejoin.`;
+      }
+
+      throw new Error(errorMessage);
     }
   };
 
@@ -744,15 +853,58 @@ export default function ChatPage() {
     setReplyingTo(message);
   }, []);
 
-  const handleBlockUser = useCallback((username: string) => {
-    console.log('Block user:', username);
-    // TODO: Implement block user logic
-  }, []);
+  const handleBlockUser = useCallback(async (username: string) => {
+    // Only hosts can block users
+    if (!chatRoom || !currentUserId || chatRoom.host.id !== currentUserId) {
+      console.error('Only the host can block users');
+      return;
+    }
+
+    if (!sessionToken) {
+      console.error('No session token available');
+      return;
+    }
+
+    try {
+      await messageApi.blockUser(code, username, sessionToken);
+      console.log(`Successfully blocked user: ${username}`);
+      // The WebSocket will handle real-time eviction
+    } catch (error) {
+      console.error('Failed to block user:', error);
+    }
+  }, [code, chatRoom, currentUserId, sessionToken]);
 
   const handleTipUser = useCallback((username: string) => {
     console.log('Tip user:', username);
     // TODO: Implement tip user logic with payment
   }, []);
+
+  const handleReactionToggle = useCallback(async (messageId: string, emoji: string) => {
+    try {
+      const result = await messageApi.toggleReaction(
+        code,
+        messageId,
+        emoji,
+        username,
+        fingerprint
+      );
+
+      console.log('[Reactions] Toggle result:', result);
+
+      // Optimistically update local state
+      if (result.action === 'removed') {
+        setMessageReactions(prev => {
+          const updated = { ...prev };
+          const reactions = updated[messageId] || [];
+          updated[messageId] = reactions.filter(r => r.emoji !== emoji);
+          return updated;
+        });
+      }
+      // For 'added' or 'updated', the WebSocket will broadcast the update
+    } catch (error) {
+      console.error('Failed to toggle reaction:', error);
+    }
+  }, [code, username, fingerprint]);
 
   // Filter messages based on mode
   const filteredMessages = filterMode === 'focus'
@@ -1130,6 +1282,7 @@ export default function ChatPage() {
           chatRoom={chatRoom}
           currentUserDisplayName={username}
           hasJoinedBefore={hasJoinedBefore}
+          isBlocked={isBlocked}
           isLoggedIn={!!currentUserId}
           hasReservedUsername={hasReservedUsername}
           themeIsDarkMode={themeIsDarkMode}
@@ -1211,6 +1364,8 @@ export default function ChatPage() {
             handlePinOther={handlePinOther}
             handleBlockUser={handleBlockUser}
             handleTipUser={handleTipUser}
+            handleReactionToggle={handleReactionToggle}
+            messageReactions={messageReactions}
             loadingOlder={loadingOlder}
           />
         )}

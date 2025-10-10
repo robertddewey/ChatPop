@@ -230,7 +230,7 @@ export default function MessageActionsModal({
   if (!isOwnMessage && !isHostMessage && onBlock) {
     actions.push({
       icon: Ban,
-      label: 'Block User',
+      label: isHost ? 'Chat Block' : 'Block User',
       action: () => {
         onBlock(message.username);
         handleClose();
