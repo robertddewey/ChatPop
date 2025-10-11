@@ -14,8 +14,8 @@ interface LoginModalProps {
 }
 
 export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: LoginModalProps) {
-  // Determine if we should use dark mode based on chat theme
-  const useChatDarkMode = theme === 'chat' && chatTheme && isDarkTheme(chatTheme);
+  // Force dark mode for homepage, use chat theme detection for chat pages
+  const useDarkMode = theme === 'homepage' || (theme === 'chat' && chatTheme && isDarkTheme(chatTheme));
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
@@ -70,30 +70,30 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
   };
 
   // Theme-aware styles
-  const styles = useChatDarkMode ? {
-    // Dark mode styles for dark-type themes (bypasses system preference)
+  const styles = useDarkMode ? {
+    // Dark mode styles (forced on homepage, conditional on chat pages)
     overlay: 'bg-black/75',
     container: 'bg-zinc-900 border border-zinc-800',
     title: 'text-zinc-100',
     subtitle: 'text-zinc-400',
     input: 'bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400',
     label: 'text-zinc-300',
-    button: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
+    button: 'bg-[#404eed] hover:bg-[#3640d9] text-white',
     link: 'text-cyan-400 hover:underline hover:text-cyan-300',
     error: 'bg-red-900/20 border-red-800 text-red-400',
     closeButton: 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800',
   } : {
-    // Default styles (uses system preference via dark: variants)
+    // Light mode styles (only used on non-homepage, non-dark-theme chat pages)
     overlay: 'bg-black/75',
-    container: 'bg-white dark:bg-zinc-900 border-0 dark:border dark:border-zinc-800',
-    title: 'text-gray-900 dark:text-zinc-100',
-    subtitle: 'text-gray-600 dark:text-zinc-400',
-    input: 'bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-500 focus:ring-2 focus:ring-purple-500 dark:focus:ring-cyan-400 focus:border-purple-500 dark:focus:border-cyan-400',
-    label: 'text-gray-700 dark:text-zinc-300',
+    container: 'bg-white border-0',
+    title: 'text-gray-900',
+    subtitle: 'text-gray-600',
+    input: 'bg-white border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-purple-500',
+    label: 'text-gray-700',
     button: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
-    link: 'text-purple-600 dark:text-cyan-400 hover:underline dark:hover:text-cyan-300',
-    error: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400',
-    closeButton: 'text-gray-400 dark:text-zinc-400 hover:text-gray-600 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800',
+    link: 'text-purple-600 hover:underline',
+    error: 'bg-red-50 border-red-200 text-red-600',
+    closeButton: 'text-gray-400 hover:text-gray-600 hover:bg-gray-100',
   };
 
   return (
