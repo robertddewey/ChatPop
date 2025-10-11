@@ -520,20 +520,12 @@ export default function ChatPage() {
 
   // Load older messages for infinite scroll
   const loadOlderMessages = async () => {
-    console.log('[INFINITE SCROLL] loadOlderMessages called', {
-      loadingOlder,
-      hasMoreMessages,
-      messagesLength: messages.length
-    });
-
     if (loadingOlder || !hasMoreMessages || messages.length === 0) {
-      console.log('[INFINITE SCROLL] Skipping load -', { loadingOlder, hasMoreMessages, messagesLength: messages.length });
       return;
     }
 
     const container = messagesContainerRef.current;
     if (!container) {
-      console.log('[INFINITE SCROLL] No container ref');
       return;
     }
 
@@ -548,18 +540,8 @@ export default function ChatPage() {
       const oldestMessage = messages[0];
       const beforeTimestamp = new Date(oldestMessage.created_at).getTime() / 1000;
 
-      console.log('[INFINITE SCROLL] Fetching messages before', {
-        oldestMessageId: oldestMessage.id.slice(0, 8),
-        beforeTimestamp: new Date(beforeTimestamp * 1000).toISOString()
-      });
-
       // Fetch older messages
       const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(code, beforeTimestamp, 50);
-
-      console.log('[INFINITE SCROLL] Received', {
-        count: olderMessages.length,
-        hasMore
-      });
 
       if (olderMessages.length > 0) {
         // Prepend older messages
@@ -997,7 +979,6 @@ export default function ChatPage() {
       // Mark initial scroll as complete once we reach bottom for the first time
       if (!initialScrollDoneRef.current) {
         initialScrollDoneRef.current = true;
-        console.log('[INFINITE SCROLL] Initial scroll complete (reached bottom), infinite scroll now enabled');
       }
     } else if (scrolledFarFromBottom && wasAutoScroll) {
       // User manually scrolled up significantly while auto-scroll was on
@@ -1005,10 +986,6 @@ export default function ChatPage() {
       shouldAutoScrollRef.current = false;
     }
     // If we're just temporarily not at bottom (e.g., content added), keep auto-scroll enabled
-
-    if (wasAutoScroll !== shouldAutoScrollRef.current) {
-      console.log(`[AUTO-SCROLL] Changed from ${wasAutoScroll} to ${shouldAutoScrollRef.current}`);
-    }
 
     // Check if scrolled to top for infinite scroll
     // Only allow after initial scroll to bottom is complete
@@ -1019,7 +996,6 @@ export default function ChatPage() {
       !loadingOlder &&
       messages.length > 0
     ) {
-      console.log('[INFINITE SCROLL] Triggering load of older messages');
       loadOlderMessages();
     }
   };

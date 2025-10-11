@@ -356,6 +356,21 @@ export const messageApi = {
     return response.data.messages || response.data.results || response.data;
   },
 
+  getMessagesBefore: async (code: string, beforeTimestamp: number, limit: number = 50): Promise<{ messages: Message[], hasMore: boolean }> => {
+    const response = await api.get(`/api/chats/${code}/messages/`, {
+      params: {
+        before: beforeTimestamp,
+        limit
+      }
+    });
+
+    const messages = response.data.messages || response.data.results || response.data;
+    // If we got fewer messages than requested, we've reached the end or hit the limit
+    const hasMore = messages.length === limit;
+
+    return { messages, hasMore };
+  },
+
   sendMessage: async (code: string, username: string, content: string): Promise<Message> => {
     // Get session token from localStorage
     const sessionToken = localStorage.getItem(`chat_session_${code}`);
