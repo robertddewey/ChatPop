@@ -49,6 +49,8 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "corsheaders",
     "channels",
+    "constance",
+    "constance.backends.database",
     "django_extensions",
     # Local apps
     "accounts",
@@ -213,6 +215,21 @@ CACHES = {
 # Message Cache Settings
 MESSAGE_CACHE_MAX_COUNT = int(os.getenv("MESSAGE_CACHE_MAX_COUNT", "500"))  # Max messages per chat in Redis
 MESSAGE_CACHE_TTL_HOURS = int(os.getenv("MESSAGE_CACHE_TTL_HOURS", "24"))  # Auto-expire after 24 hours
+
+# Constance - Dynamic Settings (editable in /admin/constance/config/)
+CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
+CONSTANCE_CONFIG = {
+    'MESSAGE_HISTORY_MAX_DAYS': (
+        7,
+        'Maximum days users can scroll back in chat history',
+        int
+    ),
+    'MESSAGE_HISTORY_MAX_COUNT': (
+        500,
+        'Maximum number of messages users can load total (includes initial load + pagination)',
+        int
+    ),
+}
 
 # Custom User Model
 AUTH_USER_MODEL = "accounts.User"

@@ -880,6 +880,11 @@ export default function ChatPage() {
   }, []);
 
   const handleReactionToggle = useCallback(async (messageId: string, emoji: string) => {
+    if (!username) {
+      console.warn('[Reactions] No username available');
+      return;
+    }
+
     try {
       const result = await messageApi.toggleReaction(
         code,
@@ -958,8 +963,6 @@ export default function ChatPage() {
     const aboveViewportHosts = hostMessages
       .filter(m => aboveViewportMessageIds.has(m.id))
       .slice(-1); // Get the most recent one
-
-    console.log(`[STICKY SELECTION] Total host messages: ${hostMessages.length}, Above viewport: ${aboveViewportMessageIds.size}, Selected sticky: ${aboveViewportHosts.length > 0 ? aboveViewportHosts[0].id.slice(0, 8) : 'NONE'}`);
 
     return aboveViewportHosts;
   }, [filteredMessages, aboveViewportMessageIds]);
@@ -1198,23 +1201,15 @@ export default function ChatPage() {
 
               const wasAboveViewport = prev.has(message.id);
 
-              console.log(`[STICKY] Message ${message.id.slice(0, 8)}: bottom=${messageBottom.toFixed(0)}px, headerBottom=${headerBottom}, wasAbove=${wasAboveViewport}`);
-
               if (wasAboveViewport) {
                 // Keep it in set unless it scrolls well below header
                 if (messageBottom < headerBottom + ABOVE_EXIT_THRESHOLD) {
                   newAboveViewportIds.add(message.id);
-                  console.log(`  ✓ Keeping in above-viewport set (exit threshold: ${headerBottom + ABOVE_EXIT_THRESHOLD})`);
-                } else {
-                  console.log(`  ✗ Removing from above-viewport set (past exit threshold)`);
                 }
               } else {
                 // Add to set only if it's well above header
                 if (messageBottom < headerBottom - ABOVE_ENTER_THRESHOLD) {
                   newAboveViewportIds.add(message.id);
-                  console.log(`  ✓ Adding to above-viewport set (enter threshold: ${headerBottom - ABOVE_ENTER_THRESHOLD})`);
-                } else {
-                  console.log(`  ✗ Not above viewport yet (enter threshold: ${headerBottom - ABOVE_ENTER_THRESHOLD})`);
                 }
               }
             }

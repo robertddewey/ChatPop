@@ -102,17 +102,6 @@ class ChatRoomJoinView(APIView):
         user_id = str(request.user.id) if request.user.is_authenticated else None
         ip_address = get_client_ip(request)
 
-        # SECURITY CHECK 0: Check if user is blocked
-        from .blocking_utils import check_if_blocked
-        is_blocked, block_message = check_if_blocked(
-            chat_room=chat_room,
-            username=username,
-            fingerprint=fingerprint,
-            user=request.user if request.user.is_authenticated else None
-        )
-        if is_blocked:
-            raise PermissionDenied(block_message)
-
         # SECURITY CHECK 1: IP-based rate limiting for anonymous users
         MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT = 3
         if not request.user.is_authenticated and ip_address:
@@ -306,7 +295,7 @@ class MessageListView(APIView):
         queryset = Message.objects.filter(
             chat_room=chat_room,
             is_deleted=False
-        ).select_related('user', 'reply_to')
+        ).select_related('user', 'reply_to').prefetch_related('reactions')
 
         # Filter by timestamp if paginating
         if before_timestamp:
@@ -337,6 +326,19 @@ class MessageListView(APIView):
                     'is_from_host': msg.reply_to.message_type == "host",
                 }
 
+            # Compute reaction summary (top 3 reactions with counts)
+            from collections import defaultdict
+            reactions_list = msg.reactions.all()
+            emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
+
+            for reaction in reactions_list:
+                emoji = reaction.emoji
+                emoji_counts[emoji]['emoji'] = emoji
+                emoji_counts[emoji]['count'] += 1
+                emoji_counts[emoji]['users'].append(reaction.username)
+
+            top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+
             serialized.append({
                 'id': str(msg.id),
                 'chat_code': msg.chat_room.code,
@@ -357,6 +359,7 @@ class MessageListView(APIView):
                 'pin_amount_paid': str(msg.pin_amount_paid) if msg.pin_amount_paid else "0.00",
                 'created_at': msg.created_at.isoformat(),
                 'is_deleted': msg.is_deleted,
+                'reactions': top_reactions,
             })
 
         # Reverse to chronological order (oldest first) to match Redis behavior
@@ -534,15 +537,6 @@ class MyParticipationView(APIView):
             if participation.user and participation.user.reserved_username:
                 username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
 
-            # Check if user is blocked from this chat
-            from .blocking_utils import check_if_blocked
-            is_blocked, _ = check_if_blocked(
-                chat_room=chat_room,
-                username=participation.username,
-                fingerprint=participation.fingerprint,
-                user=participation.user
-            )
-
             # Serialize theme if present (BEFORE save to preserve select_related)
             theme_data = None
             if participation.theme:
@@ -556,32 +550,13 @@ class MyParticipationView(APIView):
                 'has_joined': True,
                 'username': participation.username,
                 'username_is_reserved': username_is_reserved,
-                'is_blocked': is_blocked,
                 'first_joined_at': participation.first_joined_at,
                 'last_seen_at': participation.last_seen_at,
                 'theme': theme_data
             })
 
-        # No existing participation - check if this is a first-time visitor who is blocked
-        # Check for blocks by fingerprint (anonymous) or user account (logged-in)
-        from .blocking_utils import check_if_blocked
-
-        # Debug logging
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"[BLOCKING CHECK] First-time visitor - chat_code={chat_room.code}, fingerprint={fingerprint}, is_authenticated={request.user.is_authenticated}")
-
-        is_blocked, _ = check_if_blocked(
-            chat_room=chat_room,
-            fingerprint=fingerprint if not request.user.is_authenticated else None,
-            user=request.user if request.user.is_authenticated else None
-        )
-
-        logger.info(f"[BLOCKING CHECK] Result: is_blocked={is_blocked}")
-
         return Response({
-            'has_joined': False,
-            'is_blocked': is_blocked
+            'has_joined': False
         })
 
 
@@ -841,15 +816,25 @@ class MessageReactionToggleView(APIView):
         username = request.data.get('username')
         fingerprint = request.data.get('fingerprint')
 
+        print(f"[REACTION DEBUG] session_token present: {bool(session_token)}")
+        print(f"[REACTION DEBUG] username: {username}")
+        print(f"[REACTION DEBUG] fingerprint: {fingerprint}")
+
         if not session_token:
+            print("[REACTION DEBUG] No session token provided")
             raise PermissionDenied("Session token is required")
 
         # Validate the JWT session token
-        session_data = ChatSessionValidator.validate_session_token(
-            token=session_token,
-            chat_code=code,
-            username=username
-        )
+        try:
+            session_data = ChatSessionValidator.validate_session_token(
+                token=session_token,
+                chat_code=code,
+                username=username
+            )
+            print(f"[REACTION DEBUG] Session validation successful: {session_data}")
+        except Exception as e:
+            print(f"[REACTION DEBUG] Session validation failed: {type(e).__name__}: {str(e)}")
+            raise
 
         # Validate emoji
         serializer = MessageReactionCreateSerializer(data=request.data)
@@ -894,6 +879,13 @@ class MessageReactionToggleView(APIView):
             )
             action = 'added'
             reaction_data = MessageReactionSerializer(existing_reaction).data
+
+        # Convert UUIDs to strings for WebSocket serialization
+        if reaction_data:
+            reaction_data['id'] = str(reaction_data['id'])
+            reaction_data['message'] = str(reaction_data['message'])
+            if reaction_data.get('user'):
+                reaction_data['user'] = str(reaction_data['user'])
 
         # Broadcast reaction update via WebSocket
         channel_layer = get_channel_layer()

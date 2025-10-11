@@ -67,6 +67,7 @@ export default function MessageActionsModal({
   onReact,
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartY = React.useRef(0);
@@ -106,9 +107,16 @@ export default function MessageActionsModal({
   };
 
   const handleClose = () => {
-    setIsOpen(false);
-    setDragOffset(0);
+    // Trigger closing animation
+    setIsClosing(true);
     setIsDragging(false);
+
+    // Wait for animation to complete before removing from DOM
+    setTimeout(() => {
+      setIsOpen(false);
+      setIsClosing(false);
+      setDragOffset(0);
+    }, 250); // Match animation duration
   };
 
   const handleDragStart = (e: React.TouchEvent) => {
@@ -260,89 +268,100 @@ export default function MessageActionsModal({
           {/* Backdrop with blur */}
           <div className={`absolute inset-0 ${modalStyles.overlay}`} />
 
-          {/* Modal Content */}
-          <div
-            className={`relative w-full max-w-lg ${modalStyles.container} rounded-t-3xl pb-safe ${!isDragging && 'animate-slide-up'}`}
-            style={{
-              transform: `translateY(${dragOffset}px)`,
-              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={handleDragStart}
-            onTouchMove={handleDragMove}
-            onTouchEnd={handleDragEnd}
-          >
-            {/* Drag handle */}
-            <div className="pt-3 pb-2 flex justify-center">
-              <div className={`w-12 h-1.5 ${modalStyles.dragHandle} rounded-full`} />
-            </div>
-
-            {/* Message Preview */}
-            <div className="px-6 pt-2 pb-6">
-              <div className={`p-4 ${modalStyles.messagePreview}`}>
-                <div className="flex items-center gap-1 mb-2">
-                  <span className={`font-semibold text-sm ${modalStyles.usernameText}`}>
-                    {message.username}
-                  </span>
-                  {message.username_is_reserved && (
-                    <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
-                  )}
-                  {message.is_from_host && <span className="text-xs">👑</span>}
-                  {message.is_pinned && <span className="text-xs">📌</span>}
-                </div>
-                <p className={`text-base ${modalStyles.messageText}`}>
-                  {message.content}
-                </p>
-              </div>
-            </div>
-
-            {/* Emoji Reactions */}
-            {onReact && (
-              <div className="px-6 pb-6">
-                <div className="flex items-center gap-3 justify-center">
-                  {REACTION_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReact(message.id, emoji);
-                        handleClose();
-                      }}
-                      onTouchStart={(e) => e.stopPropagation()}
-                      onTouchMove={(e) => e.stopPropagation()}
-                      onTouchEnd={(e) => e.stopPropagation()}
-                      className={`flex items-center justify-center w-12 h-12 rounded-full transition-all active:scale-110 ${
-                        themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
-                      }`}
-                    >
-                      <span className="text-2xl">{emoji}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="px-6 pb-8 space-y-3">
-              {actions.map((action, index) => {
-                const Icon = action.icon;
-                return (
+          {/* Emoji Reactions - Floating above modal */}
+          {onReact && (
+            <div
+              className="absolute bottom-0 left-0 right-0 flex justify-center items-end"
+              style={{
+                transform: `translateY(${dragOffset}px)`,
+                transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                marginBottom: 'calc(env(safe-area-inset-bottom, 2rem) + 480px)',
+              }}
+            >
+              <div className="flex items-center gap-3 justify-center px-6 mb-6">
+                {REACTION_EMOJIS.map((emoji) => (
                   <button
-                    key={index}
+                    key={emoji}
                     onClick={(e) => {
                       e.stopPropagation();
-                      action.action();
+                      onReact(message.id, emoji);
+                      handleClose();
                     }}
                     onTouchStart={(e) => e.stopPropagation()}
                     onTouchMove={(e) => e.stopPropagation()}
                     onTouchEnd={(e) => e.stopPropagation()}
-                    className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 ${modalStyles.actionButton}`}
+                    className={`flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-110 shadow-lg ${
+                      themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-white hover:bg-gray-50'
+                    }`}
                   >
-                    <Icon className={`w-6 h-6 ${modalStyles.actionIcon}`} />
-                    <span className="text-base font-medium">{action.label}</span>
+                    <span className="text-2xl">{emoji}</span>
                   </button>
-                );
-              })}
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Modal Container */}
+          <div
+            className={`relative w-full max-w-lg ${isClosing ? 'animate-slide-down' : (!isDragging && 'animate-slide-up')}`}
+            style={{
+              transform: `translateY(${dragOffset}px)`,
+              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+          >
+            <div
+              className={`w-full ${modalStyles.container} rounded-t-3xl`}
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={handleDragStart}
+              onTouchMove={handleDragMove}
+              onTouchEnd={handleDragEnd}
+            >
+              {/* Drag handle */}
+              <div className="pt-3 pb-2 flex justify-center">
+                <div className={`w-12 h-1.5 ${modalStyles.dragHandle} rounded-full`} />
+              </div>
+
+              {/* Message Preview */}
+              <div className="px-6 pt-2 pb-6">
+                <div className={`p-4 ${modalStyles.messagePreview}`}>
+                  <div className="flex items-center gap-1 mb-2">
+                    <span className={`font-semibold text-sm ${modalStyles.usernameText}`}>
+                      {message.username}
+                    </span>
+                    {message.username_is_reserved && (
+                      <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
+                    )}
+                    {message.is_from_host && <span className="text-xs">👑</span>}
+                    {message.is_pinned && <span className="text-xs">📌</span>}
+                  </div>
+                  <p className={`text-base ${modalStyles.messageText}`}>
+                    {message.content}
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="px-6 pb-8 space-y-3">
+                {actions.map((action, index) => {
+                  const Icon = action.icon;
+                  return (
+                    <button
+                      key={index}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        action.action();
+                      }}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onTouchMove={(e) => e.stopPropagation()}
+                      onTouchEnd={(e) => e.stopPropagation()}
+                      className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 ${modalStyles.actionButton}`}
+                    >
+                      <Icon className={`w-6 h-6 ${modalStyles.actionIcon}`} />
+                      <span className="text-base font-medium">{action.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>,
@@ -361,8 +380,23 @@ export default function MessageActionsModal({
           }
         }
 
+        @keyframes slide-down {
+          from {
+            transform: translateY(0);
+            opacity: 1;
+          }
+          to {
+            transform: translateY(100%);
+            opacity: 0;
+          }
+        }
+
         .animate-slide-up {
           animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .animate-slide-down {
+          animation: slide-down 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .pb-safe {
