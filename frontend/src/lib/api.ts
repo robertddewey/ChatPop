@@ -436,5 +436,14 @@ export const messageApi = {
     const response = await api.get(`/api/chats/${code}/messages/${messageId}/reactions/`);
     return response.data;
   },
+
+  blockUser: async (code: string, data: {
+    blocked_username?: string;
+    blocked_fingerprint?: string;
+    blocked_user_id?: number;
+  }) => {
+    const response = await api.post(`/api/chats/${code}/block-user/`, data);
+    return response.data;
+  },
 };
 
