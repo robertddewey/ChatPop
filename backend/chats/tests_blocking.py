@@ -405,7 +405,7 @@ class BlockingAPITests(TestCase):
 
         # Request without session_token should fail
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block/',
+            f'/api/chats/{self.chat_room.code}/block-user/',
             {'participation_id': str(participation.id)},
             format='json'
         )
@@ -421,7 +421,7 @@ class BlockingAPITests(TestCase):
         )
 
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block/',
+            f'/api/chats/{self.chat_room.code}/block-user/',
             {
                 'participation_id': str(participation.id),
                 'session_token': self.host_session_token
@@ -469,7 +469,7 @@ class BlockingAPITests(TestCase):
         )
 
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block/',
+            f'/api/chats/{self.chat_room.code}/block-user/',
             {
                 'participation_id': str(participation.id),
                 'session_token': non_host_token

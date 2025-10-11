@@ -37,7 +37,7 @@ class ChatSessionValidator:
         payload = {
             'chat_code': chat_code,
             'username': username,
-            'user_id': user_id,
+            'user_id': str(user_id) if user_id else None,
             'iat': datetime.utcnow(),
             'exp': datetime.utcnow() + timedelta(hours=cls.TOKEN_EXPIRATION_HOURS)
         }

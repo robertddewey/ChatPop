@@ -398,6 +398,105 @@ class MessageReaction(models.Model):
         return f"{self.emoji} on message {self.message_id} by {identifier}"
 
 
+class ChatBlock(models.Model):
+    """Block users from accessing a specific chat"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Who is being blocked (at least one must be set)
+    blocked_username = models.CharField(
+        max_length=15,
+        null=True,
+        blank=True,
+        help_text="Case-insensitive username block"
+    )
+    blocked_fingerprint = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Browser fingerprint block"
+    )
+    blocked_email = models.EmailField(
+        null=True,
+        blank=True,
+        help_text="Email block (future)"
+    )
+    blocked_phone = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        help_text="Phone block (future)"
+    )
+    blocked_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='chat_blocks',
+        help_text="Registered user account block"
+    )
+
+    # Who created the block
+    blocked_by = models.ForeignKey(
+        'ChatParticipation',
+        on_delete=models.CASCADE,
+        related_name='blocks_created',
+        help_text="Who created the block (usually host)"
+    )
+
+    # Which chat this block applies to
+    chat_room = models.ForeignKey(
+        'ChatRoom',
+        on_delete=models.CASCADE,
+        related_name='blocks'
+    )
+
+    # Metadata
+    blocked_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField(blank=True, help_text="Optional note for host")
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Optional: for timed blocks"
+    )
+
+    class Meta:
+        ordering = ['-blocked_at']
+        indexes = [
+            models.Index(fields=['chat_room', 'blocked_username']),
+            models.Index(fields=['chat_room', 'blocked_fingerprint']),
+            models.Index(fields=['chat_room', 'blocked_user']),
+            models.Index(fields=['expires_at']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['chat_room', 'blocked_username'],
+                condition=models.Q(blocked_username__isnull=False),
+                name='unique_chat_username_block'
+            ),
+            models.UniqueConstraint(
+                fields=['chat_room', 'blocked_fingerprint'],
+                condition=models.Q(blocked_fingerprint__isnull=False),
+                name='unique_chat_fingerprint_block'
+            ),
+            models.UniqueConstraint(
+                fields=['chat_room', 'blocked_user'],
+                condition=models.Q(blocked_user__isnull=False),
+                name='unique_chat_user_block'
+            ),
+        ]
+
+    def __str__(self):
+        identifiers = []
+        if self.blocked_username:
+            identifiers.append(f"username:{self.blocked_username}")
+        if self.blocked_fingerprint:
+            identifiers.append(f"fingerprint:{self.blocked_fingerprint[:8]}")
+        if self.blocked_user:
+            identifiers.append(f"user:{self.blocked_user_id}")
+        identifier_str = ", ".join(identifiers) if identifiers else "unknown"
+        return f"Block in {self.chat_room.code}: {identifier_str}"
+
+
 class Transaction(models.Model):
     """Track all payments in the system"""
     TRANSACTION_PIN = 'pin'

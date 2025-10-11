@@ -102,6 +102,17 @@ class ChatRoomJoinView(APIView):
         user_id = str(request.user.id) if request.user.is_authenticated else None
         ip_address = get_client_ip(request)
 
+        # SECURITY CHECK 0: Check if user is blocked
+        from .blocking_utils import check_if_blocked
+        is_blocked, block_message = check_if_blocked(
+            chat_room=chat_room,
+            username=username,
+            fingerprint=fingerprint,
+            user=request.user if request.user.is_authenticated else None
+        )
+        if is_blocked:
+            raise PermissionDenied(block_message or "You have been blocked from this chat.")
+
         # SECURITY CHECK 1: IP-based rate limiting for anonymous users
         MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT = 3
         if not request.user.is_authenticated and ip_address:
@@ -537,6 +548,15 @@ class MyParticipationView(APIView):
             if participation.user and participation.user.reserved_username:
                 username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
 
+            # Check if user is blocked
+            from .blocking_utils import check_if_blocked
+            is_blocked, _ = check_if_blocked(
+                chat_room=chat_room,
+                username=participation.username,
+                fingerprint=fingerprint,
+                user=request.user if request.user.is_authenticated else None
+            )
+
             # Serialize theme if present (BEFORE save to preserve select_related)
             theme_data = None
             if participation.theme:
@@ -552,7 +572,8 @@ class MyParticipationView(APIView):
                 'username_is_reserved': username_is_reserved,
                 'first_joined_at': participation.first_joined_at,
                 'last_seen_at': participation.last_seen_at,
-                'theme': theme_data
+                'theme': theme_data,
+                'is_blocked': is_blocked
             })
 
         return Response({
@@ -1271,7 +1292,8 @@ class BlockUserView(APIView):
 
         # Get participation to block (by ID or username)
         participation_id = request.data.get('participation_id')
-        username = request.data.get('username')
+        # Accept both 'username' and 'blocked_username' for backwards compatibility
+        username = request.data.get('blocked_username') or request.data.get('username')
         logger.info(f"[BLOCK] Looking for participation to block: id={participation_id}, username={username}")
 
         if not participation_id and not username:
