@@ -76,13 +76,13 @@ export default function Header({ backgroundClass }: HeaderProps = {}) {
           ) : (
             <>
               <button
-                onClick={() => router.push('/?auth=login')}
+                onClick={() => router.push('/?auth=login', { scroll: false })}
                 className="px-4 py-2 text-sm font-bold text-white hover:text-white/80 transition-all transform hover:scale-105 cursor-pointer"
               >
                 Log in
               </button>
               <button
-                onClick={() => router.push('/?auth=register')}
+                onClick={() => router.push('/?auth=register', { scroll: false })}
                 className="px-4 py-2 text-sm font-bold bg-white text-gray-900 rounded-lg hover:bg-white/90 transition-all transform hover:scale-105 shadow-sm cursor-pointer"
               >
                 Sign Up

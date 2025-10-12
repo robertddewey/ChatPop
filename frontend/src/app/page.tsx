@@ -24,11 +24,11 @@ export default function Home() {
   }, []);
 
   const closeModal = () => {
-    router.push('/');
+    router.push('/', { scroll: false });
   };
 
   const openCreateModal = () => {
-    router.push('/?modal=create');
+    router.push('/?modal=create', { scroll: false });
   };
 
   const handleCameraClick = () => {
