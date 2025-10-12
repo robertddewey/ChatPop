@@ -1384,3 +1384,69 @@ class ConstanceCacheControlTests(TransactionTestCase):
 
         self.assertEqual(response2.data['source'], 'redis')
         self.assertEqual(len(response2.data['messages']), 5)
+
+    def test_partial_cache_hit_backfills_missing_messages(self):
+        """
+        Test that partial cache hits backfill missing messages to Redis.
+
+        This test verifies the bug fix where:
+        - Request limit=50, but only 41 messages in cache
+        - System fetches 9 older messages from database
+        - Those 9 messages should be backfilled to cache
+        - Subsequent requests should NOT re-fetch those 9 from database
+        """
+        from constance import config
+        from rest_framework.test import APIRequestFactory
+        from chats.views import MessageListView
+
+        # Enable cache
+        config.REDIS_CACHE_ENABLED = True
+
+        # Create 50 messages in PostgreSQL
+        messages = []
+        for i in range(50):
+            msg = Message.objects.create(
+                chat_room=self.chat_room,
+                username='ConfigTest',
+                user=self.user,
+                content=f'Message {i}'
+            )
+            messages.append(msg)
+            time.sleep(0.001)  # Small delay for timestamp ordering
+
+        # Manually cache only the most recent 41 messages (simulating partial cache)
+        # Cache messages 9-49 (leaving 0-8 uncached)
+        for msg in messages[9:]:
+            MessageCache.add_message(msg)
+
+        # Verify exactly 41 messages in cache
+        cached_before = MessageCache.get_messages(self.chat_room.code, limit=100)
+        self.assertEqual(len(cached_before), 41, "Should have exactly 41 messages in cache")
+
+        # Make API request for 50 messages (should be partial hit: 41 from cache + 9 from DB)
+        factory = APIRequestFactory()
+        request = factory.get(f'/api/chats/{self.chat_room.code}/messages/?limit=50')
+
+        view = MessageListView.as_view()
+        response = view(request, code=self.chat_room.code)
+
+        # Should be a hybrid source (partial cache hit)
+        self.assertEqual(response.data['source'], 'hybrid_redis_postgresql')
+        self.assertEqual(len(response.data['messages']), 50)
+
+        # Verify the 9 missing messages were backfilled to cache
+        cached_after = MessageCache.get_messages(self.chat_room.code, limit=100)
+        self.assertEqual(len(cached_after), 50, "All 50 messages should now be in cache after backfill")
+
+        # Verify the oldest messages are now cached (messages 0-8)
+        oldest_cached = [msg['content'] for msg in cached_after[:9]]
+        expected_oldest = [f'Message {i}' for i in range(9)]
+        self.assertEqual(oldest_cached, expected_oldest, "Oldest 9 messages should be backfilled")
+
+        # Make second request - should be FULL cache hit (no DB query)
+        request2 = factory.get(f'/api/chats/{self.chat_room.code}/messages/?limit=50')
+        response2 = view(request2, code=self.chat_room.code)
+
+        # Second request should hit cache completely
+        self.assertEqual(response2.data['source'], 'redis', "Second request should be full cache hit")
+        self.assertEqual(len(response2.data['messages']), 50)

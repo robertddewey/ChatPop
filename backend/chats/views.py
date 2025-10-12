@@ -312,6 +312,10 @@ class MessageListView(APIView):
                         request=request
                     )
 
+                    # Backfill cache with the older messages we just fetched
+                    # This prevents repeated DB queries for the same messages
+                    self._backfill_cache(chat_room, older_messages)
+
                     # Prepend older messages (they come chronologically before cached ones)
                     messages = older_messages + messages
                     source = 'hybrid_redis_postgresql'
