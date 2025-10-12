@@ -1,6 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import RegisterModal from "@/components/RegisterModal";
@@ -12,6 +13,15 @@ export default function Home() {
   const router = useRouter();
   const authMode = searchParams.get('auth');
   const modalMode = searchParams.get('modal');
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    // Detect if device is mobile
+    const checkMobile = () => {
+      setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
+    };
+    checkMobile();
+  }, []);
 
   const closeModal = () => {
     router.push('/');
@@ -19,6 +29,46 @@ export default function Home() {
 
   const openCreateModal = () => {
     router.push('/?modal=create');
+  };
+
+  const handleCameraClick = () => {
+    if (isMobile) {
+      // Create a hidden file input to trigger camera
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*'; // Accept images only
+      input.capture = 'environment'; // Force camera mode (rear camera)
+
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          // TODO: Handle the captured photo (upload, preview, etc.)
+          console.log('Photo captured from camera:', file.name, file.type);
+        }
+      };
+
+      input.click();
+    }
+  };
+
+  const handleLibraryClick = () => {
+    if (isMobile) {
+      // Create a hidden file input to trigger photo library
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*'; // Accept images only
+      // No capture attribute = allows library selection
+
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          // TODO: Handle the selected photo (upload, preview, etc.)
+          console.log('Photo selected from library:', file.name, file.type);
+        }
+      };
+
+      input.click();
+    }
   };
 
   return (
@@ -49,12 +99,63 @@ export default function Home() {
           </p>
 
           {/* Main CTA */}
-          <button
-            onClick={openCreateModal}
-            className="inline-block px-8 py-4 text-lg font-bold bg-white text-gray-900 rounded-full hover:bg-gray-100 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer"
-          >
-            {MARKETING.hero.cta}
-          </button>
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            <button
+              onClick={openCreateModal}
+              className="inline-block px-8 py-4 text-lg font-bold bg-white text-gray-900 rounded-full hover:bg-gray-100 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer"
+            >
+              {MARKETING.hero.cta}
+            </button>
+
+            {/* Camera Button */}
+            <div className="relative group">
+              <button
+                onClick={handleCameraClick}
+                disabled={!isMobile}
+                className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                  isMobile
+                    ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
+                    : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                }`}
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+
+              {/* Desktop tooltip */}
+              {!isMobile && (
+                <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  Mobile only
+                </div>
+              )}
+            </div>
+
+            {/* Photo Library Button */}
+            <div className="relative group">
+              <button
+                onClick={handleLibraryClick}
+                disabled={!isMobile}
+                className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                  isMobile
+                    ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
+                    : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                }`}
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
+
+              {/* Desktop tooltip */}
+              {!isMobile && (
+                <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  Mobile only
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Features Grid */}
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mt-20">
