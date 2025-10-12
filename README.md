@@ -122,6 +122,7 @@ Key variables:
 
 Comprehensive documentation is organized in the `docs/` directory:
 
+### Core Documentation
 - **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation (139+ tests)
 - **[docs/CACHING.md](docs/CACHING.md)** - Redis message and reaction caching architecture
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
@@ -129,6 +130,17 @@ Comprehensive documentation is organized in the `docs/` directory:
 - **[docs/THEME_STYLING_GUIDE.md](docs/THEME_STYLING_GUIDE.md)** - Complete ChatTheme database field reference
 - **[docs/MANAGEMENT_TOOLS.md](docs/MANAGEMENT_TOOLS.md)** - Redis cache inspection and debugging tools
 - **[docs/blocking-feature-spec.md](docs/blocking-feature-spec.md)** - User blocking feature specification
+
+### Deployment & Scaling
+- **[docs/AWS_DEPLOYMENT_SCALING.md](docs/AWS_DEPLOYMENT_SCALING.md)** - AWS ECS Fargate production deployment guide
+  - Complete setup guide (Docker → ECR → ECS)
+  - Scaling targets: 100 rooms (1k users) → 5000 rooms (250k users)
+  - Cost breakdowns and infrastructure sizing
+  - Database optimizations and required indexes
+  - Auto-scaling configuration
+  - Monitoring and alerts
+
+### Project Documentation
 - **[CLAUDE.md](CLAUDE.md)** - Complete project documentation for AI assistants
 
 ## Stopping Services
