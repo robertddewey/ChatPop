@@ -141,6 +141,7 @@ interface MainChatViewProps {
   handlePinOther: (messageId: string) => void;
   handleBlockUser: (username: string) => void;
   handleTipUser: (username: string) => void;
+  handleDeleteMessage: (messageId: string) => void;
   handleReactionToggle: (messageId: string, emoji: string) => void;
   messageReactions: Record<string, ReactionSummary[]>;
   loadingOlder?: boolean;
@@ -166,6 +167,7 @@ export default function MainChatView({
   handlePinOther,
   handleBlockUser,
   handleTipUser,
+  handleDeleteMessage,
   handleReactionToggle,
   messageReactions,
   loadingOlder = false,
@@ -195,6 +197,7 @@ export default function MainChatView({
               onPinOther={handlePinOther}
               onBlock={handleBlockUser}
               onTip={handleTipUser}
+              onDelete={handleDeleteMessage}
               onReact={handleReactionToggle}
             >
               <div
@@ -254,6 +257,7 @@ export default function MainChatView({
               onPinOther={handlePinOther}
               onBlock={handleBlockUser}
               onTip={handleTipUser}
+              onDelete={handleDeleteMessage}
               onReact={handleReactionToggle}
             >
               <div
@@ -485,6 +489,7 @@ export default function MainChatView({
                   onPinOther={handlePinOther}
                   onBlock={handleBlockUser}
                   onTip={handleTipUser}
+                  onDelete={handleDeleteMessage}
                   onReact={handleReactionToggle}
                 >
                   <div

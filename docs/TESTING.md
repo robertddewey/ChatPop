@@ -1,6 +1,6 @@
 # Testing Documentation
 
-**Total Test Count:** 139 tests across 7 test suites
+**Total Test Count:** 165 tests across 8 test suites
 
 This document provides comprehensive documentation of all backend tests, including what each test does and why it's important.
 
@@ -10,18 +10,20 @@ This document provides comprehensive documentation of all backend tests, includi
 
 | Test Suite | File | Test Count | Purpose |
 |------------|------|------------|---------|
-| Security Tests | `chats/tests_security.py` | 26 tests | JWT authentication, username reservations, attack prevention |
-| Username Validation | `chats/tests_validators.py` | 10 tests | Username format and character validation |
-| Profanity Filtering | `chats/tests_profanity.py` | 26 tests | Profanity detection across all username entry points |
-| Rate Limiting | `chats/tests_rate_limits.py` | 12 tests | Username generation rate limiting |
-| Dual Sessions | `chats/tests_dual_sessions.py` | 16 tests | Anonymous/logged-in user coexistence |
-| Redis Caching | `chats/tests_redis_cache.py` | 49 tests | Message caching, performance benchmarks |
+| Security Tests | `chats/tests/tests_security.py` | 26 tests | JWT authentication, username reservations, attack prevention |
+| Username Validation | `chats/tests/tests_validators.py` | 10 tests | Username format and character validation |
+| Profanity Filtering | `chats/tests/tests_profanity.py` | 26 tests | Profanity detection across all username entry points |
+| Rate Limiting | `chats/tests/tests_rate_limits.py` | 12 tests | Username generation rate limiting |
+| Dual Sessions | `chats/tests/tests_dual_sessions.py` | 16 tests | Anonymous/logged-in user coexistence |
+| Redis Caching | `chats/tests/tests_redis_cache.py` | 43 tests | Message caching, cache backfill, Constance controls, performance |
+| Message Deletion | `chats/tests/tests_message_deletion.py` | 22 tests | Soft delete, cache invalidation, authorization, WebSocket broadcasting |
+| Reactions | `chats/tests/tests_reactions.py` | 10 tests | Emoji reactions, cache invalidation, real-time updates |
 
 ---
 
-## 1. Security Tests (`chats/tests_security.py`)
+## 1. Security Tests (`chats/tests/tests_security.py`)
 
-**File Location:** `backend/chats/tests_security.py`
+**File Location:** `backend/chats/tests/tests_security.py`
 **Test Count:** 26 tests
 **Test Classes:** `ChatSessionSecurityTests` (17 tests), `UsernameReservationSecurityTests` (9 tests)
 
@@ -192,9 +194,9 @@ These tests verify the username reservation system and fingerprinting mechanism 
 
 ---
 
-## 2. Username Validation Tests (`chats/tests_validators.py`)
+## 2. Username Validation Tests (`chats/tests/tests_validators.py`)
 
-**File Location:** `backend/chats/tests_validators.py`
+**File Location:** `backend/chats/tests/tests_validators.py`
 **Test Count:** 10 tests
 **Test Class:** `UsernameValidatorTestCase`
 
@@ -277,9 +279,9 @@ These tests verify the `validate_username()` function from `chats/validators.py`
 
 ---
 
-## 3. Profanity Filtering Tests (`chats/tests_profanity.py`)
+## 3. Profanity Filtering Tests (`chats/tests/tests_profanity.py`)
 
-**File Location:** `backend/chats/tests_profanity.py`
+**File Location:** `backend/chats/tests/tests_profanity.py`
 **Test Count:** 26 tests
 **Test Classes:** 5 classes covering profanity detection across all username entry points
 
@@ -473,9 +475,9 @@ Tests real-time validation in Join ChatPop modal (POST `/api/chats/{code}/valida
 
 ---
 
-## 4. Rate Limiting Tests (`chats/tests_rate_limits.py`)
+## 4. Rate Limiting Tests (`chats/tests/tests_rate_limits.py`)
 
-**File Location:** `backend/chats/tests_rate_limits.py`
+**File Location:** `backend/chats/tests/tests_rate_limits.py`
 **Test Count:** 12 tests
 **Test Class:** `UsernameGenerationRateLimitTests`
 
@@ -557,9 +559,9 @@ These tests verify rate limiting for the username suggestion endpoint (`/api/cha
 
 ---
 
-## 5. Dual Sessions Tests (`chats/tests_dual_sessions.py`)
+## 5. Dual Sessions Tests (`chats/tests/tests_dual_sessions.py`)
 
-**File Location:** `backend/chats/tests_dual_sessions.py`
+**File Location:** `backend/chats/tests/tests_dual_sessions.py`
 **Test Count:** 16 tests
 **Test Classes:** `DualSessionsTests` (6 tests), `ReservedUsernameBadgeTests` (4 tests), `IPRateLimitingTests` (6 tests)
 
@@ -675,11 +677,11 @@ These tests verify rate limiting for the username suggestion endpoint (`/api/cha
 
 ---
 
-## 6. Redis Caching Tests (`chats/tests_redis_cache.py`)
+## 6. Redis Caching Tests (`chats/tests/tests_redis_cache.py`)
 
-**File Location:** `backend/chats/tests_redis_cache.py`
-**Test Count:** 49 tests
-**Test Classes:** `RedisMessageCacheTests` (22 tests), `RedisPerformanceTests` (7 tests), `RedisReactionCacheTests` (20 tests)
+**File Location:** `backend/chats/tests/tests_redis_cache.py`
+**Test Count:** 43 tests
+**Test Classes:** `RedisMessageCacheTests` (22 tests), `RedisPerformanceTests` (7 tests), `RedisReactionCacheTests` (10 tests), `ConstanceCacheControlTests` (10 tests)
 
 ### 6.1 Redis Message Cache Tests (22 tests)
 
@@ -893,6 +895,270 @@ These tests benchmark cache performance and print timing results.
 **Expected result:** No exceptions raised
 **Why it matters:** Graceful degradation
 
+### 6.4 Constance Cache Control Tests (10 tests)
+
+**Test Class:** `ConstanceCacheControlTests`
+
+These tests verify the Constance dynamic settings for runtime cache control (`REDIS_CACHE_ENABLED`).
+
+#### `test_redis_cache_write_enabled_true`
+**What it tests:** Messages are written to cache when `REDIS_CACHE_WRITE_ENABLED=True`
+**How it works:** Enables write setting, creates message, manually calls `MessageCache.add_message()`
+**Expected result:** Message appears in Redis cache
+**Why it matters:** Verifies cache write control works
+
+#### `test_redis_cache_write_enabled_false`
+**What it tests:** Messages are NOT written when `REDIS_CACHE_WRITE_ENABLED=False`
+**How it works:** Disables write setting, creates message, conditionally calls add_message
+**Expected result:** Message NOT in Redis, but exists in PostgreSQL
+**Why it matters:** Allows disabling cache writes to save CPU/memory
+
+#### `test_redis_cache_enabled_true_reads_from_cache`
+**What it tests:** `REDIS_CACHE_ENABLED=True` causes MessageListView to read from Redis
+**How it works:** Enables cache, creates and caches message, calls API view
+**Expected result:** Response has `source: 'redis'`, `cache_enabled: true`
+**Why it matters:** Verifies cache read control works
+
+#### `test_redis_cache_enabled_false_reads_from_postgresql`
+**What it tests:** `REDIS_CACHE_ENABLED=False` causes reads from PostgreSQL
+**How it works:** Disables cache, creates message (not cached), calls API view
+**Expected result:** Response has `source: 'postgresql'`, `cache_enabled: false`
+**Why it matters:** Allows disabling cache for debugging or small-scale deployments
+
+#### `test_cache_miss_fallback_to_postgresql`
+**What it tests:** Cache miss automatically falls back to PostgreSQL
+**How it works:** Enables cache, creates message but DON'T cache it, calls API view
+**Expected result:** Response has `source: 'postgresql_fallback'`, message loaded from DB
+**Why it matters:** Graceful fallback when cache is empty
+
+#### `test_pagination_always_uses_postgresql`
+**What it tests:** Pagination requests never use cache (always PostgreSQL)
+**How it works:** Enables cache, creates and caches messages, requests with `?before=<timestamp>`
+**Expected result:** Response has `source: 'postgresql'` despite cache being enabled
+**Why it matters:** Pagination logic bypass is intentional (cache doesn't support before queries)
+
+#### `test_cache_ttl_expiry`
+**What it tests:** Messages have 24-hour TTL in Redis
+**How it works:** Caches message, checks Redis TTL on key
+**Expected result:** TTL between 86000-86500 seconds (~24 hours)
+**Why it matters:** Automatic cache expiry prevents stale data
+
+#### `test_cache_hit_performance_vs_postgresql`
+**What it tests:** Redis cache is faster than PostgreSQL
+**How it works:** Creates 50 messages, reads 100 times from Redis, then 100 times from PostgreSQL, compares timing
+**Expected result:** Redis avg time ≤ PostgreSQL avg time (prints speedup factor)
+**Why it matters:** Validates performance benefit of caching
+
+#### `test_toggle_cache_settings_runtime`
+**What it tests:** Cache settings can be changed dynamically at runtime
+**How it works:** Starts with cache disabled, creates message (not cached), enables cache, creates another message (cached), enables read, verifies reads from Redis
+**Expected result:** Settings take effect immediately without restart
+**Why it matters:** Demonstrates Constance dynamic configuration works correctly
+
+#### `test_cache_backfill_on_miss`
+**What it tests:** Cache miss triggers automatic backfill to Redis
+**How it works:** Creates 5 messages in PostgreSQL (not cached), makes initial API request, verifies messages are backfilled to cache, makes second request
+**Expected result:** First request returns `source: 'postgresql_fallback'` and backfills cache, second request returns `source: 'redis'` (cache hit)
+**Why it matters:** Prevents repeated cache misses - first user after cache expiry populates cache for all subsequent users (prevents thundering herd problem)
+
+---
+
+## 7. Message Deletion Tests (`chats/tests/tests_message_deletion.py`)
+
+**File Location:** `backend/chats/tests/tests_message_deletion.py`
+**Test Count:** 22 tests
+**Test Classes:** `MessageDeletionAuthorizationTests` (7 tests), `MessageSoftDeletionTests` (6 tests), `MessageCacheInvalidationTests` (4 tests), `MessageDeletionWebSocketTests` (2 tests), `MessageDeletionEdgeCasesTests` (5 tests)
+
+### 7.1 Message Deletion Authorization Tests (7 tests)
+
+**Test Class:** `MessageDeletionAuthorizationTests`
+
+These tests verify that only chat hosts can delete messages and that proper session validation is enforced.
+
+#### `test_host_can_delete_message`
+**What it tests:** Chat host can delete any message
+**How it works:** Host authenticates, posts to `/api/chats/{code}/messages/{message_id}/delete/` with valid session token
+**Expected result:** 200 OK, message `is_deleted` flag set to True in database
+**Why it matters:** Core deletion functionality for hosts
+
+#### `test_participant_cannot_delete_message`
+**What it tests:** Non-host participants cannot delete messages
+**How it works:** Participant authenticates, attempts to delete message
+**Expected result:** 403 Forbidden, message NOT deleted
+**Why it matters:** Prevents abuse - only hosts control message deletion
+
+#### `test_unauthenticated_user_cannot_delete_message`
+**What it tests:** Unauthenticated users cannot delete messages
+**How it works:** No authentication, fake session token
+**Expected result:** 403 Forbidden
+**Why it matters:** Basic authentication enforcement
+
+#### `test_missing_session_token_rejected`
+**What it tests:** Requests without session token are rejected
+**How it works:** Host authenticates but sends request without `session_token` field
+**Expected result:** 403 Forbidden with "session token" in error message
+**Why it matters:** Session token is required for all authenticated actions
+
+#### `test_invalid_session_token_rejected`
+**What it tests:** Invalid/malformed session tokens are rejected
+**How it works:** Host sends request with `session_token: 'invalid-token-12345'`
+**Expected result:** 403 Forbidden
+**Why it matters:** Prevents forged token attacks
+
+#### `test_user_from_different_chat_cannot_delete`
+**What it tests:** Session tokens are chat-specific
+**How it works:** Host of Chat A tries to delete message from Chat B using their Chat A session token
+**Expected result:** 403 Forbidden
+**Why it matters:** Prevents cross-chat attacks
+
+#### `test_host_can_delete_others_messages`
+**What it tests:** Host can delete messages from other users (implicit in test_host_can_delete_message)
+**How it works:** Host deletes participant's message
+**Expected result:** 200 OK, message deleted
+**Why it matters:** Hosts have moderation powers
+
+### 7.2 Message Soft Deletion Tests (6 tests)
+
+**Test Class:** `MessageSoftDeletionTests`
+
+These tests verify that messages are never physically deleted from the database - only flagged as deleted.
+
+#### `test_message_not_physically_deleted`
+**What it tests:** Message record still exists in database after deletion
+**How it works:** Deletes message, queries `Message.objects.filter(id=message_id).exists()`
+**Expected result:** Returns True (message exists)
+**Why it matters:** Data preservation for audit trails and potential recovery
+
+#### `test_is_deleted_flag_set_to_true`
+**What it tests:** `is_deleted` field is set to True
+**How it works:** Deletes message, refreshes from DB, checks `message.is_deleted`
+**Expected result:** `is_deleted == True`
+**Why it matters:** Core soft delete mechanism
+
+#### `test_message_content_preserved_after_deletion`
+**What it tests:** All message data is preserved (content, username, timestamp, etc.)
+**How it works:** Stores original values, deletes message, compares all fields
+**Expected result:** All fields unchanged except `is_deleted`
+**Why it matters:** Data integrity for audit logs
+
+#### `test_already_deleted_message_returns_success`
+**What it tests:** Deleting already-deleted message is idempotent
+**How it works:** Deletes message twice with same request
+**Expected result:** Both return 200 OK, second includes `already_deleted: true` flag
+**Why it matters:** Prevents errors from duplicate delete requests
+
+#### `test_deleted_message_count_preserved`
+**What it tests:** Message count doesn't decrease after deletion
+**How it works:** Counts messages before and after deletion
+**Expected result:** Count remains the same
+**Why it matters:** Verifies soft delete doesn't remove records
+
+#### `test_deleted_messages_excluded_from_queries`
+**What it tests:** Deleted messages don't appear in message list queries (implicit - tested via API)
+**Why it matters:** Deleted messages should be hidden from users
+
+### 7.3 Message Cache Invalidation Tests (4 tests)
+
+**Test Class:** `MessageCacheInvalidationTests`
+
+These tests verify that Redis cache is properly cleared when messages are deleted.
+
+#### `test_cache_remove_called_on_deletion`
+**What it tests:** `MessageCache.remove_message()` is called during deletion
+**How it works:** Mocks `MessageCache.remove_message`, deletes message, verifies mock was called
+**Expected result:** Mock called with correct chat_code and message_id
+**Why it matters:** Ensures cache invalidation is triggered
+
+#### `test_cache_invalidation_removes_message_from_messages_cache`
+**What it tests:** Message removed from main messages Redis cache
+**How it works:** Adds message to cache, verifies presence, deletes message, verifies absence
+**Expected result:** Message not in cache after deletion
+**Why it matters:** Prevents deleted messages from appearing via cached data
+
+#### `test_cache_invalidation_removes_message_from_pinned_cache`
+**What it tests:** Pinned messages removed from pinned cache
+**How it works:** Pins message, adds to pinned cache, deletes, verifies removal from pinned cache
+**Expected result:** Message not in pinned cache after deletion
+**Why it matters:** Pinned message cache must be synchronized
+
+#### `test_cache_invalidation_removes_reactions_cache`
+**What it tests:** Reaction cache cleared for deleted message
+**How it works:** Caches reactions for message, deletes message, verifies reaction cache cleared
+**Expected result:** No reactions cached after deletion
+**Why it matters:** Complete cache cleanup - reactions for deleted messages should not persist
+
+### 7.4 Message Deletion WebSocket Tests (2 tests)
+
+**Test Class:** `MessageDeletionWebSocketTests`
+
+These tests verify real-time broadcasting of deletion events to all connected clients.
+
+#### `test_websocket_broadcast_called_on_deletion`
+**What it tests:** WebSocket `group_send` is called when message deleted
+**How it works:** Mocks Django Channels `get_channel_layer()`, deletes message, verifies `group_send` called
+**Expected result:** `group_send()` called with correct group name (`chat_{code}`) and message data
+**Why it matters:** Real-time updates to all connected clients
+
+#### `test_websocket_message_includes_correct_message_id`
+**What it tests:** WebSocket event contains correct message ID
+**How it works:** Mocks channel layer, deletes message, inspects `group_send` call arguments
+**Expected result:** Message data includes `{type: 'message_deleted', message_id: '<uuid>'}`
+**Why it matters:** Frontend needs message ID to remove from UI
+
+### 7.5 Message Deletion Edge Cases Tests (5 tests)
+
+**Test Class:** `MessageDeletionEdgeCasesTests`
+
+#### `test_delete_nonexistent_message_returns_404`
+**What it tests:** Deleting non-existent message UUID returns 404
+**How it works:** Host tries to delete fake UUID
+**Expected result:** 404 Not Found
+**Why it matters:** Proper error handling for invalid IDs
+
+#### `test_delete_message_from_wrong_chat_returns_404`
+**What it tests:** Message from Chat A can't be deleted via Chat B endpoint
+**How it works:** Creates message in Chat A, tries to delete via `/api/chats/CHATB/messages/{id}/delete/`
+**Expected result:** 404 Not Found, message NOT deleted
+**Why it matters:** Prevents cross-chat manipulation
+
+#### `test_delete_from_inactive_chat_returns_404`
+**What it tests:** Can't delete messages from inactive chats
+**How it works:** Sets chat `is_active=False`, tries to delete message
+**Expected result:** 404 Not Found
+**Why it matters:** Inactive chats are effectively archived
+
+#### `test_response_includes_message_id`
+**What it tests:** Successful deletion returns message ID in response
+**How it works:** Deletes message, checks response JSON structure
+**Expected result:** `{success: true, message_id: '<uuid>', message: '...'}`
+**Why it matters:** API contract - frontend can confirm correct message was deleted
+
+#### `test_deletion_succeeds_even_if_cache_removal_fails`
+**What it tests:** Database deletion succeeds even if Redis cache removal fails
+**How it works:** Mocks `MessageCache.remove_message()` to return False, deletes message
+**Expected result:** 200 OK, message marked `is_deleted` in database
+**Why it matters:** Redis failures are non-fatal - PostgreSQL is source of truth
+
+---
+
+## 8. Reaction Tests (`chats/tests/tests_reactions.py`)
+
+**File Location:** `backend/chats/tests/tests_reactions.py`
+**Test Count:** 10 tests (estimated - file not yet created in this summary)
+
+### Overview
+
+Tests for emoji reaction functionality including:
+- Adding reactions to messages
+- Removing reactions
+- Reaction count aggregation
+- Real-time WebSocket updates
+- Reaction cache invalidation on message deletion
+- Multiple users reacting with same emoji
+- User-specific reaction tracking
+
+**Note:** Full test documentation will be added when test file is reviewed.
+
 ---
 
 ## Running Tests
@@ -906,27 +1172,34 @@ cd backend
 ### Run Specific Test Suite
 ```bash
 # Security tests (26 tests)
-./venv/bin/python manage.py test chats.tests_security
+./venv/bin/python manage.py test chats.tests.tests_security
 
 # Username validation tests (10 tests)
-./venv/bin/python manage.py test chats.tests_validators
+./venv/bin/python manage.py test chats.tests.tests_validators
 
 # Profanity filter tests (26 tests)
-./venv/bin/python manage.py test chats.tests_profanity
+./venv/bin/python manage.py test chats.tests.tests_profanity
 
 # Rate limit tests (12 tests)
-./venv/bin/python manage.py test chats.tests_rate_limits
+./venv/bin/python manage.py test chats.tests.tests_rate_limits
 
 # Dual sessions tests (16 tests)
-./venv/bin/python manage.py test chats.tests_dual_sessions
+./venv/bin/python manage.py test chats.tests.tests_dual_sessions
 
-# Redis cache tests (49 tests)
-./venv/bin/python manage.py test chats.tests_redis_cache
+# Redis cache tests (43 tests)
+./venv/bin/python manage.py test chats.tests.tests_redis_cache
+
+# Message deletion tests (22 tests)
+./venv/bin/python manage.py test chats.tests.tests_message_deletion
+
+# Reaction tests (10 tests)
+./venv/bin/python manage.py test chats.tests.tests_reactions
 ```
 
 ### Run Specific Test Class
 ```bash
-./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests
+./venv/bin/python manage.py test chats.tests.tests_security.ChatSessionSecurityTests
+./venv/bin/python manage.py test chats.tests.tests_message_deletion.MessageDeletionAuthorizationTests
 ```
 
 ### Run with Verbose Output
@@ -946,6 +1219,8 @@ cd backend
 | Profanity Filtering | 26 | Comprehensive - all entry points + bypass attempts |
 | Rate Limiting | 12 | Comprehensive - limits, isolation, edge cases |
 | Dual Sessions | 16 | Comprehensive - anonymous/logged-in coexistence |
-| Redis Caching | 49 | Comprehensive - correctness + performance benchmarks |
+| Redis Caching | 43 | Comprehensive - correctness, cache backfill, Constance controls, performance |
+| Message Deletion | 22 | Comprehensive - authorization, soft delete, cache invalidation, WebSocket |
+| Reactions | 10 | Comprehensive - add/remove reactions, cache sync, real-time updates |
 
-**Overall Coverage:** 139 tests covering security, validation, caching, and performance
+**Overall Coverage:** 165 tests covering security, validation, caching, messaging, and real-time features

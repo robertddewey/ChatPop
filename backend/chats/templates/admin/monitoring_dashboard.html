@@ -1,0 +1,423 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<style>
+    .monitoring-container {
+        max-width: 1400px;
+        margin: 20px auto;
+        padding: 20px;
+    }
+
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+
+    .metric-card {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+    }
+
+    .metric-card h3 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .metric-value {
+        font-size: 32px;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+
+    .metric-label {
+        font-size: 12px;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .status-enabled {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-disabled {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .mode-detailed {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .mode-sampled {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .mode-aggregated {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .events-section {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+    }
+
+    .events-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .events-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .events-table th {
+        background: #f8f9fa;
+        padding: 10px;
+        text-align: left;
+        font-weight: 600;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .events-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .event-type {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .event-cache-read {
+        background: #cfe2ff;
+        color: #084298;
+    }
+
+    .event-cache-write {
+        background: #cff4fc;
+        color: #055160;
+    }
+
+    .event-db-read {
+        background: #e7d4f5;
+        color: #6f42c1;
+    }
+
+    .event-db-write {
+        background: #f8d7da;
+        color: #842029;
+    }
+
+    .event-hybrid {
+        background: #fff3cd;
+        color: #664d03;
+    }
+
+    .hit-status {
+        font-weight: 600;
+    }
+
+    .hit-success {
+        color: #198754;
+    }
+
+    .hit-partial {
+        color: #fd7e14;
+    }
+
+    .hit-miss {
+        color: #dc3545;
+    }
+
+    .refresh-controls {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .refresh-controls select,
+    .refresh-controls input {
+        padding: 6px 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+    }
+
+    .last-update {
+        color: #6c757d;
+        font-size: 12px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="monitoring-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h1>Cache & Database Monitor</h1>
+        <div class="refresh-controls">
+            <label for="chatCodeFilter">Chat Code:</label>
+            <input type="text" id="chatCodeFilter" placeholder="All chats" style="width: 120px;">
+
+            <label for="refreshInterval">Refresh:</label>
+            <select id="refreshInterval">
+                <option value="1000">1 second</option>
+                <option value="2000" selected>2 seconds</option>
+                <option value="5000">5 seconds</option>
+                <option value="10000">10 seconds</option>
+            </select>
+
+            <button id="toggleRefresh" class="button" style="margin-left: 10px;">Pause</button>
+        </div>
+    </div>
+
+    <!-- Monitoring Status -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <h3>Status</h3>
+            <div id="monitoringStatus">
+                <span class="status-badge status-disabled">Loading...</span>
+            </div>
+        </div>
+        <div class="metric-card">
+            <h3>Mode</h3>
+            <div id="monitoringMode">
+                <span class="status-badge">-</span>
+            </div>
+        </div>
+        <div class="metric-card">
+            <h3>Operations/sec</h3>
+            <div class="metric-value" id="opsPerSec">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>Sample Rate</h3>
+            <div class="metric-value" id="sampleRate">-</div>
+        </div>
+    </div>
+
+    <!-- Metrics Grid -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <h3>Cache Hit Rate</h3>
+            <div class="metric-value" id="hitRate">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>Cache Hits</h3>
+            <div class="metric-value" id="cacheHits">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>Cache Misses</h3>
+            <div class="metric-value" id="cacheMisses">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>Cache Partial</h3>
+            <div class="metric-value" id="cachePartial">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>Cache Writes</h3>
+            <div class="metric-value" id="cacheWrites">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>DB Reads</h3>
+            <div class="metric-value" id="dbReads">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>DB Writes</h3>
+            <div class="metric-value" id="dbWrites">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>Hybrid Queries</h3>
+            <div class="metric-value" id="hybridQueries">-</div>
+        </div>
+    </div>
+
+    <!-- Recent Events -->
+    <div class="events-section">
+        <div class="events-header">
+            <h2>Recent Events</h2>
+            <div class="last-update">Last updated: <span id="lastUpdate">-</span></div>
+        </div>
+        <div style="overflow-x: auto;">
+            <table class="events-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Type</th>
+                        <th>Chat Code</th>
+                        <th>Details</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody id="eventsTableBody">
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 30px; color: #6c757d;">
+                            Loading events...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    let refreshInterval = 2000;
+    let refreshTimer = null;
+    let isRefreshing = true;
+
+    function updateDashboard() {
+        const chatCode = document.getElementById('chatCodeFilter').value.trim();
+        const params = new URLSearchParams({
+            limit: 50,
+            ...(chatCode && { chat_code: chatCode })
+        });
+
+        fetch(`/admin/monitoring/api/?${params}`)
+            .then(response => response.json())
+            .then(data => {
+                // Update monitoring status
+                const statusBadge = document.getElementById('monitoringStatus');
+                statusBadge.innerHTML = data.enabled
+                    ? '<span class="status-badge status-enabled">Enabled</span>'
+                    : '<span class="status-badge status-disabled">Disabled</span>';
+
+                // Update mode
+                const modeBadge = document.getElementById('monitoringMode');
+                const modeClass = `mode-${data.mode}`;
+                modeBadge.innerHTML = `<span class="status-badge ${modeClass}">${data.mode.toUpperCase()}</span>`;
+
+                // Update ops/sec and sample rate
+                document.getElementById('opsPerSec').textContent = data.ops_per_sec;
+                document.getElementById('sampleRate').textContent = `${Math.round(data.sample_rate * 100)}%`;
+
+                // Update metrics
+                document.getElementById('hitRate').textContent = `${data.metrics.hit_rate}%`;
+                document.getElementById('cacheHits').textContent = data.metrics.cache_hits;
+                document.getElementById('cacheMisses').textContent = data.metrics.cache_misses;
+                document.getElementById('cachePartial').textContent = data.metrics.cache_partial_hits;
+                document.getElementById('cacheWrites').textContent = data.metrics.cache_writes;
+                document.getElementById('dbReads').textContent = data.metrics.db_reads;
+                document.getElementById('dbWrites').textContent = data.metrics.db_writes;
+                document.getElementById('hybridQueries').textContent = data.metrics.hybrid_queries;
+
+                // Update events table
+                const tbody = document.getElementById('eventsTableBody');
+                if (data.events.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 30px; color: #6c757d;">No events captured yet</td></tr>';
+                } else {
+                    tbody.innerHTML = data.events.map(event => {
+                        let details = '';
+                        let typeClass = '';
+
+                        if (event.type === 'cache_read') {
+                            typeClass = 'event-cache-read';
+                            const hitClass = event.hit ? (event.partial ? 'hit-partial' : 'hit-success') : 'hit-miss';
+                            const hitText = event.hit ? (event.partial ? 'PARTIAL HIT' : 'HIT') : 'MISS';
+                            details = `<span class="hit-status ${hitClass}">${hitText}</span> (${event.count} msgs, ${event.source})`;
+                        } else if (event.type === 'cache_write') {
+                            typeClass = 'event-cache-write';
+                            details = `${event.count} messages`;
+                        } else if (event.type === 'db_read') {
+                            typeClass = 'event-db-read';
+                            details = `${event.count} messages (${event.query_type})`;
+                        } else if (event.type === 'db_write') {
+                            typeClass = 'event-db-write';
+                            details = event.query_type;
+                        } else if (event.type === 'hybrid_query') {
+                            typeClass = 'event-hybrid';
+                            details = `${event.total_count} msgs (cache: ${event.cache_count}, db: ${event.db_count}) | cache: ${event.cache_ms}ms, db: ${event.db_ms}ms`;
+                        }
+
+                        return `
+                            <tr>
+                                <td>${event.timestamp}</td>
+                                <td><span class="event-type ${typeClass}">${event.type.toUpperCase().replace('_', ' ')}</span></td>
+                                <td>${event.chat_code}</td>
+                                <td>${details}</td>
+                                <td>${event.duration_ms.toFixed(2)}ms</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+
+                // Update last update time
+                const now = new Date();
+                document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+            })
+            .catch(error => {
+                console.error('Error fetching monitoring data:', error);
+            });
+    }
+
+    function startRefresh() {
+        if (refreshTimer) clearInterval(refreshTimer);
+        refreshTimer = setInterval(updateDashboard, refreshInterval);
+        isRefreshing = true;
+        document.getElementById('toggleRefresh').textContent = 'Pause';
+    }
+
+    function stopRefresh() {
+        if (refreshTimer) {
+            clearInterval(refreshTimer);
+            refreshTimer = null;
+        }
+        isRefreshing = false;
+        document.getElementById('toggleRefresh').textContent = 'Resume';
+    }
+
+    // Event listeners
+    document.getElementById('refreshInterval').addEventListener('change', (e) => {
+        refreshInterval = parseInt(e.target.value);
+        if (isRefreshing) {
+            startRefresh();
+        }
+    });
+
+    document.getElementById('toggleRefresh').addEventListener('click', () => {
+        if (isRefreshing) {
+            stopRefresh();
+        } else {
+            startRefresh();
+        }
+    });
+
+    document.getElementById('chatCodeFilter').addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+            updateDashboard();
+        }
+    });
+
+    // Initial load
+    updateDashboard();
+    startRefresh();
+</script>
+{% endblock %}

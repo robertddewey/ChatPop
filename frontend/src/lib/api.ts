@@ -445,5 +445,18 @@ export const messageApi = {
     const response = await api.post(`/api/chats/${code}/block-user/`, data);
     return response.data;
   },
+
+  deleteMessage: async (code: string, messageId: string): Promise<{
+    success: boolean;
+    message: string;
+    message_id: string;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
+    const response = await api.post(`/api/chats/${code}/messages/${messageId}/delete/`, {
+      session_token: sessionToken,
+    });
+    return response.data;
+  },
 };
 

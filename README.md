@@ -123,12 +123,13 @@ Key variables:
 Comprehensive documentation is organized in the `docs/` directory:
 
 ### Core Documentation
-- **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation (139+ tests)
+- **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation (139 tests)
 - **[docs/CACHING.md](docs/CACHING.md)** - Redis message and reaction caching architecture
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
 - **[docs/AUDIO.md](docs/AUDIO.md)** - iOS Safari-compatible audio implementation
 - **[docs/THEME_STYLING_GUIDE.md](docs/THEME_STYLING_GUIDE.md)** - Complete ChatTheme database field reference
 - **[docs/MANAGEMENT_TOOLS.md](docs/MANAGEMENT_TOOLS.md)** - Redis cache inspection and debugging tools
+- **[docs/MONITORING.md](docs/MONITORING.md)** - Real-time cache & database monitoring system
 - **[docs/blocking-feature-spec.md](docs/blocking-feature-spec.md)** - User blocking feature specification
 
 ### Deployment & Scaling

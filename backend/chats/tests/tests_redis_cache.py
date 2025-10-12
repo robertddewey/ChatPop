@@ -201,10 +201,14 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(messages[1]['content'], 'Message 1')
 
     def test_cache_retention_max_count(self):
-        """Test that cache trims to MAX_MESSAGES (500 by default)"""
-        # Override MAX_MESSAGES for testing
-        original_max = MessageCache.MAX_MESSAGES
-        MessageCache.MAX_MESSAGES = 10
+        """Test that cache trims to REDIS_CACHE_MAX_COUNT (500 by default)"""
+        from constance import config
+
+        # Store original setting
+        original_max = config.REDIS_CACHE_MAX_COUNT
+
+        # Override for testing
+        config.REDIS_CACHE_MAX_COUNT = 10
 
         try:
             # Create 15 messages (exceeds limit)
@@ -226,7 +230,7 @@ class RedisMessageCacheTests(TransactionTestCase):
             self.assertEqual(messages[9]['content'], 'Message 14')
 
         finally:
-            MessageCache.MAX_MESSAGES = original_max
+            config.REDIS_CACHE_MAX_COUNT = original_max
 
     def test_add_pinned_message(self):
         """Test adding a message to the pinned cache"""
@@ -997,3 +1001,386 @@ class RedisReactionCacheTests(TransactionTestCase):
             self.assertTrue(True)
         except Exception as e:
             self.fail(f"Reaction cache operations should not raise exceptions: {e}")
+
+
+class ConstanceCacheControlTests(TransactionTestCase):
+    """Test Constance dynamic settings for cache control"""
+
+    def setUp(self):
+        """Set up test data"""
+        from constance import config
+
+        cache.clear()
+
+        # Store original settings
+        self.original_cache_enabled = config.REDIS_CACHE_ENABLED
+
+        self.user = User.objects.create_user(
+            email='config@example.com',
+            password='testpass123',
+            reserved_username='ConfigTest'
+        )
+
+        self.chat_room = ChatRoom.objects.create(
+            name='Config Test Chat',
+            host=self.user,
+            access_mode='public'
+        )
+
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.user,
+            username='ConfigTest',
+            ip_address='127.0.0.1'
+        )
+
+    def tearDown(self):
+        """Restore original settings"""
+        from constance import config
+
+        # Restore original settings
+        config.REDIS_CACHE_ENABLED = self.original_cache_enabled
+
+        cache.clear()
+
+    def test_redis_cache_enabled_true_writes_to_cache(self):
+        """Test that messages are written to cache when REDIS_CACHE_ENABLED=True"""
+        from constance import config
+
+        # Enable cache
+        config.REDIS_CACHE_ENABLED = True
+
+        # Create message
+        message = Message.objects.create(
+            chat_room=self.chat_room,
+            username='ConfigTest',
+            user=self.user,
+            content='Cache enabled test'
+        )
+
+        # Manually call add_message (simulating WebSocket consumer behavior)
+        if config.REDIS_CACHE_ENABLED:
+            MessageCache.add_message(message)
+
+        # Verify message is in Redis
+        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]['content'], 'Cache enabled test')
+
+    def test_redis_cache_enabled_false_skips_write(self):
+        """Test that messages are NOT written to cache when REDIS_CACHE_ENABLED=False"""
+        from constance import config
+
+        # Disable cache
+        config.REDIS_CACHE_ENABLED = False
+
+        # Create message
+        message = Message.objects.create(
+            chat_room=self.chat_room,
+            username='ConfigTest',
+            user=self.user,
+            content='Cache disabled test'
+        )
+
+        # Conditionally call add_message (simulating WebSocket consumer behavior)
+        if config.REDIS_CACHE_ENABLED:
+            MessageCache.add_message(message)
+
+        # Verify message is NOT in Redis
+        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        self.assertEqual(len(messages), 0)
+
+        # But message should exist in PostgreSQL
+        db_messages = Message.objects.filter(chat_room=self.chat_room)
+        self.assertEqual(db_messages.count(), 1)
+        self.assertEqual(db_messages.first().content, 'Cache disabled test')
+
+    def test_redis_cache_enabled_true_reads_from_cache(self):
+        """Test that REDIS_CACHE_ENABLED=True causes reads from Redis"""
+        from constance import config
+        from rest_framework.test import APIRequestFactory
+        from chats.views import MessageListView
+
+        # Enable cache reads
+        config.REDIS_CACHE_ENABLED = True
+
+        # Create and cache a message
+        message = Message.objects.create(
+            chat_room=self.chat_room,
+            username='ConfigTest',
+            user=self.user,
+            content='Read from cache test'
+        )
+        MessageCache.add_message(message)
+
+        # Simulate API request using DRF's APIRequestFactory
+        factory = APIRequestFactory()
+        request = factory.get(f'/api/chats/{self.chat_room.code}/messages/')
+
+        view = MessageListView.as_view()
+        response = view(request, code=self.chat_room.code)
+
+        # Should read from Redis
+        self.assertEqual(response.data['source'], 'redis')
+        self.assertTrue(response.data['cache_enabled'])
+        self.assertEqual(len(response.data['messages']), 1)
+        self.assertEqual(response.data['messages'][0]['content'], 'Read from cache test')
+
+    def test_redis_cache_enabled_false_reads_from_postgresql(self):
+        """Test that REDIS_CACHE_ENABLED=False causes reads from PostgreSQL"""
+        from constance import config
+        from rest_framework.test import APIRequestFactory
+        from chats.views import MessageListView
+
+        # Disable cache reads
+        config.REDIS_CACHE_ENABLED = False
+
+        # Create message in PostgreSQL (don't cache)
+        message = Message.objects.create(
+            chat_room=self.chat_room,
+            username='ConfigTest',
+            user=self.user,
+            content='Read from PostgreSQL test'
+        )
+
+        # Simulate API request using DRF's APIRequestFactory
+        factory = APIRequestFactory()
+        request = factory.get(f'/api/chats/{self.chat_room.code}/messages/')
+
+        view = MessageListView.as_view()
+        response = view(request, code=self.chat_room.code)
+
+        # Should read from PostgreSQL
+        self.assertEqual(response.data['source'], 'postgresql')
+        self.assertFalse(response.data['cache_enabled'])
+        self.assertEqual(len(response.data['messages']), 1)
+        self.assertEqual(response.data['messages'][0]['content'], 'Read from PostgreSQL test')
+
+    def test_cache_miss_fallback_to_postgresql(self):
+        """Test that cache miss falls back to PostgreSQL"""
+        from constance import config
+        from rest_framework.test import APIRequestFactory
+        from chats.views import MessageListView
+
+        # Enable cache reads
+        config.REDIS_CACHE_ENABLED = True
+
+        # Create message in PostgreSQL but NOT in Redis (simulating cache miss)
+        message = Message.objects.create(
+            chat_room=self.chat_room,
+            username='ConfigTest',
+            user=self.user,
+            content='Cache miss test'
+        )
+        # Don't call MessageCache.add_message() - simulate cache miss
+
+        # Simulate API request using DRF's APIRequestFactory
+        factory = APIRequestFactory()
+        request = factory.get(f'/api/chats/{self.chat_room.code}/messages/')
+
+        view = MessageListView.as_view()
+        response = view(request, code=self.chat_room.code)
+
+        # Should fallback to PostgreSQL
+        self.assertEqual(response.data['source'], 'postgresql_fallback')
+        self.assertTrue(response.data['cache_enabled'])
+        self.assertEqual(len(response.data['messages']), 1)
+        self.assertEqual(response.data['messages'][0]['content'], 'Cache miss test')
+
+    def test_pagination_always_uses_postgresql(self):
+        """Test that pagination requests always use PostgreSQL (never Redis)"""
+        from constance import config
+        from rest_framework.test import APIRequestFactory
+        from chats.views import MessageListView
+
+        # Enable cache reads
+        config.REDIS_CACHE_ENABLED = True
+
+        # Create and cache messages
+        for i in range(5):
+            message = Message.objects.create(
+                chat_room=self.chat_room,
+                username='ConfigTest',
+                user=self.user,
+                content=f'Message {i}'
+            )
+            MessageCache.add_message(message)
+
+        # Simulate pagination request (with before parameter) using DRF's APIRequestFactory
+        factory = APIRequestFactory()
+        before_timestamp = timezone.now().timestamp()  # Unix timestamp (float)
+        request = factory.get(f'/api/chats/{self.chat_room.code}/messages/?before={before_timestamp}')
+
+        view = MessageListView.as_view()
+        response = view(request, code=self.chat_room.code)
+
+        # Should use PostgreSQL even though cache is enabled (pagination request)
+        self.assertEqual(response.data['source'], 'postgresql')
+        self.assertTrue(response.data['cache_enabled'])
+
+    def test_cache_ttl_expiry(self):
+        """Test that messages expire from cache after TTL (24 hours)"""
+        # Create and cache a message
+        message = Message.objects.create(
+            chat_room=self.chat_room,
+            username='ConfigTest',
+            user=self.user,
+            content='TTL test'
+        )
+        MessageCache.add_message(message)
+
+        # Check TTL is set on the Redis key
+        redis_client = MessageCache._get_redis_client()
+        key = f"chat:{self.chat_room.code}:messages"
+        ttl = redis_client.ttl(key)
+
+        # TTL should be set to 24 hours (86400 seconds)
+        # Allow small margin for test execution time
+        self.assertGreater(ttl, 86000)  # Greater than 23.8 hours
+        self.assertLess(ttl, 86500)  # Less than 24.1 hours
+
+    def test_cache_hit_performance_vs_postgresql(self):
+        """Test that Redis cache is significantly faster than PostgreSQL"""
+        from constance import config
+
+        # Create 50 messages
+        messages = []
+        for i in range(50):
+            message = Message.objects.create(
+                chat_room=self.chat_room,
+                username='ConfigTest',
+                user=self.user,
+                content=f'Performance test {i}'
+            )
+            MessageCache.add_message(message)
+            messages.append(message)
+
+        # Benchmark Redis cache read
+        config.REDIS_CACHE_ENABLED = True
+        start_time = time.time()
+        for _ in range(100):
+            cached_messages = MessageCache.get_messages(self.chat_room.code, limit=50)
+            self.assertEqual(len(cached_messages), 50)
+        redis_duration = time.time() - start_time
+        redis_avg = (redis_duration / 100) * 1000  # ms per read
+
+        # Benchmark PostgreSQL read
+        start_time = time.time()
+        for _ in range(100):
+            db_messages = Message.objects.filter(
+                chat_room=self.chat_room,
+                is_deleted=False
+            ).order_by('-created_at')[:50]
+            self.assertEqual(len(db_messages), 50)
+        postgresql_duration = time.time() - start_time
+        postgresql_avg = (postgresql_duration / 100) * 1000  # ms per read
+
+        print(f"\n📊 Cache Performance Comparison:")
+        print(f"   Redis cache: {redis_avg:.2f}ms per read")
+        print(f"   PostgreSQL: {postgresql_avg:.2f}ms per read")
+        if postgresql_avg > 0:
+            print(f"   Speedup: {postgresql_avg / redis_avg:.1f}x faster")
+        else:
+            print(f"   Speedup: N/A (PostgreSQL too fast to measure)")
+
+        # Redis should be faster than PostgreSQL (or at minimum equal performance)
+        self.assertLessEqual(redis_avg, postgresql_avg)
+
+    def test_toggle_cache_settings_runtime(self):
+        """Test dynamically changing cache settings at runtime"""
+        from constance import config
+
+        # Start with cache disabled
+        config.REDIS_CACHE_ENABLED = False
+
+        # Create message (shouldn't be cached)
+        message1 = Message.objects.create(
+            chat_room=self.chat_room,
+            username='ConfigTest',
+            user=self.user,
+            content='Before enable'
+        )
+        if config.REDIS_CACHE_ENABLED:
+            MessageCache.add_message(message1)
+
+        # Verify not in cache
+        messages = MessageCache.get_messages(self.chat_room.code)
+        self.assertEqual(len(messages), 0)
+
+        # Enable cache
+        config.REDIS_CACHE_ENABLED = True
+
+        # Create new message (should be cached)
+        message2 = Message.objects.create(
+            chat_room=self.chat_room,
+            username='ConfigTest',
+            user=self.user,
+            content='After enable'
+        )
+        if config.REDIS_CACHE_ENABLED:
+            MessageCache.add_message(message2)
+
+        # Verify in cache
+        messages = MessageCache.get_messages(self.chat_room.code)
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]['content'], 'After enable')
+
+        # Now reads should come from Redis using DRF's APIRequestFactory
+        from rest_framework.test import APIRequestFactory
+        from chats.views import MessageListView
+
+        factory = APIRequestFactory()
+        request = factory.get(f'/api/chats/{self.chat_room.code}/messages/')
+
+        view = MessageListView.as_view()
+        response = view(request, code=self.chat_room.code)
+
+        self.assertEqual(response.data['source'], 'redis')
+        self.assertTrue(response.data['cache_enabled'])
+
+    def test_cache_backfill_on_miss(self):
+        """Test that cache miss triggers backfill to Redis"""
+        from constance import config
+        from rest_framework.test import APIRequestFactory
+        from chats.views import MessageListView
+
+        # Enable cache
+        config.REDIS_CACHE_ENABLED = True
+
+        # Create messages in PostgreSQL but NOT in Redis (simulating cache miss)
+        for i in range(5):
+            Message.objects.create(
+                chat_room=self.chat_room,
+                username='ConfigTest',
+                user=self.user,
+                content=f'Backfill test {i}'
+            )
+        # Don't call MessageCache.add_message() - simulate cache miss
+
+        # Verify cache is empty
+        cached_messages = MessageCache.get_messages(self.chat_room.code)
+        self.assertEqual(len(cached_messages), 0)
+
+        # Make initial API request (should trigger backfill)
+        factory = APIRequestFactory()
+        request = factory.get(f'/api/chats/{self.chat_room.code}/messages/')
+
+        view = MessageListView.as_view()
+        response = view(request, code=self.chat_room.code)
+
+        # First request should be a cache miss (fallback to PostgreSQL)
+        self.assertEqual(response.data['source'], 'postgresql_fallback')
+        self.assertEqual(len(response.data['messages']), 5)
+
+        # Verify messages were backfilled to cache
+        cached_messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        self.assertEqual(len(cached_messages), 5)
+        self.assertEqual(cached_messages[0]['content'], 'Backfill test 0')
+        self.assertEqual(cached_messages[4]['content'], 'Backfill test 4')
+
+        # Second request should hit the cache (after backfill)
+        request2 = factory.get(f'/api/chats/{self.chat_room.code}/messages/')
+        response2 = view(request2, code=self.chat_room.code)
+
+        self.assertEqual(response2.data['source'], 'redis')
+        self.assertEqual(len(response2.data['messages']), 5)

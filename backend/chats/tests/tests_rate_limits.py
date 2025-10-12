@@ -6,7 +6,7 @@ from django.core.cache import cache
 from rest_framework.test import APIClient
 from rest_framework import status
 from accounts.models import User
-from .models import ChatRoom
+from ..models import ChatRoom
 
 
 class UsernameGenerationRateLimitTests(TestCase):

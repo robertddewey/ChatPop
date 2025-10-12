@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
-import { Pin, DollarSign, Ban, X, BadgeCheck, Reply } from 'lucide-react';
+import { Pin, DollarSign, Ban, X, BadgeCheck, Reply, Trash2 } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import { isDarkTheme } from '@/lib/themes';
 
@@ -19,6 +19,7 @@ interface MessageActionsModalProps {
   onBlock?: (username: string) => void;
   onTip?: (username: string) => void;
   onReact?: (messageId: string, emoji: string) => void;
+  onDelete?: (messageId: string) => void;
 }
 
 // Get theme-aware modal styles (no system preference - force theme mode)
@@ -65,6 +66,7 @@ export default function MessageActionsModal({
   onBlock,
   onTip,
   onReact,
+  onDelete,
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -230,6 +232,23 @@ export default function MessageActionsModal({
       action: () => {
         onTip(message.username);
         handleClose();
+      },
+    });
+  }
+
+  // Delete message (host only)
+  if (isHost && onDelete) {
+    actions.push({
+      icon: Trash2,
+      label: 'Delete Message',
+      action: () => {
+        if (confirm('Are you sure you want to delete this message?')) {
+          onDelete(message.id);
+          handleClose();
+        } else {
+          // Don't close if cancelled
+          return;
+        }
       },
     });
   }

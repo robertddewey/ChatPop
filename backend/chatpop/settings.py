@@ -73,7 +73,7 @@ ROOT_URLCONF = "chatpop.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -140,6 +140,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
@@ -219,6 +220,7 @@ MESSAGE_CACHE_TTL_HOURS = int(os.getenv("MESSAGE_CACHE_TTL_HOURS", "24"))  # Aut
 # Constance - Dynamic Settings (editable in /admin/constance/config/)
 CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
 CONSTANCE_CONFIG = {
+    # Message History Settings
     'MESSAGE_HISTORY_MAX_DAYS': (
         7,
         'Maximum days users can scroll back in chat history',
@@ -229,6 +231,35 @@ CONSTANCE_CONFIG = {
         'Maximum number of messages users can load total (includes initial load + pagination)',
         int
     ),
+    'MESSAGE_LIST_DEFAULT_LIMIT': (
+        50,
+        'Default number of messages to return per request (can be overridden with ?limit= up to MESSAGE_HISTORY_MAX_COUNT)',
+        int
+    ),
+
+    # Redis Message Cache Settings (enable when scaling past 1000+ chats)
+    'REDIS_CACHE_ENABLED': (
+        False,
+        'Enable Redis caching for messages (read + write). Recommended for 1000+ chats. 5-10x faster page loads.',
+        bool
+    ),
+    'REDIS_CACHE_MAX_COUNT': (
+        500,
+        'Maximum messages cached per chat in Redis. Recommended: 100-200 for memory efficiency.',
+        int
+    ),
+    'REDIS_CACHE_TTL_HOURS': (
+        24,
+        'Hours before cached messages expire from Redis (auto-cleanup for inactive chats)',
+        int
+    ),
+
+    # Monitoring Settings (developer tools)
+    'ENABLE_MONITORING': (
+        False,
+        'Enable real-time monitoring of cache/database operations. Tracks performance metrics with adaptive sampling. Access via: ./venv/bin/python manage.py monitor_cache',
+        bool
+    ),
 }
 
 # Custom User Model
@@ -238,6 +269,11 @@ AUTH_USER_MODEL = "accounts.User"
 # Enable/disable anonymous user fingerprinting for username persistence
 # This can be toggled from Django admin
 ANONYMOUS_USER_FINGERPRINT = os.getenv("ANONYMOUS_USER_FINGERPRINT", "True") == "True"
+
+# Monitoring Settings
+# Enable real-time monitoring of cache and database operations
+# Disabled by default (zero overhead). Enable with: ENABLE_MONITORING=True
+ENABLE_MONITORING = os.getenv("ENABLE_MONITORING", "False") == "True"
 
 # Media Storage Settings
 # AWS S3 Configuration (optional - uses local storage if not configured)

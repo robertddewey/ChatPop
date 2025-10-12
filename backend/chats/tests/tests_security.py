@@ -8,8 +8,8 @@ from django.test import TestCase, Client
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import status
-from .models import ChatRoom
-from .security import ChatSessionValidator
+from ..models import ChatRoom
+from ..security import ChatSessionValidator
 
 User = get_user_model()
 

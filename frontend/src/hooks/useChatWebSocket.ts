@@ -7,6 +7,7 @@ interface UseChatWebSocketOptions {
   onMessage?: (message: Message) => void;
   onUserBlocked?: (message: string) => void;
   onReaction?: (data: any) => void;
+  onMessageDeleted?: (messageId: string) => void;
   onError?: (error: Event) => void;
   enabled?: boolean;
 }
@@ -17,6 +18,7 @@ export function useChatWebSocket({
   onMessage,
   onUserBlocked,
   onReaction,
+  onMessageDeleted,
   onError,
   enabled = true,
 }: UseChatWebSocketOptions) {
@@ -79,6 +81,15 @@ export function useChatWebSocket({
           return;
         }
 
+        // Handle message deletion events
+        if (data.type === 'message_deleted') {
+          console.log('[WebSocket] Message deleted event received:', data.message_id);
+          if (onMessageDeleted) {
+            onMessageDeleted(data.message_id);
+          }
+          return;
+        }
+
         // Handle chat messages (has an id field)
         if (onMessage && data.id) {
           onMessage(data as Message);
@@ -121,7 +132,7 @@ export function useChatWebSocket({
     };
 
     ws.current = socket;
-  }, [chatCode, sessionToken, onMessage, onUserBlocked, onReaction, onError, enabled]);
+  }, [chatCode, sessionToken, onMessage, onUserBlocked, onReaction, onMessageDeleted, onError, enabled]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {

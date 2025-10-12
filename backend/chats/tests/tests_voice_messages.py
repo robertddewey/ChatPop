@@ -12,8 +12,8 @@ from unittest.mock import patch, MagicMock
 import io
 
 from accounts.models import User
-from .models import ChatRoom, Message
-from .security import ChatSessionValidator
+from ..models import ChatRoom, Message
+from ..security import ChatSessionValidator
 
 
 class VoiceMessageUploadTests(TestCase):

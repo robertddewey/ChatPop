@@ -198,28 +198,28 @@ cd backend
 ./venv/bin/python manage.py test chats
 
 # Security tests (26 tests)
-./venv/bin/python manage.py test chats.tests_security
+./venv/bin/python manage.py test chats.tests.tests_security
 
 # Username validation tests (10 tests)
-./venv/bin/python manage.py test chats.tests_validators
+./venv/bin/python manage.py test chats.tests.tests_validators
 
 # Profanity filter tests (26 tests)
-./venv/bin/python manage.py test chats.tests_profanity
+./venv/bin/python manage.py test chats.tests.tests_profanity
 
 # Rate limit tests (12 tests)
-./venv/bin/python manage.py test chats.tests_rate_limits
+./venv/bin/python manage.py test chats.tests.tests_rate_limits
 
 # Dual sessions tests (16 tests)
-./venv/bin/python manage.py test chats.tests_dual_sessions
+./venv/bin/python manage.py test chats.tests.tests_dual_sessions
 
 # Redis cache tests (49 tests)
-./venv/bin/python manage.py test chats.tests_redis_cache
+./venv/bin/python manage.py test chats.tests.tests_redis_cache
 
 # Specific test class
-./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests
+./venv/bin/python manage.py test chats.tests.tests_security.ChatSessionSecurityTests
 
 # Specific test method
-./venv/bin/python manage.py test chats.tests_security.ChatSessionSecurityTests.test_message_send_requires_session_token
+./venv/bin/python manage.py test chats.tests.tests_security.ChatSessionSecurityTests.test_message_send_requires_session_token
 ```
 
 **Current Test Coverage:** 139+ tests across 7 test suites covering security, validation, profanity filtering, rate limiting, dual sessions, and Redis caching.

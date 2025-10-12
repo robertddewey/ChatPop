@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
-    MessageListView, MessageCreateView, MessagePinView,
+    MessageListView, MessageCreateView, MessagePinView, MessageDeleteView,
     FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
     VoiceUploadView, VoiceStreamView,
     MessageReactionToggleView, MessageReactionsListView,
@@ -22,6 +22,7 @@ urlpatterns = [
     path('<str:code>/messages/', MessageListView.as_view(), name='message-list'),
     path('<str:code>/messages/send/', MessageCreateView.as_view(), name='message-create'),
     path('<str:code>/messages/<uuid:message_id>/pin/', MessagePinView.as_view(), name='message-pin'),
+    path('<str:code>/messages/<uuid:message_id>/delete/', MessageDeleteView.as_view(), name='message-delete'),
 
     # Message Reactions
     path('<str:code>/messages/<uuid:message_id>/react/', MessageReactionToggleView.as_view(), name='message-react'),

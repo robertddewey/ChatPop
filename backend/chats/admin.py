@@ -1,5 +1,20 @@
 from django.contrib import admin
+from django.urls import reverse
+from django.utils.html import format_html
 from .models import ChatRoom, Message, Transaction, AnonymousUserFingerprint, ChatTheme
+
+
+# Custom admin site configuration to add monitoring dashboard link
+class ChatPopAdminSite(admin.AdminSite):
+    def each_context(self, request):
+        context = super().each_context(request)
+        context['monitoring_url'] = reverse('monitoring_dashboard')
+        return context
+
+
+# You can optionally customize the admin index to show the monitoring link
+admin.site.site_header = "ChatPop Administration"
+admin.site.index_title = "ChatPop Admin"
 
 
 @admin.register(ChatTheme)

@@ -19,6 +19,7 @@ from typing import Optional, List, Dict, Any
 from django.core.cache import cache
 from django.conf import settings
 from chats.models import Message, ChatParticipation
+from chats.monitoring import monitor
 
 
 class MessageCache:
@@ -28,9 +29,23 @@ class MessageCache:
     MESSAGES_KEY = "chat:{chat_code}:messages"
     PINNED_KEY = "chat:{chat_code}:pinned"
 
-    # Configuration from settings
-    MAX_MESSAGES = getattr(settings, 'MESSAGE_CACHE_MAX_COUNT', 500)
-    TTL_HOURS = getattr(settings, 'MESSAGE_CACHE_TTL_HOURS', 24)
+    @classmethod
+    def _get_max_messages(cls) -> int:
+        """Get max messages from Constance (dynamic) or fallback to settings (static)"""
+        try:
+            from constance import config
+            return config.REDIS_CACHE_MAX_COUNT
+        except:
+            return getattr(settings, 'MESSAGE_CACHE_MAX_COUNT', 500)
+
+    @classmethod
+    def _get_ttl_hours(cls) -> int:
+        """Get TTL hours from Constance (dynamic) or fallback to settings (static)"""
+        try:
+            from constance import config
+            return config.REDIS_CACHE_TTL_HOURS
+        except:
+            return getattr(settings, 'MESSAGE_CACHE_TTL_HOURS', 24)
 
     @classmethod
     def _get_redis_client(cls):
@@ -100,6 +115,7 @@ class MessageCache:
         Returns:
             True if successfully cached, False otherwise
         """
+        start_time = time.time()
         try:
             redis_client = cls._get_redis_client()
             chat_code = message.chat_room.code
@@ -121,14 +137,19 @@ class MessageCache:
             redis_client.zadd(key, {message_json: score})
 
             # Trim to max message count (keep most recent)
+            max_messages = cls._get_max_messages()
             total_messages = redis_client.zcard(key)
-            if total_messages > cls.MAX_MESSAGES:
+            if total_messages > max_messages:
                 # Remove oldest messages
-                redis_client.zremrangebyrank(key, 0, total_messages - cls.MAX_MESSAGES - 1)
+                redis_client.zremrangebyrank(key, 0, total_messages - max_messages - 1)
 
             # Set TTL on the key (refreshed on each add)
-            ttl_seconds = cls.TTL_HOURS * 3600
+            ttl_seconds = cls._get_ttl_hours() * 3600
             redis_client.expire(key, ttl_seconds)
+
+            # Monitor: Cache write
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_write(chat_code, count=1, duration_ms=duration_ms)
 
             return True
 
@@ -149,6 +170,7 @@ class MessageCache:
         Returns:
             List of message dicts (oldest first, chronological order for chat display)
         """
+        start_time = time.time()
         try:
             redis_client = cls._get_redis_client()
             key = cls.MESSAGES_KEY.format(chat_code=chat_code)
@@ -166,10 +188,32 @@ class MessageCache:
                 except json.JSONDecodeError:
                     continue
 
+            # Monitor: Cache read
+            duration_ms = (time.time() - start_time) * 1000
+            hit = len(messages) > 0
+            monitor.log_cache_read(
+                chat_code,
+                hit=hit,
+                count=len(messages),
+                duration_ms=duration_ms,
+                source='redis'
+            )
+
             return messages
 
         except Exception as e:
             print(f"Redis cache error (get_messages): {e}")
+
+            # Monitor: Cache read error (miss)
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_read(
+                chat_code,
+                hit=False,
+                count=0,
+                duration_ms=duration_ms,
+                source='redis'
+            )
+
             return []
 
     @classmethod
@@ -185,6 +229,7 @@ class MessageCache:
         Returns:
             List of message dicts (oldest first, chronological order for chat display)
         """
+        start_time = time.time()
         try:
             redis_client = cls._get_redis_client()
             key = cls.MESSAGES_KEY.format(chat_code=chat_code)
@@ -211,10 +256,32 @@ class MessageCache:
             # Reverse to chronological order (oldest first)
             messages.reverse()
 
+            # Monitor: Cache read (pagination)
+            duration_ms = (time.time() - start_time) * 1000
+            hit = len(messages) > 0
+            monitor.log_cache_read(
+                chat_code,
+                hit=hit,
+                count=len(messages),
+                duration_ms=duration_ms,
+                source='redis'
+            )
+
             return messages
 
         except Exception as e:
             print(f"Redis cache error (get_messages_before): {e}")
+
+            # Monitor: Cache read error (miss)
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_read(
+                chat_code,
+                hit=False,
+                count=0,
+                duration_ms=duration_ms,
+                source='redis'
+            )
+
             return []
 
     @classmethod
@@ -348,8 +415,8 @@ class MessageCache:
                 # Set the hash with all emoji counts
                 redis_client.hset(key, mapping=reaction_hash)
 
-                # Set 24-hour TTL (match message cache TTL)
-                ttl_seconds = cls.TTL_HOURS * 3600
+                # Set TTL to match message cache TTL (from Constance)
+                ttl_seconds = cls._get_ttl_hours() * 3600
                 redis_client.expire(key, ttl_seconds)
             else:
                 # No reactions, delete the key if it exists
@@ -455,6 +522,55 @@ class MessageCache:
         except Exception as e:
             print(f"Redis cache error (batch_get_reactions): {e}")
             return {}
+
+    @classmethod
+    def remove_message(cls, chat_code: str, message_id: str) -> bool:
+        """
+        Remove a specific message from cache (for soft deletes).
+
+        This removes the message from both the main messages cache and pinned cache.
+        Also removes associated reactions cache.
+
+        Args:
+            chat_code: Chat room code
+            message_id: Message UUID (as string)
+
+        Returns:
+            True if message was found and removed, False otherwise
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            removed = False
+
+            # Remove from main messages cache
+            messages_key = cls.MESSAGES_KEY.format(chat_code=chat_code)
+            message_strings = redis_client.zrange(messages_key, 0, -1)
+
+            for msg_str in message_strings:
+                try:
+                    msg_data = json.loads(msg_str)
+                    if msg_data.get('id') == message_id:
+                        redis_client.zrem(messages_key, msg_str)
+                        removed = True
+                        break
+                except json.JSONDecodeError:
+                    continue
+
+            # Remove from pinned messages cache (if it exists there)
+            cls.remove_pinned_message(chat_code, message_id)
+
+            # Remove reactions cache for this message
+            reactions_key = f"chat:{chat_code}:reactions:{message_id}"
+            redis_client.delete(reactions_key)
+
+            if removed:
+                print(f"✅ Removed message {message_id} from Redis cache for chat {chat_code}")
+
+            return removed
+
+        except Exception as e:
+            print(f"Redis cache error (remove_message): {e}")
+            return False
 
     @classmethod
     def clear_chat_cache(cls, chat_code: str):
