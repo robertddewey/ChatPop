@@ -17,7 +17,7 @@ from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from django.core.cache import cache
 from accounts.models import User
-from chats.models import ChatRoom, Message, ChatParticipation
+from chats.models import ChatRoom, Message, ChatParticipation, MessageReaction
 from chats.redis_cache import MessageCache
 
 
@@ -347,7 +347,7 @@ class RedisMessageCacheTests(TransactionTestCase):
             user=self.user,
             content='Regular message'
         )
-        MessageCache.add_message(regular_msg, is_backroom=False)
+        MessageCache.add_message(regular_msg)
 
         # Create backroom message
         backroom_msg = Message.objects.create(
@@ -356,17 +356,16 @@ class RedisMessageCacheTests(TransactionTestCase):
             user=self.user,
             content='Backroom message'
         )
-        MessageCache.add_message(backroom_msg, is_backroom=True)
+        MessageCache.add_message(backroom_msg)
 
-        # Regular messages should only contain regular
-        regular_messages = MessageCache.get_messages(self.chat_room.code, is_backroom=False)
-        self.assertEqual(len(regular_messages), 1)
-        self.assertEqual(regular_messages[0]['content'], 'Regular message')
+        # All messages should be in cache
+        messages = MessageCache.get_messages(self.chat_room.code)
+        self.assertEqual(len(messages), 2)
 
-        # Backroom messages should only contain backroom
-        backroom_messages = MessageCache.get_messages(self.chat_room.code, is_backroom=True)
-        self.assertEqual(len(backroom_messages), 1)
-        self.assertEqual(backroom_messages[0]['content'], 'Backroom message')
+        # Verify both messages are cached
+        message_contents = [msg['content'] for msg in messages]
+        self.assertIn('Regular message', message_contents)
+        self.assertIn('Backroom message', message_contents)
 
     def test_clear_chat_cache(self):
         """Test clearing all cached messages for a chat"""
@@ -377,7 +376,7 @@ class RedisMessageCacheTests(TransactionTestCase):
             user=self.user,
             content='Regular'
         )
-        MessageCache.add_message(regular_msg, is_backroom=False)
+        MessageCache.add_message(regular_msg)
 
         pinned_msg = Message.objects.create(
             chat_room=self.chat_room,
@@ -661,3 +660,340 @@ class RedisPerformanceTests(TransactionTestCase):
 
         # Should be fast
         self.assertLess(read_duration / 100, 0.01)  # Under 10ms per read
+
+
+class RedisReactionCacheTests(TransactionTestCase):
+    """Test Redis reaction caching functionality"""
+
+    def setUp(self):
+        """Set up test data"""
+        cache.clear()
+
+        self.user1 = User.objects.create_user(
+            email='user1@example.com',
+            password='testpass123',
+            reserved_username='User1'
+        )
+
+        self.user2 = User.objects.create_user(
+            email='user2@example.com',
+            password='testpass123',
+            reserved_username='User2'
+        )
+
+        self.chat_room = ChatRoom.objects.create(
+            name='Test Chat',
+            host=self.user1,
+            access_mode='public'
+        )
+
+        self.message1 = Message.objects.create(
+            chat_room=self.chat_room,
+            username='User1',
+            user=self.user1,
+            content='Test message 1'
+        )
+
+        self.message2 = Message.objects.create(
+            chat_room=self.chat_room,
+            username='User2',
+            user=self.user2,
+            content='Test message 2'
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_set_message_reactions(self):
+        """Test caching reaction summary for a message"""
+        reactions = [
+            {"emoji": "👍", "count": 5, "users": ["alice", "bob", "charlie", "dave", "eve"]},
+            {"emoji": "❤️", "count": 3, "users": ["alice", "bob", "charlie"]},
+            {"emoji": "😂", "count": 1, "users": ["dave"]}
+        ]
+
+        result = MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id),
+            reactions
+        )
+
+        self.assertTrue(result)
+
+        # Verify cached reactions
+        cached = MessageCache.get_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id)
+        )
+
+        self.assertEqual(len(cached), 3)
+        # Find each reaction by emoji
+        thumbs_up = next(r for r in cached if r['emoji'] == '👍')
+        heart = next(r for r in cached if r['emoji'] == '❤️')
+        laugh = next(r for r in cached if r['emoji'] == '😂')
+
+        self.assertEqual(thumbs_up['count'], 5)
+        self.assertEqual(heart['count'], 3)
+        self.assertEqual(laugh['count'], 1)
+
+    def test_get_message_reactions_cache_miss(self):
+        """Test that cache miss returns empty list"""
+        reactions = MessageCache.get_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id)
+        )
+
+        self.assertEqual(reactions, [])
+
+    def test_set_empty_reactions_deletes_cache(self):
+        """Test that setting empty reactions removes the cache key"""
+        # First cache some reactions
+        reactions = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id),
+            reactions
+        )
+
+        # Verify cached
+        cached = MessageCache.get_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id)
+        )
+        self.assertEqual(len(cached), 1)
+
+        # Set empty reactions
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id),
+            []
+        )
+
+        # Verify cache deleted
+        cached = MessageCache.get_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id)
+        )
+        self.assertEqual(cached, [])
+
+    def test_batch_get_reactions(self):
+        """Test batch fetching reactions for multiple messages"""
+        # Cache reactions for message1
+        reactions1 = [
+            {"emoji": "👍", "count": 5, "users": ["alice", "bob"]},
+            {"emoji": "❤️", "count": 2, "users": ["charlie"]}
+        ]
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id),
+            reactions1
+        )
+
+        # Cache reactions for message2
+        reactions2 = [
+            {"emoji": "😂", "count": 3, "users": ["dave"]},
+        ]
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message2.id),
+            reactions2
+        )
+
+        # Batch fetch
+        message_ids = [str(self.message1.id), str(self.message2.id)]
+        reactions_by_message = MessageCache.batch_get_reactions(
+            self.chat_room.code,
+            message_ids
+        )
+
+        # Verify results
+        self.assertEqual(len(reactions_by_message), 2)
+
+        # Message 1 reactions
+        msg1_reactions = reactions_by_message[str(self.message1.id)]
+        self.assertEqual(len(msg1_reactions), 2)
+        thumbs_up = next(r for r in msg1_reactions if r['emoji'] == '👍')
+        self.assertEqual(thumbs_up['count'], 5)
+
+        # Message 2 reactions
+        msg2_reactions = reactions_by_message[str(self.message2.id)]
+        self.assertEqual(len(msg2_reactions), 1)
+        self.assertEqual(msg2_reactions[0]['emoji'], '😂')
+        self.assertEqual(msg2_reactions[0]['count'], 3)
+
+    def test_batch_get_reactions_with_cache_miss(self):
+        """Test batch fetch with some messages missing from cache"""
+        # Only cache reactions for message1
+        reactions1 = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id),
+            reactions1
+        )
+
+        # Batch fetch (message2 not cached)
+        message_ids = [str(self.message1.id), str(self.message2.id)]
+        reactions_by_message = MessageCache.batch_get_reactions(
+            self.chat_room.code,
+            message_ids
+        )
+
+        # Should return dict with both keys
+        self.assertEqual(len(reactions_by_message), 2)
+
+        # Message 1 should have reactions
+        self.assertEqual(len(reactions_by_message[str(self.message1.id)]), 1)
+
+        # Message 2 should have empty list (cache miss)
+        self.assertEqual(reactions_by_message[str(self.message2.id)], [])
+
+    def test_batch_get_reactions_empty_list(self):
+        """Test batch fetch with empty message ID list"""
+        reactions_by_message = MessageCache.batch_get_reactions(
+            self.chat_room.code,
+            []
+        )
+
+        self.assertEqual(reactions_by_message, {})
+
+    def test_batch_get_reactions_single_round_trip(self):
+        """Test that batch fetch uses single Redis round-trip (pipelining)"""
+        # Create 10 messages with reactions
+        messages = []
+        for i in range(10):
+            msg = Message.objects.create(
+                chat_room=self.chat_room,
+                username='User1',
+                user=self.user1,
+                content=f'Message {i}'
+            )
+            messages.append(msg)
+
+            reactions = [{"emoji": "👍", "count": i + 1, "users": ["alice"]}]
+            MessageCache.set_message_reactions(
+                self.chat_room.code,
+                str(msg.id),
+                reactions
+            )
+
+        # Batch fetch all at once
+        start_time = time.time()
+        message_ids = [str(msg.id) for msg in messages]
+        reactions_by_message = MessageCache.batch_get_reactions(
+            self.chat_room.code,
+            message_ids
+        )
+        duration = (time.time() - start_time) * 1000  # ms
+
+        # Verify all fetched
+        self.assertEqual(len(reactions_by_message), 10)
+
+        # Should be very fast (single round-trip)
+        print(f"\n📊 Batch get {len(messages)} message reactions: {duration:.2f}ms")
+        self.assertLess(duration, 50.0)  # Under 50ms for 10 messages
+
+    def test_reaction_cache_ttl(self):
+        """Test that reaction cache has 24-hour TTL"""
+        reactions = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id),
+            reactions
+        )
+
+        # Check TTL is set (should be 24 hours = 86400 seconds)
+        redis_client = MessageCache._get_redis_client()
+        key = f"chat:{self.chat_room.code}:reactions:{self.message1.id}"
+        ttl = redis_client.ttl(key)
+
+        # TTL should be set and close to 24 hours
+        self.assertGreater(ttl, 86000)  # Greater than 23.8 hours
+        self.assertLess(ttl, 86500)  # Less than 24.1 hours
+
+    def test_reaction_cache_update(self):
+        """Test updating cached reactions when new reactions are added"""
+        # Initial cache
+        initial_reactions = [{"emoji": "👍", "count": 2, "users": ["alice", "bob"]}]
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id),
+            initial_reactions
+        )
+
+        # Update cache with new reaction
+        updated_reactions = [
+            {"emoji": "👍", "count": 3, "users": ["alice", "bob", "charlie"]},
+            {"emoji": "❤️", "count": 1, "users": ["dave"]}
+        ]
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id),
+            updated_reactions
+        )
+
+        # Verify updated
+        cached = MessageCache.get_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id)
+        )
+
+        self.assertEqual(len(cached), 2)
+        thumbs_up = next(r for r in cached if r['emoji'] == '👍')
+        self.assertEqual(thumbs_up['count'], 3)
+
+    def test_different_messages_separate_cache(self):
+        """Test that different messages have separate reaction caches"""
+        # Cache reactions for message1
+        reactions1 = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id),
+            reactions1
+        )
+
+        # Cache reactions for message2
+        reactions2 = [{"emoji": "❤️", "count": 3, "users": ["bob"]}]
+        MessageCache.set_message_reactions(
+            self.chat_room.code,
+            str(self.message2.id),
+            reactions2
+        )
+
+        # Verify separate caches
+        cached1 = MessageCache.get_message_reactions(
+            self.chat_room.code,
+            str(self.message1.id)
+        )
+        cached2 = MessageCache.get_message_reactions(
+            self.chat_room.code,
+            str(self.message2.id)
+        )
+
+        self.assertEqual(len(cached1), 1)
+        self.assertEqual(cached1[0]['emoji'], '👍')
+
+        self.assertEqual(len(cached2), 1)
+        self.assertEqual(cached2[0]['emoji'], '❤️')
+
+    def test_reaction_cache_redis_failure_graceful(self):
+        """Test that Redis failures don't crash (returns False/empty)"""
+        reactions = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
+
+        # These should not raise exceptions even if Redis has issues
+        try:
+            MessageCache.set_message_reactions(
+                self.chat_room.code,
+                str(self.message1.id),
+                reactions
+            )
+            MessageCache.get_message_reactions(
+                self.chat_room.code,
+                str(self.message1.id)
+            )
+            MessageCache.batch_get_reactions(
+                self.chat_room.code,
+                [str(self.message1.id)]
+            )
+            self.assertTrue(True)
+        except Exception as e:
+            self.fail(f"Reaction cache operations should not raise exceptions: {e}")

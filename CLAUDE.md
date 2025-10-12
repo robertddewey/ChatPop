@@ -1170,6 +1170,457 @@ MESSAGE_CACHE_TTL_HOURS = 24   # Auto-expire after 24 hours
 
 ---
 
+## Message Reaction Cache Architecture
+
+### Overview
+
+Message reactions (emoji reactions on chat messages) use a **separate Redis cache** alongside the main message cache to achieve optimal performance and scalability.
+
+**Key Principle:** Reactions are stored in PostgreSQL for persistence, and cached separately in Redis for fast batch retrieval.
+
+### Architecture Rationale
+
+**Problem Identified:**
+- N+1 query problem: Loading 50 messages = 51 database queries (1 for messages + 50 for reactions)
+- Estimated 500ms load time for 50 messages
+- System cannot scale beyond ~100 concurrent users
+- Reactions on cached messages become stale without cache invalidation
+
+**Solution: Separate Reaction Cache**
+- Create dedicated Redis keys per message for reaction summaries
+- Use pipelined batch fetching to load reactions for multiple messages in one round-trip
+- Update cache immediately when reactions change
+- Broadcast full reaction summary via WebSocket for real-time updates
+- 24-hour TTL with PostgreSQL fallback on cache miss
+
+### Redis Data Structure
+
+**Reaction Cache Keys:**
+```
+Key: chat:{chat_code}:reactions:{message_id}
+Type: Redis Hash
+Fields: emoji → count mapping
+TTL: 24 hours
+```
+
+**Example:**
+```redis
+HSET chat:ABC123:reactions:550e8400-e29b-41d4-a716-446655440000
+  "👍" "5"
+  "❤️" "3"
+  "😂" "1"
+```
+
+### Data Flow Scenarios
+
+#### 1. Initial Message Load (First Page)
+```
+Frontend: GET /api/chats/{code}/messages/ (limit=50)
+Backend:
+  1. MessageCache.get_messages() → 50 messages from Redis
+  2. MessageCache.batch_get_reactions([msg_ids]) → reactions for all 50 messages (1 pipelined call)
+  3. Merge reactions into message objects
+  4. Return: messages with reactions
+Performance: ~12ms (vs 500ms without cache)
+```
+
+#### 2. Infinite Scroll (Load Older Messages)
+```
+Frontend: GET /api/chats/{code}/messages/?before={timestamp}&limit=50
+Backend:
+  1. MessageCache.get_messages_before() → next 50 messages
+  2. MessageCache.batch_get_reactions([msg_ids]) → reactions (1 pipelined call)
+  3. Merge and return
+Performance: ~12ms per batch
+```
+
+#### 3. Real-Time Reaction Added (WebSocket Broadcast)
+```
+User clicks emoji → POST /api/chats/{code}/messages/{id}/react/
+Backend:
+  1. Create/update MessageReaction in PostgreSQL
+  2. Update Redis cache: MessageCache.set_message_reactions(msg_id, summary)
+  3. Broadcast via WebSocket: {type: 'reaction', action: 'added', message_id, summary: [...]}
+Frontend WebSocket handler:
+  1. Receive reaction event
+  2. Update local state immediately (no API call needed)
+Performance: <50ms end-to-end
+```
+
+#### 4. Page Refresh
+```
+Same as Initial Message Load (reactions reload from Redis cache)
+Performance: ~12ms
+```
+
+#### 5. Cache Miss (Message Older Than 24 Hours)
+```
+Backend:
+  1. MessageCache.batch_get_reactions() returns empty for some messages
+  2. Fallback: Query PostgreSQL for missing reactions
+  3. Rebuild cache: MessageCache.set_message_reactions()
+  4. Return merged data
+Performance: ~100ms (PostgreSQL fallback), subsequent loads are fast
+```
+
+### Implementation Components
+
+#### Backend Changes
+
+**File: `backend/chats/redis_cache.py`**
+
+New methods added to `MessageCache` class:
+
+```python
+@classmethod
+def set_message_reactions(cls, chat_code: str, message_id: str, reactions: List[Dict]) -> bool:
+    """
+    Cache reaction summary for a message.
+
+    Args:
+        chat_code: Chat room code
+        message_id: Message UUID
+        reactions: List of {emoji, count, users} dicts
+    """
+    # Creates Redis hash: chat:{code}:reactions:{msg_id}
+    # Sets 24-hour TTL
+
+@classmethod
+def get_message_reactions(cls, chat_code: str, message_id: str) -> List[Dict]:
+    """
+    Get cached reactions for a single message.
+
+    Returns empty list if cache miss (caller should rebuild from PostgreSQL)
+    """
+
+@classmethod
+def batch_get_reactions(cls, chat_code: str, message_ids: List[str]) -> Dict[str, List[Dict]]:
+    """
+    Batch fetch reactions for multiple messages using Redis pipeline.
+
+    Returns:
+        {message_id: [reactions]} dict
+
+    Performance: Single Redis round-trip for all messages
+    """
+```
+
+**File: `backend/chats/views.py`**
+
+Updated views:
+- `MessageListView`: Calls `batch_get_reactions()` after fetching messages
+- `MessageReactionToggleView`: Updates cache after modifying reaction in PostgreSQL
+
+**File: `backend/chats/consumers.py`**
+
+WebSocket consumer broadcasts full reaction summary (not just emoji) to enable instant frontend updates without API calls.
+
+#### Frontend Changes
+
+**File: `frontend/src/lib/api.ts`**
+
+Reaction APIs already implemented (no changes needed for caching).
+
+**File: `frontend/src/app/chat/[code]/page.tsx`**
+
+WebSocket handler updated to:
+1. Receive `reaction.summary` field from broadcast
+2. Update local state directly (no fetch call)
+3. Optimistically update UI before WebSocket confirmation
+
+### Performance Expectations
+
+**Before Caching (Current):**
+- 50 messages: ~500ms (51 queries)
+- 100 messages: ~1000ms (101 queries)
+- Scalability: ~100 concurrent users max
+
+**After Caching (Target):**
+- 50 messages: ~12ms (1 message query + 1 pipelined reaction query)
+- 100 messages: ~20ms (2 message queries + 1 pipelined reaction query)
+- Scalability: 10,000+ concurrent users
+
+**Improvement:** 40x faster, 100x more scalable
+
+### Cache Invalidation Strategy
+
+**When to Update Cache:**
+1. **Reaction Added:** Immediately update Redis + broadcast
+2. **Reaction Removed:** Immediately update Redis + broadcast
+3. **Reaction Changed:** Immediately update Redis + broadcast
+4. **Message Deleted:** Remove reaction cache key
+5. **Cache Expired:** Rebuild from PostgreSQL on next access
+
+**Consistency Guarantee:**
+- PostgreSQL is source of truth
+- Redis cache can be cleared anytime (auto-rebuilds from PostgreSQL)
+- Cache misses are transparent to frontend (slower but correct)
+
+### Configuration Settings
+
+Located in `backend/chatpop/settings.py`:
+
+```python
+# Reaction Cache Settings
+REACTION_CACHE_TTL_HOURS = 24  # Match message cache TTL
+```
+
+**Key Pattern:**
+- `chat:{chat_code}:reactions:{message_id}` - Hash storing emoji counts
+
+### Frontend WebSocket Integration
+
+**IMPORTANT:** The frontend reactions feature has not been implemented yet. When implementing emoji reactions in the frontend, follow these guidelines for WebSocket real-time updates.
+
+#### WebSocket Event Format
+
+The backend broadcasts reaction updates via WebSocket with this format (`views.py:850-866`):
+
+```python
+{
+  "type": "reaction",
+  "action": "added" | "removed" | "updated",
+  "message_id": "550e8400-e29b-41d4-a716-446655440000",
+  "emoji": "👍",
+  "username": "alice",
+  "reaction": {
+    "id": "...",
+    "emoji": "👍",
+    "username": "alice",
+    "created_at": "2025-01-04T12:34:56.789Z"
+  },
+  "summary": [
+    {"emoji": "👍", "count": 5},
+    {"emoji": "❤️", "count": 3},
+    {"emoji": "😂", "count": 1"}
+  ]
+}
+```
+
+**Key Fields:**
+- `type`: Always `"reaction"` for reaction events
+- `action`: `"added"` (new reaction), `"removed"` (reaction deleted), `"updated"` (changed emoji)
+- `message_id`: UUID of the message that was reacted to
+- `emoji`: The emoji that was added/removed/changed
+- `username`: User who performed the action
+- `summary`: **Top 3 reactions** for this message (use this to update UI)
+
+#### Frontend Implementation Pattern
+
+**Step 1: Add State Management**
+
+In your chat page component (`page.tsx`), add state to track reactions:
+
+```typescript
+// Near other state declarations
+const [messageReactions, setMessageReactions] = useState<Record<string, ReactionSummary[]>>({});
+
+interface ReactionSummary {
+  emoji: string;
+  count: number;
+}
+```
+
+**Step 2: Handle WebSocket Reaction Events**
+
+Add to your existing WebSocket `onmessage` handler:
+
+```typescript
+// In WebSocket onmessage handler
+const data = JSON.parse(event.data);
+
+if (data.type === 'reaction') {
+  // Extract reaction summary from WebSocket event (already computed by backend)
+  const { message_id, summary } = data;
+
+  // Update local state immediately (no API call needed - cache already updated)
+  setMessageReactions(prev => ({
+    ...prev,
+    [message_id]: summary  // summary is top 3 reactions with counts
+  }));
+
+  // Optional: Play sound or show animation
+  if (data.action === 'added') {
+    playReactionSound();  // If you want audio feedback
+  }
+}
+```
+
+**Why This Works:**
+1. Backend updates Redis cache before broadcasting (`views.py:927-942`)
+2. Backend computes top 3 reactions and includes in `summary` field
+3. Frontend just updates local state - no additional API calls needed
+4. Real-time updates across all connected users
+5. Cache hit on next page reload
+
+**Step 3: Render Reactions**
+
+Use the `messageReactions` state in your message rendering:
+
+```typescript
+{messages.map((message) => (
+  <div key={message.id}>
+    {/* Existing message content */}
+    <MessageBubble message={message} />
+
+    {/* Reaction bar (only if reactions exist) */}
+    {(messageReactions[message.id]?.length > 0 || message.reactions?.length > 0) && (
+      <ReactionBar
+        reactions={messageReactions[message.id] || message.reactions || []}
+        onReactionClick={(emoji) => handleReactionToggle(message.id, emoji)}
+        themeIsDarkMode={currentDesign.is_dark_mode}
+      />
+    )}
+  </div>
+))}
+```
+
+**Step 4: Handle User Reactions**
+
+When user adds/removes a reaction via emoji picker or ReactionBar:
+
+```typescript
+const handleReactionToggle = async (messageId: string, emoji: string) => {
+  try {
+    // Optimistic UI update (optional - for instant feedback)
+    // You can skip this and wait for WebSocket broadcast
+
+    // Call API to toggle reaction
+    const result = await messageApi.toggleReaction(
+      params.code,
+      messageId,
+      emoji,
+      username,
+      fingerprint
+    );
+
+    // WebSocket will broadcast the update to all users (including this one)
+    // The WebSocket handler above will update messageReactions state
+
+  } catch (error) {
+    console.error('Failed to toggle reaction:', error);
+    // Show error toast to user
+  }
+};
+```
+
+**Performance Benefits:**
+- No N+1 queries: Reactions loaded with messages via batch fetch
+- No API polling: Real-time updates via WebSocket
+- No cache staleness: WebSocket updates ensure consistency
+- Fast UI updates: Just update local state from WebSocket event
+
+#### Edge Cases to Handle
+
+**1. Race Condition: User reacts before WebSocket update arrives**
+
+```typescript
+// Optimistic update (optional)
+const handleReactionToggle = async (messageId: string, emoji: string) => {
+  // Immediately update UI
+  setMessageReactions(prev => {
+    const current = prev[messageId] || [];
+    // Add/update/remove emoji locally
+    // ... optimistic logic ...
+  });
+
+  try {
+    await messageApi.toggleReaction(params.code, messageId, emoji, username, fingerprint);
+    // WebSocket will eventually sync the correct state
+  } catch (error) {
+    // Revert optimistic update on error
+    setMessageReactions(prev => /* revert changes */);
+  }
+};
+```
+
+**2. Message Deleted: Clean up reactions**
+
+```typescript
+if (data.type === 'message_deleted') {
+  setMessageReactions(prev => {
+    const updated = { ...prev };
+    delete updated[data.message_id];
+    return updated;
+  });
+}
+```
+
+**3. Initial Load: Reactions come with messages**
+
+```typescript
+// When loading messages from API
+const loadMessages = async () => {
+  const response = await fetch(`/api/chats/${code}/messages/`);
+  const { messages } = await response.json();
+
+  // Messages already include top 3 reactions (from cache)
+  // Initialize messageReactions state if needed
+  const initialReactions = {};
+  messages.forEach(msg => {
+    if (msg.reactions?.length > 0) {
+      initialReactions[msg.id] = msg.reactions;
+    }
+  });
+
+  setMessageReactions(initialReactions);
+  setMessages(messages);
+};
+```
+
+#### Testing Frontend Integration
+
+**Test Scenarios:**
+1. Load chat → see existing reactions on messages
+2. Add reaction → see update immediately (WebSocket)
+3. Remove reaction → see update immediately (WebSocket)
+4. Multiple users react simultaneously → all users see updates
+5. Reload page → reactions persist (loaded from cache)
+6. Reaction on old message → still works (PostgreSQL fallback)
+
+**Performance Validation:**
+- Initial load: <20ms for reactions (batch fetch via Redis pipeline)
+- WebSocket update: <2ms (local state update)
+- No additional API calls after initial load
+- Page reload: reactions still cached (24h TTL)
+
+### Monitoring & Debugging
+
+**Cache Health Metrics:**
+- Track reaction cache hit rate (% of reactions loaded from Redis vs PostgreSQL)
+- Monitor reaction load time (should be <20ms for 50 messages)
+- Alert if load time exceeds 100ms consistently
+
+**Debug Tools:**
+```bash
+# Inspect cached reactions for a message
+redis-cli HGETALL chat:ABC123:reactions:550e8400-e29b-41d4-a716-446655440000
+
+# Clear reaction cache for testing
+redis-cli DEL chat:ABC123:reactions:*
+
+# Check cache TTL
+redis-cli TTL chat:ABC123:reactions:550e8400-e29b-41d4-a716-446655440000
+```
+
+### Edge Cases & Error Handling
+
+**Redis Failure:**
+- Write errors: Log but don't crash (PostgreSQL has the data)
+- Read errors: Fallback to PostgreSQL query
+- No impact on data integrity
+
+**Cache Inconsistency:**
+- Redis cleared: PostgreSQL backfills on next read
+- Reaction edited: Update both stores (dual-write)
+- WebSocket broadcast failed: Next page load corrects state
+
+**Race Conditions:**
+- Multiple users react simultaneously: PostgreSQL unique constraints prevent duplicates
+- Cache updated out of order: Last write wins (eventual consistency acceptable)
+
+---
+
 ## Future Enhancements
 - **Custom Themes:** Option to set specific themes/branding for chats
 - **Enhanced Engagement:** Additional tipping options and gamification

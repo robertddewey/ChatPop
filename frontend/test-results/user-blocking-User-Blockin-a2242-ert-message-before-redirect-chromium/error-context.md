@@ -1,0 +1,41 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "ChatPop" [ref=e5] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e6]:
+          - button "Log in" [ref=e7]
+          - button "Sign Up" [ref=e8]
+    - main [ref=e9]:
+      - generic [ref=e10]:
+        - heading "Your Group Chat, for Everyone." [level=2] [ref=e11]:
+          - text: Your Group Chat,
+          - generic [ref=e12]: for Everyone.
+        - generic [ref=e14]: No App Needed
+        - paragraph [ref=e15]: Create an instant group chat for your community and engage your audience with ChatPop. Share the link and chat.
+        - button "Start a ChatPop" [ref=e16]
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - img [ref=e20]
+            - heading "No App Required" [level=3] [ref=e22]
+            - paragraph [ref=e23]: Your audience just needs the link - no app download or registration needed to join and chat
+          - generic [ref=e24]:
+            - img [ref=e26]
+            - heading "Public & Private Rooms" [level=3] [ref=e28]
+            - paragraph [ref=e29]: Control who can join your chat with access codes for private rooms
+          - generic [ref=e30]:
+            - img [ref=e32]
+            - heading "Exclusive Access" [level=3] [ref=e34]
+            - paragraph [ref=e35]: Offer exclusive back rooms, pinned chats, and receive tips for engagement
+          - generic [ref=e36]:
+            - img [ref=e38]
+            - heading "Real-time Engagement" [level=3] [ref=e40]
+            - paragraph [ref=e41]: Voice, video, and photo sharing to keep your audience engaged
+  - button "Open Next.js Dev Tools" [ref=e47] [cursor=pointer]:
+    - img [ref=e48]
+  - alert [ref=e51]
+```

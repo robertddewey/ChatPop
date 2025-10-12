@@ -317,6 +317,10 @@ class MessageListView(APIView):
         # Order and limit (newest first to get last N messages)
         messages = queryset.order_by('-created_at')[:limit]
 
+        # Batch fetch reactions from cache for all messages (SOLVES N+1 PROBLEM)
+        message_ids = [str(msg.id) for msg in messages]
+        reactions_by_message = MessageCache.batch_get_reactions(chat_room.code, message_ids)
+
         # Serialize (with username_is_reserved computation)
         serialized = []
         for msg in messages:
@@ -337,18 +341,30 @@ class MessageListView(APIView):
                     'is_from_host': msg.reply_to.message_type == "host",
                 }
 
-            # Compute reaction summary (top 3 reactions with counts)
-            from collections import defaultdict
-            reactions_list = msg.reactions.all()
-            emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
+            # Get cached reactions (or fallback to database if cache miss)
+            msg_id_str = str(msg.id)
+            cached_reactions = reactions_by_message.get(msg_id_str, [])
 
-            for reaction in reactions_list:
-                emoji = reaction.emoji
-                emoji_counts[emoji]['emoji'] = emoji
-                emoji_counts[emoji]['count'] += 1
-                emoji_counts[emoji]['users'].append(reaction.username)
+            if cached_reactions:
+                # Use cached reactions (already top 3 format)
+                top_reactions = cached_reactions
+            else:
+                # Cache miss: fallback to database query (compute reaction summary)
+                from collections import defaultdict
+                reactions_list = msg.reactions.all()
+                emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
 
-            top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+                for reaction in reactions_list:
+                    emoji = reaction.emoji
+                    emoji_counts[emoji]['emoji'] = emoji
+                    emoji_counts[emoji]['count'] += 1
+                    emoji_counts[emoji]['users'].append(reaction.username)
+
+                top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+
+                # Cache the computed reactions for next time
+                if top_reactions:
+                    MessageCache.set_message_reactions(chat_room.code, msg_id_str, top_reactions)
 
             serialized.append({
                 'id': str(msg.id),
@@ -907,6 +923,23 @@ class MessageReactionToggleView(APIView):
             reaction_data['message'] = str(reaction_data['message'])
             if reaction_data.get('user'):
                 reaction_data['user'] = str(reaction_data['user'])
+
+        # Update reaction cache after database modification
+        from collections import defaultdict
+        reactions_list = MessageReaction.objects.filter(message=message)
+        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
+
+        for reaction in reactions_list:
+            emoji = reaction.emoji
+            emoji_counts[emoji]['emoji'] = emoji
+            emoji_counts[emoji]['count'] += 1
+            emoji_counts[emoji]['users'].append(reaction.username)
+
+        # Get top 3 reactions by count
+        top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+
+        # Update cache with new reaction summary
+        MessageCache.set_message_reactions(chat_room.code, str(message_id), top_reactions)
 
         # Broadcast reaction update via WebSocket
         channel_layer = get_channel_layer()

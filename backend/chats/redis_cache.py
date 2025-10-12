@@ -318,6 +318,145 @@ class MessageCache:
             return []
 
     @classmethod
+    def set_message_reactions(cls, chat_code: str, message_id: str, reactions: List[Dict[str, Any]]) -> bool:
+        """
+        Cache reaction summary for a message.
+
+        Args:
+            chat_code: Chat room code
+            message_id: Message UUID (as string)
+            reactions: List of reaction summary dicts with keys: emoji, count, users
+                      Example: [{"emoji": "👍", "count": 5, "users": ["alice", "bob"]}]
+
+        Returns:
+            True if successfully cached, False otherwise
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            key = f"chat:{chat_code}:reactions:{message_id}"
+
+            # Build hash mapping: emoji -> count
+            # Store as strings since Redis hashes store string values
+            reaction_hash = {}
+            for reaction in reactions:
+                emoji = reaction.get('emoji')
+                count = reaction.get('count', 0)
+                if emoji:
+                    reaction_hash[emoji] = str(count)
+
+            if reaction_hash:
+                # Set the hash with all emoji counts
+                redis_client.hset(key, mapping=reaction_hash)
+
+                # Set 24-hour TTL (match message cache TTL)
+                ttl_seconds = cls.TTL_HOURS * 3600
+                redis_client.expire(key, ttl_seconds)
+            else:
+                # No reactions, delete the key if it exists
+                redis_client.delete(key)
+
+            return True
+
+        except Exception as e:
+            print(f"Redis cache error (set_message_reactions): {e}")
+            return False
+
+    @classmethod
+    def get_message_reactions(cls, chat_code: str, message_id: str) -> List[Dict[str, Any]]:
+        """
+        Get cached reactions for a single message.
+
+        Args:
+            chat_code: Chat room code
+            message_id: Message UUID (as string)
+
+        Returns:
+            List of reaction summary dicts with keys: emoji, count
+            Returns empty list if cache miss (caller should rebuild from PostgreSQL)
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            key = f"chat:{chat_code}:reactions:{message_id}"
+
+            # Get all emoji -> count mappings
+            reaction_hash = redis_client.hgetall(key)
+
+            if not reaction_hash:
+                return []
+
+            # Convert back to list of dicts
+            reactions = []
+            for emoji_bytes, count_bytes in reaction_hash.items():
+                emoji = emoji_bytes.decode('utf-8') if isinstance(emoji_bytes, bytes) else emoji_bytes
+                count_str = count_bytes.decode('utf-8') if isinstance(count_bytes, bytes) else count_bytes
+                try:
+                    count = int(count_str)
+                    reactions.append({"emoji": emoji, "count": count})
+                except (ValueError, TypeError):
+                    continue
+
+            return reactions
+
+        except Exception as e:
+            print(f"Redis cache error (get_message_reactions): {e}")
+            return []
+
+    @classmethod
+    def batch_get_reactions(cls, chat_code: str, message_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Batch fetch reactions for multiple messages using Redis pipeline.
+
+        Args:
+            chat_code: Chat room code
+            message_ids: List of message UUIDs (as strings)
+
+        Returns:
+            Dict mapping message_id -> list of reaction dicts
+            Example: {"msg1": [{"emoji": "👍", "count": 5}], "msg2": []}
+
+        Performance: Single Redis round-trip for all messages (pipelined)
+        """
+        try:
+            redis_client = cls._get_redis_client()
+
+            if not message_ids:
+                return {}
+
+            # Use pipeline for batch fetch (single round-trip)
+            pipeline = redis_client.pipeline()
+            keys = []
+            for message_id in message_ids:
+                key = f"chat:{chat_code}:reactions:{message_id}"
+                keys.append(key)
+                pipeline.hgetall(key)
+
+            # Execute pipeline and get all results
+            results = pipeline.execute()
+
+            # Build result dict
+            reactions_by_message = {}
+            for message_id, reaction_hash in zip(message_ids, results):
+                reactions = []
+
+                if reaction_hash:
+                    for emoji_bytes, count_bytes in reaction_hash.items():
+                        emoji = emoji_bytes.decode('utf-8') if isinstance(emoji_bytes, bytes) else emoji_bytes
+                        count_str = count_bytes.decode('utf-8') if isinstance(count_bytes, bytes) else count_bytes
+                        try:
+                            count = int(count_str)
+                            reactions.append({"emoji": emoji, "count": count})
+                        except (ValueError, TypeError):
+                            continue
+
+                reactions_by_message[message_id] = reactions
+
+            return reactions_by_message
+
+        except Exception as e:
+            print(f"Redis cache error (batch_get_reactions): {e}")
+            return {}
+
+    @classmethod
     def clear_chat_cache(cls, chat_code: str):
         """
         Clear all cached messages for a chat room.

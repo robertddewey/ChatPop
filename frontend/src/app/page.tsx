@@ -22,12 +22,12 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#404eed]">
-      <Header backgroundClass="bg-[#404eed]/80" />
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 from-5% via-purple-900 via-30% to-[#404eed] to-60%">
+      <Header backgroundClass="bg-gray-900/80" />
 
       {/* Hero Section */}
       <main className="container mx-auto px-4 py-8 md:py-20">
-        <div className="max-w-4xl mx-auto text-center">
+        <div className="max-w-5xl mx-auto text-center">
           <div className="mb-8">
             <h2 className="text-6xl md:text-7xl font-black text-white tracking-[-0.03em] leading-[0.95]" style={{ fontWeight: 900, WebkitTextStroke: '1px white' }}>
               {MARKETING.hero.title}
@@ -61,6 +61,19 @@ export default function Home() {
             <div className="p-6 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
               <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center mb-4 mx-auto">
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">{MARKETING.features.everythingIsChat.title}</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                {MARKETING.features.everythingIsChat.description}
+              </p>
+            </div>
+
+            <div className="p-6 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
+              <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center mb-4 mx-auto">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
               </div>
@@ -85,19 +98,7 @@ export default function Home() {
             <div className="p-6 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
               <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center mb-4 mx-auto">
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-white mb-2">{MARKETING.features.exclusiveAccess.title}</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                {MARKETING.features.exclusiveAccess.description}
-              </p>
-            </div>
-
-            <div className="p-6 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
-              <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center mb-4 mx-auto">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                 </svg>
               </div>
               <h3 className="text-lg font-bold text-white mb-2">{MARKETING.features.realTimeEngagement.title}</h3>
