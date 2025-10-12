@@ -853,12 +853,7 @@ class MessageReactionToggleView(APIView):
         username = request.data.get('username')
         fingerprint = request.data.get('fingerprint')
 
-        print(f"[REACTION DEBUG] session_token present: {bool(session_token)}")
-        print(f"[REACTION DEBUG] username: {username}")
-        print(f"[REACTION DEBUG] fingerprint: {fingerprint}")
-
         if not session_token:
-            print("[REACTION DEBUG] No session token provided")
             raise PermissionDenied("Session token is required")
 
         # Validate the JWT session token
@@ -868,9 +863,7 @@ class MessageReactionToggleView(APIView):
                 chat_code=code,
                 username=username
             )
-            print(f"[REACTION DEBUG] Session validation successful: {session_data}")
         except Exception as e:
-            print(f"[REACTION DEBUG] Session validation failed: {type(e).__name__}: {str(e)}")
             raise
 
         # Validate emoji

@@ -927,6 +927,11 @@ export default function ChatPage() {
       [0]; // Get highest paid
   }, [filteredMessages]);
 
+  // Check if current user is the host
+  const isHost = useMemo(() => {
+    return !!(currentUserId && chatRoom && chatRoom.host.id === currentUserId);
+  }, [currentUserId, chatRoom]);
+
   // Get IDs to observe (useMemo to prevent infinite loops)
   const idsToObserve = useMemo(() => {
     const hostIds = allStickyHostMessages.map(m => m.id);
@@ -1005,7 +1010,7 @@ export default function ChatPage() {
     if (shouldAutoScrollRef.current) {
       scrollToBottom();
     }
-  }, [messages.length]);
+  }, [messages.length, messageReactions]);
 
   // Auto-refresh messages every 3 seconds (fallback polling when WebSocket is not connected)
   useEffect(() => {
@@ -1380,18 +1385,23 @@ export default function ChatPage() {
             </div>
           )}
           <form onSubmit={handleSendMessage} className={`flex gap-2 ${replyingTo ? 'mt-2' : ''}`}>
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
-            className={currentDesign.inputField}
-            disabled={sending}
-            style={{
-              WebkitUserSelect: 'text',
-              userSelect: 'text',
-            }}
-          />
+          <div className="relative flex-1">
+            {isHost && (
+              <Crown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-yellow-500 pointer-events-none z-10" />
+            )}
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type a message..."
+              className={`w-full ${currentDesign.inputField} ${isHost ? 'pl-10' : ''}`}
+              disabled={sending}
+              style={{
+                WebkitUserSelect: 'text',
+                userSelect: 'text',
+              }}
+            />
+          </div>
           {chatRoom?.voice_enabled && (
             <VoiceRecorder
               onRecordingComplete={handleVoiceRecording}

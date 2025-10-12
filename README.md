@@ -118,6 +118,19 @@ Key variables:
 - `REDIS_PORT=6381` - Redis port
 - `STRIPE_SECRET_KEY` - Add your Stripe keys for payment features
 
+## Documentation
+
+Comprehensive documentation is organized in the `docs/` directory:
+
+- **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation (139+ tests)
+- **[docs/CACHING.md](docs/CACHING.md)** - Redis message and reaction caching architecture
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
+- **[docs/AUDIO.md](docs/AUDIO.md)** - iOS Safari-compatible audio implementation
+- **[docs/THEME_STYLING_GUIDE.md](docs/THEME_STYLING_GUIDE.md)** - Complete ChatTheme database field reference
+- **[docs/MANAGEMENT_TOOLS.md](docs/MANAGEMENT_TOOLS.md)** - Redis cache inspection and debugging tools
+- **[docs/blocking-feature-spec.md](docs/blocking-feature-spec.md)** - User blocking feature specification
+- **[CLAUDE.md](CLAUDE.md)** - Complete project documentation for AI assistants
+
 ## Stopping Services
 
 Stop Docker containers:
