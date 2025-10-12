@@ -31,17 +31,20 @@ export default function JoinChatModal({
 }: JoinChatModalProps) {
   const router = useRouter();
 
+  // Always force dark mode
+  const forceDarkMode = true;
+
   // Get modal styles based on theme (no system preference detection - force theme mode)
-  const modalStyles = themeIsDarkMode ? {
+  const modalStyles = forceDarkMode ? {
     overlay: 'bg-transparent',
-    container: 'bg-zinc-900 border border-zinc-800',
+    container: 'bg-zinc-800 border border-zinc-700',
     title: 'text-zinc-50',
-    subtitle: 'text-zinc-400',
-    input: 'bg-zinc-800 border border-zinc-700 text-zinc-50 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400',
-    primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
-    secondaryButton: 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700',
-    divider: 'border-zinc-700',
-    dividerText: 'bg-zinc-900',
+    subtitle: 'text-zinc-300',
+    input: 'bg-zinc-700 border border-zinc-600 text-zinc-50 placeholder-zinc-400 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400',
+    primaryButton: 'bg-[#404eed] hover:bg-[#3640d9] text-white',
+    secondaryButton: 'bg-zinc-700 hover:bg-zinc-600 text-zinc-100 border border-zinc-600',
+    divider: 'border-zinc-600',
+    dividerText: 'bg-zinc-800',
     error: 'text-red-400',
   } : {
     overlay: 'bg-transparent',
@@ -326,7 +329,7 @@ export default function JoinChatModal({
                   type="button"
                   onClick={handleSuggestUsername}
                   disabled={isJoining || isSuggestingUsername}
-                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
                   title="Suggest random username"
                 >
                   <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
@@ -365,7 +368,7 @@ export default function JoinChatModal({
                   type="button"
                   onClick={handleSuggestUsername}
                   disabled={isJoining || isSuggestingUsername || isRateLimited}
-                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
                   title="Suggest random username"
                 >
                   <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
@@ -412,7 +415,7 @@ export default function JoinChatModal({
           <button
             type="submit"
             disabled={isJoining || isRateLimited}
-            className={`w-full px-6 py-4 rounded-xl font-semibold ${modalStyles.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+            className="w-full px-6 py-4 rounded-xl font-semibold bg-[#404eed] hover:bg-[#3640d9] text-white transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {isJoining ? 'Joining...' : 'Join Chat'}
           </button>
@@ -435,14 +438,14 @@ export default function JoinChatModal({
                 <button
                   type="button"
                   onClick={handleLogin}
-                  className={`w-full px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95`}
+                  className={`w-full px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95 cursor-pointer`}
                 >
                   Log in
                 </button>
                 <button
                   type="button"
                   onClick={handleSignup}
-                  className={`w-full px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95`}
+                  className={`w-full px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95 cursor-pointer`}
                 >
                   Sign up
                 </button>

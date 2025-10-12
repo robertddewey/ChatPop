@@ -290,7 +290,7 @@ export default function MessageActionsModal({
                     onTouchStart={(e) => e.stopPropagation()}
                     onTouchMove={(e) => e.stopPropagation()}
                     onTouchEnd={(e) => e.stopPropagation()}
-                    className={`flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-110 shadow-lg ${
+                    className={`flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-110 shadow-lg cursor-pointer ${
                       themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-white hover:bg-gray-50'
                     }`}
                   >
@@ -354,7 +354,7 @@ export default function MessageActionsModal({
                       onTouchStart={(e) => e.stopPropagation()}
                       onTouchMove={(e) => e.stopPropagation()}
                       onTouchEnd={(e) => e.stopPropagation()}
-                      className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 ${modalStyles.actionButton}`}
+                      className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 cursor-pointer ${modalStyles.actionButton}`}
                     >
                       <Icon className={`w-6 h-6 ${modalStyles.actionIcon}`} />
                       <span className="text-base font-medium">{action.label}</span>

@@ -16,8 +16,8 @@ interface RegisterModalProps {
 }
 
 export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }: RegisterModalProps) {
-  // Force dark mode for homepage, use chat theme detection for chat pages
-  const useDarkMode = theme === 'homepage' || (theme === 'chat' && chatTheme && isDarkTheme(chatTheme));
+  // Always force dark mode
+  const useDarkMode = true;
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
@@ -192,19 +192,19 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
 
   // Theme-aware styles
   const styles = useDarkMode ? {
-    // Dark mode styles (forced on homepage, conditional on chat pages)
-    overlay: 'bg-black/75',
-    container: 'bg-zinc-900 border border-zinc-800',
-    title: 'text-zinc-100',
-    subtitle: 'text-zinc-400',
-    input: (hasError: boolean) => `bg-zinc-800 border text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 ${hasError ? 'border-red-500' : 'border-zinc-700'}`,
-    label: 'text-zinc-300',
+    // Dark mode styles (forced on homepage, conditional on chat pages) - Lightened
+    overlay: 'bg-black/60',
+    container: 'bg-zinc-800 border border-zinc-700',
+    title: 'text-zinc-50',
+    subtitle: 'text-zinc-300',
+    input: (hasError: boolean) => `bg-zinc-700 border text-zinc-50 placeholder-zinc-400 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 ${hasError ? 'border-red-500' : 'border-zinc-600'}`,
+    label: 'text-zinc-200',
     button: 'bg-[#404eed] hover:bg-[#3640d9] text-white',
     link: 'text-cyan-400 hover:underline hover:text-cyan-300',
     error: 'bg-red-900/20 border-red-800 text-red-400',
     fieldError: 'text-red-400',
-    closeButton: 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800',
-    diceButton: 'bg-zinc-700 border border-zinc-600 text-zinc-50 hover:bg-zinc-600',
+    closeButton: 'text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700',
+    diceButton: 'bg-zinc-600 border border-zinc-500 text-zinc-50 hover:bg-zinc-500',
   } : {
     // Light mode styles (only used on non-homepage, non-dark-theme chat pages)
     overlay: 'bg-black/75',
@@ -228,7 +228,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
         {/* Close Button */}
         <button
           onClick={onClose}
-          className={`absolute top-4 right-4 p-2 rounded-lg transition-colors ${styles.closeButton}`}
+          className={`absolute top-4 right-4 p-2 rounded-lg transition-colors cursor-pointer ${styles.closeButton}`}
           aria-label="Close"
         >
           <X className="w-5 h-5" />
@@ -285,7 +285,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
                 type="button"
                 onClick={handleSuggestUsername}
                 disabled={loading || isSuggestingUsername}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${styles.diceButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${styles.diceButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
                 title="Suggest random username"
               >
                 <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
@@ -330,7 +330,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
           <button
             type="submit"
             disabled={loading}
-            className={`w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${styles.button}`}
+            className="w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-[#404eed] hover:bg-[#3640d9] text-white"
           >
             {loading ? MARKETING.auth.register.submitButtonLoading : MARKETING.auth.register.submitButton}
           </button>
@@ -341,7 +341,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
           {MARKETING.auth.register.switchToLogin}{' '}
           <button
             onClick={switchToLogin}
-            className={`font-medium ${styles.link}`}
+            className={`font-medium cursor-pointer ${styles.link}`}
           >
             {MARKETING.auth.register.switchToLoginLink}
           </button>

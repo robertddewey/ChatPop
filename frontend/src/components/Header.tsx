@@ -69,7 +69,7 @@ export default function Header({ backgroundClass }: HeaderProps = {}) {
             <button
               onClick={handleLogout}
               disabled={loading}
-              className="px-4 py-2 text-sm font-bold text-white hover:text-white/80 transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-sm font-bold text-white hover:text-white/80 transition-all transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 cursor-pointer disabled:cursor-not-allowed"
             >
               {loading ? 'Logging out...' : 'Logout'}
             </button>
@@ -77,13 +77,13 @@ export default function Header({ backgroundClass }: HeaderProps = {}) {
             <>
               <button
                 onClick={() => router.push('/?auth=login')}
-                className="px-4 py-2 text-sm font-bold text-white hover:text-white/80 transition-all transform hover:scale-105"
+                className="px-4 py-2 text-sm font-bold text-white hover:text-white/80 transition-all transform hover:scale-105 cursor-pointer"
               >
                 Log in
               </button>
               <button
                 onClick={() => router.push('/?auth=register')}
-                className="px-4 py-2 text-sm font-bold bg-white text-gray-900 rounded-lg hover:bg-white/90 transition-all transform hover:scale-105 shadow-sm"
+                className="px-4 py-2 text-sm font-bold bg-white text-gray-900 rounded-lg hover:bg-white/90 transition-all transform hover:scale-105 shadow-sm cursor-pointer"
               >
                 Sign Up
               </button>

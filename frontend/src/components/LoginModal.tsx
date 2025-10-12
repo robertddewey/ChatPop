@@ -14,8 +14,8 @@ interface LoginModalProps {
 }
 
 export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: LoginModalProps) {
-  // Force dark mode for homepage, use chat theme detection for chat pages
-  const useDarkMode = theme === 'homepage' || (theme === 'chat' && chatTheme && isDarkTheme(chatTheme));
+  // Always force dark mode
+  const useDarkMode = true;
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
@@ -71,17 +71,17 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
 
   // Theme-aware styles
   const styles = useDarkMode ? {
-    // Dark mode styles (forced on homepage, conditional on chat pages)
-    overlay: 'bg-black/75',
-    container: 'bg-zinc-900 border border-zinc-800',
-    title: 'text-zinc-100',
-    subtitle: 'text-zinc-400',
-    input: 'bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400',
-    label: 'text-zinc-300',
+    // Dark mode styles (forced on homepage, conditional on chat pages) - Lightened
+    overlay: 'bg-black/60',
+    container: 'bg-zinc-800 border border-zinc-700',
+    title: 'text-zinc-50',
+    subtitle: 'text-zinc-300',
+    input: 'bg-zinc-700 border border-zinc-600 text-zinc-50 placeholder-zinc-400 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400',
+    label: 'text-zinc-200',
     button: 'bg-[#404eed] hover:bg-[#3640d9] text-white',
     link: 'text-cyan-400 hover:underline hover:text-cyan-300',
     error: 'bg-red-900/20 border-red-800 text-red-400',
-    closeButton: 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800',
+    closeButton: 'text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700',
   } : {
     // Light mode styles (only used on non-homepage, non-dark-theme chat pages)
     overlay: 'bg-black/75',
@@ -103,7 +103,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
         {/* Close Button */}
         <button
           onClick={onClose}
-          className={`absolute top-4 right-4 p-2 rounded-lg transition-colors ${styles.closeButton}`}
+          className={`absolute top-4 right-4 p-2 rounded-lg transition-colors cursor-pointer ${styles.closeButton}`}
           aria-label="Close"
         >
           <X className="w-5 h-5" />
@@ -156,7 +156,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
           <button
             type="submit"
             disabled={loading}
-            className={`w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${styles.button}`}
+            className="w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-[#404eed] hover:bg-[#3640d9] text-white"
           >
             {loading ? MARKETING.auth.login.submitButtonLoading : MARKETING.auth.login.submitButton}
           </button>
@@ -167,7 +167,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
           {MARKETING.auth.login.switchToRegister}{' '}
           <button
             onClick={switchToRegister}
-            className={`font-medium ${styles.link}`}
+            className={`font-medium cursor-pointer ${styles.link}`}
           >
             {MARKETING.auth.login.switchToRegisterLink}
           </button>

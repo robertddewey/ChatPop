@@ -51,7 +51,7 @@ export default function Home() {
           {/* Main CTA */}
           <button
             onClick={openCreateModal}
-            className="inline-block px-8 py-4 text-lg font-bold bg-white text-gray-900 rounded-full hover:bg-gray-100 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+            className="inline-block px-8 py-4 text-lg font-bold bg-white text-gray-900 rounded-full hover:bg-gray-100 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer"
           >
             {MARKETING.hero.cta}
           </button>
