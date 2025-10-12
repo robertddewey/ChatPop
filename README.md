@@ -443,7 +443,7 @@ ChatPop uses a dual-storage strategy for chat messages:
 
 **Debugging & Monitoring:**
 
-The `inspect_redis` management command provides real-time cache inspection:
+The `inspect_redis` management command provides real-time cache inspection. For complete documentation, see [Management Tools Guide](./docs/MANAGEMENT_TOOLS.md).
 
 ```bash
 # List all cached chats
@@ -455,6 +455,9 @@ cd backend
 
 # Show cached messages
 ./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --show-messages --limit 20
+
+# Show cached reactions
+./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --show-reactions --limit 10
 
 # Compare Redis vs PostgreSQL
 ./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --compare
