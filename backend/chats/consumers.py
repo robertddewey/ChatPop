@@ -198,6 +198,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'username_is_reserved': username_is_reserved,
             'user_id': str(message.user.id) if message.user else None,
             'message_type': message.message_type,
+            'is_from_host': message.message_type == 'host',  # Add explicit flag for frontend
             'content': message.content,
             'voice_url': message.voice_url,
             'voice_duration': float(message.voice_duration) if message.voice_duration else None,
