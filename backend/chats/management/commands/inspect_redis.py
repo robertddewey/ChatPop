@@ -180,15 +180,6 @@ class Command(BaseCommand):
             ttl = redis_client.ttl(pinned_key)
             self.stdout.write(f'  TTL: {self._format_ttl(ttl)}')
 
-        # Backroom messages
-        backroom_key = MessageCache.BACKROOM_KEY.format(chat_code=chat_code)
-        backroom_count = redis_client.zcard(backroom_key)
-        self.stdout.write(f'\n🏠 Backroom Messages ({backroom_count} cached)')
-        self.stdout.write(f'  Key: {backroom_key}')
-
-        if backroom_count == 0:
-            self.stdout.write('  [Empty]')
-
         # Reaction caches
         self.stdout.write(f'\n😀 Reaction Caches')
         reaction_pattern = f"chat:{chat_code}:reactions:*"
