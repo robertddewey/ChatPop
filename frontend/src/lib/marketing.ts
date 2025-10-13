@@ -9,7 +9,7 @@ export const MARKETING = {
     title: "Group Chat.",
     titleHighlight: "For Everyone & Everything.",
     badge: "No App Needed",
-    subtitle: "See a movie poster? Snap it and chat. Have a community? Create a room. Just share the link and start chatting.",
+    subtitle: "See a movie poster? Snap it and chat. Have a community or event? Create a room. Just share the link and start chatting.",
     cta: "Start a ChatPop",
   },
 
