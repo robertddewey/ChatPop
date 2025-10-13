@@ -365,8 +365,9 @@ export const messageApi = {
     });
 
     const messages = response.data.messages || response.data.results || response.data;
-    // If we got fewer messages than requested, we've reached the end or hit the limit
-    const hasMore = messages.length === limit;
+    // Keep loading as long as we're getting messages back
+    // Only stop when the API returns an empty array (reached the oldest message)
+    const hasMore = messages.length > 0;
 
     return { messages, hasMore };
   },

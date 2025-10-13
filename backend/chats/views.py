@@ -292,14 +292,21 @@ class MessageListView(APIView):
         messages = []
         source = 'postgresql'  # Default source
 
-        if cache_enabled and not before_timestamp:
-            # Try to fetch from Redis cache (initial load only, not pagination)
-            messages = MessageCache.get_messages(code, limit=limit)
+        if cache_enabled:
+            # Try Redis cache first for ALL requests (initial load AND pagination)
+            if before_timestamp:
+                # Pagination request - try cache first with before_timestamp
+                messages = MessageCache.get_messages_before(code, before_timestamp=float(before_timestamp), limit=limit)
+            else:
+                # Initial load - get most recent messages
+                messages = MessageCache.get_messages(code, limit=limit)
+
+            print(f"DEBUG: cache_enabled={cache_enabled}, messages from cache: {len(messages) if messages else 0}")
 
             if messages:
-                # Check for partial cache hit (got fewer messages than requested)
-                if len(messages) < limit:
-                    # Partial cache hit - fetch remaining messages from database
+                # Cache hit (full or partial)
+                if len(messages) < limit and not before_timestamp:
+                    # Partial cache hit on initial load - fetch remaining messages from database
                     from datetime import datetime
                     oldest_cached_timestamp = datetime.fromisoformat(messages[0]['created_at']).timestamp()
                     remaining_limit = limit - len(messages)
@@ -320,6 +327,7 @@ class MessageListView(APIView):
                     messages = older_messages + messages
                     source = 'hybrid_redis_postgresql'
                 else:
+                    # Full cache hit (initial load or pagination)
                     source = 'redis'
 
                 # Convert relative voice URLs to absolute URLs
@@ -337,14 +345,18 @@ class MessageListView(APIView):
                     msg['reactions'] = reactions_by_message.get(msg_id, [])
             else:
                 # Cache miss - fall back to PostgreSQL and backfill cache
+                print(f"DEBUG: Cache miss! Calling _fetch_from_db, limit={limit}, before_timestamp={before_timestamp}")
                 messages = self._fetch_from_db(chat_room, limit, before_timestamp, request)
                 source = 'postgresql_fallback'
+                print(f"DEBUG: _fetch_from_db returned {len(messages)} messages")
 
                 # Backfill cache: Add fetched messages to Redis
                 # This ensures subsequent requests hit the cache
+                print(f"DEBUG: About to call _backfill_cache with {len(messages)} messages")
                 self._backfill_cache(chat_room, messages)
+                print(f"DEBUG: _backfill_cache completed")
         else:
-            # Cache disabled or pagination request - always use PostgreSQL
+            # Cache disabled - always use PostgreSQL
             messages = self._fetch_from_db(chat_room, limit, before_timestamp, request)
 
         # Fetch pinned messages from Redis (pinned messages are ephemeral)
@@ -486,10 +498,15 @@ class MessageListView(APIView):
         """
         from constance import config
 
+        print(f"DEBUG: _backfill_cache called with chat_room={chat_room.code}, {len(message_dicts)} messages")
+        print(f"DEBUG: REDIS_CACHE_ENABLED={config.REDIS_CACHE_ENABLED}")
+
         if not config.REDIS_CACHE_ENABLED:
+            print(f"DEBUG: Cache disabled, returning without backfill")
             return
 
         if not message_dicts:
+            print(f"DEBUG: No messages to backfill, returning")
             return
 
         # Extract message IDs from the serialized dicts
@@ -504,16 +521,22 @@ class MessageListView(APIView):
 
         # Add each message to cache
         cached_count = 0
+        print(f"DEBUG: Starting to cache {len(messages)} messages...")
         for message in messages:
             try:
                 success = MessageCache.add_message(message)
                 if success:
                     cached_count += 1
+                    print(f"DEBUG: Cached message {message.id} successfully")
+                else:
+                    print(f"DEBUG: Failed to cache message {message.id} (add_message returned False)")
             except Exception as e:
                 print(f"⚠️  Failed to backfill message {message.id} to cache: {e}")
 
         if cached_count > 0:
             print(f"✅ Backfilled {cached_count}/{len(message_ids)} messages to Redis cache for chat {chat_room.code}")
+        else:
+            print(f"DEBUG: NO MESSAGES WERE CACHED! cached_count=0")
 
 
 class MessageCreateView(generics.CreateAPIView):

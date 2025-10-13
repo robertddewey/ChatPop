@@ -170,15 +170,26 @@ class MessageCache:
         Returns:
             List of message dicts (oldest first, chronological order for chat display)
         """
+        import sys
         start_time = time.time()
         try:
             redis_client = cls._get_redis_client()
             key = cls.MESSAGES_KEY.format(chat_code=chat_code)
 
+            print(f"DEBUG redis_cache.get_messages: chat_code={chat_code}, limit={limit}, key={key}", flush=True)
+            sys.stdout.flush()
+
+            # Check if key exists before reading
+            key_exists = redis_client.exists(key)
+            key_cardinality = redis_client.zcard(key)
+            print(f"DEBUG redis_cache.get_messages: key_exists={key_exists}, ZCARD={key_cardinality}", flush=True)
+            sys.stdout.flush()
+
             # Get most recent messages in chronological order (ascending)
             # ZRANGE returns lowest scores first (oldest messages first)
             # Get the last N messages by using negative indices
             message_strings = redis_client.zrange(key, -limit, -1)
+            print(f"DEBUG redis_cache.get_messages: ZRANGE returned {len(message_strings)} raw strings")
 
             # Deserialize
             messages = []
@@ -188,9 +199,12 @@ class MessageCache:
                 except json.JSONDecodeError:
                     continue
 
+            print(f"DEBUG redis_cache.get_messages: Deserialized {len(messages)} messages")
+
             # Monitor: Cache read
             duration_ms = (time.time() - start_time) * 1000
             hit = len(messages) > 0
+            print(f"DEBUG redis_cache.get_messages: hit={hit}, count={len(messages)}, duration_ms={duration_ms}")
             monitor.log_cache_read(
                 chat_code,
                 hit=hit,
