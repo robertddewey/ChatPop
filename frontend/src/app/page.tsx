@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import RegisterModal from "@/components/RegisterModal";
@@ -13,127 +13,197 @@ export default function Home() {
   const router = useRouter();
   const authMode = searchParams.get('auth');
   const modalMode = searchParams.get('modal');
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    // Detect if device is mobile
+    const checkMobile = () => {
+      setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
+    };
+    checkMobile();
+  }, []);
 
   const closeModal = () => {
-    router.push('/');
+    router.push('/', { scroll: false });
   };
 
   const openCreateModal = () => {
-    router.push('/?modal=create');
+    router.push('/?modal=create', { scroll: false });
   };
 
-  // Set theme-color for homepage
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  const handleCameraClick = () => {
+    if (isMobile) {
+      // Create a hidden file input to trigger camera
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*'; // Accept images only
+      input.capture = 'environment'; // Force camera mode (rear camera)
 
-    const updateThemeColor = () => {
-      // Detect dark mode preference
-      const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      // Match homepage gradient colors (purple-50 for light, gray-900 for dark)
-      const themeColor = isDarkMode ? '#111827' : '#faf5ff';
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          // TODO: Handle the captured photo (upload, preview, etc.)
+          console.log('Photo captured from camera:', file.name, file.type);
+        }
+      };
 
-      // Find or create theme-color meta tag
-      let metaTag = document.querySelector('meta[name="theme-color"]');
-      if (!metaTag) {
-        metaTag = document.createElement('meta');
-        metaTag.setAttribute('name', 'theme-color');
-        document.head.appendChild(metaTag);
-      }
-      metaTag.setAttribute('content', themeColor);
-    };
+      input.click();
+    }
+  };
 
-    // Update initially
-    updateThemeColor();
+  const handleLibraryClick = () => {
+    if (isMobile) {
+      // Create a hidden file input to trigger photo library
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*'; // Accept images only
+      // No capture attribute = allows library selection
 
-    // Listen for dark mode changes
-    const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleDarkModeChange = () => updateThemeColor();
-    darkModeQuery.addEventListener('change', handleDarkModeChange);
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          // TODO: Handle the selected photo (upload, preview, etc.)
+          console.log('Photo selected from library:', file.name, file.type);
+        }
+      };
 
-    return () => {
-      darkModeQuery.removeEventListener('change', handleDarkModeChange);
-    };
-  }, []);
+      input.click();
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800">
-      <Header />
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 from-5% via-purple-900 via-30% to-[#404eed] to-60%">
+      <Header backgroundClass="bg-gray-900/80" />
 
       {/* Hero Section */}
       <main className="container mx-auto px-4 py-8 md:py-20">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-4">
-            {MARKETING.hero.title}
-            <span className="block bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-              {MARKETING.hero.titleHighlight}
-            </span>
-          </h2>
+        <div className="max-w-5xl mx-auto text-center">
+          <div className="mb-8">
+            <h2 className="text-6xl md:text-7xl font-black text-white tracking-[-0.03em] leading-[0.95]" style={{ fontWeight: 900, WebkitTextStroke: '1px white' }}>
+              {MARKETING.hero.title}
+              <span className="block text-white pb-3">
+                {MARKETING.hero.titleHighlight}
+              </span>
+            </h2>
+          </div>
 
           {/* Badge */}
-          <div className="mb-6">
-            <span className="inline-block px-4 py-2 bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/30 text-purple-700 dark:text-purple-300 rounded-full text-sm font-semibold">
+          <div className="mb-8">
+            <span className="inline-block px-4 py-2 bg-white/10 text-white rounded-full text-sm font-bold tracking-wide">
               {MARKETING.hero.badge}
             </span>
           </div>
 
-          <p className="text-base md:text-xl text-gray-600 dark:text-gray-300 mb-12 max-w-2xl mx-auto">
+          <p className="text-lg md:text-xl text-gray-300 mb-12 max-w-2xl mx-auto font-medium">
             {MARKETING.hero.subtitle}
           </p>
 
           {/* Main CTA */}
-          <button
-            onClick={openCreateModal}
-            className="inline-block px-8 py-4 text-lg font-semibold bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full hover:from-purple-700 hover:to-blue-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
-          >
-            {MARKETING.hero.cta}
-          </button>
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            <button
+              onClick={openCreateModal}
+              className="inline-block px-8 py-4 text-lg font-bold bg-white text-gray-900 rounded-full hover:bg-gray-100 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer"
+            >
+              {MARKETING.hero.cta}
+            </button>
+
+            {/* Camera Button */}
+            <div className="relative group">
+              <button
+                onClick={handleCameraClick}
+                disabled={!isMobile}
+                className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                  isMobile
+                    ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
+                    : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                }`}
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+
+              {/* Desktop tooltip */}
+              {!isMobile && (
+                <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  Mobile only
+                </div>
+              )}
+            </div>
+
+            {/* Photo Library Button */}
+            <div className="relative group">
+              <button
+                onClick={handleLibraryClick}
+                disabled={!isMobile}
+                className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                  isMobile
+                    ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
+                    : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                }`}
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
+
+              {/* Desktop tooltip */}
+              {!isMobile && (
+                <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  Mobile only
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Features Grid */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mt-20">
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-md">
-              <div className="w-12 h-12 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                <svg className="w-6 h-6 text-cyan-600 dark:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mt-20">
+            <div className="p-6 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
+              <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center mb-4 mx-auto">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{MARKETING.features.noAppNeeded.title}</h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <h3 className="text-lg font-bold text-white mb-2">{MARKETING.features.everythingIsChat.title}</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                {MARKETING.features.everythingIsChat.description}
+              </p>
+            </div>
+
+            <div className="p-6 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
+              <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center mb-4 mx-auto">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">{MARKETING.features.noAppNeeded.title}</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
                 {MARKETING.features.noAppNeeded.description}
               </p>
             </div>
 
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-md">
-              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            <div className="p-6 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
+              <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center mb-4 mx-auto">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{MARKETING.features.publicPrivate.title}</h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <h3 className="text-lg font-bold text-white mb-2">{MARKETING.features.publicPrivate.title}</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
                 {MARKETING.features.publicPrivate.description}
               </p>
             </div>
 
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-md">
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <div className="p-6 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm">
+              <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center mb-4 mx-auto">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{MARKETING.features.exclusiveAccess.title}</h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                {MARKETING.features.exclusiveAccess.description}
-              </p>
-            </div>
-
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-md">
-              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{MARKETING.features.realTimeEngagement.title}</h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <h3 className="text-lg font-bold text-white mb-2">{MARKETING.features.realTimeEngagement.title}</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
                 {MARKETING.features.realTimeEngagement.description}
               </p>
             </div>

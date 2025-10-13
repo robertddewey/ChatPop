@@ -252,6 +252,21 @@ export default function ChatPage() {
     }
   }, [code]);
 
+  // Handle message deletion WebSocket events
+  const handleMessageDeleted = useCallback((messageId: string) => {
+    console.log('[Message Delete] WebSocket event - removing message:', messageId);
+
+    // Remove message from local state
+    setMessages(prev => prev.filter(msg => msg.id !== messageId));
+
+    // Remove reactions for this message
+    setMessageReactions(prev => {
+      const updated = { ...prev };
+      delete updated[messageId];
+      return updated;
+    });
+  }, []);
+
   // WebSocket connection
   const { sendMessage: wsSendMessage, sendRawMessage, isConnected } = useChatWebSocket({
     chatCode: code,
@@ -259,6 +274,7 @@ export default function ChatPage() {
     onMessage: handleWebSocketMessage,
     onUserBlocked: handleUserBlocked,
     onReaction: handleReactionEvent,
+    onMessageDeleted: handleMessageDeleted,
     enabled: hasJoined && !!sessionToken,
   });
 
@@ -503,6 +519,15 @@ export default function ChatPage() {
       const msgs = await messageApi.getMessages(code);
       setMessages(msgs);
       setHasMoreMessages(true); // Reset when loading fresh messages
+
+      // Extract reactions from messages and populate messageReactions state
+      const reactions: Record<string, ReactionSummary[]> = {};
+      msgs.forEach((msg) => {
+        if (msg.reactions && msg.reactions.length > 0) {
+          reactions[msg.id] = msg.reactions;
+        }
+      });
+      setMessageReactions(reactions);
 
       // Wait for DOM to fully render before scrolling to bottom
       // This prevents race conditions on mobile/small viewports
@@ -861,6 +886,23 @@ export default function ChatPage() {
     // TODO: Implement tip user logic with payment
   }, []);
 
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
+    // Only hosts can delete messages
+    if (!chatRoom || !currentUserId || chatRoom.host.id !== currentUserId) {
+      console.error('Only the host can delete messages');
+      return;
+    }
+
+    try {
+      await messageApi.deleteMessage(code, messageId);
+      console.log(`Successfully deleted message: ${messageId}`);
+      // The WebSocket will handle real-time removal for all users
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+      alert('Failed to delete message. Please try again.');
+    }
+  }, [code, chatRoom, currentUserId]);
+
   const handleReactionToggle = useCallback(async (messageId: string, emoji: string) => {
     if (!username) {
       console.warn('[Reactions] No username available');
@@ -926,6 +968,11 @@ export default function ChatPage() {
       .sort((a, b) => parseFloat(b.pin_amount_paid) - parseFloat(a.pin_amount_paid))
       [0]; // Get highest paid
   }, [filteredMessages]);
+
+  // Check if current user is the host
+  const isHost = useMemo(() => {
+    return !!(currentUserId && chatRoom && chatRoom.host.id === currentUserId);
+  }, [currentUserId, chatRoom]);
 
   // Get IDs to observe (useMemo to prevent infinite loops)
   const idsToObserve = useMemo(() => {
@@ -1005,7 +1052,7 @@ export default function ChatPage() {
     if (shouldAutoScrollRef.current) {
       scrollToBottom();
     }
-  }, [messages.length]);
+  }, [messages.length, messageReactions]);
 
   // Auto-refresh messages every 3 seconds (fallback polling when WebSocket is not connected)
   useEffect(() => {
@@ -1335,6 +1382,7 @@ export default function ChatPage() {
             handlePinOther={handlePinOther}
             handleBlockUser={handleBlockUser}
             handleTipUser={handleTipUser}
+            handleDeleteMessage={handleDeleteMessage}
             handleReactionToggle={handleReactionToggle}
             messageReactions={messageReactions}
             loadingOlder={loadingOlder}
@@ -1380,18 +1428,23 @@ export default function ChatPage() {
             </div>
           )}
           <form onSubmit={handleSendMessage} className={`flex gap-2 ${replyingTo ? 'mt-2' : ''}`}>
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
-            className={currentDesign.inputField}
-            disabled={sending}
-            style={{
-              WebkitUserSelect: 'text',
-              userSelect: 'text',
-            }}
-          />
+          <div className="relative flex-1">
+            {isHost && (
+              <Crown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-yellow-500 pointer-events-none z-10" />
+            )}
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type a message..."
+              className={`w-full ${currentDesign.inputField} ${isHost ? 'pl-10' : ''}`}
+              disabled={sending}
+              style={{
+                WebkitUserSelect: 'text',
+                userSelect: 'text',
+              }}
+            />
+          </div>
           {chatRoom?.voice_enabled && (
             <VoiceRecorder
               onRecordingComplete={handleVoiceRecording}

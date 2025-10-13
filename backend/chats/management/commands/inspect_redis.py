@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from chats.models import ChatRoom, Message
-from chats.redis_cache import MessageCache
+from chats.utils.performance.cache import MessageCache
 
 
 class Command(BaseCommand):
@@ -38,6 +38,11 @@ class Command(BaseCommand):
             '--show-messages',
             action='store_true',
             help='Show cached messages for the chat'
+        )
+        parser.add_argument(
+            '--show-reactions',
+            action='store_true',
+            help='Show cached reactions for the chat'
         )
         parser.add_argument(
             '--limit',
@@ -92,7 +97,7 @@ class Command(BaseCommand):
             elif options['compare']:
                 self.compare_cache(chat_code)
             else:
-                self.inspect_chat(chat_code, options['show_messages'], options['limit'])
+                self.inspect_chat(chat_code, options['show_messages'], options['show_reactions'], options['limit'])
         else:
             self.stdout.write(self.style.ERROR('Please specify an action. Use --help for usage.'))
 
@@ -130,7 +135,7 @@ class Command(BaseCommand):
 
         self.stdout.write('')
 
-    def inspect_chat(self, chat_code, show_messages=False, limit=10):
+    def inspect_chat(self, chat_code, show_messages=False, show_reactions=False, limit=10):
         """Inspect a specific chat's Redis cache"""
         try:
             chat_room = ChatRoom.objects.get(code=chat_code)
@@ -175,14 +180,17 @@ class Command(BaseCommand):
             ttl = redis_client.ttl(pinned_key)
             self.stdout.write(f'  TTL: {self._format_ttl(ttl)}')
 
-        # Backroom messages
-        backroom_key = MessageCache.BACKROOM_KEY.format(chat_code=chat_code)
-        backroom_count = redis_client.zcard(backroom_key)
-        self.stdout.write(f'\n🏠 Backroom Messages ({backroom_count} cached)')
-        self.stdout.write(f'  Key: {backroom_key}')
+        # Reaction caches
+        self.stdout.write(f'\n😀 Reaction Caches')
+        reaction_pattern = f"chat:{chat_code}:reactions:*"
+        reaction_keys = redis_client.keys(reaction_pattern)
+        self.stdout.write(f'  Pattern: {reaction_pattern}')
+        self.stdout.write(f'  Count: {len(reaction_keys)} messages with cached reactions')
 
-        if backroom_count == 0:
-            self.stdout.write('  [Empty]')
+        if len(reaction_keys) > 0:
+            # Sample TTL from first key
+            sample_ttl = redis_client.ttl(reaction_keys[0])
+            self.stdout.write(f'  TTL: {self._format_ttl(sample_ttl)}')
 
         # Show messages if requested
         if show_messages and main_count > 0:
@@ -207,6 +215,33 @@ class Command(BaseCommand):
                 if msg.get('is_pinned'):
                     self.stdout.write(f'  📌 Pinned (${msg["pin_amount_paid"]})')
                 self.stdout.write('')
+
+        # Show reactions if requested
+        if show_reactions and len(reaction_keys) > 0:
+            self.stdout.write(f'\n😀 Reaction Cache Details (showing up to {limit}):\n')
+
+            for reaction_key in reaction_keys[:limit]:
+                # Extract message_id from key: chat:{code}:reactions:{msg_id}
+                message_id = reaction_key.decode('utf-8').split(':')[-1] if isinstance(reaction_key, bytes) else reaction_key.split(':')[-1]
+
+                # Get reactions for this message
+                reactions = MessageCache.get_message_reactions(chat_code, message_id)
+
+                if reactions:
+                    # Get message details for context
+                    try:
+                        message = Message.objects.get(id=message_id)
+                        username = message.username
+                        content_preview = message.content[:50] + '...' if len(message.content) > 50 else message.content
+                    except Message.DoesNotExist:
+                        username = '[deleted]'
+                        content_preview = '[message not found]'
+
+                    self.stdout.write(f'Message ID: {message_id}')
+                    self.stdout.write(f'  From: {username}')
+                    self.stdout.write(f'  Content: "{content_preview}"')
+                    self.stdout.write(f'  Reactions: {", ".join([f"{r["emoji"]} ({r["count"]})" for r in reactions])}')
+                    self.stdout.write('')
 
         self.stdout.write('')
 
@@ -382,6 +417,7 @@ class Command(BaseCommand):
         total_pinned_keys = 0
         total_backroom_keys = 0
         total_messages = 0
+        total_reaction_keys = 0
 
         chats = ChatRoom.objects.filter(is_active=True)
 
@@ -389,6 +425,8 @@ class Command(BaseCommand):
             msg_count = redis_client.zcard(MessageCache.MESSAGES_KEY.format(chat_code=chat.code))
             pin_count = redis_client.zcard(MessageCache.PINNED_KEY.format(chat_code=chat.code))
             back_count = redis_client.zcard(MessageCache.BACKROOM_KEY.format(chat_code=chat.code))
+            reaction_pattern = f"chat:{chat.code}:reactions:*"
+            reaction_keys = redis_client.keys(reaction_pattern)
 
             if msg_count > 0:
                 total_message_keys += 1
@@ -397,11 +435,13 @@ class Command(BaseCommand):
                 total_pinned_keys += 1
             if back_count > 0:
                 total_backroom_keys += 1
+            total_reaction_keys += len(reaction_keys)
 
         self.stdout.write(f'Total chats cached:     {total_message_keys}')
         self.stdout.write(f'Total messages cached:  {total_messages}')
         self.stdout.write(f'Pinned message caches:  {total_pinned_keys}')
         self.stdout.write(f'Backroom caches:        {total_backroom_keys}')
+        self.stdout.write(f'Reaction caches:        {total_reaction_keys}')
         self.stdout.write(f'\nMax messages per cache: {MessageCache.MAX_MESSAGES}')
         self.stdout.write(f'Default TTL:            {MessageCache.TTL_HOURS} hours')
         self.stdout.write('')

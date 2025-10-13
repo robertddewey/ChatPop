@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
-import { Pin, DollarSign, Ban, X, BadgeCheck, Reply } from 'lucide-react';
+import { Pin, DollarSign, Ban, X, BadgeCheck, Reply, Trash2 } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import { isDarkTheme } from '@/lib/themes';
 
@@ -19,6 +19,7 @@ interface MessageActionsModalProps {
   onBlock?: (username: string) => void;
   onTip?: (username: string) => void;
   onReact?: (messageId: string, emoji: string) => void;
+  onDelete?: (messageId: string) => void;
 }
 
 // Get theme-aware modal styles (no system preference - force theme mode)
@@ -65,6 +66,7 @@ export default function MessageActionsModal({
   onBlock,
   onTip,
   onReact,
+  onDelete,
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -234,6 +236,23 @@ export default function MessageActionsModal({
     });
   }
 
+  // Delete message (host only)
+  if (isHost && onDelete) {
+    actions.push({
+      icon: Trash2,
+      label: 'Delete Message',
+      action: () => {
+        if (confirm('Are you sure you want to delete this message?')) {
+          onDelete(message.id);
+          handleClose();
+        } else {
+          // Don't close if cancelled
+          return;
+        }
+      },
+    });
+  }
+
   // Block should always be last (bottom of modal)
   if (!isOwnMessage && !isHostMessage && onBlock) {
     actions.push({
@@ -290,7 +309,7 @@ export default function MessageActionsModal({
                     onTouchStart={(e) => e.stopPropagation()}
                     onTouchMove={(e) => e.stopPropagation()}
                     onTouchEnd={(e) => e.stopPropagation()}
-                    className={`flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-110 shadow-lg ${
+                    className={`flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-110 shadow-lg cursor-pointer ${
                       themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-white hover:bg-gray-50'
                     }`}
                   >
@@ -354,7 +373,7 @@ export default function MessageActionsModal({
                       onTouchStart={(e) => e.stopPropagation()}
                       onTouchMove={(e) => e.stopPropagation()}
                       onTouchEnd={(e) => e.stopPropagation()}
-                      className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 ${modalStyles.actionButton}`}
+                      className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 cursor-pointer ${modalStyles.actionButton}`}
                     >
                       <Icon className={`w-6 h-6 ${modalStyles.actionIcon}`} />
                       <span className="text-base font-medium">{action.label}</span>

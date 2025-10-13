@@ -118,6 +118,32 @@ Key variables:
 - `REDIS_PORT=6381` - Redis port
 - `STRIPE_SECRET_KEY` - Add your Stripe keys for payment features
 
+## Documentation
+
+Comprehensive documentation is organized in the `docs/` directory:
+
+### Core Documentation
+- **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation (139 tests)
+- **[docs/CACHING.md](docs/CACHING.md)** - Redis message and reaction caching architecture
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
+- **[docs/AUDIO.md](docs/AUDIO.md)** - iOS Safari-compatible audio implementation
+- **[docs/THEME_STYLING_GUIDE.md](docs/THEME_STYLING_GUIDE.md)** - Complete ChatTheme database field reference
+- **[docs/MANAGEMENT_TOOLS.md](docs/MANAGEMENT_TOOLS.md)** - Redis cache inspection and debugging tools
+- **[docs/MONITORING.md](docs/MONITORING.md)** - Real-time cache & database monitoring system
+- **[docs/blocking-feature-spec.md](docs/blocking-feature-spec.md)** - User blocking feature specification
+
+### Deployment & Scaling
+- **[docs/AWS_DEPLOYMENT_SCALING.md](docs/AWS_DEPLOYMENT_SCALING.md)** - AWS ECS Fargate production deployment guide
+  - Complete setup guide (Docker → ECR → ECS)
+  - Scaling targets: 100 rooms (1k users) → 5000 rooms (250k users)
+  - Cost breakdowns and infrastructure sizing
+  - Database optimizations and required indexes
+  - Auto-scaling configuration
+  - Monitoring and alerts
+
+### Project Documentation
+- **[CLAUDE.md](CLAUDE.md)** - Complete project documentation for AI assistants
+
 ## Stopping Services
 
 Stop Docker containers:
@@ -443,7 +469,7 @@ ChatPop uses a dual-storage strategy for chat messages:
 
 **Debugging & Monitoring:**
 
-The `inspect_redis` management command provides real-time cache inspection:
+The `inspect_redis` management command provides real-time cache inspection. For complete documentation, see [Management Tools Guide](./docs/MANAGEMENT_TOOLS.md).
 
 ```bash
 # List all cached chats
@@ -455,6 +481,9 @@ cd backend
 
 # Show cached messages
 ./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --show-messages --limit 20
+
+# Show cached reactions
+./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --show-reactions --limit 10
 
 # Compare Redis vs PostgreSQL
 ./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --compare

@@ -6,30 +6,30 @@
 export const MARKETING = {
   // Hero Section
   hero: {
-    title: "Your Group Chat,",
-    titleHighlight: "for Everyone.",
+    title: "Group Chat.",
+    titleHighlight: "For Everyone & Everything.",
     badge: "No App Needed",
-    subtitle: "Create an instant group chat for your community and engage your audience with ChatPop. Share the link and chat.",
+    subtitle: "See a movie poster? Snap it and chat. Have a community or event? Create a room. Just share the link and start chatting.",
     cta: "Start a ChatPop",
   },
 
   // Features
   features: {
+    everythingIsChat: {
+      title: "Everything is a Chat",
+      description: "Snap a photo of things to chat about. Movies, music, places, books, cats",
+    },
     noAppNeeded: {
       title: "No App Required",
-      description: "Your audience just needs the link - no app download or registration needed to join and chat",
+      description: "Just a photo or a link. No app download is required to join the conversation",
     },
     publicPrivate: {
-      title: "Public & Private Rooms",
-      description: "Control who can join your chat with access codes for private rooms",
-    },
-    exclusiveAccess: {
-      title: "Exclusive Access",
-      description: "Offer exclusive back rooms, pinned chats, and receive tips for engagement",
+      title: "Public & Private",
+      description: "Control who can join your chat by adding a passcode or paid access",
     },
     realTimeEngagement: {
-      title: "Real-time Engagement",
-      description: "Voice, video, and photo sharing to keep your audience engaged",
+      title: "Group Sharing",
+      description: "Voice, video, and photo streams with your group or community",
     },
   },
 

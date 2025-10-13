@@ -17,9 +17,16 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from chats import admin_views
 
 urlpatterns = [
+    # Admin monitoring dashboard (must come BEFORE admin/ to avoid catch-all)
+    path("admin/monitoring/", admin_views.monitoring_dashboard, name="monitoring_dashboard"),
+    path("admin/monitoring/api/", admin_views.monitoring_api, name="monitoring_api"),
+
     path("admin/", admin.site.urls),
 
     # API endpoints
@@ -31,3 +38,7 @@ urlpatterns = [
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
 ]
+
+# Serve static files in development (for Django admin CSS/JS with Daphne)
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

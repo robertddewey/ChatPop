@@ -14,8 +14,10 @@ from .serializers import (
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
     ChatParticipationSerializer, MessageReactionSerializer, MessageReactionCreateSerializer
 )
-from .security import ChatSessionValidator
-from .redis_cache import MessageCache
+from .utils.security.auth import ChatSessionValidator
+from .utils.performance.cache import MessageCache
+from .utils.performance.monitoring import monitor
+import time
 
 
 def get_client_ip(request):
@@ -103,7 +105,7 @@ class ChatRoomJoinView(APIView):
         ip_address = get_client_ip(request)
 
         # SECURITY CHECK 0: Check if user is blocked
-        from .blocking_utils import check_if_blocked
+        from .utils.security.blocking import check_if_blocked
         is_blocked, block_message = check_if_blocked(
             chat_room=chat_room,
             username=username,
@@ -275,13 +277,87 @@ class MessageListView(APIView):
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
 
         # Query params
-        limit = int(request.query_params.get('limit', 50))
+        limit = int(request.query_params.get('limit', config.MESSAGE_LIST_DEFAULT_LIMIT))
         before_timestamp = request.query_params.get('before')  # Unix timestamp for pagination
 
-        # Always fetch from PostgreSQL for REST API
-        # Redis is only used for WebSocket broadcast (real-time messaging)
-        # This ensures complete message history with no gaps or cache complexity
-        messages = self._fetch_from_db(chat_room, limit, before_timestamp, request)
+        # Enforce maximum limit from Constance settings (security: prevent unlimited message requests)
+        max_limit = config.MESSAGE_HISTORY_MAX_COUNT
+        if limit > max_limit:
+            limit = max_limit
+
+        # Check if Redis caching is enabled (Constance dynamic setting)
+        cache_enabled = config.REDIS_CACHE_ENABLED
+
+        # Try Redis cache first (if enabled and no pagination)
+        messages = []
+        source = 'postgresql'  # Default source
+
+        if cache_enabled:
+            # Try Redis cache first for ALL requests (initial load AND pagination)
+            if before_timestamp:
+                # Pagination request - try cache first with before_timestamp
+                messages = MessageCache.get_messages_before(code, before_timestamp=float(before_timestamp), limit=limit)
+            else:
+                # Initial load - get most recent messages
+                messages = MessageCache.get_messages(code, limit=limit)
+
+            print(f"DEBUG: cache_enabled={cache_enabled}, messages from cache: {len(messages) if messages else 0}")
+
+            if messages:
+                # Cache hit (full or partial)
+                if len(messages) < limit and not before_timestamp:
+                    # Partial cache hit on initial load - fetch remaining messages from database
+                    from datetime import datetime
+                    oldest_cached_timestamp = datetime.fromisoformat(messages[0]['created_at']).timestamp()
+                    remaining_limit = limit - len(messages)
+
+                    # Fetch older messages from database
+                    older_messages = self._fetch_from_db(
+                        chat_room,
+                        limit=remaining_limit,
+                        before_timestamp=oldest_cached_timestamp,
+                        request=request
+                    )
+
+                    # Backfill cache with the older messages we just fetched
+                    # This prevents repeated DB queries for the same messages
+                    self._backfill_cache(chat_room, older_messages)
+
+                    # Prepend older messages (they come chronologically before cached ones)
+                    messages = older_messages + messages
+                    source = 'hybrid_redis_postgresql'
+                else:
+                    # Full cache hit (initial load or pagination)
+                    source = 'redis'
+
+                # Convert relative voice URLs to absolute URLs
+                for msg in messages:
+                    if msg.get('voice_url') and request:
+                        msg['voice_url'] = request.build_absolute_uri(msg['voice_url'])
+
+                # Fetch reactions for all messages (batch operation for performance)
+                message_ids = [msg['id'] for msg in messages]
+                reactions_by_message = MessageCache.batch_get_reactions(code, message_ids)
+
+                # Attach reactions to each message
+                for msg in messages:
+                    msg_id = msg['id']
+                    msg['reactions'] = reactions_by_message.get(msg_id, [])
+            else:
+                # Cache miss - fall back to PostgreSQL and backfill cache
+                print(f"DEBUG: Cache miss! Calling _fetch_from_db, limit={limit}, before_timestamp={before_timestamp}")
+                messages = self._fetch_from_db(chat_room, limit, before_timestamp, request)
+                source = 'postgresql_fallback'
+                print(f"DEBUG: _fetch_from_db returned {len(messages)} messages")
+
+                # Backfill cache: Add fetched messages to Redis
+                # This ensures subsequent requests hit the cache
+                print(f"DEBUG: About to call _backfill_cache with {len(messages)} messages")
+                self._backfill_cache(chat_room, messages)
+                print(f"DEBUG: _backfill_cache completed")
+        else:
+            # Cache disabled - always use PostgreSQL
+            messages = self._fetch_from_db(chat_room, limit, before_timestamp, request)
 
         # Fetch pinned messages from Redis (pinned messages are ephemeral)
         pinned_messages = MessageCache.get_pinned_messages(code)
@@ -289,7 +365,8 @@ class MessageListView(APIView):
         return Response({
             'messages': messages,
             'pinned_messages': pinned_messages,
-            'source': 'postgresql',  # Always PostgreSQL for REST API
+            'source': source,  # Shows where data came from (redis/postgresql/postgresql_fallback)
+            'cache_enabled': cache_enabled,
             'count': len(messages),
             'history_limits': {
                 'max_days': config.MESSAGE_HISTORY_MAX_DAYS,
@@ -303,6 +380,8 @@ class MessageListView(APIView):
 
         Returns: List of message dicts (serialized)
         """
+        start_time = time.time()
+
         queryset = Message.objects.filter(
             chat_room=chat_room,
             is_deleted=False
@@ -316,6 +395,13 @@ class MessageListView(APIView):
 
         # Order and limit (newest first to get last N messages)
         messages = queryset.order_by('-created_at')[:limit]
+
+        # Force query execution for accurate timing
+        message_count = len(messages)
+
+        # Batch fetch reactions from cache for all messages (SOLVES N+1 PROBLEM)
+        message_ids = [str(msg.id) for msg in messages]
+        reactions_by_message = MessageCache.batch_get_reactions(chat_room.code, message_ids)
 
         # Serialize (with username_is_reserved computation)
         serialized = []
@@ -337,18 +423,30 @@ class MessageListView(APIView):
                     'is_from_host': msg.reply_to.message_type == "host",
                 }
 
-            # Compute reaction summary (top 3 reactions with counts)
-            from collections import defaultdict
-            reactions_list = msg.reactions.all()
-            emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
+            # Get cached reactions (or fallback to database if cache miss)
+            msg_id_str = str(msg.id)
+            cached_reactions = reactions_by_message.get(msg_id_str, [])
 
-            for reaction in reactions_list:
-                emoji = reaction.emoji
-                emoji_counts[emoji]['emoji'] = emoji
-                emoji_counts[emoji]['count'] += 1
-                emoji_counts[emoji]['users'].append(reaction.username)
+            if cached_reactions:
+                # Use cached reactions (already top 3 format)
+                top_reactions = cached_reactions
+            else:
+                # Cache miss: fallback to database query (compute reaction summary)
+                from collections import defaultdict
+                reactions_list = msg.reactions.all()
+                emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
 
-            top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+                for reaction in reactions_list:
+                    emoji = reaction.emoji
+                    emoji_counts[emoji]['emoji'] = emoji
+                    emoji_counts[emoji]['count'] += 1
+                    emoji_counts[emoji]['users'].append(reaction.username)
+
+                top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+
+                # Cache the computed reactions for next time
+                if top_reactions:
+                    MessageCache.set_message_reactions(chat_room.code, msg_id_str, top_reactions)
 
             serialized.append({
                 'id': str(msg.id),
@@ -376,7 +474,69 @@ class MessageListView(APIView):
         # Reverse to chronological order (oldest first) to match Redis behavior
         serialized.reverse()
 
+        # Monitor: Database read
+        duration_ms = (time.time() - start_time) * 1000
+        monitor.log_db_read(
+            chat_room.code,
+            count=len(serialized),
+            duration_ms=duration_ms,
+            query_type='SELECT'
+        )
+
         return serialized
+
+    def _backfill_cache(self, chat_room, message_dicts):
+        """
+        Backfill Redis cache with messages fetched from PostgreSQL.
+
+        This prevents repeated cache misses for the same chat.
+        Only called on initial load (cache miss), not pagination.
+
+        Args:
+            chat_room: ChatRoom instance
+            message_dicts: List of serialized message dicts from _fetch_from_db()
+        """
+        from constance import config
+
+        print(f"DEBUG: _backfill_cache called with chat_room={chat_room.code}, {len(message_dicts)} messages")
+        print(f"DEBUG: REDIS_CACHE_ENABLED={config.REDIS_CACHE_ENABLED}")
+
+        if not config.REDIS_CACHE_ENABLED:
+            print(f"DEBUG: Cache disabled, returning without backfill")
+            return
+
+        if not message_dicts:
+            print(f"DEBUG: No messages to backfill, returning")
+            return
+
+        # Extract message IDs from the serialized dicts
+        message_ids = [msg['id'] for msg in message_dicts]
+
+        # Fetch Message instances from database
+        # Use select_related to avoid N+1 queries
+        messages = Message.objects.filter(
+            id__in=message_ids,
+            chat_room=chat_room
+        ).select_related('user', 'reply_to')
+
+        # Add each message to cache
+        cached_count = 0
+        print(f"DEBUG: Starting to cache {len(messages)} messages...")
+        for message in messages:
+            try:
+                success = MessageCache.add_message(message)
+                if success:
+                    cached_count += 1
+                    print(f"DEBUG: Cached message {message.id} successfully")
+                else:
+                    print(f"DEBUG: Failed to cache message {message.id} (add_message returned False)")
+            except Exception as e:
+                print(f"⚠️  Failed to backfill message {message.id} to cache: {e}")
+
+        if cached_count > 0:
+            print(f"✅ Backfilled {cached_count}/{len(message_ids)} messages to Redis cache for chat {chat_room.code}")
+        else:
+            print(f"DEBUG: NO MESSAGES WERE CACHED! cached_count=0")
 
 
 class MessageCreateView(generics.CreateAPIView):
@@ -549,7 +709,7 @@ class MyParticipationView(APIView):
                 username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
 
             # Check if user is blocked
-            from .blocking_utils import check_if_blocked
+            from .utils.security.blocking import check_if_blocked
             is_blocked, _ = check_if_blocked(
                 chat_room=chat_room,
                 username=participation.username,
@@ -777,7 +937,7 @@ class SuggestUsernameView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, code):
-        from .username_generator import generate_username
+        from .utils.username.generator import generate_username
 
         # Get chat room
         chat_room = get_object_or_404(ChatRoom, code=code)
@@ -837,12 +997,7 @@ class MessageReactionToggleView(APIView):
         username = request.data.get('username')
         fingerprint = request.data.get('fingerprint')
 
-        print(f"[REACTION DEBUG] session_token present: {bool(session_token)}")
-        print(f"[REACTION DEBUG] username: {username}")
-        print(f"[REACTION DEBUG] fingerprint: {fingerprint}")
-
         if not session_token:
-            print("[REACTION DEBUG] No session token provided")
             raise PermissionDenied("Session token is required")
 
         # Validate the JWT session token
@@ -852,9 +1007,7 @@ class MessageReactionToggleView(APIView):
                 chat_code=code,
                 username=username
             )
-            print(f"[REACTION DEBUG] Session validation successful: {session_data}")
         except Exception as e:
-            print(f"[REACTION DEBUG] Session validation failed: {type(e).__name__}: {str(e)}")
             raise
 
         # Validate emoji
@@ -907,6 +1060,23 @@ class MessageReactionToggleView(APIView):
             reaction_data['message'] = str(reaction_data['message'])
             if reaction_data.get('user'):
                 reaction_data['user'] = str(reaction_data['user'])
+
+        # Update reaction cache after database modification
+        from collections import defaultdict
+        reactions_list = MessageReaction.objects.filter(message=message)
+        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
+
+        for reaction in reactions_list:
+            emoji = reaction.emoji
+            emoji_counts[emoji]['emoji'] = emoji
+            emoji_counts[emoji]['count'] += 1
+            emoji_counts[emoji]['users'].append(reaction.username)
+
+        # Get top 3 reactions by count
+        top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+
+        # Update cache with new reaction summary
+        MessageCache.set_message_reactions(chat_room.code, str(message_id), top_reactions)
 
         # Broadcast reaction update via WebSocket
         channel_layer = get_channel_layer()
@@ -975,8 +1145,8 @@ class VoiceUploadView(APIView):
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
 
     def post(self, request, code):
-        from .storage import save_voice_message, get_voice_message_url
-        from .security import ChatSessionValidator
+        from .utils.media.storage import save_voice_message, get_voice_message_url
+        from .utils.security.auth import ChatSessionValidator
         from rest_framework.exceptions import PermissionDenied
 
         # Get chat room
@@ -1036,7 +1206,7 @@ class VoiceUploadView(APIView):
             # iOS Safari workaround: Transcode WebM to M4A for compatibility
             # iOS Safari MediaRecorder produces WebM/Opus that iOS cannot play
             if voice_file.content_type == 'audio/webm':
-                from .audio_utils import transcode_webm_to_m4a
+                from .utils.media.audio import transcode_webm_to_m4a
                 logger.info(f"[VoiceUpload] ✅ TRANSCODING WebM to M4A for iOS compatibility...")
                 voice_file = transcode_webm_to_m4a(voice_file)
                 transcoded_size = len(voice_file.read())
@@ -1089,8 +1259,8 @@ class VoiceStreamView(APIView):
 
     def get(self, request, storage_path):
         from django.http import HttpResponse, Http404, JsonResponse
-        from .storage import MediaStorage
-        from .security import ChatSessionValidator
+        from .utils.media.storage import MediaStorage
+        from .utils.security.auth import ChatSessionValidator
         from rest_framework.exceptions import PermissionDenied
         import os
         import re
@@ -1233,8 +1403,8 @@ class BlockUserView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, code):
-        from .blocking_utils import block_participation
-        from .security import ChatSessionValidator
+        from .utils.security.blocking import block_participation
+        from .utils.security.auth import ChatSessionValidator
         import logging
         logger = logging.getLogger(__name__)
 
@@ -1379,7 +1549,7 @@ class UnblockUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, code):
-        from .blocking_utils import unblock_participation
+        from .utils.security.blocking import unblock_participation
 
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
 
@@ -1429,7 +1599,7 @@ class BlockedUsersListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, code):
-        from .blocking_utils import get_blocked_users
+        from .utils.security.blocking import get_blocked_users
 
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
 
@@ -1443,4 +1613,75 @@ class BlockedUsersListView(APIView):
         return Response({
             'blocked_users': blocked_users,
             'count': len(blocked_users)
+        })
+
+
+class MessageDeleteView(APIView):
+    """Soft delete a message (host only)"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code, message_id):
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"[MESSAGE_DELETE] Starting delete request for message {message_id} in chat {code}")
+
+        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room)
+
+        # Validate session token
+        session_token = request.data.get('session_token')
+        if not session_token:
+            raise PermissionDenied("Session token is required")
+
+        try:
+            session_data = ChatSessionValidator.validate_session_token(
+                token=session_token,
+                chat_code=code
+            )
+            logger.info(f"[MESSAGE_DELETE] Session validated: {session_data}")
+        except Exception as e:
+            logger.error(f"[MESSAGE_DELETE] Session validation failed: {str(e)}")
+            raise PermissionDenied(f"Invalid session: {str(e)}")
+
+        # Verify user is the host
+        if not request.user.is_authenticated or request.user != chat_room.host:
+            logger.error(f"[MESSAGE_DELETE] User is not the host")
+            raise PermissionDenied("Only the host can delete messages")
+
+        # Check if already deleted
+        if message.is_deleted:
+            return Response({
+                'success': True,
+                'message': 'Message was already deleted',
+                'already_deleted': True
+            })
+
+        # Soft delete: Set is_deleted flag to True
+        message.is_deleted = True
+        message.save()
+        logger.info(f"[MESSAGE_DELETE] Message {message_id} marked as deleted in database")
+
+        # Remove from Redis cache
+        MessageCache.remove_message(chat_room.code, str(message_id))
+        logger.info(f"[MESSAGE_DELETE] Message {message_id} removed from cache")
+
+        # Broadcast deletion event via WebSocket
+        channel_layer = get_channel_layer()
+        room_group_name = f'chat_{code}'
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'message_deleted',
+                'message_id': str(message_id)
+            }
+        )
+        logger.info(f"[MESSAGE_DELETE] Deletion event broadcast via WebSocket")
+
+        return Response({
+            'success': True,
+            'message': 'Message deleted successfully',
+            'message_id': str(message_id)
         })

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import User, UserSubscription
-from chats.validators import validate_username
+from chats.utils.username.validators import validate_username
 
 
 class UserSerializer(serializers.ModelSerializer):

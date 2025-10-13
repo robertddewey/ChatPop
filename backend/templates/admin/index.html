@@ -1,0 +1,21 @@
+{% extends "admin/index.html" %}
+{% load static %}
+
+{% block content %}
+{{ block.super }}
+
+<div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px;">
+    <h2 style="margin-top: 0; color: #2c3e50;">Developer Tools</h2>
+    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+        <a href="{% url 'monitoring_dashboard' %}" style="display: inline-block; padding: 12px 24px; background: #007bff; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; transition: background 0.2s;">
+            📊 Cache & Database Monitor
+        </a>
+        <a href="/admin/constance/config/" style="display: inline-block; padding: 12px 24px; background: #28a745; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; transition: background 0.2s;">
+            ⚙️ Dynamic Settings
+        </a>
+    </div>
+    <p style="margin-top: 15px; margin-bottom: 0; color: #6c757d; font-size: 14px;">
+        Monitor real-time cache/database operations and configure system settings without restarting the server.
+    </p>
+</div>
+{% endblock %}

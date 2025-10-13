@@ -15,12 +15,24 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ChatPop",
   description: "Real-time chat rooms",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "ChatPop",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-};
+export function generateViewport() {
+  return {
+    width: 'device-width',
+    initialScale: 1,
+    themeColor: "#18181b", // gray-900 to match gradient header
+  };
+}
 
 export default function RootLayout({
   children,
@@ -28,8 +40,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" style={{ backgroundColor: '#18181b' }}>
       <body
+        style={{ backgroundColor: '#18181b' }}
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >

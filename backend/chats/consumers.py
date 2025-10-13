@@ -1,8 +1,8 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from .security import ChatSessionValidator
-from .redis_cache import MessageCache
+from .utils.security.auth import ChatSessionValidator
+from .utils.performance.cache import MessageCache
 from .models import ChatRoom, Message, ChatParticipation
 from urllib.parse import parse_qs
 
@@ -110,6 +110,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Send reaction update to WebSocket
         await self.send(text_data=json.dumps(event['reaction_data']))
 
+    async def message_deleted(self, event):
+        # Send message deletion notification to WebSocket
+        await self.send(text_data=json.dumps({
+            'type': 'message_deleted',
+            'message_id': event['message_id']
+        }))
+
     @database_sync_to_async
     def validate_session(self, token, chat_code, username=None):
         """Validate JWT session token (async wrapper)"""
@@ -161,13 +168,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             voice_waveform=voice_waveform
         )
 
-        # Add to Redis cache (dual-write)
-        try:
-            success = MessageCache.add_message(message)
-            if not success:
-                print(f"⚠️  Redis cache write failed for message {message.id}")
-        except Exception as e:
-            print(f"❌ Redis cache error for message {message.id}: {e}")
+        # Add to Redis cache (dual-write) - only if enabled
+        from constance import config
+        if config.REDIS_CACHE_ENABLED:
+            try:
+                success = MessageCache.add_message(message)
+                if not success:
+                    print(f"⚠️  Redis cache write failed for message {message.id}")
+            except Exception as e:
+                print(f"❌ Redis cache error for message {message.id}: {e}")
 
         return message
 
@@ -198,6 +207,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'username_is_reserved': username_is_reserved,
             'user_id': str(message.user.id) if message.user else None,
             'message_type': message.message_type,
+            'is_from_host': message.message_type == 'host',  # Add explicit flag for frontend
             'content': message.content,
             'voice_url': message.voice_url,
             'voice_duration': float(message.voice_duration) if message.voice_duration else None,

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.utils import timezone
 from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import ChatRoom, Message, Transaction, ChatParticipation, ChatTheme, MessageReaction
-from .validators import validate_username
+from .utils.username.validators import validate_username
 from accounts.serializers import UserSerializer
 
 

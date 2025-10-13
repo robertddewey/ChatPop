@@ -5,7 +5,11 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { authApi } from '@/lib/api';
 
-export default function Header() {
+interface HeaderProps {
+  backgroundClass?: string;
+}
+
+export default function Header({ backgroundClass }: HeaderProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -49,10 +53,12 @@ export default function Header() {
     }
   };
 
+  const headerClass = backgroundClass || "bg-white/90 dark:bg-gray-900/90";
+
   return (
-    <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg">
+    <header className={`sticky top-0 z-50 border-b border-white/10 ${headerClass} backdrop-blur-lg`}>
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-        <Link href="/" className="text-2xl font-black bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+        <Link href="/" className="text-3xl font-black text-white tracking-tighter" style={{ fontWeight: 900, WebkitTextStroke: '0.5px white' }}>
           ChatPop
         </Link>
         <div className="flex gap-3">
@@ -63,21 +69,21 @@ export default function Header() {
             <button
               onClick={handleLogout}
               disabled={loading}
-              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-purple-600 dark:hover:text-purple-400 transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-sm font-bold text-white hover:text-white/80 transition-all transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 cursor-pointer disabled:cursor-not-allowed"
             >
               {loading ? 'Logging out...' : 'Logout'}
             </button>
           ) : (
             <>
               <button
-                onClick={() => router.push('/?auth=login')}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
+                onClick={() => router.push('/?auth=login', { scroll: false })}
+                className="px-4 py-2 text-sm font-bold text-white hover:text-white/80 transition-all transform hover:scale-105 cursor-pointer"
               >
                 Log in
               </button>
               <button
-                onClick={() => router.push('/?auth=register')}
-                className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                onClick={() => router.push('/?auth=register', { scroll: false })}
+                className="px-4 py-2 text-sm font-bold bg-white text-gray-900 rounded-lg hover:bg-white/90 transition-all transform hover:scale-105 shadow-sm cursor-pointer"
               >
                 Sign Up
               </button>
