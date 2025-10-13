@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from chats.models import ChatRoom, Message
-from chats.redis_cache import MessageCache
+from chats.utils.performance.cache import MessageCache
 
 
 class Command(BaseCommand):

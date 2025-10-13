@@ -1,8 +1,8 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from .security import ChatSessionValidator
-from .redis_cache import MessageCache
+from .utils.security.auth import ChatSessionValidator
+from .utils.performance.cache import MessageCache
 from .models import ChatRoom, Message, ChatParticipation
 from urllib.parse import parse_qs
 

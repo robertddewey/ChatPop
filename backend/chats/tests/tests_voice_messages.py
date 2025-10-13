@@ -13,7 +13,7 @@ import io
 
 from accounts.models import User
 from ..models import ChatRoom, Message
-from ..security import ChatSessionValidator
+from ..utils.security.auth import ChatSessionValidator
 
 
 class VoiceMessageUploadTests(TestCase):
@@ -303,7 +303,7 @@ class VoiceMessageStorageTests(TestCase):
 
     def test_storage_type_detection(self):
         """Test storage type detection based on AWS config"""
-        from chats.storage import MediaStorage
+        from chats.utils.media.storage import MediaStorage
 
         # Mock settings for local storage
         with patch('chats.storage.settings') as mock_settings:
@@ -316,7 +316,7 @@ class VoiceMessageStorageTests(TestCase):
 
     def test_s3_configured_detection(self):
         """Test S3 detection when AWS credentials present"""
-        from chats.storage import MediaStorage
+        from chats.utils.media.storage import MediaStorage
 
         with patch('chats.storage.settings') as mock_settings:
             mock_settings.AWS_ACCESS_KEY_ID = 'test_key'
@@ -329,7 +329,7 @@ class VoiceMessageStorageTests(TestCase):
     @patch('chats.storage.default_storage.save')
     def test_save_voice_message(self, mock_save):
         """Test saving voice message to storage"""
-        from chats.storage import save_voice_message
+        from chats.utils.media.storage import save_voice_message
 
         mock_file = MagicMock()
         mock_file.read.return_value = b'fake audio data'
@@ -342,7 +342,7 @@ class VoiceMessageStorageTests(TestCase):
 
     def test_get_voice_message_url(self):
         """Test voice message URL generation"""
-        from chats.storage import get_voice_message_url
+        from chats.utils.media.storage import get_voice_message_url
 
         url = get_voice_message_url('voice_messages/test.webm')
 

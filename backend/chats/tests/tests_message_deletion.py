@@ -15,8 +15,8 @@ from rest_framework.test import APIClient
 from rest_framework import status
 from unittest.mock import patch, MagicMock, AsyncMock
 from chats.models import ChatRoom, Message, ChatParticipation
-from chats.redis_cache import MessageCache
-from chats.security import ChatSessionValidator
+from chats.utils.performance.cache import MessageCache
+from chats.utils.security.auth import ChatSessionValidator
 import json
 
 User = get_user_model()

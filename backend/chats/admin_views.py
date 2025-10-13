@@ -5,7 +5,7 @@ Custom admin views for ChatPop monitoring dashboard.
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render
 from django.http import JsonResponse
-from chats.monitoring import monitor
+from chats.utils.performance.monitoring import monitor
 from datetime import datetime
 import time
 

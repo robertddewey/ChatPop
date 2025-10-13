@@ -14,7 +14,7 @@ Examples:
 
 from django.core.management.base import BaseCommand
 from chats.models import ChatRoom, Message, MessageReaction
-from chats.redis_cache import MessageCache
+from chats.utils.performance.cache import MessageCache
 from collections import defaultdict
 
 

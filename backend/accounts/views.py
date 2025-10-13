@@ -9,8 +9,8 @@ from .serializers import (
     UserSerializer, UserRegistrationSerializer,
     UserLoginSerializer, UserSubscriptionSerializer
 )
-from chats.validators import validate_username
-from chats.username_generator import generate_username
+from chats.utils.username.validators import validate_username
+from chats.utils.username.generator import generate_username
 
 
 class RegisterView(generics.CreateAPIView):

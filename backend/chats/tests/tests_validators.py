@@ -3,7 +3,7 @@ Tests for username validators
 """
 from django.test import TestCase
 from django.core.exceptions import ValidationError
-from chats.validators import validate_username
+from chats.utils.username.validators import validate_username
 
 
 class UsernameValidatorTestCase(TestCase):

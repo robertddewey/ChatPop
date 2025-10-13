@@ -15,7 +15,7 @@ from channels.layers import get_channel_layer
 from chats.consumers import ChatConsumer
 from chats.models import ChatRoom, Message, ChatParticipation
 from accounts.models import User
-from chats.security import ChatSessionValidator
+from chats.utils.security.auth import ChatSessionValidator
 import json
 import msgpack
 
@@ -58,7 +58,7 @@ class WebSocketSerializationTests(TestCase):
         )
 
         # Test the serialization logic directly (mimicking what serialize_message_for_broadcast does)
-        from chats.redis_cache import MessageCache
+        from chats.utils.performance.cache import MessageCache
         username_is_reserved = MessageCache._compute_username_is_reserved(message)
 
         serialized = {
@@ -107,7 +107,7 @@ class WebSocketSerializationTests(TestCase):
         )
 
         # Test the serialization logic directly
-        from chats.redis_cache import MessageCache
+        from chats.utils.performance.cache import MessageCache
         username_is_reserved = MessageCache._compute_username_is_reserved(message)
 
         serialized = {
@@ -157,7 +157,7 @@ class WebSocketSerializationTests(TestCase):
         )
 
         # Test the serialization logic directly
-        from chats.redis_cache import MessageCache
+        from chats.utils.performance.cache import MessageCache
         username_is_reserved = MessageCache._compute_username_is_reserved(reply_message)
 
         serialized = {

@@ -38,7 +38,7 @@ def validate_username(value, skip_badwords_check=False):
     # Profanity check (only for user-chosen usernames)
     if not skip_badwords_check:
         try:
-            from chats.username_profanity_check import is_username_allowed
+            from .profanity import is_username_allowed
             result = is_username_allowed(value)
             if not result.allowed:
                 raise ValidationError(f"Username not allowed: {result.reason}")

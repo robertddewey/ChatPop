@@ -13,7 +13,7 @@ Features:
 - Zero overhead when monitoring is disabled
 
 Usage:
-    from chats.monitoring import monitor
+    from .monitoring import monitor
 
     # Log a cache operation
     monitor.log_cache_read('ABC123', hit=True, count=50, duration_ms=2.3)

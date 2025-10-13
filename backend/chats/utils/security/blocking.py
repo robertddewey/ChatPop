@@ -3,7 +3,7 @@ Utility functions for user blocking in chats.
 """
 from django.utils import timezone
 from django.db.models import Q
-from .models import ChatBlock, ChatRoom, ChatParticipation
+from chats.models import ChatBlock, ChatRoom, ChatParticipation
 from django.contrib.auth import get_user_model
 
 User = get_user_model()

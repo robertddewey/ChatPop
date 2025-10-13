@@ -3,8 +3,8 @@ Tests for username profanity filtering
 """
 from django.test import TestCase
 from django.core.exceptions import ValidationError
-from chats.validators import validate_username
-from chats.username_profanity_check import is_username_allowed, ValidationResult
+from chats.utils.username.validators import validate_username
+from chats.utils.username.profanity import is_username_allowed, ValidationResult
 
 
 class UsernameProfanityCheckTests(TestCase):

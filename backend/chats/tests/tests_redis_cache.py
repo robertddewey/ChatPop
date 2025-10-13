@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.core.cache import cache
 from accounts.models import User
 from chats.models import ChatRoom, Message, ChatParticipation, MessageReaction
-from chats.redis_cache import MessageCache
+from chats.utils.performance.cache import MessageCache
 
 
 class RedisMessageCacheTests(TransactionTestCase):

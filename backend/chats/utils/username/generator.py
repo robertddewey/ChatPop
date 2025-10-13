@@ -6,8 +6,8 @@ import random
 
 from accounts.models import User
 from chats.models import ChatParticipation
-from chats.username_words import ADJECTIVES, NOUNS
-from chats.validators import validate_username
+from .words import ADJECTIVES, NOUNS
+from .validators import validate_username
 from django.conf import settings
 from django.core.cache import cache
 

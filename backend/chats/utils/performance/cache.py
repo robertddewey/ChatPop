@@ -19,7 +19,7 @@ from typing import Optional, List, Dict, Any
 from django.core.cache import cache
 from django.conf import settings
 from chats.models import Message, ChatParticipation
-from chats.monitoring import monitor
+from .monitoring import monitor
 
 
 class MessageCache:

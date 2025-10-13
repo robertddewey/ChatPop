@@ -14,9 +14,9 @@ from .serializers import (
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
     ChatParticipationSerializer, MessageReactionSerializer, MessageReactionCreateSerializer
 )
-from .security import ChatSessionValidator
-from .redis_cache import MessageCache
-from .monitoring import monitor
+from .utils.security.auth import ChatSessionValidator
+from .utils.performance.cache import MessageCache
+from .utils.performance.monitoring import monitor
 import time
 
 
@@ -105,7 +105,7 @@ class ChatRoomJoinView(APIView):
         ip_address = get_client_ip(request)
 
         # SECURITY CHECK 0: Check if user is blocked
-        from .blocking_utils import check_if_blocked
+        from .utils.security.blocking import check_if_blocked
         is_blocked, block_message = check_if_blocked(
             chat_room=chat_room,
             username=username,
@@ -709,7 +709,7 @@ class MyParticipationView(APIView):
                 username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
 
             # Check if user is blocked
-            from .blocking_utils import check_if_blocked
+            from .utils.security.blocking import check_if_blocked
             is_blocked, _ = check_if_blocked(
                 chat_room=chat_room,
                 username=participation.username,
@@ -937,7 +937,7 @@ class SuggestUsernameView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, code):
-        from .username_generator import generate_username
+        from .utils.username.generator import generate_username
 
         # Get chat room
         chat_room = get_object_or_404(ChatRoom, code=code)
@@ -1145,8 +1145,8 @@ class VoiceUploadView(APIView):
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
 
     def post(self, request, code):
-        from .storage import save_voice_message, get_voice_message_url
-        from .security import ChatSessionValidator
+        from .utils.media.storage import save_voice_message, get_voice_message_url
+        from .utils.security.auth import ChatSessionValidator
         from rest_framework.exceptions import PermissionDenied
 
         # Get chat room
@@ -1206,7 +1206,7 @@ class VoiceUploadView(APIView):
             # iOS Safari workaround: Transcode WebM to M4A for compatibility
             # iOS Safari MediaRecorder produces WebM/Opus that iOS cannot play
             if voice_file.content_type == 'audio/webm':
-                from .audio_utils import transcode_webm_to_m4a
+                from .utils.media.audio import transcode_webm_to_m4a
                 logger.info(f"[VoiceUpload] ✅ TRANSCODING WebM to M4A for iOS compatibility...")
                 voice_file = transcode_webm_to_m4a(voice_file)
                 transcoded_size = len(voice_file.read())
@@ -1259,8 +1259,8 @@ class VoiceStreamView(APIView):
 
     def get(self, request, storage_path):
         from django.http import HttpResponse, Http404, JsonResponse
-        from .storage import MediaStorage
-        from .security import ChatSessionValidator
+        from .utils.media.storage import MediaStorage
+        from .utils.security.auth import ChatSessionValidator
         from rest_framework.exceptions import PermissionDenied
         import os
         import re
@@ -1403,8 +1403,8 @@ class BlockUserView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, code):
-        from .blocking_utils import block_participation
-        from .security import ChatSessionValidator
+        from .utils.security.blocking import block_participation
+        from .utils.security.auth import ChatSessionValidator
         import logging
         logger = logging.getLogger(__name__)
 
@@ -1549,7 +1549,7 @@ class UnblockUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, code):
-        from .blocking_utils import unblock_participation
+        from .utils.security.blocking import unblock_participation
 
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
 
@@ -1599,7 +1599,7 @@ class BlockedUsersListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, code):
-        from .blocking_utils import get_blocked_users
+        from .utils.security.blocking import get_blocked_users
 
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
 

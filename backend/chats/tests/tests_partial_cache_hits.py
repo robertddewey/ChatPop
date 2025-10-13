@@ -18,7 +18,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework.authtoken.models import Token
 from chats.models import ChatRoom, Message, ChatParticipation
-from chats.redis_cache import MessageCache
+from chats.utils.performance.cache import MessageCache
 from datetime import datetime, timedelta
 from django.utils import timezone
 from constance.test import override_config

@@ -9,7 +9,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from ..models import ChatRoom
-from ..security import ChatSessionValidator
+from ..utils.security.auth import ChatSessionValidator
 
 User = get_user_model()
 

@@ -35,7 +35,7 @@ from typing import Optional, Set
 
 # Import your banned words
 try:
-    from chats.username_words import BANNED_WORDS
+    from .words import BANNED_WORDS
 except ImportError:
     # Fallback for testing
     BANNED_WORDS = [

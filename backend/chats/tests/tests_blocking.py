@@ -20,7 +20,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 from datetime import timedelta
 from ..models import ChatRoom, ChatParticipation, ChatBlock
-from ..blocking_utils import (
+from ..utils.security.blocking import (
     block_participation,
     check_if_blocked,
     unblock_participation,
@@ -371,7 +371,7 @@ class BlockingAPITests(TestCase):
     """Tests for blocking API endpoints"""
 
     def setUp(self):
-        from ..security import ChatSessionValidator
+        from ..utils.security.auth import ChatSessionValidator
 
         self.client = APIClient()
         self.host = User.objects.create_user(
@@ -443,7 +443,7 @@ class BlockingAPITests(TestCase):
 
     def test_block_user_endpoint_requires_host(self):
         """Test that only host can use block endpoint"""
-        from ..security import ChatSessionValidator
+        from ..utils.security.auth import ChatSessionValidator
 
         non_host = User.objects.create_user(
             email='user@test.com',
