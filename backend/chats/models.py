@@ -497,6 +497,39 @@ class ChatBlock(models.Model):
         return f"Block in {self.chat_room.code}: {identifier_str}"
 
 
+class UserBlock(models.Model):
+    """User-to-user blocking (registered users only)"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Who is blocking (must be registered user)
+    blocker = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='blocking',
+        help_text="Registered user who is blocking"
+    )
+
+    # Who is being blocked (username-based, works for both registered and anonymous)
+    blocked_username = models.CharField(
+        max_length=100,
+        db_index=True,
+        help_text="Username being blocked (case-sensitive)"
+    )
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        unique_together = ['blocker', 'blocked_username']
+        indexes = [
+            models.Index(fields=['blocker', 'blocked_username']),
+        ]
+
+    def __str__(self):
+        return f"{self.blocker.username} blocks {self.blocked_username}"
+
+
 class Transaction(models.Model):
     """Track all payments in the system"""
     TRANSACTION_PIN = 'pin'

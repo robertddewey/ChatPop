@@ -116,7 +116,6 @@ class ChatRoomJoinView(APIView):
             raise PermissionDenied(block_message or "You have been blocked from this chat.")
 
         # SECURITY CHECK 1: IP-based rate limiting for anonymous users
-        MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT = 3
         if not request.user.is_authenticated and ip_address:
             # Check if this fingerprint already has a participation (they're rejoining)
             existing_fingerprint_participation = None
@@ -138,7 +137,7 @@ class ChatRoomJoinView(APIView):
                     is_active=True
                 ).count()
 
-                if anonymous_count >= MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT:
+                if anonymous_count >= config.MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT:
                     raise ValidationError(
                         "Max anonymous usernames. Log in to continue."
                     )
@@ -358,6 +357,20 @@ class MessageListView(APIView):
         else:
             # Cache disabled - always use PostgreSQL
             messages = self._fetch_from_db(chat_room, limit, before_timestamp, request)
+
+        # Filter blocked users for authenticated users
+        if request.user and request.user.is_authenticated:
+            from .utils.performance.cache import UserBlockCache
+
+            # Load blocked usernames (uses existing Redis/PostgreSQL cache)
+            blocked_usernames = UserBlockCache.get_blocked_usernames(request.user.id)
+
+            # Filter messages in Python
+            if blocked_usernames:
+                messages = [
+                    msg for msg in messages
+                    if msg.get('username') not in blocked_usernames
+                ]
 
         # Fetch pinned messages from Redis (pinned messages are ephemeral)
         pinned_messages = MessageCache.get_pinned_messages(code)
@@ -824,7 +837,6 @@ class CheckRateLimitView(APIView):
 
         # Anonymous users: check rate limit
         ip_address = get_client_ip(request)
-        MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT = 3
 
         if not ip_address:
             # No IP detected, allow join
@@ -859,13 +871,13 @@ class CheckRateLimitView(APIView):
             is_active=True
         ).count()
 
-        is_rate_limited = anonymous_count >= MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT
+        is_rate_limited = anonymous_count >= config.MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT
 
         return Response({
             'can_join': not is_rate_limited,
             'is_rate_limited': is_rate_limited,
             'anonymous_count': anonymous_count,
-            'max_allowed': MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT
+            'max_allowed': config.MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT
         })
 
 

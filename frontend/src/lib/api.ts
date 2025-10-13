@@ -459,5 +459,40 @@ export const messageApi = {
     });
     return response.data;
   },
+
+  // User-to-User Blocking (registered users only, site-wide)
+  blockUserSiteWide: async (username: string): Promise<{
+    success: boolean;
+    message: string;
+    created: boolean;
+    block_id: string;
+  }> => {
+    const response = await api.post('/api/chats/user-blocks/block/', {
+      username,
+    });
+    return response.data;
+  },
+
+  unblockUserSiteWide: async (username: string): Promise<{
+    success: boolean;
+    message: string;
+  }> => {
+    const response = await api.post('/api/chats/user-blocks/unblock/', {
+      username,
+    });
+    return response.data;
+  },
+
+  getBlockedUsers: async (): Promise<{
+    blocked_users: Array<{
+      id: string;
+      username: string;
+      blocked_at: string;
+    }>;
+    count: number;
+  }> => {
+    const response = await api.get('/api/chats/user-blocks/');
+    return response.data;
+  },
 };
 

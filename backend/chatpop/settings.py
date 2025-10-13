@@ -260,6 +260,20 @@ CONSTANCE_CONFIG = {
         'Enable real-time monitoring of cache/database operations. Tracks performance metrics with adaptive sampling. Access via: ./venv/bin/python manage.py monitor_cache',
         bool
     ),
+
+    # Rate Limiting Settings
+    'MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT': (
+        3,
+        'Maximum number of anonymous usernames allowed per IP address per chat room',
+        int
+    ),
+
+    # User Blocking/Muting Settings
+    'USER_BLOCK_CACHE_TTL_HOURS': (
+        0,
+        'Hours before muted user list expires from Redis (0 = never expire, recommended). Set to 168 (7 days) to auto-cleanup inactive users.',
+        int
+    ),
 }
 
 # Custom User Model

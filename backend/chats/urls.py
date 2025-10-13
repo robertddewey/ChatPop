@@ -7,10 +7,18 @@ from .views import (
     MessageReactionToggleView, MessageReactionsListView,
     BlockUserView, UnblockUserView, BlockedUsersListView
 )
+from .user_block_views import (
+    UserBlockView, UserUnblockView, UserBlockListView
+)
 
 app_name = 'chats'
 
 urlpatterns = [
+    # User Blocking (registered users only, site-wide) - MUST come before <str:code> patterns
+    path('user-blocks/', UserBlockListView.as_view(), name='user-blocks-list'),
+    path('user-blocks/block/', UserBlockView.as_view(), name='user-block'),
+    path('user-blocks/unblock/', UserUnblockView.as_view(), name='user-unblock'),
+
     # Chat Rooms
     path('create/', ChatRoomCreateView.as_view(), name='chat-create'),
     path('my-chats/', MyChatsView.as_view(), name='my-chats'),
@@ -48,7 +56,7 @@ urlpatterns = [
     path('<str:code>/voice/upload/', VoiceUploadView.as_view(), name='voice-upload'),
     path('media/<path:storage_path>', VoiceStreamView.as_view(), name='voice-stream'),
 
-    # User Blocking (host only)
+    # Chat Blocking (host only, chat-specific)
     path('<str:code>/block-user/', BlockUserView.as_view(), name='block-user'),
     path('<str:code>/unblock/', UnblockUserView.as_view(), name='unblock-user'),
     path('<str:code>/blocked-users/', BlockedUsersListView.as_view(), name='blocked-users-list'),

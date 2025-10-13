@@ -1,6 +1,6 @@
 # Testing Documentation
 
-**Total Test Count:** 165 tests across 8 test suites
+**Total Test Count:** 193 tests across 9 test suites
 
 This document provides comprehensive documentation of all backend tests, including what each test does and why it's important.
 
@@ -18,6 +18,7 @@ This document provides comprehensive documentation of all backend tests, includi
 | Redis Caching | `chats/tests/tests_redis_cache.py` | 43 tests | Message caching, cache backfill, Constance controls, performance |
 | Message Deletion | `chats/tests/tests_message_deletion.py` | 22 tests | Soft delete, cache invalidation, authorization, WebSocket broadcasting |
 | Reactions | `chats/tests/tests_reactions.py` | 10 tests | Emoji reactions, cache invalidation, real-time updates |
+| User Blocking | `chats/tests/tests_user_blocking.py` | 28 tests | User-to-user blocking, Redis cache sync, SQL injection prevention |
 
 ---
 
@@ -1161,6 +1162,216 @@ Tests for emoji reaction functionality including:
 
 ---
 
+## 9. User Blocking Tests (`chats/tests/tests_user_blocking.py`)
+
+**File Location:** `backend/chats/tests/tests_user_blocking.py`
+**Test Count:** 28 tests
+**Test Classes:** `UserBlockingBasicTests` (9 tests), `UserBlockingRedisCacheTests` (7 tests), `UserBlockingWebSocketTests` (5 tests), `UserBlockingPerformanceTests` (3 tests), `UserBlockingEdgeCaseTests` (4 tests)
+
+### 9.1 User Blocking Basic Tests (9 tests)
+
+**Test Class:** `UserBlockingBasicTests`
+
+These tests verify the core user blocking functionality including authorization, username validation, and SQL injection prevention.
+
+#### `test_authenticated_user_can_block_another_user`
+**What it tests:** Authenticated users can block other users site-wide
+**How it works:** Alice authenticates, creates chat participation for Bob, blocks Bob via `/api/chats/user-blocks/block/`
+**Expected result:** 201 Created, UserBlock entry created in database
+**Why it matters:** Core blocking functionality for registered users
+
+#### `test_unauthenticated_user_cannot_block`
+**What it tests:** Anonymous users cannot use blocking feature
+**How it works:** Attempts to block without authentication
+**Expected result:** 401 Unauthorized
+**Why it matters:** Blocking is a registered-user-only feature
+
+#### `test_cannot_block_self`
+**What it tests:** Users cannot block themselves
+**How it works:** Alice tries to block herself (case-insensitive check)
+**Expected result:** 400 Bad Request with "cannot block yourself" error
+**Why it matters:** Prevents self-blocking edge case
+
+#### `test_block_nonexistent_user`
+**What it tests:** Blocking non-existent username silently succeeds (prevents user enumeration)
+**How it works:** Alice tries to block "NonExistentUser999" (not in ChatParticipation table)
+**Expected result:** 200 OK with `created: false` and `block_id: null`, NO database entry created
+**Why it matters:** Prevents user enumeration attacks AND database pollution (defense in depth against SQL injection)
+
+#### `test_block_sql_injection_attempt`
+**What it tests:** SQL injection attempts in username field are prevented and not stored
+**How it works:** Tests 6 SQL injection patterns:
+- `'; DROP TABLE chats_userblock; --`
+- `' UNION SELECT * FROM accounts_user --`
+- `'; DELETE FROM chats_userblock WHERE '1'='1`
+- `admin' OR '1'='1`
+- `' OR 1=1 --`
+- `'; UPDATE accounts_user SET is_superuser=1 WHERE username='alice'; --`
+**Expected result:** All return 200 OK (silent success), NO database entries created
+**Why it matters:** Prevents SQL injection strings from being stored in database, keeps database clean
+
+#### `test_block_idempotency`
+**What it tests:** Blocking same user twice is idempotent
+**How it works:** Alice blocks Bob twice with same request
+**Expected result:** First returns 201 Created, second returns 200 OK with `created: false`
+**Why it matters:** Prevents duplicate block entries
+
+#### `test_unblock_user`
+**What it tests:** Users can unblock previously blocked users
+**How it works:** Alice blocks Bob, then unblocks via `/api/chats/user-blocks/unblock/`
+**Expected result:** 200 OK, UserBlock entry deleted from database
+**Why it matters:** Core unblock functionality
+
+#### `test_unblock_never_blocked_user`
+**What it tests:** Unblocking non-blocked user returns validation error
+**How it works:** Alice tries to unblock Bob without ever blocking him
+**Expected result:** 400 Bad Request with "haven't blocked" error
+**Why it matters:** Clear error message for invalid unblock attempts
+
+#### `test_list_blocked_users`
+**What it tests:** Users can retrieve list of all their blocked users
+**How it works:** Alice blocks Bob and Charlie, calls `/api/chats/user-blocks/`
+**Expected result:** 200 OK, returns array with both usernames and block metadata
+**Why it matters:** Core list functionality for managing blocked users
+
+### 9.2 User Blocking Redis Cache Tests (7 tests)
+
+**Test Class:** `UserBlockingRedisCacheTests`
+
+These tests verify that Redis cache is synchronized with PostgreSQL for blocked usernames (dual-write pattern).
+
+#### `test_blocking_adds_to_redis_cache`
+**What it tests:** Blocking a user adds their username to Redis cache
+**How it works:** Alice blocks Bob, checks Redis set `user_blocks:{alice_id}` contains "Bob"
+**Expected result:** Bob's username in Redis cache
+**Why it matters:** Dual-write ensures cache consistency
+
+#### `test_unblocking_removes_from_redis_cache`
+**What it tests:** Unblocking removes username from Redis cache
+**How it works:** Alice blocks then unblocks Bob, checks Redis cache
+**Expected result:** Bob's username NOT in Redis cache
+**Why it matters:** Complete dual-write pattern (add + remove)
+
+#### `test_cache_dual_write_consistency`
+**What it tests:** Cache and database stay synchronized
+**How it works:** Alice blocks Bob, checks BOTH PostgreSQL UserBlock table AND Redis cache
+**Expected result:** Both contain Bob's username
+**Why it matters:** Ensures dual-write consistency
+
+#### `test_cache_hit_performance`
+**What it tests:** Redis cache reads are faster than PostgreSQL
+**How it works:** Blocks 50 users, reads blocked list 100 times from Redis vs 100 times from PostgreSQL
+**Expected result:** Redis average read time is faster than PostgreSQL, prints performance comparison
+**Why it matters:** Validates caching performance benefit
+
+#### `test_cache_ttl_configurable`
+**What it tests:** Redis cache TTL can be configured via Constance
+**How it works:** Sets `USER_BLOCK_CACHE_TTL_HOURS` to 168 (7 days), blocks user, checks Redis TTL
+**Expected result:** TTL is set correctly (7 days = 604800 seconds)
+**Why it matters:** Configurable cache expiry for different deployment needs
+
+#### `test_cache_ttl_never_expires_when_zero`
+**What it tests:** TTL of 0 means cache never expires (recommended default)
+**How it works:** Sets `USER_BLOCK_CACHE_TTL_HOURS=0`, blocks user, checks Redis has no TTL (-1)
+**Expected result:** Redis TTL is -1 (no expiry)
+**Why it matters:** Persistent cache for active users (recommended setting)
+
+#### `test_list_blocked_users_uses_cache`
+**What it tests:** List endpoint prioritizes Redis cache over PostgreSQL
+**How it works:** Blocks users, manually adds to cache, verifies list comes from cache
+**Expected result:** List retrieved from Redis cache (faster)
+**Why it matters:** Performance optimization for blocked user list
+
+### 9.3 User Blocking WebSocket Tests (5 tests)
+
+**Test Class:** `UserBlockingWebSocketTests`
+
+These tests verify real-time WebSocket broadcasting when users block/unblock others.
+
+#### `test_websocket_broadcast_on_block`
+**What it tests:** Blocking broadcasts to all user's WebSocket connections
+**How it works:** Mocks Django Channels `get_channel_layer()`, blocks user, verifies `group_send` called
+**Expected result:** `group_send` called with correct group name (`user_{user_id}_notifications`) and block data
+**Why it matters:** Real-time updates to all user's devices/tabs
+
+#### `test_websocket_broadcast_on_unblock`
+**What it tests:** Unblocking broadcasts to all user's WebSocket connections
+**How it works:** Mocks channel layer, unblocks user, verifies `group_send` called
+**Expected result:** `group_send` called with `action: 'remove'` and blocked username
+**Why it matters:** Real-time unblock notifications
+
+#### `test_websocket_message_includes_blocked_username`
+**What it tests:** WebSocket event contains correct blocked username
+**How it works:** Blocks user, inspects `group_send` call arguments
+**Expected result:** Message data includes `{type: 'block_update', action: 'add', blocked_username: 'Bob'}`
+**Why it matters:** Frontend needs username to update UI
+
+#### `test_websocket_group_name_format`
+**What it tests:** WebSocket group name follows correct format
+**How it works:** Blocks user, verifies group name is `user_{user_id}_notifications`
+**Expected result:** Correct group name format
+**Why it matters:** Ensures messages route to correct user
+
+#### `test_websocket_only_notifies_blocker`
+**What it tests:** Only the blocking user receives WebSocket notification
+**How it works:** Verifies group_send targets blocker's group, not blocked user's group
+**Expected result:** Only blocker's group receives notification
+**Why it matters:** Blocked users are not notified (privacy feature)
+
+### 9.4 User Blocking Performance Tests (3 tests)
+
+**Test Class:** `UserBlockingPerformanceTests`
+
+These tests benchmark blocking operations with large datasets.
+
+#### `test_large_block_list`
+**What it tests:** Blocking large number of users completes in reasonable time
+**How it works:** Blocks 100 users sequentially, measures total time
+**Expected result:** Completes in <10 seconds, prints time per block
+**Why it matters:** Validates scalability for users who block many people
+
+#### `test_list_blocked_users_performance`
+**What it tests:** Retrieving large block list is fast
+**How it works:** Blocks 100 users, retrieves list 10 times, measures time
+**Expected result:** <100ms per retrieval
+**Why it matters:** List endpoint must be fast for large block lists
+
+#### `test_cache_improves_list_performance`
+**What it tests:** Redis cache provides speedup for list retrieval
+**How it works:** Blocks 50 users, compares list retrieval time with and without cache
+**Expected result:** Cache retrieval is faster, prints speedup factor
+**Why it matters:** Validates caching benefit for list endpoint
+
+### 9.5 User Blocking Edge Cases Tests (4 tests)
+
+**Test Class:** `UserBlockingEdgeCaseTests`
+
+#### `test_block_case_insensitive_username`
+**What it tests:** Blocking is case-insensitive
+**How it works:** Bob's ChatParticipation has username "Bob", Alice blocks "bob" (lowercase)
+**Expected result:** Block succeeds, stored as "bob"
+**Why it matters:** Username matching is case-insensitive
+
+#### `test_block_with_whitespace_in_username`
+**What it tests:** Whitespace is trimmed before validation
+**How it works:** Alice tries to block "  Bob  " (with surrounding spaces)
+**Expected result:** Spaces trimmed, block succeeds as "Bob"
+**Why it matters:** Forgiving UX for accidental spaces
+
+#### `test_unblock_case_insensitive`
+**What it tests:** Unblocking is case-insensitive
+**How it works:** Blocks "Bob", unblocks "bob" (lowercase)
+**Expected result:** Unblock succeeds
+**Why it matters:** Consistent case-insensitive behavior
+
+#### `test_block_empty_username`
+**What it tests:** Empty username returns validation error
+**How it works:** Tries to block with `username: ""`
+**Expected result:** 400 Bad Request with "required" error
+**Why it matters:** Input validation
+
+---
+
 ## Running Tests
 
 ### Run All Tests
@@ -1194,6 +1405,9 @@ cd backend
 
 # Reaction tests (10 tests)
 ./venv/bin/python manage.py test chats.tests.tests_reactions
+
+# User blocking tests (28 tests)
+./venv/bin/python manage.py test chats.tests.tests_user_blocking
 ```
 
 ### Run Specific Test Class
@@ -1222,5 +1436,6 @@ cd backend
 | Redis Caching | 43 | Comprehensive - correctness, cache backfill, Constance controls, performance |
 | Message Deletion | 22 | Comprehensive - authorization, soft delete, cache invalidation, WebSocket |
 | Reactions | 10 | Comprehensive - add/remove reactions, cache sync, real-time updates |
+| User Blocking | 28 | Comprehensive - block/unblock operations, SQL injection prevention, Redis cache sync, WebSocket broadcasting, performance |
 
-**Overall Coverage:** 165 tests covering security, validation, caching, messaging, and real-time features
+**Overall Coverage:** 193 tests covering security, validation, caching, messaging, real-time features, and user moderation

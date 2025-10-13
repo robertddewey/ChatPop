@@ -861,25 +861,27 @@ export default function ChatPage() {
   }, []);
 
   const handleBlockUser = useCallback(async (username: string) => {
-    // Only hosts can block users
-    if (!chatRoom || !currentUserId || chatRoom.host.id !== currentUserId) {
-      console.error('Only the host can block users');
-      return;
-    }
+    // Check if user is authenticated (has auth token)
+    const authToken = localStorage.getItem('auth_token');
 
-    if (!sessionToken) {
-      console.error('No session token available');
+    if (!authToken) {
+      console.error('Must be logged in to block users');
+      alert('You must be logged in to block users. Please log in or register.');
       return;
     }
 
     try {
-      await messageApi.blockUser(code, username, sessionToken);
-      console.log(`Successfully blocked user: ${username}`);
-      // The WebSocket will handle real-time eviction
-    } catch (error) {
+      // Call site-wide blocking API for registered users
+      await messageApi.blockUserSiteWide(username);
+      console.log(`Successfully blocked user site-wide: ${username}`);
+      alert(`Blocked ${username}. You will no longer see their messages anywhere on ChatPop.`);
+      // TODO: Update local state to filter out blocked user's messages
+    } catch (error: any) {
       console.error('Failed to block user:', error);
+      const errorMsg = error.response?.data?.username?.[0] || error.response?.data?.message || 'Failed to block user. Please try again.';
+      alert(errorMsg);
     }
-  }, [code, chatRoom, currentUserId, sessionToken]);
+  }, []);
 
   const handleTipUser = useCallback((username: string) => {
     console.log('Tip user:', username);

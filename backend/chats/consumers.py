@@ -13,6 +13,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.room_group_name = f'chat_{self.chat_code}'
         self.username = None
         self.session_token = None
+        self.user_id = None
+        self.blocked_usernames = set()  # In-memory set for O(1) lookup
 
         # Extract session token from query string
         query_string = self.scope.get('query_string', b'').decode()
@@ -28,11 +30,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         try:
             session_data = await self.validate_session(session_token, self.chat_code)
             self.username = session_data['username']
+            self.user_id = session_data.get('user_id')
             self.session_token = session_token
         except Exception as e:
             # Invalid session - reject connection
             await self.close(code=4003)
             return
+
+        # Load blocked usernames for registered users
+        if self.user_id:
+            self.blocked_usernames = await self.load_blocked_usernames(self.user_id)
+            # Also join user-specific notification group for block updates
+            user_group_name = f'user_{self.user_id}_notifications'
+            await self.channel_layer.group_add(
+                user_group_name,
+                self.channel_name
+            )
 
         # Join room group
         await self.channel_layer.group_add(
@@ -103,8 +116,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }))
 
     async def chat_message(self, event):
+        # Filter messages from blocked users
+        message_data = event['message_data']
+        sender_username = message_data.get('username')
+
+        # Skip message if sender is blocked by this user
+        if sender_username and sender_username in self.blocked_usernames:
+            return  # Don't send message to this WebSocket
+
         # Send message to WebSocket
-        await self.send(text_data=json.dumps(event['message_data']))
+        await self.send(text_data=json.dumps(message_data))
 
     async def message_reaction(self, event):
         # Send reaction update to WebSocket
@@ -115,6 +136,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'message_deleted',
             'message_id': event['message_id']
+        }))
+
+    async def block_update(self, event):
+        """Handle block/unblock updates from user_block_views.py"""
+        action = event.get('action')  # 'add' or 'remove'
+        blocked_username = event.get('blocked_username')
+
+        if action == 'add':
+            self.blocked_usernames.add(blocked_username)
+        elif action == 'remove':
+            self.blocked_usernames.discard(blocked_username)
+
+        # Send update to WebSocket (so frontend can update UI)
+        await self.send(text_data=json.dumps({
+            'type': 'block_update',
+            'action': action,
+            'blocked_username': blocked_username
         }))
 
     @database_sync_to_async
@@ -218,3 +256,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'created_at': message.created_at.isoformat(),
             'is_deleted': message.is_deleted,
         }
+
+    @database_sync_to_async
+    def load_blocked_usernames(self, user_id):
+        """
+        Load blocked usernames for a registered user.
+
+        Uses Redis cache with PostgreSQL fallback for efficiency.
+        Returns a set of blocked usernames for O(1) lookup.
+        """
+        from .utils.performance.cache import UserBlockCache
+
+        # Try Redis cache first
+        blocked_usernames = UserBlockCache.get_blocked_usernames(user_id)
+
+        # If cache is empty, sync from database (cache miss)
+        if not blocked_usernames:
+            UserBlockCache.sync_from_database(user_id)
+            blocked_usernames = UserBlockCache.get_blocked_usernames(user_id)
+
+        return blocked_usernames

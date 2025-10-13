@@ -606,3 +606,179 @@ class MessageCache:
 
         except Exception as e:
             print(f"Redis cache error (clear_chat_cache): {e}")
+
+
+class UserBlockCache:
+    """Redis cache manager for user blocking (site-wide)"""
+
+    # Cache key pattern: Set of blocked usernames per user
+    BLOCKED_KEY = "user:{user_id}:blocked_usernames"
+
+    @classmethod
+    def _get_redis_client(cls):
+        """Get raw Redis client from django-redis"""
+        return cache.client.get_client()
+
+    @classmethod
+    def get_blocked_usernames(cls, user_id: int) -> set:
+        """
+        Get all blocked usernames for a user.
+
+        Strategy:
+        1. Try Redis first (fast, O(1) lookup)
+        2. On cache miss, load from PostgreSQL and populate Redis
+        3. No TTL on Redis keys (mute lists are small and rarely change)
+
+        Args:
+            user_id: User ID (registered user)
+
+        Returns:
+            Set of blocked usernames
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.BLOCKED_KEY.format(user_id=user_id)
+
+            # Try Redis first
+            blocked_usernames = redis_client.smembers(key)
+
+            # Cache hit - decode and return
+            if blocked_usernames:
+                result = set()
+                for username_bytes in blocked_usernames:
+                    username = username_bytes.decode('utf-8') if isinstance(username_bytes, bytes) else username_bytes
+                    result.add(username)
+                return result
+
+            # Cache miss - fallback to PostgreSQL
+            print(f"Redis cache miss for user {user_id} mute list, loading from PostgreSQL")
+            from chats.models import UserBlock
+            blocks = UserBlock.objects.filter(blocker_id=user_id).values_list('blocked_username', flat=True)
+            result = set(blocks)
+
+            # Populate Redis for next time
+            if result:
+                for username in result:
+                    redis_client.sadd(key, username)
+
+                # Apply TTL if configured (0 = no expiry)
+                from constance import config
+                ttl_hours = config.USER_BLOCK_CACHE_TTL_HOURS
+                if ttl_hours > 0:
+                    redis_client.expire(key, ttl_hours * 3600)
+
+                print(f"Populated Redis cache with {len(result)} blocked usernames for user {user_id} (TTL: {'never' if ttl_hours == 0 else f'{ttl_hours}h'})")
+
+            return result
+
+        except Exception as e:
+            print(f"Redis error, falling back to PostgreSQL: {e}")
+            # Redis completely down - query PostgreSQL directly
+            try:
+                from chats.models import UserBlock
+                blocks = UserBlock.objects.filter(blocker_id=user_id).values_list('blocked_username', flat=True)
+                return set(blocks)
+            except Exception as db_error:
+                print(f"PostgreSQL error: {db_error}")
+                return set()
+
+    @classmethod
+    def add_blocked_username(cls, user_id: int, blocked_username: str) -> bool:
+        """
+        Add a blocked username to Redis cache.
+
+        Args:
+            user_id: User ID (registered user)
+            blocked_username: Username to block
+
+        Returns:
+            True if successfully cached, False otherwise
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.BLOCKED_KEY.format(user_id=user_id)
+
+            # SADD adds member to set (idempotent, no duplicates)
+            redis_client.sadd(key, blocked_username)
+
+            # NO TTL - persist indefinitely (mute lists are tiny, no memory concern)
+
+            return True
+
+        except Exception as e:
+            print(f"Redis cache error (add_blocked_username): {e}")
+            return False
+
+    @classmethod
+    def remove_blocked_username(cls, user_id: int, blocked_username: str) -> bool:
+        """
+        Remove a blocked username from Redis cache.
+
+        Args:
+            user_id: User ID (registered user)
+            blocked_username: Username to unblock
+
+        Returns:
+            True if successfully removed, False otherwise
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.BLOCKED_KEY.format(user_id=user_id)
+
+            # SREM removes member from set
+            redis_client.srem(key, blocked_username)
+
+            return True
+
+        except Exception as e:
+            print(f"Redis cache error (remove_blocked_username): {e}")
+            return False
+
+    @classmethod
+    def sync_from_database(cls, user_id: int):
+        """
+        Sync blocked usernames from PostgreSQL to Redis.
+
+        Useful for populating cache after Redis restart or manual cache invalidation.
+
+        Args:
+            user_id: User ID (registered user)
+        """
+        try:
+            from chats.models import UserBlock
+
+            # Query all blocks for this user
+            blocks = UserBlock.objects.filter(blocker_id=user_id).values_list('blocked_username', flat=True)
+
+            if not blocks:
+                return
+
+            # Write to Redis
+            redis_client = cls._get_redis_client()
+            key = cls.BLOCKED_KEY.format(user_id=user_id)
+
+            # Clear existing set and add all blocks
+            redis_client.delete(key)
+            for blocked_username in blocks:
+                redis_client.sadd(key, blocked_username)
+
+            # NO TTL - persist indefinitely
+
+        except Exception as e:
+            print(f"Redis cache error (sync_from_database): {e}")
+
+    @classmethod
+    def clear_user_blocks(cls, user_id: int):
+        """
+        Clear all cached blocks for a user.
+
+        Args:
+            user_id: User ID (registered user)
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.BLOCKED_KEY.format(user_id=user_id)
+            redis_client.delete(key)
+
+        except Exception as e:
+            print(f"Redis cache error (clear_user_blocks): {e}")

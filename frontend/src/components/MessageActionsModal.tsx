@@ -253,16 +253,21 @@ export default function MessageActionsModal({
     });
   }
 
-  // Block should always be last (bottom of modal)
+  // Block/Mute should always be last (bottom of modal)
+  // Only show mute/ban for authenticated users (anonymous users cannot mute)
   if (!isOwnMessage && !isHostMessage && onBlock) {
-    actions.push({
-      icon: Ban,
-      label: isHost ? 'Chat Block' : 'Block User',
-      action: () => {
-        onBlock(message.username);
-        handleClose();
-      },
-    });
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+
+    if (authToken) {
+      actions.push({
+        icon: Ban,
+        label: isHost ? 'Ban from Chat' : 'Mute User',
+        action: () => {
+          onBlock(message.username);
+          handleClose();
+        },
+      });
+    }
   }
 
   return (
