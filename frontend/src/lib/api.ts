@@ -180,7 +180,7 @@ export interface Message {
 
 // API Functions
 export const authApi = {
-  register: async (data: { email: string; password: string; reserved_username?: string }) => {
+  register: async (data: { email: string; password: string; reserved_username?: string; fingerprint?: string }) => {
     const response = await api.post('/api/auth/register/', data);
     return response.data;
   },
@@ -225,8 +225,10 @@ export const authApi = {
     return response.data;
   },
 
-  suggestUsername: async (): Promise<{ username: string }> => {
-    const response = await api.post('/api/auth/suggest-username/');
+  suggestUsername: async (fingerprint?: string): Promise<{ username: string; remaining_attempts?: number; is_rotating?: boolean }> => {
+    const response = await api.post('/api/auth/suggest-username/', {
+      fingerprint,
+    });
     return response.data;
   },
 };

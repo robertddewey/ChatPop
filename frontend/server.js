@@ -4,11 +4,12 @@ const next = require('next');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const https = require('https');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0';
 const port = 4000;
-const backendUrl = 'http://localhost:9000';
+const backendUrl = 'https://localhost:9000';
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -26,9 +27,10 @@ function proxyRequest(req, res) {
     path: req.url,
     method: req.method,
     headers: req.headers,
+    rejectUnauthorized: false, // Accept self-signed certificates
   };
 
-  const proxyReq = http.request(options, (proxyRes) => {
+  const proxyReq = https.request(options, (proxyRes) => {
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
     proxyRes.pipe(res, { end: true });
   });

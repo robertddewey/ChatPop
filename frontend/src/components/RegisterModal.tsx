@@ -40,6 +40,9 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     message: '',
   });
   const [isSuggestingUsername, setIsSuggestingUsername] = useState(false);
+  const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>('manual');
+  const [diceUsername, setDiceUsername] = useState<string | null>(null);
+  const [isRotating, setIsRotating] = useState(false);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css
@@ -81,6 +84,18 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
       return;
     }
 
+    // OPTIMIZATION: Skip validation for dice-generated usernames
+    // Generated usernames are already validated server-side during generation and reserved globally
+    if (usernameSource === 'dice') {
+      // Dice-generated username is pre-validated and reserved for 60 minutes
+      setUsernameStatus({
+        checking: false,
+        available: true,
+        message: 'Username is available',
+      });
+      return;
+    }
+
     setUsernameStatus({ checking: true, available: null, message: 'Checking...' });
 
     const timeoutId = setTimeout(async () => {
@@ -102,7 +117,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [formData.reserved_username, usernameValidation.valid]);
+  }, [formData.reserved_username, usernameValidation.valid, usernameSource]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,7 +145,14 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     setLoading(true);
 
     try {
-      await authApi.register(formData);
+      // Get fingerprint for API bypass prevention validation
+      const fingerprint = await getFingerprint();
+
+      // Send registration with fingerprint
+      await authApi.register({
+        ...formData,
+        fingerprint,
+      });
       await authApi.login(formData.email, formData.password);
 
       // On chat pages, auth-change listener will handle modal close and state refresh
@@ -180,8 +202,12 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     setIsSuggestingUsername(true);
 
     try {
-      const result = await authApi.suggestUsername();
+      const fingerprint = await getFingerprint();
+      const result = await authApi.suggestUsername(fingerprint);
       setFormData({ ...formData, reserved_username: result.username });
+      setDiceUsername(result.username);  // Remember the dice username
+      setUsernameSource('dice');  // Mark as dice-generated (skip validation)
+      setIsRotating(result.is_rotating || false);  // Track if we're rotating through previous usernames
     } catch (error) {
       console.error('Failed to suggest username:', error);
       // If API fails, user can just try again or type their own
@@ -276,7 +302,16 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
                 id="reserved_username"
                 required
                 value={formData.reserved_username}
-                onChange={(e) => setFormData({ ...formData, reserved_username: e.target.value })}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  setFormData({ ...formData, reserved_username: newValue });
+                  // If user edits back to the original dice username, restore dice mode
+                  if (diceUsername && newValue === diceUsername) {
+                    setUsernameSource('dice');
+                  } else {
+                    setUsernameSource('manual');  // Mark as manually typed
+                  }
+                }}
                 className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input(!!fieldErrors.reserved_username || !usernameValidation.valid || (usernameStatus.available === false))} transition-colors focus:outline-none`}
                 placeholder=""
                 maxLength={15}
@@ -300,6 +335,9 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
             {!fieldErrors.reserved_username && usernameValidation.valid && usernameStatus.message && (
               <p className={`mt-1 text-sm ${usernameStatus.available === true ? 'text-green-600 dark:text-green-400' : usernameStatus.available === false ? styles.fieldError : styles.subtitle}`}>
                 {usernameStatus.message}
+                {isRotating && usernameStatus.available && (
+                  <span className={`text-xs ${styles.subtitle} ml-2`}>(browsing generated options)</span>
+                )}
               </p>
             )}
             {!fieldErrors.reserved_username && usernameValidation.valid && !usernameStatus.message && (
