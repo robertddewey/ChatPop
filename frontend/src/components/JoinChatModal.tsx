@@ -69,6 +69,10 @@ export default function JoinChatModal({
   const [usernameAvailable, setUsernameAvailable] = useState(false);
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [rateLimitChecked, setRateLimitChecked] = useState(false);
+  const [generationRemaining, setGenerationRemaining] = useState<number | null>(null);
+  const [suggestionRemaining, setSuggestionRemaining] = useState<number | null>(null);
+  const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>('manual');
+  const [diceUsername, setDiceUsername] = useState<string | null>(null);
   const audioContextRef = React.useRef<AudioContext>();
   const validationTimeoutRef = React.useRef<NodeJS.Timeout>();
 
@@ -139,7 +143,27 @@ export default function JoinChatModal({
       return;
     }
 
-    // Start validation after debounce delay
+    // OPTIMIZATION: Skip validation for dice-generated usernames
+    // Generated usernames are already validated server-side during generation
+    // Applies to BOTH anonymous and logged-in users
+    if (usernameSource === 'dice') {
+      // Dice-generated username is pre-validated and reserved for 60 minutes
+      setUsernameError('');
+      setUsernameAvailable(true);
+      setIsValidatingUsername(false);
+      return;
+    }
+
+    // For anonymous users typing manually: show available (no backend validation)
+    if (!isLoggedIn) {
+      // Anonymous user - manual username shows as available (validated at join time)
+      setUsernameError('');
+      setUsernameAvailable(true);
+      setIsValidatingUsername(false);
+      return;
+    }
+
+    // Start validation after debounce delay (logged-in users typing manually)
     validationTimeoutRef.current = setTimeout(async () => {
       // First check format validation (client-side)
       const validation = validateUsername(username.trim());
@@ -191,7 +215,7 @@ export default function JoinChatModal({
         clearTimeout(validationTimeoutRef.current);
       }
     };
-  }, [username, isLoggedIn, hasJoinedBefore, isSuggestingUsername, chatRoom.code]);
+  }, [username, isLoggedIn, hasJoinedBefore, isSuggestingUsername, usernameSource, chatRoom.code]);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -250,10 +274,28 @@ export default function JoinChatModal({
     try {
       const fingerprint = await getFingerprint();
       const result = await chatApi.suggestUsername(chatRoom.code, fingerprint);
-      setUsername(result.username);
+
+      // Backend returns username for both new generation and rotation through previous ones
+      if (result.username) {
+        setUsername(result.username);
+        setDiceUsername(result.username);  // Remember the dice username
+        setUsernameSource('dice');  // Mark as dice-generated (skip validation)
+        // Update both rate limit counters
+        setSuggestionRemaining(result.remaining ?? null);
+        setGenerationRemaining(result.generation_remaining ?? null);
+      }
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || err.message;
-      setError(errorMessage || 'Failed to generate username');
+      const statusCode = err.response?.status;
+
+      // Handle rate limit errors specifically
+      if (statusCode === 429) {
+        const remaining = err.response?.data?.generation_remaining ?? null;
+        setError(errorMessage || 'Maximum username generation attempts exceeded. No previously generated usernames are available.');
+        setGenerationRemaining(remaining);
+      } else {
+        setError(errorMessage || 'Failed to generate username');
+      }
     } finally {
       setIsSuggestingUsername(false);
     }
@@ -317,7 +359,16 @@ export default function JoinChatModal({
                 <input
                   type="text"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setUsername(newValue);
+                    // If user edits back to the original dice username, restore dice mode
+                    if (diceUsername && newValue === diceUsername) {
+                      setUsernameSource('dice');
+                    } else {
+                      setUsernameSource('manual');  // Mark as manually typed
+                    }
+                  }}
                   placeholder={currentUserDisplayName || "Enter username"}
                   className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors focus:outline-none ${
                     usernameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
@@ -341,49 +392,38 @@ export default function JoinChatModal({
                 </p>
               )}
               {usernameAvailable && !usernameError && (
-                <p className={`text-xs text-green-500 mt-1`}>
-                  Username is available
-                </p>
+                <div className="mt-1">
+                  <p className={`text-xs text-green-500`}>
+                    Username is available
+                  </p>
+                </div>
               )}
             </div>
           ) : (
             // Anonymous first-time user - show input
             <div>
               <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
-                Pick a username
+                Your username
               </label>
               <div className="relative">
                 <input
                   type="text"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter username"
-                  className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors focus:outline-none ${
-                    usernameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
-                  }`}
+                  readOnly
+                  placeholder="Click the dice to generate"
+                  className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors focus:outline-none cursor-default`}
                   maxLength={15}
-                  disabled={isJoining || isSuggestingUsername || isRateLimited}
                 />
                 <button
                   type="button"
                   onClick={handleSuggestUsername}
                   disabled={isJoining || isSuggestingUsername || isRateLimited}
                   className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
-                  title="Suggest random username"
+                  title="Generate random username"
                 >
                   <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
                 </button>
               </div>
-              {usernameError && (
-                <p className={`text-xs text-red-500 mt-1`}>
-                  {usernameError}
-                </p>
-              )}
-              {usernameAvailable && !usernameError && (
-                <p className={`text-xs text-green-500 mt-1`}>
-                  Username is available
-                </p>
-              )}
             </div>
           )}
 
