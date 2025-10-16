@@ -8,7 +8,7 @@ Tests for Django Channels WebSocket consumer functionality including:
 - Both logged-in and anonymous user scenarios
 """
 
-from django.test import TestCase
+from django.test import TransactionTestCase
 from channels.testing import WebsocketCommunicator
 from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
@@ -16,15 +16,21 @@ from chats.consumers import ChatConsumer
 from chats.models import ChatRoom, Message, ChatParticipation
 from accounts.models import User
 from chats.utils.security.auth import ChatSessionValidator
+from unittest.mock import patch
+from django.db import connection
 import json
 import msgpack
 
 
-class WebSocketSerializationTests(TestCase):
+class WebSocketSerializationTests(TransactionTestCase):
     """Test message serialization for WebSocket broadcast"""
 
     def setUp(self):
         """Set up test data"""
+        # Ensure clean database connection
+        connection.close()
+        connection.connect()
+
         # Create logged-in user (host)
         self.user = User.objects.create_user(
             email='test@example.com',
@@ -47,8 +53,17 @@ class WebSocketSerializationTests(TestCase):
             username='testuser'
         )
 
-    def test_message_serialization_with_logged_in_user(self):
+    def tearDown(self):
+        """Clean up database connection after each test"""
+        # Close any open connections from async operations
+        connection.close()
+
+    @patch('chats.utils.performance.cache.MessageCache._compute_username_is_reserved')
+    def test_message_serialization_with_logged_in_user(self, mock_compute_reserved):
         """Test that message with logged-in user serializes correctly (UUID to string)"""
+        # Mock the username_is_reserved computation to avoid database query
+        mock_compute_reserved.return_value = True
+
         # Create message with logged-in user
         message = Message.objects.create(
             chat_room=self.chat_room,
@@ -57,9 +72,8 @@ class WebSocketSerializationTests(TestCase):
             content='Test message from logged-in user'
         )
 
-        # Test the serialization logic directly (mimicking what serialize_message_for_broadcast does)
-        from chats.utils.performance.cache import MessageCache
-        username_is_reserved = MessageCache._compute_username_is_reserved(message)
+        # Use the mocked value
+        username_is_reserved = mock_compute_reserved(message)
 
         serialized = {
             'id': str(message.id),
@@ -96,8 +110,12 @@ class WebSocketSerializationTests(TestCase):
         except TypeError as e:
             self.fail(f"msgpack serialization failed: {e}")
 
-    def test_message_serialization_with_anonymous_user(self):
+    @patch('chats.utils.performance.cache.MessageCache._compute_username_is_reserved')
+    def test_message_serialization_with_anonymous_user(self, mock_compute_reserved):
         """Test that message with anonymous user serializes correctly (user_id=None)"""
+        # Mock the username_is_reserved computation to avoid database query
+        mock_compute_reserved.return_value = False
+
         # Create message with anonymous user (no user object)
         message = Message.objects.create(
             chat_room=self.chat_room,
@@ -106,9 +124,8 @@ class WebSocketSerializationTests(TestCase):
             content='Test message from anonymous user'
         )
 
-        # Test the serialization logic directly
-        from chats.utils.performance.cache import MessageCache
-        username_is_reserved = MessageCache._compute_username_is_reserved(message)
+        # Use the mocked value
+        username_is_reserved = mock_compute_reserved(message)
 
         serialized = {
             'id': str(message.id),
@@ -137,8 +154,12 @@ class WebSocketSerializationTests(TestCase):
         except TypeError as e:
             self.fail(f"msgpack serialization failed: {e}")
 
-    def test_message_serialization_with_reply(self):
+    @patch('chats.utils.performance.cache.MessageCache._compute_username_is_reserved')
+    def test_message_serialization_with_reply(self, mock_compute_reserved):
         """Test that reply_to_id is properly serialized as string"""
+        # Mock the username_is_reserved computation to avoid database query
+        mock_compute_reserved.return_value = True
+
         # Create parent message
         parent_message = Message.objects.create(
             chat_room=self.chat_room,
@@ -156,9 +177,8 @@ class WebSocketSerializationTests(TestCase):
             reply_to=parent_message
         )
 
-        # Test the serialization logic directly
-        from chats.utils.performance.cache import MessageCache
-        username_is_reserved = MessageCache._compute_username_is_reserved(reply_message)
+        # Use the mocked value
+        username_is_reserved = mock_compute_reserved(reply_message)
 
         serialized = {
             'id': str(reply_message.id),

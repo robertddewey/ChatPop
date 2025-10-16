@@ -773,8 +773,19 @@ class MyParticipationView(APIView):
                 'is_blocked': is_blocked
             })
 
+        # No participation found - check if first-time visitor is blocked
+        # This allows frontend to show "You are blocked" message immediately
+        from .utils.security.blocking import check_if_blocked
+        is_blocked, _ = check_if_blocked(
+            chat_room=chat_room,
+            username=None,  # No username yet (they haven't joined)
+            fingerprint=fingerprint,
+            user=request.user if request.user.is_authenticated else None
+        )
+
         return Response({
-            'has_joined': False
+            'has_joined': False,
+            'is_blocked': is_blocked
         })
 
 

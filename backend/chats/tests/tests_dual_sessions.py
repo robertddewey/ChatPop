@@ -12,6 +12,7 @@ import json
 from accounts.models import User
 from chats.models import ChatParticipation, ChatRoom
 from django.test import TestCase
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -21,6 +22,7 @@ class DualSessionsTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+        cache.clear()
 
         # Create a test user with reserved_username
         self.user = User.objects.create_user(
@@ -35,21 +37,36 @@ class DualSessionsTests(TestCase):
             name="Test Chat", code="TESTCODE", host=self.host, access_mode=ChatRoom.ACCESS_PUBLIC
         )
 
+    def tearDown(self):
+        """Clear cache after each test"""
+        cache.clear()
+
+    def generate_username(self, fingerprint):
+        """Helper method to generate a username for anonymous users"""
+        suggest_url = f"/api/chats/{self.chat_room.code}/suggest-username/"
+        response = self.client.post(suggest_url, json.dumps({'fingerprint': fingerprint}), content_type="application/json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.data['username']
+
     def test_anonymous_join_creates_anonymous_participation(self):
         """Anonymous user joins chat with fingerprint"""
+        # Generate username first
+        fingerprint = "anon-fingerprint-123"
+        username = self.generate_username(fingerprint)
+
         url = f"/api/chats/{self.chat_room.code}/join/"
-        data = {"username": "robert", "fingerprint": "anon-fingerprint-123"}
+        data = {"username": username, "fingerprint": fingerprint}
 
         response = self.client.post(url, json.dumps(data), content_type="application/json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["username"], "robert")
+        self.assertEqual(response.data["username"], username)
 
         # Verify anonymous participation created
         participation = ChatParticipation.objects.get(
-            chat_room=self.chat_room, fingerprint="anon-fingerprint-123", user__isnull=True
+            chat_room=self.chat_room, fingerprint=fingerprint, user__isnull=True
         )
-        self.assertEqual(participation.username, "robert")
+        self.assertEqual(participation.username, username)
 
     def test_logged_in_join_creates_user_participation(self):
         """Logged-in user joins chat"""
@@ -68,26 +85,30 @@ class DualSessionsTests(TestCase):
 
     def test_dual_sessions_allow_same_username(self):
         """Anonymous and logged-in users can use the same username simultaneously"""
-        # 1. Anonymous user joins as "robert"
+        # 1. Generate username for anonymous user
+        anon_fingerprint = "anon-fingerprint-123"
+        username = self.generate_username(anon_fingerprint)
+
+        # 2. Anonymous user joins with generated username
         url = f"/api/chats/{self.chat_room.code}/join/"
-        anon_data = {"username": "robert", "fingerprint": "anon-fingerprint-123"}
+        anon_data = {"username": username, "fingerprint": anon_fingerprint}
         response = self.client.post(url, json.dumps(anon_data), content_type="application/json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # 2. Logged-in user joins as "Robert" (case-insensitive same username)
+        # 3. Logged-in user joins with same username (case variation)
         self.client.force_authenticate(user=self.user)
-        user_data = {"username": "Robert", "fingerprint": "user-fingerprint-456"}
+        user_data = {"username": username.upper(), "fingerprint": "user-fingerprint-456"}
         response = self.client.post(url, json.dumps(user_data), content_type="application/json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # 3. Verify both participations exist
+        # 4. Verify both participations exist
         anon_participation = ChatParticipation.objects.get(
-            chat_room=self.chat_room, fingerprint="anon-fingerprint-123", user__isnull=True
+            chat_room=self.chat_room, fingerprint=anon_fingerprint, user__isnull=True
         )
         user_participation = ChatParticipation.objects.get(chat_room=self.chat_room, user=self.user)
 
-        self.assertEqual(anon_participation.username, "robert")
-        self.assertEqual(user_participation.username, "Robert")
+        self.assertEqual(anon_participation.username, username)
+        self.assertEqual(user_participation.username, username.upper())
 
     def test_my_participation_prioritizes_logged_in_user(self):
         """MyParticipationView returns logged-in participation when both exist"""
@@ -219,6 +240,7 @@ class IPRateLimitingTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+        cache.clear()
 
         # Create chat room
         self.host = User.objects.create_user(
@@ -228,13 +250,26 @@ class IPRateLimitingTests(TestCase):
             name="Test Chat", code="TESTCODE", host=self.host, access_mode=ChatRoom.ACCESS_PUBLIC
         )
 
+    def tearDown(self):
+        """Clear cache after each test"""
+        cache.clear()
+
+    def generate_username(self, fingerprint):
+        """Helper method to generate a username for anonymous users"""
+        suggest_url = f"/api/chats/{self.chat_room.code}/suggest-username/"
+        response = self.client.post(suggest_url, json.dumps({'fingerprint': fingerprint}), content_type="application/json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.data['username']
+
     def test_anonymous_user_can_join_within_limit(self):
         """Anonymous users can join up to 3 times from same IP"""
         url = f"/api/chats/{self.chat_room.code}/join/"
 
         # Join 3 times with different fingerprints (same IP)
         for i in range(3):
-            data = {"username": f"user{i+1}123", "fingerprint": f"fingerprint-{i+1}"}
+            fingerprint = f"fingerprint-{i+1}"
+            username = self.generate_username(fingerprint)
+            data = {"username": username, "fingerprint": fingerprint}
             response = self.client.post(
                 url, json.dumps(data), content_type="application/json", REMOTE_ADDR="192.168.1.100"
             )
@@ -248,24 +283,28 @@ class IPRateLimitingTests(TestCase):
 
     def test_anonymous_user_blocked_at_limit(self):
         """Anonymous users blocked when trying to join 4th time from same IP"""
-        # Create 3 existing participations
+        # Create 3 existing participations with generated usernames
         for i in range(3):
+            fingerprint = f"fingerprint-{i+1}"
+            username = self.generate_username(fingerprint)
             ChatParticipation.objects.create(
                 chat_room=self.chat_room,
-                fingerprint=f"fingerprint-{i+1}",
-                username=f"user{i+1}123",
+                fingerprint=fingerprint,
+                username=username,
                 ip_address="192.168.1.100",
             )
 
-        # Try to join 4th time
+        # Try to join 4th time with generated username
         url = f"/api/chats/{self.chat_room.code}/join/"
-        data = {"username": "user4567", "fingerprint": "fingerprint-4"}
+        fourth_fingerprint = "fingerprint-4"
+        fourth_username = self.generate_username(fourth_fingerprint)
+        data = {"username": fourth_username, "fingerprint": fourth_fingerprint}
         response = self.client.post(
             url, json.dumps(data), content_type="application/json", REMOTE_ADDR="192.168.1.100"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("Maximum anonymous usernames", str(response.data))
+        self.assertIn("Max anonymous usernames", str(response.data))
 
     def test_returning_anonymous_user_not_blocked(self):
         """Returning anonymous users can rejoin even if IP is at limit"""
@@ -292,18 +331,22 @@ class IPRateLimitingTests(TestCase):
 
     def test_different_ip_not_affected_by_limit(self):
         """IP limit is per-IP (different IPs can each have 3 anonymous users)"""
-        # Create 3 participations from IP 1
+        # Create 3 participations from IP 1 with generated usernames
         for i in range(3):
+            fingerprint = f"ip1-fingerprint-{i+1}"
+            username = self.generate_username(fingerprint)
             ChatParticipation.objects.create(
                 chat_room=self.chat_room,
-                fingerprint=f"ip1-fingerprint-{i+1}",
-                username=f"ip1user{i+1}",
+                fingerprint=fingerprint,
+                username=username,
                 ip_address="192.168.1.100",
             )
 
-        # User from different IP can still join
+        # User from different IP can still join with generated username
         url = f"/api/chats/{self.chat_room.code}/join/"
-        data = {"username": "ip2user123", "fingerprint": "ip2-fingerprint-1"}
+        ip2_fingerprint = "ip2-fingerprint-1"
+        ip2_username = self.generate_username(ip2_fingerprint)
+        data = {"username": ip2_username, "fingerprint": ip2_fingerprint}
         response = self.client.post(
             url, json.dumps(data), content_type="application/json", REMOTE_ADDR="192.168.1.200"  # Different IP
         )
@@ -342,18 +385,27 @@ class IPRateLimitingTests(TestCase):
             name="Second Chat", code="TESTCOD2", host=self.host, access_mode=ChatRoom.ACCESS_PUBLIC
         )
 
-        # Create 3 participations in first chat
+        # Create 3 participations in first chat with generated usernames
         for i in range(3):
+            fingerprint = f"chat1-fingerprint-{i+1}"
+            username = self.generate_username(fingerprint)
             ChatParticipation.objects.create(
                 chat_room=self.chat_room,
-                fingerprint=f"chat1-fingerprint-{i+1}",
-                username=f"chat1user{i+1}",
+                fingerprint=fingerprint,
+                username=username,
                 ip_address="192.168.1.100",
             )
 
-        # User from same IP can still join second chat
+        # User from same IP can still join second chat with generated username
         url = f"/api/chats/{chat_room_2.code}/join/"
-        data = {"username": "chat2user123", "fingerprint": "chat2-fingerprint-1"}
+        chat2_fingerprint = "chat2-fingerprint-1"
+        # Generate username for second chat
+        suggest_url = f"/api/chats/{chat_room_2.code}/suggest-username/"
+        suggest_response = self.client.post(suggest_url, json.dumps({'fingerprint': chat2_fingerprint}), content_type="application/json")
+        self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+        chat2_username = suggest_response.data['username']
+
+        data = {"username": chat2_username, "fingerprint": chat2_fingerprint}
         response = self.client.post(
             url, json.dumps(data), content_type="application/json", REMOTE_ADDR="192.168.1.100"
         )

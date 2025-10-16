@@ -16,6 +16,7 @@ Test coverage:
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.core.cache import cache
 from rest_framework.test import APIClient
 from rest_framework import status
 from datetime import timedelta
@@ -558,6 +559,7 @@ class JoinEnforcementTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+        cache.clear()
         self.host = User.objects.create_user(
             email='host@test.com',
             password='testpass123',
@@ -574,21 +576,35 @@ class JoinEnforcementTests(TestCase):
             username='HostUser'
         )
 
+    def tearDown(self):
+        """Clear cache after each test"""
+        cache.clear()
+
     def test_blocked_username_cannot_join(self):
         """Test that a blocked username cannot join the chat"""
-        # Block a username
+        # Generate a username
+        fingerprint = 'blocked_user_fp'
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat_room.code}/suggest-username/',
+            {'fingerprint': fingerprint},
+            format='json'
+        )
+        self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+        blocked_username = suggest_response.data['username']
+
+        # Block that username
         ChatBlock.objects.create(
             chat_room=self.chat_room,
             blocked_by=self.host_participation,
-            blocked_username='blockeduser'
+            blocked_username=blocked_username.lower()
         )
 
         # Try to join with blocked username
         response = self.client.post(
             f'/api/chats/{self.chat_room.code}/join/',
             {
-                'username': 'blockeduser',
-                'fingerprint': 'newfingerprint'
+                'username': blocked_username,
+                'fingerprint': fingerprint
             },
             format='json'
         )
@@ -597,19 +613,29 @@ class JoinEnforcementTests(TestCase):
 
     def test_blocked_fingerprint_cannot_join(self):
         """Test that a blocked fingerprint cannot join the chat"""
-        # Block a fingerprint
+        # Generate a username for this fingerprint
+        fingerprint = 'blocked_fingerprint_fp'
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat_room.code}/suggest-username/',
+            {'fingerprint': fingerprint},
+            format='json'
+        )
+        self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+        username = suggest_response.data['username']
+
+        # Block the fingerprint
         ChatBlock.objects.create(
             chat_room=self.chat_room,
             blocked_by=self.host_participation,
-            blocked_fingerprint='blockedfingerprint'
+            blocked_fingerprint=fingerprint
         )
 
         # Try to join with blocked fingerprint
         response = self.client.post(
             f'/api/chats/{self.chat_room.code}/join/',
             {
-                'username': 'newuser',
-                'fingerprint': 'blockedfingerprint'
+                'username': username,
+                'fingerprint': fingerprint
             },
             format='json'
         )
@@ -643,11 +669,22 @@ class JoinEnforcementTests(TestCase):
 
     def test_non_blocked_user_can_join(self):
         """Test that non-blocked users can still join"""
+        # Generate a username for a non-blocked user
+        fingerprint = 'good_user_fp'
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat_room.code}/suggest-username/',
+            {'fingerprint': fingerprint},
+            format='json'
+        )
+        self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+        username = suggest_response.data['username']
+
+        # Join without any blocks
         response = self.client.post(
             f'/api/chats/{self.chat_room.code}/join/',
             {
-                'username': 'gooduser',
-                'fingerprint': 'goodfingerprint'
+                'username': username,
+                'fingerprint': fingerprint
             },
             format='json'
         )

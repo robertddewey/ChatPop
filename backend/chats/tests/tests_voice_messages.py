@@ -63,8 +63,13 @@ class VoiceMessageUploadTests(TestCase):
             content_type='audio/webm'
         )
 
-    def test_upload_voice_message_success(self):
+    @patch('chats.utils.media.audio.transcode_webm_to_m4a')
+    def test_upload_voice_message_success(self, mock_transcode):
         """Test successful voice message upload"""
+        # Mock FFmpeg transcoding to avoid actual transcoding in tests
+        from django.core.files.base import ContentFile
+        mock_transcode.return_value = ContentFile(b'fake transcoded audio', name='voice.m4a')
+
         url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
         audio_file = self.create_audio_file()
 
@@ -177,8 +182,13 @@ class VoiceMessageUploadTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('Invalid file type', response.data['error'])
 
-    def test_upload_various_audio_formats(self):
+    @patch('chats.utils.media.audio.transcode_webm_to_m4a')
+    def test_upload_various_audio_formats(self, mock_transcode):
         """Test upload accepts various audio formats"""
+        # Mock FFmpeg transcoding to avoid actual transcoding in tests
+        from django.core.files.base import ContentFile
+        mock_transcode.return_value = ContentFile(b'fake transcoded audio', name='voice.m4a')
+
         url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
 
         audio_formats = [
@@ -229,8 +239,8 @@ class VoiceMessageStreamTests(TestCase):
             username='testuser'
         )
 
-    @patch('chats.storage.MediaStorage.file_exists')
-    @patch('chats.storage.MediaStorage.get_file')
+    @patch('chats.utils.media.storage.MediaStorage.file_exists')
+    @patch('chats.utils.media.storage.MediaStorage.get_file')
     def test_stream_voice_message_success(self, mock_get_file, mock_file_exists):
         """Test successful voice message streaming"""
         mock_file_exists.return_value = True
@@ -244,7 +254,7 @@ class VoiceMessageStreamTests(TestCase):
         self.assertEqual(response['Content-Type'], 'audio/webm')
         self.assertIn('Content-Disposition', response)
 
-    @patch('chats.storage.MediaStorage.file_exists')
+    @patch('chats.utils.media.storage.MediaStorage.file_exists')
     def test_stream_without_session_token(self, mock_file_exists):
         """Test streaming fails without session token"""
         mock_file_exists.return_value = True
@@ -254,7 +264,7 @@ class VoiceMessageStreamTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    @patch('chats.storage.MediaStorage.file_exists')
+    @patch('chats.utils.media.storage.MediaStorage.file_exists')
     def test_stream_invalid_session_token(self, mock_file_exists):
         """Test streaming fails with invalid session token"""
         mock_file_exists.return_value = True
@@ -264,7 +274,7 @@ class VoiceMessageStreamTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    @patch('chats.storage.MediaStorage.file_exists')
+    @patch('chats.utils.media.storage.MediaStorage.file_exists')
     def test_stream_file_not_found(self, mock_file_exists):
         """Test streaming fails when file doesn't exist"""
         mock_file_exists.return_value = False
@@ -274,8 +284,8 @@ class VoiceMessageStreamTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    @patch('chats.storage.MediaStorage.file_exists')
-    @patch('chats.storage.MediaStorage.get_file')
+    @patch('chats.utils.media.storage.MediaStorage.file_exists')
+    @patch('chats.utils.media.storage.MediaStorage.get_file')
     def test_stream_content_types(self, mock_get_file, mock_file_exists):
         """Test correct content-type for different audio formats"""
         mock_file_exists.return_value = True
@@ -306,7 +316,7 @@ class VoiceMessageStorageTests(TestCase):
         from chats.utils.media.storage import MediaStorage
 
         # Mock settings for local storage
-        with patch('chats.storage.settings') as mock_settings:
+        with patch('chats.utils.media.storage.settings') as mock_settings:
             mock_settings.AWS_ACCESS_KEY_ID = ''
             mock_settings.AWS_SECRET_ACCESS_KEY = ''
             mock_settings.AWS_STORAGE_BUCKET_NAME = ''
@@ -318,7 +328,7 @@ class VoiceMessageStorageTests(TestCase):
         """Test S3 detection when AWS credentials present"""
         from chats.utils.media.storage import MediaStorage
 
-        with patch('chats.storage.settings') as mock_settings:
+        with patch('chats.utils.media.storage.settings') as mock_settings:
             mock_settings.AWS_ACCESS_KEY_ID = 'test_key'
             mock_settings.AWS_SECRET_ACCESS_KEY = 'test_secret'
             mock_settings.AWS_STORAGE_BUCKET_NAME = 'test_bucket'
@@ -326,7 +336,7 @@ class VoiceMessageStorageTests(TestCase):
             self.assertTrue(MediaStorage.is_s3_configured())
             self.assertEqual(MediaStorage.get_storage_type(), 's3')
 
-    @patch('chats.storage.default_storage.save')
+    @patch('chats.utils.media.storage.default_storage.save')
     def test_save_voice_message(self, mock_save):
         """Test saving voice message to storage"""
         from chats.utils.media.storage import save_voice_message
@@ -346,7 +356,7 @@ class VoiceMessageStorageTests(TestCase):
 
         url = get_voice_message_url('voice_messages/test.webm')
 
-        self.assertTrue(url.startswith('/api/media/'))
+        self.assertTrue(url.startswith('/api/chats/media/'))
         self.assertIn('voice_messages/test.webm', url)
 
 
@@ -375,8 +385,13 @@ class VoiceMessageIntegrationTests(TestCase):
             username='testuser'
         )
 
-    def test_complete_voice_message_flow(self):
+    @patch('chats.utils.media.audio.transcode_webm_to_m4a')
+    def test_complete_voice_message_flow(self, mock_transcode):
         """Test complete flow: upload -> get URL -> stream"""
+        # Mock FFmpeg transcoding to avoid actual transcoding in tests
+        from django.core.files.base import ContentFile
+        mock_transcode.return_value = ContentFile(b'fake transcoded audio', name='voice.m4a')
+
         # 1. Upload voice message
         upload_url = reverse('chats:voice-upload', kwargs={'code': self.chat.code})
         audio_file = SimpleUploadedFile(
@@ -396,5 +411,5 @@ class VoiceMessageIntegrationTests(TestCase):
 
         # 2. Stream voice message (would need mocking for actual storage)
         # This verifies the URL format is correct
-        self.assertTrue(voice_url.startswith('/api/media/'))
+        self.assertTrue(voice_url.startswith('/api/chats/media/'))
         self.assertIn('voice_messages/', voice_url)

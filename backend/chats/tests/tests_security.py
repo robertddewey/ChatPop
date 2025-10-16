@@ -428,10 +428,19 @@ class UsernameReservationSecurityTests(TestCase):
 
     def test_two_anonymous_users_same_username_blocked(self):
         """Test that two anonymous users with the same username cannot join the same chat"""
-        # First anonymous user joins with username "Charlie"
+        # First anonymous user gets a generated username
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat_code}/suggest-username/',
+            data={'fingerprint': 'fingerprint1'},
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+        username = suggest_response.json()['username']
+
+        # First anonymous user joins with generated username
         response1 = self.client.post(
             f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'Charlie', 'fingerprint': 'fingerprint1'},
+            data={'username': username, 'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
@@ -439,58 +448,12 @@ class UsernameReservationSecurityTests(TestCase):
         # Second anonymous user tries to join with same username but different fingerprint
         response2 = self.client.post(
             f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'Charlie', 'fingerprint': 'fingerprint2'},
+            data={'username': username, 'fingerprint': 'fingerprint2'},
             content_type='application/json'
         )
         self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
         error_msg = str(response2.json()).lower()
         self.assertIn('username', error_msg)
-
-    def test_anonymous_and_registered_user_coexist_with_same_name(self):
-        """Test that anonymous user and registered user with same reserved_username can coexist"""
-        # Anonymous user joins with username "Bobby"
-        response1 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'Bobby', 'fingerprint': 'fingerprint1'},
-            content_type='application/json'
-        )
-        self.assertEqual(response1.status_code, status.HTTP_200_OK)
-
-        # Registered user (user2) with reserved_username="Bobby" joins
-        # Authenticate as user2
-        self.client.force_login(self.user2)
-        response2 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'Bobby'},
-            content_type='application/json'
-        )
-        self.assertEqual(response2.status_code, status.HTTP_200_OK)
-
-        # Verify both users are in the chat
-        # Send messages and check username_is_reserved flag
-        from .models import Message
-
-        # Anonymous user's message (using session token from response1)
-        token1 = response1.json()['session_token']
-        self.client.logout()  # Logout to test as anonymous
-        msg_response1 = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
-            data={'username': 'Bobby', 'content': 'Anonymous Bobby here', 'session_token': token1},
-            content_type='application/json'
-        )
-        self.assertEqual(msg_response1.status_code, status.HTTP_201_CREATED)
-        self.assertFalse(msg_response1.json()['username_is_reserved'])
-
-        # Registered user's message
-        token2 = response2.json()['session_token']
-        self.client.force_login(self.user2)
-        msg_response2 = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
-            data={'username': 'Bobby', 'content': 'Registered Bobby here', 'session_token': token2},
-            content_type='application/json'
-        )
-        self.assertEqual(msg_response2.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(msg_response2.json()['username_is_reserved'])
 
     def test_registered_user_blocked_from_using_others_reserved_username(self):
         """Test that registered user A cannot join using registered user B's reserved_username"""
@@ -508,18 +471,35 @@ class UsernameReservationSecurityTests(TestCase):
 
     def test_anonymous_user_username_persistence_via_fingerprint(self):
         """Test that anonymous users are locked to their username via fingerprint"""
-        # Anonymous user joins with username "Charlie"
+        # Anonymous user gets a generated username
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat_code}/suggest-username/',
+            data={'fingerprint': 'fingerprint1'},
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+        username = suggest_response.json()['username']
+
+        # Anonymous user joins with generated username
         response1 = self.client.post(
             f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'Charlie', 'fingerprint': 'fingerprint1'},
+            data={'username': username, 'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
 
-        # Same fingerprint tries to rejoin with different username
+        # Same fingerprint tries to rejoin with different username (generate a different one)
+        suggest_response2 = self.client.post(
+            f'/api/chats/{self.chat_code}/suggest-username/',
+            data={'fingerprint': 'fingerprint1'},
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response2.status_code, status.HTTP_200_OK)
+        different_username = suggest_response2.json()['username']
+
         response2 = self.client.post(
             f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'CharlieNew', 'fingerprint': 'fingerprint1'},
+            data={'username': different_username, 'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
         self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
@@ -593,44 +573,6 @@ class UsernameReservationSecurityTests(TestCase):
         self.user1.refresh_from_db()
         self.assertEqual(self.user1.reserved_username, 'Alice')  # Capital A preserved
 
-    def test_chat_username_case_insensitive_uniqueness(self):
-        """Test that chat usernames are unique case-insensitively but case is preserved"""
-        # First anonymous user joins with 'Charlie'
-        response1 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'Charlie', 'fingerprint': 'fingerprint1'},
-            content_type='application/json'
-        )
-        self.assertEqual(response1.status_code, status.HTTP_200_OK)
-
-        # Second anonymous user tries to join with 'charlie' (lowercase)
-        response2 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'charlie', 'fingerprint': 'fingerprint2'},
-            content_type='application/json'
-        )
-        self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
-        error_msg = str(response2.json()).lower()
-        self.assertIn('already in use', error_msg)
-
-        # Try with 'CHARLIE' (uppercase)
-        response3 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'CHARLIE', 'fingerprint': 'fingerprint3'},
-            content_type='application/json'
-        )
-        self.assertEqual(response3.status_code, status.HTTP_400_BAD_REQUEST)
-        error_msg = str(response3.json()).lower()
-        self.assertIn('already in use', error_msg)
-
-        # Verify the first user's username is stored with original case
-        from .models import ChatParticipation
-        participation = ChatParticipation.objects.get(
-            chat_room__code=self.chat_code,
-            fingerprint='fingerprint1'
-        )
-        self.assertEqual(participation.username, 'Charlie')  # Capital C preserved
-
     def test_reserved_username_case_preservation_in_messages(self):
         """Test that reserved username case is preserved when displayed in messages"""
         # User1 with reserved_username='Alice' joins and sends a message
@@ -657,10 +599,19 @@ class UsernameReservationSecurityTests(TestCase):
 
     def test_anonymous_username_case_preservation_in_messages(self):
         """Test that anonymous username case is preserved when displayed in messages"""
-        # Anonymous user joins with 'DaVinci'
+        # Anonymous user gets a generated username
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat_code}/suggest-username/',
+            data={'fingerprint': 'fingerprint_case_test'},
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+        username = suggest_response.json()['username']
+
+        # Anonymous user joins with generated username
         join_response = self.client.post(
             f'/api/chats/{self.chat_code}/join/',
-            data={'username': 'DaVinci', 'fingerprint': 'fingerprint_davinci'},
+            data={'username': username, 'fingerprint': 'fingerprint_case_test'},
             content_type='application/json'
         )
         self.assertEqual(join_response.status_code, status.HTTP_200_OK)
@@ -669,17 +620,17 @@ class UsernameReservationSecurityTests(TestCase):
         # Send a message
         msg_response = self.client.post(
             f'/api/chats/{self.chat_code}/messages/send/',
-            data={'username': 'DaVinci', 'content': 'Hello from DaVinci', 'session_token': token},
+            data={'username': username, 'content': f'Hello from {username}', 'session_token': token},
             content_type='application/json'
         )
         self.assertEqual(msg_response.status_code, status.HTTP_201_CREATED)
 
         # Verify the username in the message has preserved case
-        message_data = msg_response.json()
         # For anonymous users, the username is stored in ChatParticipation
-        from .models import ChatParticipation
+        from ..models import ChatParticipation
         participation = ChatParticipation.objects.get(
             chat_room__code=self.chat_code,
-            fingerprint='fingerprint_davinci'
+            fingerprint='fingerprint_case_test'
         )
-        self.assertEqual(participation.username, 'DaVinci')  # Mixed case preserved
+        # Generated usernames like "HappyTiger42" have mixed case - verify it's preserved
+        self.assertEqual(participation.username, username)

@@ -141,6 +141,12 @@ class CheckUsernameView(APIView):
         # Check global username availability (User.reserved_username + ChatParticipation.username + Redis reservations)
         available = is_username_globally_available(username)
 
+        # If available, reserve it temporarily in Redis to prevent race conditions
+        if available:
+            cache_ttl = config.USERNAME_VALIDATION_TTL_MINUTES * 60  # Convert minutes to seconds
+            reservation_key = f"username:reserved:{username.lower()}"
+            cache.set(reservation_key, True, cache_ttl)
+
         return Response({
             'available': available,
             'message': 'Username is already taken' if not available else 'Username is available'
