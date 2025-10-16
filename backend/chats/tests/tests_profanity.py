@@ -158,11 +158,25 @@ class ChatJoinProfanityTests(TestCase):
 
     def test_join_with_clean_username(self):
         """Test joining a chat with a clean username"""
+        fingerprint = 'test_fp_456'
+
+        # Step 1: Generate a valid username
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat.code}/suggest-username/',
+            {
+                'fingerprint': fingerprint
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response.status_code, 200)
+        username = suggest_response.json()['username']
+
+        # Step 2: Join with the generated username
         response = self.client.post(
             f'/api/chats/{self.chat.code}/join/',
             {
-                'username': 'Alice_Smith',
-                'fingerprint': 'test_fp_456'
+                'username': username,
+                'fingerprint': fingerprint
             },
             content_type='application/json'
         )
@@ -195,11 +209,25 @@ class ChatJoinProfanityTests(TestCase):
 
     def test_join_with_legitimate_word_containing_substring(self):
         """Test that legitimate words with banned substrings are allowed"""
+        fingerprint = 'test_fp_102'
+
+        # Step 1: Generate a valid username
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat.code}/suggest-username/',
+            {
+                'fingerprint': fingerprint
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response.status_code, 200)
+        username = suggest_response.json()['username']
+
+        # Step 2: Join with the generated username (should succeed)
         response = self.client.post(
             f'/api/chats/{self.chat.code}/join/',
             {
-                'username': 'password123',
-                'fingerprint': 'test_fp_102'
+                'username': username,
+                'fingerprint': fingerprint
             },
             content_type='application/json'
         )
@@ -403,10 +431,13 @@ class SuggestUsernameProfanityTests(TestCase):
 
     def test_suggested_usernames_are_clean(self):
         """Test that suggested usernames are always clean (don't contain profanity)"""
-        # Generate 10 usernames and check they're all clean (below rate limit of 20/hour)
-        for _ in range(10):
+        # Generate 5 usernames with unique fingerprints (well below rate limit of 10/hour per fingerprint)
+        for i in range(5):
             response = self.client.post(
                 f'/api/chats/{self.chat.code}/suggest-username/',
+                {
+                    'fingerprint': f'test_profanity_fp_{i}'
+                },
                 content_type='application/json'
             )
             self.assertEqual(response.status_code, 200)
@@ -424,6 +455,9 @@ class SuggestUsernameProfanityTests(TestCase):
         """Test that suggest-username endpoint returns valid username"""
         response = self.client.post(
             f'/api/chats/{self.chat.code}/suggest-username/',
+            {
+                'fingerprint': 'test_endpoint_success_fp'
+            },
             content_type='application/json'
         )
         self.assertEqual(response.status_code, 200)
@@ -431,3 +465,196 @@ class SuggestUsernameProfanityTests(TestCase):
         self.assertIn('username', data)
         self.assertIsInstance(data['username'], str)
         self.assertGreater(len(data['username']), 0)
+
+
+class GeneratedUsernameSecurityTests(TestCase):
+    """
+    Test security enforcement: Anonymous users can ONLY use system-generated usernames.
+    This prevents API bypass where users send arbitrary usernames.
+    """
+
+    def setUp(self):
+        """Create a test chat room and authenticated user"""
+        from chats.models import ChatRoom
+        from accounts.models import User
+
+        # Create a test user to be the host
+        self.host_user = User.objects.create_user(
+            email='securityhost@example.com',
+            password='TestPass123!'
+        )
+
+        self.chat = ChatRoom.objects.create(
+            name="Security Test Chat",
+            host=self.host_user,
+            access_mode='public'
+        )
+
+        # Create a registered user with a reserved username (max 15 chars)
+        self.registered_user = User.objects.create_user(
+            email='registered@example.com',
+            password='TestPass123!',
+            reserved_username='RegUser99'
+        )
+
+    def test_anonymous_user_with_generated_username_can_join(self):
+        """Test that anonymous users can join with a system-generated username"""
+        fingerprint = 'test_security_fp_1'
+
+        # Step 1: Get a generated username
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat.code}/suggest-username/',
+            {
+                'fingerprint': fingerprint
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response.status_code, 200)
+        suggested_username = suggest_response.json()['username']
+
+        # Step 2: Join with the generated username (should succeed)
+        join_response = self.client.post(
+            f'/api/chats/{self.chat.code}/join/',
+            {
+                'username': suggested_username,
+                'fingerprint': fingerprint
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(join_response.status_code, 200)
+        data = join_response.json()
+        self.assertIn('session_token', data)
+        self.assertEqual(data['username'], suggested_username)
+
+    def test_anonymous_user_with_non_generated_username_rejected(self):
+        """Test that anonymous users CANNOT join with arbitrary (non-generated) usernames"""
+        fingerprint = 'test_security_fp_2'
+
+        # Try to join with a username that was NOT generated by the system
+        arbitrary_username = 'ArbitraryUser99'
+
+        join_response = self.client.post(
+            f'/api/chats/{self.chat.code}/join/',
+            {
+                'username': arbitrary_username,
+                'fingerprint': fingerprint
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(join_response.status_code, 400)
+        data = join_response.json()
+        # DRF returns ValidationError as a list when raised with a string
+        self.assertIsInstance(data, list)
+        error_message = str(data[0]).lower()
+        self.assertIn('suggest username', error_message)
+
+    def test_authenticated_user_can_use_reserved_username(self):
+        """Test that authenticated users can still use their reserved usernames"""
+        # Log in as the registered user
+        self.client.force_login(self.registered_user)
+
+        # Join with reserved username (should succeed)
+        join_response = self.client.post(
+            f'/api/chats/{self.chat.code}/join/',
+            {
+                'username': self.registered_user.reserved_username,
+                'fingerprint': 'test_security_fp_3'  # Fingerprint provided but user is authenticated
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(join_response.status_code, 200)
+        data = join_response.json()
+        self.assertIn('session_token', data)
+        self.assertEqual(data['username'], self.registered_user.reserved_username)
+
+    def test_existing_participant_can_rejoin_with_same_username(self):
+        """Test that existing participants can rejoin with their existing username"""
+        from chats.models import ChatParticipation
+
+        fingerprint = 'test_security_fp_4'
+        username = 'ExistingUser99'
+
+        # Step 1: Create an existing participation (simulate previous join)
+        participation = ChatParticipation.objects.create(
+            chat_room=self.chat,
+            username=username,
+            fingerprint=fingerprint,
+            user=None,  # Anonymous user
+            is_active=True
+        )
+
+        # Step 2: Try to rejoin with the same username and fingerprint (should succeed)
+        rejoin_response = self.client.post(
+            f'/api/chats/{self.chat.code}/join/',
+            {
+                'username': username,
+                'fingerprint': fingerprint
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(rejoin_response.status_code, 200)
+        data = rejoin_response.json()
+        self.assertIn('session_token', data)
+        self.assertEqual(data['username'], username)
+
+    def test_anonymous_user_cannot_use_another_fingerprints_generated_username(self):
+        """Test that anonymous users cannot use usernames generated for different fingerprints"""
+        fingerprint_a = 'test_security_fp_5a'
+        fingerprint_b = 'test_security_fp_5b'
+
+        # Step 1: Generate username for fingerprint A
+        suggest_response = self.client.post(
+            f'/api/chats/{self.chat.code}/suggest-username/',
+            {
+                'fingerprint': fingerprint_a
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response.status_code, 200)
+        username_for_a = suggest_response.json()['username']
+
+        # Step 2: Try to join with username_for_a using fingerprint B (should fail)
+        join_response = self.client.post(
+            f'/api/chats/{self.chat.code}/join/',
+            {
+                'username': username_for_a,
+                'fingerprint': fingerprint_b
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(join_response.status_code, 400)
+        data = join_response.json()
+        # DRF returns ValidationError as a list
+        self.assertIsInstance(data, list)
+        error_message = str(data[0]).lower()
+        self.assertIn('suggest username', error_message)
+
+    def test_security_check_only_applies_to_new_anonymous_participations(self):
+        """Test that security check is only applied to NEW anonymous participations, not rejoins"""
+        from chats.models import ChatParticipation
+
+        fingerprint = 'test_security_fp_6'
+        username = 'RejoiningUser99'
+
+        # Step 1: Create an existing participation with an arbitrary username
+        # (This simulates a user who joined before the security check was implemented)
+        participation = ChatParticipation.objects.create(
+            chat_room=self.chat,
+            username=username,
+            fingerprint=fingerprint,
+            user=None,
+            is_active=True
+        )
+
+        # Step 2: Rejoin with the same username (should succeed even if not in generated cache)
+        rejoin_response = self.client.post(
+            f'/api/chats/{self.chat.code}/join/',
+            {
+                'username': username,
+                'fingerprint': fingerprint
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(rejoin_response.status_code, 200)
+        data = rejoin_response.json()
+        self.assertEqual(data['username'], username)

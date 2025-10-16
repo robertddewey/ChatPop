@@ -3,6 +3,7 @@ Shared validators for chat application
 """
 import re
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 
 
 def validate_username(value, skip_badwords_check=False):
@@ -47,3 +48,41 @@ def validate_username(value, skip_badwords_check=False):
             pass
 
     return value
+
+
+def is_username_globally_available(username):
+    """
+    Check if a username is available globally (across entire platform).
+
+    A username is considered TAKEN if:
+    - Reserved by any registered user (User.reserved_username)
+    - Used in any chat room (ChatParticipation.username)
+    - Temporarily reserved in Redis (pending registration/chat join)
+
+    Args:
+        username: The username to check (case-insensitive)
+
+    Returns:
+        bool: True if available, False if taken
+    """
+    # Avoid circular imports
+    from accounts.models import User
+    from chats.models import ChatParticipation
+    from django.core.cache import cache
+
+    username_lower = username.lower()
+
+    # Check if reserved by any user
+    if User.objects.filter(reserved_username__iexact=username_lower).exists():
+        return False
+
+    # Check if used in any chat (uses indexed query for performance)
+    if ChatParticipation.objects.filter(username__iexact=username_lower).exists():
+        return False
+
+    # Check if temporarily reserved in Redis (prevents race conditions)
+    reservation_key = f"username:reserved:{username_lower}"
+    if cache.get(reservation_key):
+        return False
+
+    return True

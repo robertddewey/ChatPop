@@ -130,7 +130,35 @@ class ChatRoomJoinSerializer(serializers.Serializer):
     access_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
     def validate_username(self, value):
-        """Validate username format using shared validator"""
+        """
+        Validate username format using shared validator.
+
+        OPTIMIZATION: Skip validation for generated usernames (anonymous users).
+        Generated usernames are already validated during generation (generator.py:90-93).
+        Only validate for:
+        - Registration flow (no fingerprint context, handled by UserRegistrationSerializer)
+        - Logged-in users typing username manually (bypassing generation)
+        """
+        from django.core.cache import cache
+
+        # Get fingerprint from request data (if anonymous user)
+        request = self.context.get('request')
+        fingerprint = request.data.get('fingerprint') if request else None
+
+        # Check if username was generated for this fingerprint
+        if fingerprint:
+            generated_key = f"username:generated_for_fingerprint:{fingerprint}"
+            generated_usernames = cache.get(generated_key, set())
+
+            # Case-insensitive check (usernames stored with original capitalization)
+            generated_usernames_lower = {u.lower() for u in generated_usernames}
+
+            # If username was generated, skip validation (already validated during generation)
+            # The security check in views.py:107-129 will verify it came from this fingerprint
+            if value.lower() in generated_usernames_lower:
+                return value
+
+        # For all other cases (logged-in users, registration), validate the username
         try:
             value = validate_username(value)
         except DjangoValidationError as e:

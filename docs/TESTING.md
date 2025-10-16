@@ -1,6 +1,6 @@
 # Testing Documentation
 
-**Total Test Count:** 193 tests across 9 test suites
+**Total Test Count:** 265 tests across 12 test suites
 
 This document provides comprehensive documentation of all backend tests, including what each test does and why it's important.
 
@@ -12,6 +12,8 @@ This document provides comprehensive documentation of all backend tests, includi
 |------------|------|------------|---------|
 | Security Tests | `chats/tests/tests_security.py` | 26 tests | JWT authentication, username reservations, attack prevention |
 | Username Validation | `chats/tests/tests_validators.py` | 10 tests | Username format and character validation |
+| Username Generation | `chats/tests/tests_username_generation.py` | 45 tests | Global username uniqueness, rate limiting, case preservation, per-chat rotation |
+| Username Flow Integration | `chats/tests/tests_username_flow_integration.py` | 10 tests | End-to-end username suggest→join flow, case preservation, rotation without consecutive duplicates |
 | Profanity Filtering | `chats/tests/tests_profanity.py` | 26 tests | Profanity detection across all username entry points |
 | Rate Limiting | `chats/tests/tests_rate_limits.py` | 12 tests | Username generation rate limiting |
 | Dual Sessions | `chats/tests/tests_dual_sessions.py` | 16 tests | Anonymous/logged-in user coexistence |
@@ -19,6 +21,7 @@ This document provides comprehensive documentation of all backend tests, includi
 | Message Deletion | `chats/tests/tests_message_deletion.py` | 22 tests | Soft delete, cache invalidation, authorization, WebSocket broadcasting |
 | Reactions | `chats/tests/tests_reactions.py` | 10 tests | Emoji reactions, cache invalidation, real-time updates |
 | User Blocking | `chats/tests/tests_user_blocking.py` | 28 tests | User-to-user blocking, Redis cache sync, SQL injection prevention |
+| Account Security | `accounts/tests.py` | 17 tests | Registration username security, race condition prevention, API bypass protection |
 
 ---
 
@@ -280,7 +283,434 @@ These tests verify the `validate_username()` function from `chats/validators.py`
 
 ---
 
-## 3. Profanity Filtering Tests (`chats/tests/tests_profanity.py`)
+## 3. Username Generation Tests (`chats/tests/tests_username_generation.py`)
+
+**File Location:** `backend/chats/tests/tests_username_generation.py`
+**Test Count:** 44 tests
+**Test Classes:** `IsUsernameGloballyAvailableTestCase` (6 tests), `GenerateUsernameTestCase` (10 tests), `ChatSuggestUsernameAPITestCase` (16 tests), `AccountsSuggestUsernameAPITestCase` (5 tests), `CheckUsernameRedisReservationTestCase` (6 tests), `UsernameValidationRedisReservationTestCase` (7 tests)
+
+These tests verify the Global Username System including uniqueness checks, username generation with rate limiting, case preservation, unlimited rotation after rate limit, and Redis-based reservation to prevent race conditions.
+
+### 3.1 Global Username Availability Tests (6 tests)
+
+**Test Class:** `IsUsernameGloballyAvailableTestCase`
+
+#### `test_available_username`
+**What it tests:** Available usernames return True
+**How it works:** Tests three usernames not in database: 'AvailableUser', 'NewUser123', 'UniqueUser'
+**Expected result:** All return True
+**Why it matters:** Positive test case for availability checker
+
+#### `test_username_taken_by_reserved_user`
+**What it tests:** Usernames reserved by registered users are detected
+**How it works:** User has `reserved_username="ReservedUser"`, checks exact case and variants ('reserveduser', 'RESERVEDUSER', 'rEsErVeDuSeR')
+**Expected result:** All return False (case-insensitive matching)
+**Why it matters:** Protects reserved usernames with case-insensitive checking
+
+#### `test_username_taken_by_chat_participant`
+**What it tests:** Usernames used in any chat are globally unavailable
+**How it works:** ChatParticipation has `username="ChatUser123"`, checks exact case and variants
+**Expected result:** All return False (case-insensitive)
+**Why it matters:** Global username uniqueness across all chats
+
+#### `test_username_check_with_multiple_participations`
+**What it tests:** Username from any chat makes it globally unavailable
+**How it works:** Creates two chats, user joins second chat with 'AnotherUser', checks availability
+**Expected result:** Returns False (taken in second chat)
+**Why it matters:** Enforces global uniqueness across all chat rooms
+
+#### `test_username_check_with_registered_user_participation`
+**What it tests:** Both reserved username and chat username are checked
+**How it works:** User has `reserved_username="User2Reserved"` and joins chat as 'User2ChatName'
+**Expected result:** Both usernames unavailable
+**Why it matters:** Dual protection - reserved and active chat usernames both reserved
+
+###  3.2 Username Generation Function Tests (10 tests)
+
+**Test Class:** `GenerateUsernameTestCase`
+
+#### `test_successful_generation`
+**What it tests:** Generate username returns valid username with remaining attempts
+**How it works:** Calls `generate_username(fingerprint)`, checks format and `remaining` count
+**Expected result:** Valid 5-15 char username, `remaining=9` (used 1 of 10)
+**Why it matters:** Core generation functionality
+
+#### `test_rate_limit_tracking`
+**What it tests:** Rate limit counter decrements correctly over 10 generations
+**How it works:** Makes 10 generations, checks `remaining` counts down from 9 to 0, then 11th fails
+**Expected result:** First 10 succeed with correct counts, 11th returns `(None, 0)`
+**Why it matters:** Enforces 10-per-hour global generation limit
+
+#### `test_rate_limit_per_fingerprint`
+**What it tests:** Rate limits are isolated per fingerprint
+**How it works:** Exhausts 10 for fingerprint1, tries again (fails), tries fingerprint2 (succeeds)
+**Expected result:** fingerprint1 blocked, fingerprint2 works
+**Why it matters:** Independent limits prevent one user from blocking others
+
+#### `test_custom_max_attempts_override`
+**What it tests:** `max_attempts` parameter overrides Constance default
+**How it works:** Calls with `max_attempts=100` (registration flow uses this)
+**Expected result:** `remaining=99` (used 1 of 100)
+**Why it matters:** Registration gets higher limit than anonymous join
+
+#### `test_generated_usernames_tracking`
+**What it tests:** Generated usernames are tracked in Redis with original capitalization
+**How it works:** Generates username, checks Redis key `username:generated_for_fingerprint:{fp}`
+**Expected result:** Redis set contains username with preserved case (e.g., "HappyTiger42", not "happytiger42")
+**Why it matters:** Tracks usernames for API bypass prevention AND preserves capitalization
+
+#### `test_chat_specific_cache`
+**What it tests:** Chat-specific recent suggestions cache works
+**How it works:** Generates username for specific chat_code, checks Redis `chat:{code}:recent_suggestions`
+**Expected result:** Username appears in chat cache (lowercase)
+**Why it matters:** Prevents immediate re-suggestion of same username in same chat
+
+#### `test_global_uniqueness_check`
+**What it tests:** Generated usernames avoid globally taken usernames
+**How it works:** Reserves 'TakenUser1' in database, generates 5 usernames
+**Expected result:** None of the 5 match 'TakenUser1'
+**Why it matters:** Collision avoidance with existing usernames
+
+#### `test_fallback_to_guest_usernames`
+**What it tests:** Guest pattern fallback when generation struggles
+**How it works:** Mocks word generation to fail, checks fallback to Guest{random}
+**Expected result:** No crash, returns Guest username or fails gracefully
+**Why it matters:** Resilience - always has fallback option
+
+#### `test_constance_config_integration`
+**What it tests:** Constance `MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL` setting is used
+**How it works:** Sets config to 3, generates 3 usernames, 4th fails
+**Expected result:** First 3 succeed, 4th returns `(None, 0)`
+**Why it matters:** Runtime-configurable limit via Django admin
+
+#### `test_redis_ttl_expiration`
+**What it tests:** Redis tracking keys have 1-hour TTL
+**How it works:** Generates username, checks Redis TTL on tracking keys
+**Expected result:** Keys have TTL set
+**Why it matters:** Automatic cleanup prevents Redis memory growth
+
+### 3.3 Chat Suggest Username API Tests (16 tests)
+
+**Test Class:** `ChatSuggestUsernameAPITestCase`
+
+#### `test_successful_suggestion`
+**What it tests:** API returns username with rate limit counters
+**How it works:** POST to `/api/chats/{code}/suggest-username/` with fingerprint
+**Expected result:** 200 OK, response contains `username`, `remaining` (per-chat), `generation_remaining` (global)
+**Why it matters:** API structure verification
+
+#### `test_dual_rate_limits`
+**What it tests:** Both chat-specific and global limits are tracked
+**How it works:** Makes suggestion, checks both counters
+**Expected result:** `remaining=19` (per-chat: 20-1), `generation_remaining=9` (global: 10-1)
+**Why it matters:** Dual rate limiting system verification
+
+#### `test_global_generation_limit_hit`
+**What it tests:** Rotation behavior when global limit is exceeded
+**How it works:** Generates 2 usernames (global limit=2), then makes 10 more requests
+**Expected result:** First 2 generate new usernames, next 10 rotate through those 2 usernames (all return 200 OK with `generation_remaining=0`)
+**Why it matters:** Unlimited rotation feature - users can cycle through previously generated usernames after hitting global limit
+
+#### `test_username_rotation_after_global_limit`
+**What it tests:** Users can infinitely rotate through previously generated usernames
+**How it works:** Generates 3 usernames (global limit=3), then makes 20 rotation requests
+**Expected result:** All 20 succeed (200 OK), each returns one of the 3 previously generated usernames
+**Why it matters:** Core rotation feature - prevents users from being completely blocked
+
+#### `test_per_chat_rate_limit_separate_from_global`
+**What it tests:** Per-chat and global limits are independent
+**How it works:** Global=10, per-chat=3. Generates 3 in chat1 (hits per-chat limit), tries chat2
+**Expected result:** Chat1 hits per-chat limit (`remaining=0`, `generation_remaining=7`), Chat2 succeeds (`remaining=2`, `generation_remaining=6`)
+**Why it matters:** Independent limit tracking prevents cross-chat interference
+
+#### `test_case_preservation_in_generation`
+**What it tests:** Generated usernames preserve mixed case
+**How it works:** Generates username, verifies pattern matches `AdjectiveNoun123` format
+**Expected result:** Username has mixed case (e.g., "HappyTiger42"), stored in Redis with original capitalization
+**Why it matters:** Respects AdjectiveNoun capitalization pattern
+
+#### `test_case_preservation_in_rotation`
+**What it tests:** Rotation returns exact capitalization from generation
+**How it works:** Generates 3 usernames with specific capitalization, rotates 10 times
+**Expected result:** Each rotation returns exact match (same capitalization) from original list
+**Why it matters:** Case consistency across rotation cycles
+
+#### `test_case_insensitive_uniqueness`
+**What it tests:** Uniqueness checking is case-insensitive
+**How it works:** User1 generates "Username1", reserves it in Redis as lowercase. User2 generates usernames.
+**Expected result:** User2 never gets "Username1" (case-insensitive collision detection)
+**Why it matters:** Prevents "HappyTiger42" and "happytiger42" coexistence
+
+#### `test_fingerprint_extraction_from_body`
+**What it tests:** Fingerprint extracted from request body
+**How it works:** POST with `{'fingerprint': 'custom_fingerprint_123'}`
+**Expected result:** Redis key uses custom fingerprint
+**Why it matters:** Request body parameter handling
+
+#### `test_ip_fallback_when_no_fingerprint`
+**What it tests:** IP address fallback when fingerprint missing
+**How it works:** POST without fingerprint, sets `REMOTE_ADDR="192.168.1.100"`
+**Expected result:** Redis key uses IP address instead
+**Why it matters:** Graceful degradation for clients without fingerprinting
+
+#### `test_invalid_chat_code`
+**What it tests:** Invalid chat code returns 404
+**How it works:** POST to `/api/chats/INVALID/suggest-username/`
+**Expected result:** 404 Not Found
+**Why it matters:** Proper error handling
+
+### 3.4 Account Suggest Username API Tests (5 tests)
+
+**Test Class:** `AccountsSuggestUsernameAPITestCase`
+
+Tests the `/api/auth/suggest-username/` endpoint used during registration (higher rate limit).
+
+#### `test_registration_higher_limit`
+**What it tests:** Registration gets 100 attempts instead of 10
+**How it works:** Calls registration suggest endpoint, checks `remaining_attempts=99`
+**Expected result:** 99 remaining (used 1 of 100)
+**Why it matters:** Registration flow has higher limit than anonymous join
+
+#### `test_successful_registration_suggestion`
+**What it tests:** Registration endpoint returns valid username
+**How it works:** POST to `/api/auth/suggest-username/`
+**Expected result:** 200 OK, username 5-15 chars
+**Why it matters:** Core registration suggestion flow
+
+#### `test_ip_fallback_for_registration`
+**What it tests:** IP fallback in registration flow
+**How it works:** POST without fingerprint, checks Redis key uses IP
+**Expected result:** Redis tracking uses IP address
+**Why it matters:** Backward compatibility
+
+#### `test_x_forwarded_for_header`
+**What it tests:** X-Forwarded-For header used when available (proxy support)
+**How it works:** Sets `HTTP_X_FORWARDED_FOR="203.0.113.1, 198.51.100.1"`
+**Expected result:** Uses first IP (203.0.113.1)
+**Why it matters:** Correct IP extraction behind proxies
+
+#### `test_registration_rate_limit_exhaustion`
+**What it tests:** 101st registration suggestion fails
+**How it works:** Manually sets Redis counter to 100, attempts generation
+**Expected result:** 429 Too Many Requests, `remaining_attempts=0`
+**Why it matters:** Even registration has a (high) limit
+
+### 3.5 Check Username Redis Reservation Tests (6 tests)
+
+**Test Class:** `CheckUsernameRedisReservationTestCase`
+
+Tests `/api/auth/check-username/` endpoint (real-time validation during registration).
+
+#### `test_available_username_reserved_in_redis`
+**What it tests:** Available usernames are temporarily reserved after check
+**How it works:** GET `/api/auth/check-username/?username=ValidUser123`, checks Redis
+**Expected result:** Username reserved in Redis with 10-minute TTL
+**Why it matters:** Race condition prevention - reserves username during form completion
+
+#### `test_unavailable_username_not_reserved`
+**What it tests:** Taken usernames are not reserved
+**How it works:** Checks username that already exists in database
+**Expected result:** Returns `available: false`, no Redis reservation
+**Why it matters:** Don't waste Redis space on unavailable usernames
+
+#### `test_invalid_username_not_reserved`
+**What it tests:** Invalid usernames (too short, etc.) not reserved
+**How it works:** Checks 3-char username
+**Expected result:** 400 Bad Request, no Redis reservation
+**Why it matters:** Only valid, available usernames are reserved
+
+#### `test_race_condition_prevention`
+**What it tests:** Two users checking same username see it as taken after first check
+**How it works:** User1 checks "RaceTest123" (reserved), User2 checks same username
+**Expected result:** User1 gets `available: true`, User2 gets `available: false`
+**Why it matters:** Critical race condition protection
+
+#### `test_constance_ttl_setting_used`
+**What it tests:** Constance `USERNAME_VALIDATION_TTL_MINUTES` setting controls TTL
+**How it works:** Sets config to 5 minutes, checks username, verifies reservation exists
+**Expected result:** Username reserved with 5-minute TTL
+**Why it matters:** Configurable reservation window
+
+#### `test_case_insensitive_reservation`
+**What it tests:** Reservation is case-insensitive
+**How it works:** Reserves "CaseSensitive", checks "casesensitive" and "CASESENSITIVE"
+**Expected result:** All variants show as unavailable
+**Why it matters:** Prevents case-variant squatting
+
+### 3.6 Username Validation Redis Reservation Tests (7 tests)
+
+**Test Class:** `UsernameValidationRedisReservationTestCase`
+
+Tests `/api/chats/{code}/validate-username/` endpoint (real-time validation during chat join).
+
+#### `test_available_username_reserved_in_redis`
+**What it tests:** Available chat usernames are reserved after validation
+**How it works:** POST `/api/chats/{code}/validate-username/` with available username
+**Expected result:** Username reserved in Redis with 10-minute TTL
+**Why it matters:** Race condition prevention during chat join
+
+#### `test_unavailable_username_not_reserved`
+**What it tests:** Taken chat usernames not reserved
+**How it works:** Validates username that's already in use in chat
+**Expected result:** Returns `available: false`, no reservation
+**Why it matters:** Don't waste Redis space
+
+#### `test_invalid_username_not_reserved`
+**What it tests:** Invalid usernames (profanity, too short) not reserved
+**How it works:** Validates 2-char username
+**Expected result:** 400 Bad Request, no reservation
+**Why it matters:** Only valid usernames are reserved
+
+#### `test_race_condition_prevention`
+**What it tests:** Two users validating same username see conflict
+**How it works:** User1 validates "RaceChatTest" (reserved), User2 validates same
+**Expected result:** User1 gets `available: true`, User2 gets `available: false`
+**Why it matters:** Prevents two users from joining with same username
+
+#### `test_constance_ttl_setting_used`
+**What it tests:** TTL setting controls reservation duration
+**How it works:** Sets `USERNAME_VALIDATION_TTL_MINUTES=5`, validates username
+**Expected result:** 5-minute reservation
+**Why it matters:** Configurable via Constance
+
+#### `test_case_insensitive_reservation`
+**What it tests:** Chat username reservation is case-insensitive
+**How it works:** Validates "MixedCase", checks "mixedcase" and "MIXEDCASE"
+**Expected result:** All variants unavailable after first reservation
+**Why it matters:** Case-insensitive uniqueness in chats
+
+#### `test_reserved_username_detected`
+**What it tests:** User.reserved_username is checked during chat join validation
+**How it works:** Validates username that matches host's reserved_username
+**Expected result:** Returns `available: false`, `reserved_by_other: true`
+**Why it matters:** Respects registered users' reserved usernames
+
+---
+
+## 4. Username Flow Integration Tests (`chats/tests/tests_username_flow_integration.py`)
+
+**File Location:** `backend/chats/tests/tests_username_flow_integration.py`
+**Test Count:** 10 tests
+**Test Classes:** `UsernameGenerationToJoinFlowTestCase` (3 tests), `UsernameRotationIntegrationTestCase` (4 tests), `UsernameSecurityChecksIntegrationTestCase` (3 tests)
+
+These integration tests verify the full end-to-end username flow from generation through joining a chat, including case preservation, rotation behavior, and security checks. Unlike unit tests that test individual components, these tests exercise the complete user journey.
+
+### 4.1 Generation to Join Flow Tests (3 tests)
+
+**Test Class:** `UsernameGenerationToJoinFlowTestCase`
+
+#### `test_suggest_username_then_join_preserves_case`
+**What it tests:** CRITICAL - Full suggest→join flow with case preservation (would have caught the case-sensitivity bug)
+**How it works:**
+1. POST to `/api/chats/{code}/suggest-username/` to get a username (e.g., "HappyTiger42")
+2. Verify username has mixed case (matches `AdjectiveNoun123` pattern)
+3. POST to `/api/chats/{code}/join/` with the EXACT suggested username
+4. Verify join succeeds and ChatParticipation created with original capitalization
+**Expected result:** Join succeeds with 200 OK, username stored as "HappyTiger42" (not "happytiger42")
+**Why it matters:** This test catches the bug at `views.py:124` where the security check was doing case-sensitive comparison with case-preserved storage. This is the exact flow users experience.
+
+#### `test_join_rejects_username_not_generated_for_fingerprint`
+**What it tests:** Security - prevents using usernames not generated for this fingerprint
+**How it works:**
+1. Generate username for fingerprint1
+2. Try to join with that username using fingerprint2
+**Expected result:** Join fails with 400 Bad Request
+**Why it matters:** API bypass prevention - ensures users can only use usernames they actually generated
+
+#### `test_case_insensitive_join_attempt_with_different_case`
+**What it tests:** Security - prevents bypassing with different case variations
+**How it works:**
+1. Generate "HappyTiger42" for fingerprint1
+2. Try to join as "happytiger42" (all lowercase) with fingerprint1
+**Expected result:** Join fails with 400 Bad Request
+**Why it matters:** Prevents users from manually crafting lowercase/uppercase variations to bypass the system
+
+### 4.2 Rotation Integration Tests (4 tests)
+
+**Test Class:** `UsernameRotationIntegrationTestCase`
+
+#### `test_rotation_preserves_original_capitalization`
+**What it tests:** Rotation returns usernames with EXACT original capitalization
+**How it works:**
+1. Generate 3 usernames (global limit=3): e.g., "HappyTiger42", "SadPanda99", "ExcitedDog7"
+2. Rotate 10 times
+**Expected result:** All rotations return exact matches with original capitalization
+**Why it matters:** Case consistency throughout rotation cycles
+
+#### `test_rotation_then_join_integration`
+**What it tests:** Full flow - generate → rotate → join with rotated username
+**How it works:**
+1. Generate 3 usernames (hits global limit)
+2. Request 10 more usernames (rotation mode)
+3. Pick the 5th rotated username
+4. Join chat with that username
+**Expected result:** Join succeeds, ChatParticipation created with rotated username
+**Why it matters:** Ensures rotated usernames work identically to freshly generated ones
+
+#### `test_rotation_no_consecutive_duplicates`
+**What it tests:** CRITICAL - Rotation never returns same username consecutively
+**How it works:**
+1. Generate 3 usernames (global limit=3)
+2. Rotate 15 times, tracking sequence
+3. Check for consecutive duplicates (e.g., Alice, Alice)
+**Expected result:** No two consecutive usernames are identical
+**Why it matters:** Addresses user's requirement: "don't return: Alice, Alice, Alice, Bob, Alice, etc". Ensures predictable alphabetical rotation.
+
+#### `test_rotation_after_username_becomes_unavailable`
+**What it tests:** Rotation skips usernames that become globally unavailable
+**How it works:**
+1. Generate 3 usernames: ["Alpha1", "Beta2", "Gamma3"]
+2. Another user takes "Beta2" globally
+3. Rotate and verify "Beta2" never appears
+**Expected result:** Only "Alpha1" and "Gamma3" in rotation
+**Why it matters:** Real-time availability checking prevents suggesting taken usernames
+
+### 4.3 Security Checks Integration Tests (3 tests)
+
+**Test Class:** `UsernameSecurityChecksIntegrationTestCase`
+
+#### `test_case_preserved_username_passes_security_check`
+**What it tests:** CRITICAL BUG FIX - Case-preserved usernames pass the security check at `views.py:124`
+**How it works:**
+1. Generate "HappyTiger42"
+2. Verify it's stored in Redis as "HappyTiger42" (original case)
+3. Join with "HappyTiger42"
+**Expected result:** Security check creates lowercase set for comparison, join succeeds
+**Why it matters:** This directly tests the bug fix - ensures the security check handles case-insensitive comparison with case-preserved storage
+
+#### `test_cannot_bypass_generation_with_manual_username`
+**What it tests:** Anonymous users can't manually craft usernames
+**How it works:**
+1. Don't generate any usernames
+2. Try to join directly with "ManualUsername123"
+**Expected result:** Join fails with "Invalid username. Please use the suggest username feature" error
+**Why it matters:** Forces anonymous users through the generation/rotation system
+
+#### `test_rejoining_user_bypasses_generation_check`
+**What it tests:** Returning users can rejoin without regenerating
+**How it works:**
+1. User generates username and joins
+2. User leaves chat (ChatParticipation deleted)
+3. User rejoins with same username
+**Expected result:** Join succeeds without needing to regenerate
+**Why it matters:** Returning users aren't subject to the security check
+
+### Running These Tests
+
+```bash
+# Run all integration tests
+./venv/bin/python manage.py test chats.tests.tests_username_flow_integration
+
+# Run specific test class
+./venv/bin/python manage.py test chats.tests.tests_username_flow_integration.UsernameRotationIntegrationTestCase
+
+# Run critical test that would have caught the bug
+./venv/bin/python manage.py test chats.tests.tests_username_flow_integration.UsernameGenerationToJoinFlowTestCase.test_suggest_username_then_join_preserves_case
+```
+
+---
+
+## 5. Profanity Filtering Tests (`chats/tests/tests_profanity.py`)
 
 **File Location:** `backend/chats/tests/tests_profanity.py`
 **Test Count:** 26 tests
@@ -1372,6 +1802,130 @@ These tests benchmark blocking operations with large datasets.
 
 ---
 
+## 10. Account Security Tests (`accounts/tests.py`)
+
+**File Location:** `backend/accounts/tests.py`
+**Test Count:** 17 tests
+**Test Classes:** `RegistrationGeneratedUsernameSecurityTests` (12 tests), `UsernameAvailabilityCheckTests` (5 tests)
+
+### 10.1 Registration Generated Username Security Tests (12 tests)
+
+**Test Class:** `RegistrationGeneratedUsernameSecurityTests`
+
+These tests verify the comprehensive security system that enforces generated usernames during registration, prevents API bypass attacks, prevents username squatting, and ensures race condition protection through Redis reservations.
+
+#### `test_registration_with_generated_username_succeeds`
+**What it tests:** Registration succeeds when using a properly generated username
+**How it works:** Generates username via `/api/auth/suggest-username/` with fingerprint, then registers with that username and same fingerprint
+**Expected result:** 201 Created, user created in database with correct reserved_username
+**Why it matters:** Positive test case - legitimate users can register with system-generated usernames
+
+#### `test_registration_with_non_generated_username_rejected`
+**What it tests:** Registration is blocked when using arbitrary username not from suggest-username
+**How it works:** Attempts to register with `reserved_username: 'HackerUser99'` without generating it first
+**Expected result:** 400 Bad Request with error "Invalid username. Please use the suggest username feature"
+**Why it matters:** Core security feature - prevents users from choosing arbitrary usernames via API manipulation
+
+#### `test_registration_without_fingerprint_succeeds`
+**What it tests:** Backward compatibility - registration without fingerprint bypasses security check
+**How it works:** Registers with username but no fingerprint field in request
+**Expected result:** 201 Created, registration succeeds
+**Why it matters:** Maintains backward compatibility while allowing future fingerprint enforcement
+
+#### `test_registration_with_different_fingerprint_rejected`
+**What it tests:** Username generated for fingerprint A cannot be used by fingerprint B
+**How it works:** Fingerprint A generates username, fingerprint B tries to register with it
+**Expected result:** 400 Bad Request, registration blocked
+**Why it matters:** Prevents username stealing - each fingerprint can only use usernames they generated
+
+#### `test_multiple_registrations_same_fingerprint`
+**What it tests:** Same fingerprint can register multiple users with different generated usernames
+**How it works:** Uses same fingerprint to generate 2 usernames, registers 2 different users with those usernames
+**Expected result:** Both registrations succeed (201 Created), both users created in database
+**Why it matters:** Allows legitimate shared-device usage while maintaining security
+
+#### `test_rate_limiting_enforced`
+**What it tests:** Rate limiting prevents excessive username generation (100 attempts per hour)
+**How it works:** Makes 100 successful suggest-username requests, then attempts 101st
+**Expected result:** First 100 return 200 OK, 101st returns 429 Too Many Requests with `remaining_attempts: 0`
+**Why it matters:** Prevents brute-force attempts to generate specific/desirable usernames
+
+#### `test_registration_preserves_other_validations`
+**What it tests:** Username security doesn't bypass other validations (email, password, etc.)
+**How it works:** Generates valid username, then attempts registration with invalid email and weak password
+**Expected result:** Both registrations fail (400 Bad Request) with appropriate field errors
+**Why it matters:** Ensures security layer doesn't break existing validation logic
+
+#### `test_username_case_insensitive_matching`
+**What it tests:** Username matching in Redis tracking is case-insensitive
+**How it works:** Generates username (e.g., "HappyTiger42"), registers with different casing (e.g., "HAPPYTIGER42")
+**Expected result:** 201 Created, registration succeeds (case-insensitive match)
+**Why it matters:** Consistent case-insensitive behavior across the system
+
+#### `test_race_condition_prevention`
+**What it tests:** Redis reservation prevents two users from getting the same username
+**How it works:** Fingerprint A generates username, fingerprint B generates username (should get different one because first is reserved), both register with their respective usernames
+**Expected result:** Both get different usernames, both registrations succeed
+**Why it matters:** Critical race condition protection - ensures global username uniqueness even under concurrent load
+
+#### `test_username_squatting_prevention`
+**What it tests:** Users cannot squat on desirable usernames by bypassing generation system
+**How it works:** Attempts to register with desirable usernames like "CoolUser99" and "Admin12345" without generating them
+**Expected result:** Both attempts return 400 Bad Request, no user created
+**Why it matters:** Prevents username squatting attacks where users try to claim valuable usernames
+
+#### `test_bypass_ui_direct_api_call`
+**What it tests:** Comprehensive API bypass protection
+**How it works:**
+- Scenario 1: User sends valid-looking username "HackerUser123" directly to register endpoint
+- Scenario 2: User generates username with fingerprint B, tries to steal it using fingerprint A
+**Expected result:** Both scenarios return 400 Bad Request, no users created
+**Why it matters:** Prevents sophisticated API manipulation where attackers bypass frontend and call registration API directly with crafted usernames
+
+#### `test_rate_limit_prevents_excessive_username_generation`
+**What it tests:** Rate limit enforcement (duplicate of test_rate_limiting_enforced with additional verification)
+**How it works:** Generates 100 usernames (stores them in list), attempts 101st, verifies count
+**Expected result:** 100 succeed, 101st returns 429, list contains exactly 100 usernames
+**Why it matters:** Validates rate limit integrity and ensures counter accuracy
+
+### 10.2 Username Availability Check Tests (5 tests)
+
+**Test Class:** `UsernameAvailabilityCheckTests`
+
+These tests verify the `/api/auth/check-username/` endpoint used for real-time username validation during registration. This endpoint checks if a username is available before the user attempts to register.
+
+#### `test_check_available_username`
+**What it tests:** Available usernames return positive result
+**How it works:** GET request to `/api/auth/check-username/?username=AvailableUser99` (username not in database)
+**Expected result:** 200 OK, `{available: true, message: "Username is available"}`
+**Why it matters:** Positive feedback for valid username choices
+
+#### `test_check_taken_username`
+**What it tests:** Taken usernames return negative result
+**How it works:** GET request for "ExistingUser99" (existing user's reserved_username)
+**Expected result:** 200 OK, `{available: false, message: "... already taken"}`
+**Why it matters:** Prevents duplicate usernames, provides clear feedback
+
+#### `test_check_username_case_insensitive`
+**What it tests:** Username checking is case-insensitive
+**How it works:** Checks "existinguser99" (lowercase) when database has "ExistingUser99"
+**Expected result:** 200 OK, `{available: false}` (detected as taken)
+**Why it matters:** Consistent case-insensitive uniqueness enforcement
+
+#### `test_check_profane_username`
+**What it tests:** Profane usernames are rejected by check endpoint
+**How it works:** GET request with profane username (e.g., "FuckYou123")
+**Expected result:** 400 Bad Request, `{available: false, message: "... not allowed: contains prohibited content"}` (message contains 'profanity', 'prohibited', or 'not allowed')
+**Why it matters:** Prevents profane usernames during registration process (real-time feedback)
+
+#### `test_check_empty_username`
+**What it tests:** Empty username returns validation error
+**How it works:** GET request with `?username=` (empty string)
+**Expected result:** 400 Bad Request, `{available: false, message: "... required"}`
+**Why it matters:** Input validation for required field
+
+---
+
 ## Running Tests
 
 ### Run All Tests
@@ -1387,6 +1941,9 @@ cd backend
 
 # Username validation tests (10 tests)
 ./venv/bin/python manage.py test chats.tests.tests_validators
+
+# Username generation tests (44 tests)
+./venv/bin/python manage.py test chats.tests.tests_username_generation
 
 # Profanity filter tests (26 tests)
 ./venv/bin/python manage.py test chats.tests.tests_profanity
@@ -1430,6 +1987,7 @@ cd backend
 | JWT Authentication | 17 | Comprehensive - all attack vectors covered |
 | Username Reservations | 9 | Comprehensive - all edge cases covered |
 | Username Validation | 10 | Comprehensive - all valid/invalid patterns |
+| Username Generation | 44 | Comprehensive - global uniqueness, rate limiting, case preservation, rotation, Redis reservations |
 | Profanity Filtering | 26 | Comprehensive - all entry points + bypass attempts |
 | Rate Limiting | 12 | Comprehensive - limits, isolation, edge cases |
 | Dual Sessions | 16 | Comprehensive - anonymous/logged-in coexistence |
@@ -1437,5 +1995,6 @@ cd backend
 | Message Deletion | 22 | Comprehensive - authorization, soft delete, cache invalidation, WebSocket |
 | Reactions | 10 | Comprehensive - add/remove reactions, cache sync, real-time updates |
 | User Blocking | 28 | Comprehensive - block/unblock operations, SQL injection prevention, Redis cache sync, WebSocket broadcasting, performance |
+| Account Security | 17 | Comprehensive - registration security, API bypass prevention, race conditions |
 
-**Overall Coverage:** 193 tests covering security, validation, caching, messaging, real-time features, and user moderation
+**Overall Coverage:** 254 tests covering security, validation, username generation, caching, messaging, real-time features, and user moderation

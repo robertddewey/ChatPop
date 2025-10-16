@@ -267,6 +267,28 @@ CONSTANCE_CONFIG = {
         'Maximum number of anonymous usernames allowed per IP address per chat room',
         int
     ),
+    'MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL': (
+        10,
+        'Maximum number of NEW username generations per fingerprint per hour (global, across all chats). After limit is reached, users can still rotate through previously generated usernames.',
+        int
+    ),
+    'MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT': (
+        20,
+        'Maximum number of NEW username generations per fingerprint per chat per hour. Rotation through previously generated usernames does not count against this limit.',
+        int
+    ),
+
+    # Username Reservation TTL Settings
+    'USERNAME_RESERVATION_TTL_MINUTES': (
+        60,
+        'How long generated usernames are reserved in Redis (minutes). Gives users time to complete registration/join chat. Used for both anonymous and registered user flows.',
+        int
+    ),
+    'USERNAME_VALIDATION_TTL_MINUTES': (
+        10,
+        'How long custom usernames are reserved after real-time validation (minutes). Prevents race conditions during form submission where two users try to register the same username.',
+        int
+    ),
 
     # User Blocking/Muting Settings
     'USER_BLOCK_CACHE_TTL_HOURS': (
