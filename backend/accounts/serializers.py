@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.cache import cache
 from .models import User, UserSubscription
 from chats.utils.username.validators import validate_username
 
@@ -30,10 +31,11 @@ class UserSerializer(serializers.ModelSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Serializer for user registration"""
     password = serializers.CharField(write_only=True, min_length=8)
+    fingerprint = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'reserved_username', 'first_name', 'last_name']
+        fields = ['email', 'password', 'reserved_username', 'first_name', 'last_name', 'fingerprint']
 
     def validate_reserved_username(self, value):
         """Validate reserved username format and uniqueness"""
@@ -50,6 +52,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        # Remove fingerprint from validated_data (it's only used for security validation)
+        validated_data.pop('fingerprint', None)
+
         user = User.objects.create_user(
             email=validated_data['email'],
             password=validated_data['password'],
