@@ -112,14 +112,13 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None):
         cache.set(reservation_key, True, cache_ttl)  # 1 hour TTL (same as fingerprint tracking)
 
         # Add to fingerprint's generated usernames set (for API bypass prevention)
-        # Store lowercase for case-insensitive matching in serializer validation
-        generated_usernames.add(username.lower())
+        generated_usernames.add(username)
         cache.set(generated_key, generated_usernames, cache_ttl)
 
         # ALSO add to per-chat tracking (if chat_code provided) for rotation
         if generated_per_chat_key:
             generated_per_chat = cache.get(generated_per_chat_key, set())
-            generated_per_chat.add(username.lower())
+            generated_per_chat.add(username)
             cache.set(generated_per_chat_key, generated_per_chat, cache_ttl)
 
         # Add to chat-specific cache if using chat cache
@@ -147,14 +146,14 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None):
                 reservation_key = f"username:reserved:{guest_username.lower()}"
                 cache.set(reservation_key, True, cache_ttl)
 
-                # Track it (store lowercase for case-insensitive matching)
-                generated_usernames.add(guest_username.lower())
+                # Track it
+                generated_usernames.add(guest_username)
                 cache.set(generated_key, generated_usernames, cache_ttl)
 
                 # ALSO add to per-chat tracking (if chat_code provided)
                 if generated_per_chat_key:
                     generated_per_chat = cache.get(generated_per_chat_key, set())
-                    generated_per_chat.add(guest_username.lower())
+                    generated_per_chat.add(guest_username)
                     cache.set(generated_per_chat_key, generated_per_chat, cache_ttl)
 
                 return (guest_username, remaining_attempts)

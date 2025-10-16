@@ -171,9 +171,9 @@ class SuggestUsernameView(APIView):
         # DEBUG: Log fingerprint value
         print(f"[SUGGEST_USERNAME] Fingerprint: {fingerprint}")
 
-        # Generate username using global limit from Constance config
-        # Uses same limit as chat joining for consistency
-        username, remaining_attempts = generate_username(fingerprint, chat_code=None, max_attempts=None)
+        # Generate username with higher limit for registration (100 vs chat's 10)
+        # Registration gets more attempts since it's a one-time action
+        username, remaining_attempts = generate_username(fingerprint, chat_code=None, max_attempts=100)
 
         # DEBUG: Log result
         print(f"[SUGGEST_USERNAME] Generated: {username}, Remaining: {remaining_attempts}")
