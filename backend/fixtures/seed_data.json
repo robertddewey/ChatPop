@@ -1,0 +1,302 @@
+[
+{
+  "model": "chats.chattheme",
+  "pk": 1,
+  "fields": {
+    "theme_id": "dark-mode",
+    "name": "Dark Mode",
+    "is_dark_mode": true,
+    "theme_color_light": "#18181b",
+    "theme_color_dark": "#18181b",
+    "container": "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-zinc-950",
+    "header": "border-b border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
+    "header_title": "text-lg font-bold text-zinc-100",
+    "header_title_fade": "bg-gradient-to-l from-zinc-900 to-transparent",
+    "header_subtitle": "text-sm text-zinc-400",
+    "sticky_section": "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
+    "messages_area": "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
+    "messages_area_container": "bg-zinc-900",
+    "messages_area_bg": "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.06] [filter:invert(1)_sepia(1)_hue-rotate(120deg)_saturate(3)]",
+    "host_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded px-3 py-2 bg-teal-600 font-medium transition-all duration-300",
+    "sticky_host_message": "w-full rounded px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-teal-600 font-medium transition-all duration-300",
+    "host_text": "text-white",
+    "host_message_fade": "bg-gradient-to-l from-teal-600 to-transparent",
+    "pinned_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-3 bg-emerald-600 text-white shadow-lg border-l-4 border-emerald-400",
+    "sticky_pinned_message": "w-full rounded-xl px-4 py-3 bg-emerald-600 text-white shadow-lg border-l-4 border-emerald-400",
+    "pinned_text": "text-sm text-white",
+    "pinned_message_fade": "bg-gradient-to-l from-amber-700 to-transparent",
+    "regular_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded px-3 py-2 bg-zinc-800",
+    "regular_text": "text-white",
+    "my_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded px-3 py-2 bg-zinc-800",
+    "my_text": "text-white",
+    "voice_message_styles": {
+      "playButton": "bg-zinc-600/40",
+      "containerBg": "bg-zinc-600/40",
+      "playIconColor": "text-white",
+      "waveformActive": "bg-white/80",
+      "playButtonActive": "bg-zinc-500",
+      "waveformInactive": "bg-white/20",
+      "durationTextColor": "text-white/60"
+    },
+    "my_voice_message_styles": {
+      "playButton": "bg-zinc-600/40",
+      "containerBg": "bg-zinc-600/40",
+      "playIconColor": "text-white",
+      "waveformActive": "bg-white/80",
+      "playButtonActive": "bg-zinc-500",
+      "waveformInactive": "bg-white/20",
+      "durationTextColor": "text-white/60"
+    },
+    "host_voice_message_styles": {
+      "playButton": "bg-teal-800",
+      "containerBg": "bg-teal-800",
+      "playIconColor": "text-white",
+      "waveformActive": "bg-white/80",
+      "playButtonActive": "bg-teal-500",
+      "waveformInactive": "bg-white/20",
+      "durationTextColor": "text-white/60"
+    },
+    "pinned_voice_message_styles": {
+      "playButton": "bg-emerald-800",
+      "containerBg": "bg-emerald-800",
+      "playIconColor": "text-white",
+      "waveformActive": "bg-white/80",
+      "playButtonActive": "bg-emerald-400",
+      "waveformInactive": "bg-white/20",
+      "durationTextColor": "text-white/60"
+    },
+    "filter_button_active": "px-3 py-1.5 rounded text-xs tracking-wider bg-emerald-500 text-emerald-950 border border-emerald-400",
+    "filter_button_inactive": "px-3 py-1.5 rounded text-xs tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700",
+    "input_area": "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
+    "input_field": "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
+    "pin_icon_color": "text-emerald-400",
+    "crown_icon_color": "text-teal-400",
+    "badge_icon_color": "text-emerald-400",
+    "reply_icon_color": "text-emerald-300",
+    "my_username": "text-xs font-semibold text-white",
+    "regular_username": "text-xs font-semibold text-gray-400",
+    "host_username": "text-sm font-semibold",
+    "pinned_username": "text-xs font-semibold text-gray-400",
+    "sticky_host_username": "text-xs font-semibold text-white",
+    "sticky_pinned_username": "text-xs font-semibold text-white",
+    "my_timestamp": "text-xs \\!text-white opacity-60",
+    "regular_timestamp": "text-xs \\!text-white opacity-60",
+    "host_timestamp": "text-xs opacity-60",
+    "pinned_timestamp": "text-xs opacity-60",
+    "reply_preview_container": "flex items-center justify-between px-4 py-2 bg-black/60 backdrop-blur-sm border-b border-white/10 rounded-lg",
+    "reply_preview_icon": "w-4 h-4 flex-shrink-0 text-gray-300",
+    "reply_preview_username": "text-xs font-semibold text-white",
+    "reply_preview_content": "text-xs text-gray-300 truncate",
+    "reply_preview_close_button": "p-1 hover:bg-white/10 rounded",
+    "reply_preview_close_icon": "w-4 h-4 text-gray-400",
+    "created_at": "2025-10-06T21:17:41.767Z",
+    "updated_at": "2025-10-09T22:52:14.161Z"
+  }
+},
+{
+  "model": "chats.chattheme",
+  "pk": 27,
+  "fields": {
+    "theme_id": "light-mode",
+    "name": "Light Mode",
+    "is_dark_mode": false,
+    "theme_color_light": "#ffffff",
+    "theme_color_dark": "#f9fafb",
+    "container": "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-white",
+    "header": "border-b border-gray-200 bg-white px-4 py-3 flex-shrink-0",
+    "header_title": "text-lg font-bold text-gray-900",
+    "header_title_fade": "bg-gradient-to-l from-white to-transparent",
+    "header_subtitle": "text-sm text-gray-600",
+    "sticky_section": "absolute top-0 left-0 right-0 z-20 border-b border-gray-200 bg-white/90 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
+    "messages_area": "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
+    "messages_area_container": "bg-white",
+    "messages_area_bg": "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.04] [filter:grayscale(1)]",
+    "host_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-3 bg-red-500 font-medium transition-all duration-300 shadow-md",
+    "sticky_host_message": "w-full rounded-xl px-4 py-3 pr-[calc(2.5%+5rem-5px)] bg-red-500 font-medium transition-all duration-300 shadow-md",
+    "host_text": "text-white",
+    "host_message_fade": "bg-gradient-to-l from-red-500 to-transparent",
+    "pinned_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-3 bg-purple-600 font-medium transition-all duration-300 shadow-md",
+    "sticky_pinned_message": "w-full rounded-xl px-4 py-3 pr-[calc(2.5%+5rem-5px)] bg-purple-600 font-medium transition-all duration-300 shadow-md",
+    "pinned_text": "text-white",
+    "pinned_message_fade": "bg-gradient-to-l from-purple-600 to-transparent",
+    "regular_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-3 bg-gray-100 shadow-sm",
+    "regular_text": "text-gray-900",
+    "my_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-3 bg-blue-500 shadow-md",
+    "my_text": "text-white",
+    "voice_message_styles": {
+      "playButton": "bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600",
+      "playIconColor": "text-white",
+      "waveformActive": "bg-gradient-to-t from-purple-500 to-blue-500",
+      "waveformInactive": "bg-gray-400 dark:bg-gray-500",
+      "durationTextColor": "text-gray-500 dark:text-gray-400"
+    },
+    "my_voice_message_styles": {
+      "playButton": "bg-white hover:bg-gray-100",
+      "playIconColor": "text-gray-900",
+      "waveformActive": "bg-gray-400",
+      "waveformInactive": "bg-white",
+      "durationTextColor": "text-white"
+    },
+    "host_voice_message_styles": {
+      "playButton": "bg-white hover:bg-gray-100",
+      "playIconColor": "text-gray-900",
+      "waveformActive": "bg-gray-400",
+      "waveformInactive": "bg-white",
+      "durationTextColor": "text-white"
+    },
+    "pinned_voice_message_styles": {
+      "playButton": "bg-white hover:bg-gray-100",
+      "playIconColor": "text-gray-900",
+      "waveformActive": "bg-gray-400",
+      "waveformInactive": "bg-white",
+      "durationTextColor": "text-white"
+    },
+    "filter_button_active": "px-3 py-1.5 rounded-lg text-xs tracking-wider bg-blue-500 text-white border border-blue-600 shadow-sm",
+    "filter_button_inactive": "px-3 py-1.5 rounded-lg text-xs tracking-wider bg-white text-gray-600 border border-gray-300 hover:bg-gray-50",
+    "input_area": "border-t border-gray-200 bg-white px-4 py-3 flex-shrink-0",
+    "input_field": "flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 bg-white text-gray-900 placeholder-gray-400",
+    "pin_icon_color": "text-yellow-400",
+    "crown_icon_color": "text-yellow-400",
+    "badge_icon_color": "text-blue-400",
+    "reply_icon_color": "text-cyan-400",
+    "my_username": "text-xs font-semibold \\!text-white",
+    "regular_username": "text-xs font-semibold \\!text-white",
+    "host_username": "text-sm font-semibold",
+    "pinned_username": "text-sm font-semibold",
+    "sticky_host_username": "text-sm font-semibold text-white",
+    "sticky_pinned_username": "text-sm font-semibold text-white",
+    "my_timestamp": "text-xs \\!text-white opacity-60",
+    "regular_timestamp": "text-xs \\!text-white opacity-60",
+    "host_timestamp": "text-xs opacity-60",
+    "pinned_timestamp": "text-xs opacity-60",
+    "reply_preview_container": "flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700",
+    "reply_preview_icon": "w-4 h-4 flex-shrink-0 text-blue-500",
+    "reply_preview_username": "text-xs font-semibold text-gray-700 dark:text-gray-300",
+    "reply_preview_content": "text-xs text-gray-600 dark:text-gray-400 truncate",
+    "reply_preview_close_button": "p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded",
+    "reply_preview_close_icon": "w-4 h-4 text-gray-500",
+    "created_at": "2025-10-08T16:08:46.684Z",
+    "updated_at": "2025-10-09T19:41:28.903Z"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 1,
+  "fields": {
+    "key": "MESSAGE_HISTORY_MAX_DAYS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 7}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 3,
+  "fields": {
+    "key": "MESSAGE_HISTORY_MAX_COUNT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 4,
+  "fields": {
+    "key": "REDIS_CACHE_ENABLED",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 5,
+  "fields": {
+    "key": "REDIS_CACHE_WRITE_ENABLED",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 6,
+  "fields": {
+    "key": "REDIS_CACHE_TTL_HOURS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 24}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 7,
+  "fields": {
+    "key": "REDIS_CACHE_MAX_COUNT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 8,
+  "fields": {
+    "key": "MESSAGE_LIST_DEFAULT_LIMIT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 50}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 9,
+  "fields": {
+    "key": "ENABLE_MONITORING",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 10,
+  "fields": {
+    "key": "MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 3}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 11,
+  "fields": {
+    "key": "USER_BLOCK_CACHE_TTL_HOURS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 12,
+  "fields": {
+    "key": "MAX_ANONYMOUS_USERNAME_GENERATION_ATTEMPTS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 13,
+  "fields": {
+    "key": "USERNAME_RESERVATION_TTL_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 60}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 14,
+  "fields": {
+    "key": "USERNAME_VALIDATION_TTL_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 15,
+  "fields": {
+    "key": "MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL",
+    "value": "{\"__type__\": \"default\", \"__value__\": 50}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 16,
+  "fields": {
+    "key": "MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 3}"
+  }
+}
+]

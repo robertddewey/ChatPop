@@ -41,3 +41,5 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+# Exclude full development fixtures (contains test user data)
+backend/fixtures/full_dev_data.json
