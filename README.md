@@ -18,8 +18,63 @@ A platform that allows users to create and join chat rooms with various customiz
 - Python 3.11+
 - Node.js 18+
 - Docker & Docker Compose
+- **mkcert** - For generating SSL certificates (required for voice messages)
 
-### 1. Start Docker Containers
+#### Install mkcert (One-Time Setup)
+
+```bash
+# macOS
+brew install mkcert
+mkcert -install
+
+# Windows (with Chocolatey)
+choco install mkcert
+mkcert -install
+
+# Linux
+sudo apt install mkcert  # Debian/Ubuntu
+# or
+sudo yum install mkcert  # RedHat/CentOS
+mkcert -install
+```
+
+---
+
+### 1. Clone the Repository
+
+```bash
+git clone <your-repo-url>
+cd ChatPop
+```
+
+---
+
+### 2. Generate SSL Certificates
+
+**⚠️ REQUIRED:** Voice message recording requires HTTPS due to browser MediaRecorder API security policies.
+
+```bash
+# Create certificates directory
+mkdir -p certs
+cd certs
+
+# Generate SSL certificates for localhost
+mkcert localhost 127.0.0.1 10.0.0.135 ::1
+
+# Rename files to match project expectations
+mv localhost+3.pem localhost+3.pem
+mv localhost+3-key.pem localhost+3-key.pem
+
+cd ..
+```
+
+**Result:** You should now have:
+- `certs/localhost+3.pem` (certificate)
+- `certs/localhost+3-key.pem` (private key)
+
+---
+
+### 3. Start Docker Containers
 
 Start PostgreSQL and Redis containers:
 
@@ -36,49 +91,181 @@ You should see:
 - `chatpop_postgres` on port **5435**
 - `chatpop_redis` on port **6381**
 
-### 2. Backend Setup (Django)
+---
+
+### 4. Backend Setup (Django)
 
 Navigate to backend directory:
 ```bash
 cd backend
 ```
 
-The virtual environment and dependencies are already set up. Run database migrations:
+#### Create Virtual Environment and Install Dependencies
+
+```bash
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate  # macOS/Linux
+# OR
+venv\Scripts\activate  # Windows
+
+# Install Python dependencies
+pip install -r requirements.txt
+```
+
+#### Configure Environment Variables
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Edit .env if needed (defaults should work for local development)
+```
+
+#### Run Database Migrations
+
 ```bash
 ./venv/bin/python manage.py migrate
 ```
 
-Create a superuser (optional):
+#### Load Database Fixtures (Optional but Recommended)
+
+Fixtures provide essential seed data (chat themes, config settings):
+
+```bash
+# Option A: Load essential seed data only (recommended for clean start)
+./venv/bin/python manage.py loaddata fixtures/seed_data.json
+
+# Option B: Load full development data (includes test users, chats, messages)
+# Note: full_dev_data.json must be obtained separately (not in Git)
+# If you have the file, place it in backend/fixtures/ then run:
+./venv/bin/python manage.py loaddata fixtures/full_dev_data.json
+```
+
+**What's in the fixtures?**
+- `seed_data.json`: 2 chat themes (Purple Dream, Ocean Blue) + config settings
+- `full_dev_data.json`: Complete dev environment with 33 test users, 18 chat rooms, 119 messages
+
+#### Create a Superuser (Optional)
+
 ```bash
 ./venv/bin/python manage.py createsuperuser
 ```
 
-Start the Django development server on port **9000**:
+#### Start the Backend Server (with SSL)
+
+**⚠️ IMPORTANT:** Use Daphne with SSL, not `runserver`. Voice messages require HTTPS.
+
 ```bash
-./venv/bin/python manage.py runserver 9000
+ALLOWED_HOSTS=localhost,127.0.0.1,10.0.0.135 \
+CORS_ALLOWED_ORIGINS="http://localhost:4000,http://127.0.0.1:4000,http://10.0.0.135:4000,https://localhost:4000,https://127.0.0.1:4000,https://10.0.0.135:4000" \
+./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
 ```
 
-Backend will be available at: `http://localhost:9000`
+Backend API will be available at: **https://localhost:9000** (note HTTPS)
 
-### 3. Frontend Setup (Next.js)
+---
+
+### 5. Frontend Setup (Next.js)
 
 Open a new terminal and navigate to frontend directory:
 ```bash
 cd frontend
 ```
 
-Dependencies are already installed. Start the Next.js development server:
+#### Install Dependencies
+
 ```bash
-npm run dev
+npm install
 ```
 
-Frontend will be available at: `http://localhost:4000`
+#### Configure Environment Variables
+
+```bash
+# Copy environment template
+cp .env.example .env.local
+
+# Edit .env.local if needed (defaults should work for local development)
+```
+
+**Note:** If `.env.example` doesn't exist, create `.env.local` with:
+```bash
+# Backend API URL (use https for SSL)
+NEXT_PUBLIC_API_URL=https://localhost:9000
+
+# WebSocket URL (use wss for secure websockets)
+NEXT_PUBLIC_WS_URL=wss://localhost:9000
+
+# Frontend server port (MUST be 4000 per project standards)
+PORT=4000
+```
+
+#### Start the Frontend Server (with HTTPS)
+
+**⚠️ IMPORTANT:** Frontend must also use HTTPS to match the backend.
+
+```bash
+npm run dev:https
+```
+
+Frontend will be available at: **https://localhost:4000** (note HTTPS)
+
+---
+
+### 6. Access the Application
+
+- **Frontend:** https://localhost:4000
+- **Backend API:** https://localhost:9000
+- **Django Admin:** https://localhost:9000/admin
+
+**Browser Security Warning:** You may see a security warning because mkcert uses a self-signed certificate. Click "Advanced" → "Proceed to localhost" to continue. This is safe for local development.
+
+---
+
+### Quick Start Summary
+
+For experienced developers, here's the quick version:
+
+```bash
+# 1. Install mkcert and generate certificates
+brew install mkcert && mkcert -install
+mkdir -p certs && cd certs && mkcert localhost 127.0.0.1 10.0.0.135 ::1 && cd ..
+
+# 2. Start Docker services
+docker-compose up -d
+
+# 3. Backend setup
+cd backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+./venv/bin/python manage.py migrate
+./venv/bin/python manage.py loaddata fixtures/seed_data.json
+
+# 4. Frontend setup (in new terminal)
+cd frontend
+npm install
+cp .env.example .env.local  # Create if doesn't exist
+
+# 5. Start servers (in separate terminals)
+# Terminal 1 - Backend
+ALLOWED_HOSTS=localhost,127.0.0.1,10.0.0.135 \
+CORS_ALLOWED_ORIGINS="https://localhost:4000" \
+./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
+
+# Terminal 2 - Frontend
+npm run dev:https
+```
+
+---
 
 ## Development URLs
 
-- **Frontend:** http://localhost:4000
-- **Backend API:** http://localhost:9000
-- **Django Admin:** http://localhost:9000/admin
+- **Frontend:** https://localhost:4000
+- **Backend API:** https://localhost:9000
+- **Django Admin:** https://localhost:9000/admin
 - **PostgreSQL:** localhost:5435
 - **Redis:** localhost:6381
 
