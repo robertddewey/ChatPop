@@ -87,9 +87,9 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None):
 
         username = f"{adj}{noun}{number}"
 
-        # STEP 1: Validate username format (MUST pass validator), but skip badwords check
+        # STEP 1: Validate username format and profanity (MUST pass validator)
         try:
-            validate_username(username, skip_badwords_check=True)
+            validate_username(username)
         except Exception:
             continue  # Try another combination, don't count toward user limit
 
