@@ -6,6 +6,7 @@ interface UseChatWebSocketOptions {
   sessionToken: string | null;
   onMessage?: (message: Message) => void;
   onUserBlocked?: (message: string) => void;
+  onUserKicked?: (message: string) => void;
   onReaction?: (data: any) => void;
   onMessageDeleted?: (messageId: string) => void;
   onError?: (error: Event) => void;
@@ -17,6 +18,7 @@ export function useChatWebSocket({
   sessionToken,
   onMessage,
   onUserBlocked,
+  onUserKicked,
   onReaction,
   onMessageDeleted,
   onError,
@@ -37,12 +39,12 @@ export function useChatWebSocket({
 
     setIsConnecting(true);
 
-    // Determine WebSocket URL based on environment
-    // Use WSS (secure WebSocket) when page is HTTPS, WS when HTTP
+    // Connect to frontend server which proxies WebSocket to backend
+    // This avoids SSL certificate issues when accessing from network IP
     const isSecure = window.location.protocol === 'https:';
     const wsProtocol = isSecure ? 'wss:' : 'ws:';
-    const wsHost = isSecure ? window.location.hostname : 'localhost';
-    const wsPort = '9000';
+    const wsHost = window.location.hostname;
+    const wsPort = window.location.port || (isSecure ? '443' : '80');
     const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws/chat/${chatCode}/?session_token=${sessionToken}`;
 
     const socket = new WebSocket(wsUrl);
@@ -68,6 +70,15 @@ export function useChatWebSocket({
           console.log('[WebSocket] User blocked event received:', data.message);
           if (onUserBlocked) {
             onUserBlocked(data.message);
+          }
+          return;
+        }
+
+        // Handle user_kicked event (user was kicked/banned from chat)
+        if (data.type === 'kicked') {
+          console.log('[WebSocket] User kicked event received:', data.message);
+          if (onUserKicked) {
+            onUserKicked(data.message);
           }
           return;
         }
@@ -132,7 +143,7 @@ export function useChatWebSocket({
     };
 
     ws.current = socket;
-  }, [chatCode, sessionToken, onMessage, onUserBlocked, onReaction, onMessageDeleted, onError, enabled]);
+  }, [chatCode, sessionToken, onMessage, onUserBlocked, onUserKicked, onReaction, onMessageDeleted, onError, enabled]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {

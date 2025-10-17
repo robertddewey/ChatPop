@@ -235,6 +235,21 @@ export default function ChatPage() {
     window.location.href = '/';
   }, [code]);
 
+  // Handle user kicked event (host removed user from chat)
+  const handleUserKicked = useCallback((message: string) => {
+    console.log('[WebSocket] User kicked:', message);
+
+    // Clear local state
+    localStorage.removeItem(`chat_session_${code}`);
+    setSessionToken(null);
+    setHasJoined(false);
+    setMessages([]);
+
+    // Show alert and redirect to home page
+    alert(message || 'You have been removed from this chat by the host.');
+    window.location.href = '/';
+  }, [code]);
+
   // Handle reaction WebSocket events
   const handleReactionEvent = useCallback(async (data: any) => {
     const { message_id, action, emoji } = data;
@@ -273,6 +288,7 @@ export default function ChatPage() {
     sessionToken,
     onMessage: handleWebSocketMessage,
     onUserBlocked: handleUserBlocked,
+    onUserKicked: handleUserKicked,
     onReaction: handleReactionEvent,
     onMessageDeleted: handleMessageDeleted,
     enabled: hasJoined && !!sessionToken,
@@ -871,17 +887,27 @@ export default function ChatPage() {
     }
 
     try {
-      // Call site-wide blocking API for registered users
-      await messageApi.blockUserSiteWide(username);
-      console.log(`Successfully blocked user site-wide: ${username}`);
-      alert(`Blocked ${username}. You will no longer see their messages anywhere on ChatPop.`);
+      // Check if current user is the host
+      const userIsHost = !!(currentUserId && chatRoom && chatRoom.host.id === currentUserId);
+
+      if (userIsHost) {
+        // Host can ban users from the chat (ChatBlock)
+        await messageApi.blockUser(code, { blocked_username: username });
+        console.log(`Successfully banned user from chat: ${username}`);
+        alert(`Banned ${username} from this chat. They will no longer be able to join or send messages.`);
+      } else {
+        // Non-hosts can only mute users site-wide (UserBlock)
+        await messageApi.blockUserSiteWide(username);
+        console.log(`Successfully blocked user site-wide: ${username}`);
+        alert(`Blocked ${username}. You will no longer see their messages anywhere on ChatPop.`);
+      }
       // TODO: Update local state to filter out blocked user's messages
     } catch (error: any) {
       console.error('Failed to block user:', error);
       const errorMsg = error.response?.data?.username?.[0] || error.response?.data?.message || 'Failed to block user. Please try again.';
       alert(errorMsg);
     }
-  }, []);
+  }, [currentUserId, chatRoom, code]);
 
   const handleTipUser = useCallback((username: string) => {
     console.log('Tip user:', username);

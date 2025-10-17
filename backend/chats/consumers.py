@@ -37,6 +37,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close(code=4003)
             return
 
+        # Check if user is banned from this chat (ChatBlock)
+        is_banned = await self.check_if_banned(self.chat_code, self.username, session_data.get('fingerprint'), self.user_id)
+        if is_banned:
+            # Reject connection - user is banned from this chat
+            await self.close(code=4403)  # 4403 = Forbidden (banned from chat)
+            return
+
         # Load blocked usernames for registered users
         if self.user_id:
             self.blocked_usernames = await self.load_blocked_usernames(self.user_id)
@@ -79,6 +86,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({
                 'error': 'Invalid session'
             }))
+            return
+
+        # Check if user is banned from chat (backup check)
+        is_banned = await self.check_if_banned(self.chat_code, self.username, session_data.get('fingerprint'), self.user_id)
+        if is_banned:
+            await self.send(text_data=json.dumps({
+                'error': 'You have been banned from this chat'
+            }))
+            await self.close(code=4403)  # Close connection
             return
 
         # Save message to PostgreSQL and Redis (dual-write)
@@ -154,6 +170,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'action': action,
             'blocked_username': blocked_username
         }))
+
+    async def user_kicked(self, event):
+        """Handle user being kicked from chat by host (ChatBlock)"""
+        kicked_username = event.get('username')
+
+        # Only send notification if this is the kicked user
+        if self.username == kicked_username:
+            await self.send(text_data=json.dumps({
+                'type': 'kicked',
+                'message': event.get('message', 'You have been removed from this chat by the host')
+            }))
+            # Wait a moment to ensure message is transmitted before closing
+            import asyncio
+            await asyncio.sleep(0.1)
+            # Close the WebSocket connection
+            await self.close(code=4403)
 
     @database_sync_to_async
     def validate_session(self, token, chat_code, username=None):
@@ -276,3 +308,48 @@ class ChatConsumer(AsyncWebsocketConsumer):
             blocked_usernames = UserBlockCache.get_blocked_usernames(user_id)
 
         return blocked_usernames
+
+    @database_sync_to_async
+    def check_if_banned(self, chat_code, username, fingerprint=None, user_id=None):
+        """
+        Check if user is banned from this chat (ChatBlock).
+
+        Args:
+            chat_code: Chat room code
+            username: Username to check
+            fingerprint: Browser fingerprint (optional)
+            user_id: User ID for registered users (optional)
+
+        Returns:
+            bool: True if banned, False otherwise
+        """
+        from .models import ChatBlock
+
+        # Get chat room
+        try:
+            chat_room = ChatRoom.objects.get(code=chat_code)
+        except ChatRoom.DoesNotExist:
+            return False
+
+        # Check for ChatBlock by username (case-insensitive)
+        if ChatBlock.objects.filter(
+            chat_room=chat_room,
+            blocked_username__iexact=username
+        ).exists():
+            return True
+
+        # Check for ChatBlock by fingerprint
+        if fingerprint and ChatBlock.objects.filter(
+            chat_room=chat_room,
+            blocked_fingerprint=fingerprint
+        ).exists():
+            return True
+
+        # Check for ChatBlock by user ID
+        if user_id and ChatBlock.objects.filter(
+            chat_room=chat_room,
+            blocked_user_id=user_id
+        ).exists():
+            return True
+
+        return False
