@@ -9,18 +9,19 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
-def block_participation(chat_room, participation, blocked_by):
+def block_participation(chat_room, participation, blocked_by, ip_address=None):
     """
     Block a user across all their identifiers.
-    Creates multiple ChatBlock records to cover username, fingerprint, and user account.
+    Creates a SINGLE consolidated ChatBlock record with all identifiers.
 
     Args:
         chat_room: ChatRoom instance
         participation: ChatParticipation to block
         blocked_by: ChatParticipation of blocker (usually host)
+        ip_address: Optional IP address to track (for future IP-based blocking)
 
     Returns:
-        List of created ChatBlock instances
+        ChatBlock instance
 
     Raises:
         ValueError: If trying to block oneself or if blocked_by is not host
@@ -37,49 +38,57 @@ def block_participation(chat_room, participation, blocked_by):
     if chat_room.host != blocked_by.user:
         raise ValueError("Only the host can block users")
 
-    blocks_created = []
+    # Check if this user is already blocked (by any identifier)
+    # If they are, update the existing block to include all identifiers
+    existing_block = None
 
-    # Block username (case-insensitive)
+    # Check for existing block by username
     if participation.username:
-        block, created = ChatBlock.objects.get_or_create(
+        existing_block = ChatBlock.objects.filter(
             chat_room=chat_room,
-            blocked_username=participation.username.lower(),
-            defaults={
-                'blocked_by': blocked_by,
-            }
-        )
-        if created:
-            blocks_created.append(block)
+            blocked_username__iexact=participation.username
+        ).first()
 
-    # Block fingerprint ONLY for anonymous users (prevents them from rejoining with new username)
-    # Don't block fingerprint for logged-in users (they're already blocked by user account)
-    if participation.fingerprint and not participation.user:
-        block, created = ChatBlock.objects.get_or_create(
+    # Check for existing block by fingerprint (if not found by username)
+    if not existing_block and participation.fingerprint:
+        existing_block = ChatBlock.objects.filter(
             chat_room=chat_room,
+            blocked_fingerprint=participation.fingerprint
+        ).first()
+
+    # Check for existing block by user account (if not found yet)
+    if not existing_block and participation.user:
+        existing_block = ChatBlock.objects.filter(
+            chat_room=chat_room,
+            blocked_user=participation.user
+        ).first()
+
+    if existing_block:
+        # Update existing block with all identifiers
+        if participation.username:
+            existing_block.blocked_username = participation.username.lower()
+        if participation.fingerprint:
+            existing_block.blocked_fingerprint = participation.fingerprint
+        if participation.user:
+            existing_block.blocked_user = participation.user
+        if ip_address:
+            existing_block.blocked_ip_address = ip_address
+        existing_block.save()
+        return existing_block
+    else:
+        # Create new consolidated block with ALL identifiers in one row
+        block = ChatBlock.objects.create(
+            chat_room=chat_room,
+            blocked_username=participation.username.lower() if participation.username else None,
             blocked_fingerprint=participation.fingerprint,
-            defaults={
-                'blocked_by': blocked_by,
-            }
-        )
-        if created:
-            blocks_created.append(block)
-
-    # Block user account (logged-in users)
-    if participation.user:
-        block, created = ChatBlock.objects.get_or_create(
-            chat_room=chat_room,
             blocked_user=participation.user,
-            defaults={
-                'blocked_by': blocked_by,
-            }
+            blocked_ip_address=ip_address,
+            blocked_by=blocked_by
         )
-        if created:
-            blocks_created.append(block)
-
-    return blocks_created
+        return block
 
 
-def check_if_blocked(chat_room, username=None, fingerprint=None, user=None, email=None, phone=None):
+def check_if_blocked(chat_room, username=None, fingerprint=None, user=None, ip_address=None, email=None, phone=None):
     """
     Check if user is blocked from this chat.
 
@@ -88,6 +97,7 @@ def check_if_blocked(chat_room, username=None, fingerprint=None, user=None, emai
         username: Username to check (optional)
         fingerprint: Browser fingerprint to check (optional)
         user: User instance to check (optional)
+        ip_address: IP address to check (optional)
         email: Email to check (optional, future)
         phone: Phone to check (optional, future)
 
@@ -113,6 +123,11 @@ def check_if_blocked(chat_room, username=None, fingerprint=None, user=None, emai
     if user and blocks.filter(blocked_user=user).exists():
         return True, "You have been blocked from this chat."
 
+    # Check IP address (DISABLED - tracking only, not enforced yet)
+    # TODO: Enable IP blocking when ready for production use
+    # if ip_address and blocks.filter(blocked_ip_address=ip_address).exists():
+    #     return True, "You have been blocked from this chat."
+
     # Check email (future)
     if email and blocks.filter(blocked_email__iexact=email).exists():
         return True, "You have been blocked from this chat."
@@ -126,18 +141,21 @@ def check_if_blocked(chat_room, username=None, fingerprint=None, user=None, emai
 
 def unblock_participation(chat_room, participation):
     """
-    Unblock a user by removing all their ChatBlock records.
+    Unblock a user by removing their consolidated ChatBlock record.
+
+    With consolidated blocking, we look for the single block row that contains
+    any of the user's identifiers and delete it.
 
     Args:
         chat_room: ChatRoom instance
         participation: ChatParticipation to unblock
 
     Returns:
-        int: Count of deleted blocks
+        int: Count of deleted blocks (should be 0 or 1 with consolidated approach)
     """
     blocks_to_delete = ChatBlock.objects.filter(chat_room=chat_room)
 
-    # Build a query to match all blocks for this participation
+    # Build a query to match blocks by any identifier (OR logic)
     query = Q()
 
     if participation.username:
@@ -160,6 +178,9 @@ def get_blocked_users(chat_room):
     """
     Get all active blocks for a chat room.
 
+    With consolidated blocking, each block is a single row with all identifiers,
+    so we simply return each block as a separate entry.
+
     Args:
         chat_room: ChatRoom instance
 
@@ -172,55 +193,31 @@ def get_blocked_users(chat_room):
     now = timezone.now()
     blocks = blocks.filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
 
-    # Group blocks by the actual values being blocked
-    # We group blocks that share at least one identifier (username, fingerprint, or user)
-    blocked_users_map = {}
-
-    for block in blocks.select_related('blocked_user'):
-        # Create a unique grouping key based on the blocked values
-        # Priority: username > user_id > fingerprint
-        key = None
-        if block.blocked_username:
-            key = f"u:{block.blocked_username.lower()}"
-        elif block.blocked_user_id:
-            key = f"uid:{block.blocked_user_id}"
-        elif block.blocked_fingerprint:
-            key = f"fp:{block.blocked_fingerprint}"
-
-        if not key:
-            continue  # Skip blocks with no identifiers
-
-        # If this key doesn't exist yet, create a new entry
-        if key not in blocked_users_map:
-            blocked_users_map[key] = {
-                'username': block.blocked_username or (block.blocked_user.reserved_username if block.blocked_user else None),
-                'blocked_at': block.blocked_at,
-                'reason': block.reason,
-                'blocked_identifiers': [],
-                'expires_at': block.expires_at,
-                '_seen_fingerprints': set(),  # Track fingerprints we've seen for this user
-            }
-
-        # Update username if we find a more complete one
-        if block.blocked_username and not blocked_users_map[key]['username']:
-            blocked_users_map[key]['username'] = block.blocked_username
-
-        # Add identifier types (avoid duplicates)
-        if block.blocked_username and 'username' not in blocked_users_map[key]['blocked_identifiers']:
-            blocked_users_map[key]['blocked_identifiers'].append('username')
-        if block.blocked_fingerprint:
-            # Only add fingerprint identifier once, even if we see it multiple times
-            if block.blocked_fingerprint not in blocked_users_map[key]['_seen_fingerprints']:
-                blocked_users_map[key]['_seen_fingerprints'].add(block.blocked_fingerprint)
-                if 'fingerprint' not in blocked_users_map[key]['blocked_identifiers']:
-                    blocked_users_map[key]['blocked_identifiers'].append('fingerprint')
-        if block.blocked_user and 'user_account' not in blocked_users_map[key]['blocked_identifiers']:
-            blocked_users_map[key]['blocked_identifiers'].append('user_account')
-
-    # Remove temporary tracking fields
+    # Convert each block to a dict
     result = []
-    for user_data in blocked_users_map.values():
-        user_data.pop('_seen_fingerprints', None)
-        result.append(user_data)
+    for block in blocks.select_related('blocked_user'):
+        # Determine username to display
+        username = block.blocked_username or (
+            block.blocked_user.reserved_username if block.blocked_user else None
+        )
+
+        # List which identifiers are blocked
+        blocked_identifiers = []
+        if block.blocked_username:
+            blocked_identifiers.append('username')
+        if block.blocked_fingerprint:
+            blocked_identifiers.append('fingerprint')
+        if block.blocked_user:
+            blocked_identifiers.append('user_account')
+        if block.blocked_ip_address:
+            blocked_identifiers.append('ip_address')
+
+        result.append({
+            'username': username,
+            'blocked_at': block.blocked_at,
+            'reason': block.reason,
+            'blocked_identifiers': blocked_identifiers,
+            'expires_at': block.expires_at,
+        })
 
     return result

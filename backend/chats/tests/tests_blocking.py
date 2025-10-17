@@ -143,7 +143,7 @@ class BlockingUtilityTests(TestCase):
         )
 
     def test_block_participation_creates_blocks(self):
-        """Test that blocking creates blocks for all identifiers"""
+        """Test that blocking creates a consolidated block with all identifiers"""
         # Create a participation with username and fingerprint
         participation = ChatParticipation.objects.create(
             chat_room=self.chat_room,
@@ -151,18 +151,20 @@ class BlockingUtilityTests(TestCase):
             fingerprint='abc123'
         )
 
-        blocks = block_participation(
+        block = block_participation(
             chat_room=self.chat_room,
             participation=participation,
             blocked_by=self.host_participation
         )
 
-        # Should create 2 blocks (username + fingerprint)
-        self.assertEqual(len(blocks), 2)
-        self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 2)
+        # Should create 1 consolidated block with both username and fingerprint
+        self.assertIsInstance(block, ChatBlock)
+        self.assertEqual(block.blocked_username, 'baduser')  # Stored in lowercase
+        self.assertEqual(block.blocked_fingerprint, 'abc123')
+        self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 1)
 
     def test_block_participation_with_user_account(self):
-        """Test blocking a registered user creates user account block"""
+        """Test blocking a registered user creates consolidated block with user account"""
         blocked_user = User.objects.create_user(
             email='blocked@test.com',
             password='testpass123',
@@ -175,16 +177,19 @@ class BlockingUtilityTests(TestCase):
             fingerprint='xyz789'
         )
 
-        blocks = block_participation(
+        block = block_participation(
             chat_room=self.chat_room,
             participation=participation,
             blocked_by=self.host_participation
         )
 
-        # Should create 2 blocks (username + user account)
-        # NOTE: Fingerprint is NOT blocked for logged-in users (see blocking_utils.py:56)
-        # This prevents false positives if multiple users share same device
-        self.assertEqual(len(blocks), 2)
+        # Should create 1 consolidated block with username, user account, AND fingerprint
+        # NOTE: Fingerprint IS STORED but NOT ENFORCED for logged-in users (see check_if_blocked line 118)
+        # This allows tracking while preventing false positives if multiple users share same device
+        self.assertIsInstance(block, ChatBlock)
+        self.assertEqual(block.blocked_username, 'blockeduser')  # Stored in lowercase
+        self.assertEqual(block.blocked_user, blocked_user)
+        self.assertEqual(block.blocked_fingerprint, 'xyz789')  # Stored for tracking
 
     def test_block_participation_prevents_self_block(self):
         """Test that users cannot block themselves"""
@@ -282,6 +287,42 @@ class BlockingUtilityTests(TestCase):
         )
         self.assertTrue(is_blocked)
 
+    def test_check_if_blocked_by_ip_address(self):
+        """Test that IP address blocking is NOT enforced yet (tracking only)"""
+        ChatBlock.objects.create(
+            chat_room=self.chat_room,
+            blocked_by=self.host_participation,
+            blocked_ip_address='192.168.1.100'
+        )
+
+        # IP blocking is disabled - users should NOT be blocked by IP address yet
+        is_blocked, _ = check_if_blocked(
+            chat_room=self.chat_room,
+            ip_address='192.168.1.100'
+        )
+        self.assertFalse(is_blocked)  # Should NOT be blocked (tracking only, not enforced)
+
+    def test_block_participation_stores_ip_address(self):
+        """Test that blocking a user stores their IP address"""
+        participation = ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            username='UserWithIP',
+            fingerprint='fp123',
+            ip_address='10.0.0.50'
+        )
+
+        block = block_participation(
+            chat_room=self.chat_room,
+            participation=participation,
+            blocked_by=self.host_participation,
+            ip_address='10.0.0.50'
+        )
+
+        # Verify IP address was stored in the consolidated block
+        self.assertEqual(block.blocked_ip_address, '10.0.0.50')
+        self.assertEqual(block.blocked_username, 'userwithip')
+        self.assertEqual(block.blocked_fingerprint, 'fp123')
+
     def test_check_if_not_blocked(self):
         """Test that non-blocked users pass the check"""
         is_blocked, message = check_if_blocked(
@@ -308,7 +349,7 @@ class BlockingUtilityTests(TestCase):
         self.assertFalse(is_blocked)
 
     def test_unblock_participation(self):
-        """Test unblocking removes all blocks for a participation"""
+        """Test unblocking removes the consolidated block for a participation"""
         participation = ChatParticipation.objects.create(
             chat_room=self.chat_room,
             username='BlockedUser',
@@ -322,12 +363,12 @@ class BlockingUtilityTests(TestCase):
             blocked_by=self.host_participation
         )
 
-        # Verify blocks exist
-        self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 2)
+        # Verify consolidated block exists
+        self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 1)
 
         # Unblock
         count = unblock_participation(self.chat_room, participation)
-        self.assertEqual(count, 2)
+        self.assertEqual(count, 1)  # Should remove 1 consolidated block
         self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 0)
 
     def test_get_blocked_users(self):
@@ -356,16 +397,23 @@ class BlockingUtilityTests(TestCase):
         )
 
         blocked_users = get_blocked_users(self.chat_room)
-        # block_participation creates 2 separate ChatBlock records per user (username + fingerprint)
-        # get_blocked_users groups by the primary identifier (username or fingerprint)
-        # So we get 4 entries: 2 username blocks + 2 fingerprint blocks
-        self.assertEqual(len(blocked_users), 4)
+        # With consolidated blocks: 1 ChatBlock row per user
+        # get_blocked_users returns 1 entry per ChatBlock row
+        # So we get 2 entries total (one per blocked user)
+        self.assertEqual(len(blocked_users), 2)
 
-        # Verify we have both user types represented
+        # Verify we have both users represented
         # Note: usernames are stored in lowercase by block_participation()
         usernames = [u['username'] for u in blocked_users if u['username']]
         self.assertIn('baduser1', usernames)
         self.assertIn('baduser2', usernames)
+
+        # Verify each entry has blocked_identifiers list with multiple identifiers
+        for user in blocked_users:
+            self.assertIn('blocked_identifiers', user)
+            self.assertIsInstance(user['blocked_identifiers'], list)
+            # Each user should have username and fingerprint blocked
+            self.assertGreater(len(user['blocked_identifiers']), 0)
 
 
 class BlockingAPITests(TestCase):
@@ -432,10 +480,14 @@ class BlockingAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
-        self.assertEqual(response.data['blocks_created'], 2)
+        self.assertIn('block_id', response.data)
+        self.assertIn('blocked_identifiers', response.data)
+        # Verify both username and fingerprint were blocked
+        self.assertIn('username', response.data['blocked_identifiers'])
+        self.assertIn('fingerprint', response.data['blocked_identifiers'])
 
-        # Verify blocks were created
-        self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 2)
+        # Verify consolidated block was created
+        self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 1)
 
         # NOTE: We do NOT check is_active=False here because:
         # The new architecture keeps participation.is_active unchanged during blocking
@@ -491,15 +543,11 @@ class BlockingAPITests(TestCase):
             is_active=False
         )
 
-        # Create blocks manually
+        # Create consolidated block manually
         ChatBlock.objects.create(
             chat_room=self.chat_room,
             blocked_by=self.host_participation,
-            blocked_username='UnblockMe'
-        )
-        ChatBlock.objects.create(
-            chat_room=self.chat_room,
-            blocked_by=self.host_participation,
+            blocked_username='unblockme',  # Lowercase
             blocked_fingerprint='xyz789'
         )
 
@@ -511,9 +559,9 @@ class BlockingAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
-        self.assertEqual(response.data['blocks_removed'], 2)
+        self.assertEqual(response.data['blocks_removed'], 1)  # 1 consolidated block removed
 
-        # Verify blocks were removed
+        # Verify block was removed
         self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 0)
 
         # Verify participation was reactivated
