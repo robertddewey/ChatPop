@@ -11,6 +11,14 @@ const hostname = '0.0.0.0';
 const port = 4000;
 const backendUrl = 'https://localhost:9000';
 
+// IMPORTANT: Proxy is only needed in development
+// In production, use ALB path-based routing instead:
+//   /api/* → Backend target group
+//   /media/* → Backend target group
+//   /ws/* → Backend target group (WebSocket)
+//   /* → Frontend target group
+const ENABLE_PROXY = dev;
+
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
@@ -44,14 +52,64 @@ function proxyRequest(req, res) {
   });
 }
 
+// Proxy WebSocket upgrade requests to Django backend
+function proxyWebSocket(req, socket, head) {
+  const options = {
+    hostname: 'localhost',
+    port: 9000,
+    path: req.url,
+    method: req.method,
+    headers: req.headers,
+    rejectUnauthorized: false, // Accept self-signed certificates
+  };
+
+  console.log('[WebSocket Proxy] Upgrading connection:', req.url);
+
+  const proxyReq = https.request(options);
+
+  proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+    console.log('[WebSocket Proxy] Backend upgrade successful');
+    socket.write('HTTP/1.1 101 Switching Protocols\r\n');
+    Object.keys(proxyRes.headers).forEach((key) => {
+      socket.write(`${key}: ${proxyRes.headers[key]}\r\n`);
+    });
+    socket.write('\r\n');
+
+    if (proxyHead.length > 0) {
+      socket.write(proxyHead);
+    }
+
+    proxySocket.pipe(socket);
+    socket.pipe(proxySocket);
+
+    proxySocket.on('error', (err) => {
+      console.error('[WebSocket Proxy] Backend socket error:', err);
+      socket.destroy();
+    });
+
+    socket.on('error', (err) => {
+      console.error('[WebSocket Proxy] Client socket error:', err);
+      proxySocket.destroy();
+    });
+  });
+
+  proxyReq.on('error', (err) => {
+    console.error('[WebSocket Proxy] Upgrade error:', err);
+    socket.destroy();
+  });
+
+  proxyReq.end();
+}
+
 app.prepare().then(() => {
-  createServer(httpsOptions, async (req, res) => {
+  const server = createServer(httpsOptions, async (req, res) => {
     try {
       const parsedUrl = parse(req.url, true);
 
-      // Proxy API and media requests to Django backend over HTTP
-      if (parsedUrl.pathname.startsWith('/api/') ||
-          parsedUrl.pathname.startsWith('/media/')) {
+      // Proxy API and media requests to Django backend (development only)
+      // In production, ALB handles this routing
+      if (ENABLE_PROXY && (parsedUrl.pathname.startsWith('/api/') ||
+          parsedUrl.pathname.startsWith('/media/'))) {
         proxyRequest(req, res);
       } else {
         await handle(req, res, parsedUrl);
@@ -61,15 +119,36 @@ app.prepare().then(() => {
       res.statusCode = 500;
       res.end('internal server error');
     }
-  })
-    .once('error', (err) => {
-      console.error(err);
-      process.exit(1);
-    })
-    .listen(port, () => {
-      console.log(`> Ready on https://${hostname}:${port}`);
-      console.log(`> Access via https://localhost:${port} or https://10.0.0.135:${port}`);
-      console.log(`> Proxying /api/, /media/ to ${backendUrl}`);
-      console.log(`> Note: WebSocket connections will use HTTP backend at ${backendUrl}`);
+  });
+
+  // Handle WebSocket upgrade requests (development only)
+  // In production, ALB handles WebSocket routing
+  if (ENABLE_PROXY) {
+    server.on('upgrade', (req, socket, head) => {
+      const parsedUrl = parse(req.url, true);
+
+      // Proxy WebSocket connections to Django backend
+      if (parsedUrl.pathname.startsWith('/ws/')) {
+        proxyWebSocket(req, socket, head);
+      } else {
+        socket.destroy();
+      }
     });
+  }
+
+  server.once('error', (err) => {
+    console.error(err);
+    process.exit(1);
+  });
+
+  server.listen(port, () => {
+    console.log(`> Ready on https://${hostname}:${port}`);
+    console.log(`> Access via https://localhost:${port} or https://10.0.0.135:${port}`);
+    if (ENABLE_PROXY) {
+      console.log(`> Proxying /api/, /media/, /ws/ to ${backendUrl}`);
+      console.log(`> WebSocket connections are proxied through this server`);
+    } else {
+      console.log(`> Production mode: Expecting ALB to handle /api/, /media/, /ws/ routing`);
+    }
+  });
 });

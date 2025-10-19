@@ -1,6 +1,6 @@
 # Testing Documentation
 
-**Total Test Count:** 265 tests across 12 test suites
+**Total Test Count:** 323 tests across 17 test suites
 
 This document provides comprehensive documentation of all backend tests, including what each test does and why it's important.
 
@@ -12,15 +12,20 @@ This document provides comprehensive documentation of all backend tests, includi
 |------------|------|------------|---------|
 | Security Tests | `chats/tests/tests_security.py` | 26 tests | JWT authentication, username reservations, attack prevention |
 | Username Validation | `chats/tests/tests_validators.py` | 10 tests | Username format and character validation |
-| Username Generation | `chats/tests/tests_username_generation.py` | 45 tests | Global username uniqueness, rate limiting, case preservation, per-chat rotation |
+| Username Generation | `chats/tests/tests_username_generation.py` | 48 tests | Global username uniqueness, rate limiting, case preservation, per-chat rotation |
 | Username Flow Integration | `chats/tests/tests_username_flow_integration.py` | 10 tests | End-to-end username suggest→join flow, case preservation, rotation without consecutive duplicates |
+| Username Generation Redis Bug | `chats/tests/test_username_generation_redis_bug.py` | 6 tests | Regression tests for Redis SET atomicity fix |
 | Profanity Filtering | `chats/tests/tests_profanity.py` | 26 tests | Profanity detection across all username entry points |
-| Rate Limiting | `chats/tests/tests_rate_limits.py` | 12 tests | Username generation rate limiting |
 | Dual Sessions | `chats/tests/tests_dual_sessions.py` | 16 tests | Anonymous/logged-in user coexistence |
-| Redis Caching | `chats/tests/tests_redis_cache.py` | 43 tests | Message caching, cache backfill, Constance controls, performance |
+| Redis Caching | `chats/tests/tests_redis_cache.py` | 44 tests | Message caching, cache backfill, Constance controls, performance |
+| Partial Cache Hits | `chats/tests/tests_partial_cache_hits.py` | 8 tests | Handling messages split between Redis and PostgreSQL |
 | Message Deletion | `chats/tests/tests_message_deletion.py` | 22 tests | Soft delete, cache invalidation, authorization, WebSocket broadcasting |
-| Reactions | `chats/tests/tests_reactions.py` | 10 tests | Emoji reactions, cache invalidation, real-time updates |
 | User Blocking | `chats/tests/tests_user_blocking.py` | 28 tests | User-to-user blocking, Redis cache sync, SQL injection prevention |
+| Chat Ban Enforcement | `chats/tests/tests_chat_ban_enforcement.py` | 20 tests | Host-only chat bans, consolidated blocking, WebSocket & HTTP enforcement |
+| Blocking | `chats/tests/tests_blocking.py` | 27 tests | Blocking utility functions, consolidated blocking model |
+| Blocking Redirect | `chats/tests/tests_blocking_redirect.py` | 9 tests | Redirect enforcement for blocked users |
+| Voice Messages | `chats/tests/tests_voice_messages.py` | 19 tests | Voice upload, streaming, authorization, storage |
+| WebSocket Tests | `chats/tests/tests_websocket.py` | 4 tests | WebSocket connection, authentication, message broadcasting |
 | Account Security | `accounts/tests.py` | 17 tests | Registration username security, race condition prevention, API bypass protection |
 
 ---
@@ -286,8 +291,8 @@ These tests verify the `validate_username()` function from `chats/validators.py`
 ## 3. Username Generation Tests (`chats/tests/tests_username_generation.py`)
 
 **File Location:** `backend/chats/tests/tests_username_generation.py`
-**Test Count:** 44 tests
-**Test Classes:** `IsUsernameGloballyAvailableTestCase` (6 tests), `GenerateUsernameTestCase` (10 tests), `ChatSuggestUsernameAPITestCase` (16 tests), `AccountsSuggestUsernameAPITestCase` (5 tests), `CheckUsernameRedisReservationTestCase` (6 tests), `UsernameValidationRedisReservationTestCase` (7 tests)
+**Test Count:** 48 tests
+**Test Classes:** `IsUsernameGloballyAvailableTestCase`, `GenerateUsernameTestCase`, `ChatSuggestUsernameAPITestCase`, `AccountsSuggestUsernameAPITestCase`, `CheckUsernameRedisReservationTestCase`, `UsernameValidationRedisReservationTestCase`
 
 These tests verify the Global Username System including uniqueness checks, username generation with rate limiting, case preservation, unlimited rotation after rate limit, and Redis-based reservation to prevent race conditions.
 
@@ -710,7 +715,66 @@ These integration tests verify the full end-to-end username flow from generation
 
 ---
 
-## 5. Profanity Filtering Tests (`chats/tests/tests_profanity.py`)
+## 5. Username Generation Redis Bug Tests (`chats/tests/test_username_generation_redis_bug.py`)
+
+**File Location:** `backend/chats/tests/test_username_generation_redis_bug.py`
+**Test Count:** 6 tests
+**Test Class:** `UsernameGenerationRedisBugTest`
+
+### Overview
+
+**CRITICAL BUG EXPOSURE:** This test suite documents a critical bug where generated usernames are NOT being saved to Redis fingerprint-to-username mappings. This breaks username rotation and reuse detection.
+
+**Bug Impact:**
+- Users cannot reuse their previously generated usernames
+- False "username taken" messages appear
+- Username rotation fails completely
+- Only affects fingerprint mapping - all other caching (global reservation, chat suggestions, attempt tracking) works correctly
+
+#### `test_generated_username_saved_to_fingerprint_set`
+**What it tests:** Generated username should be stored in Redis under `username:generated_for_fingerprint:{fingerprint}` key
+**Expected result:** Redis key exists with generated username in SET
+**Actual result:** ❌ **FAILS** - key is never written to Redis
+**Why it matters:** This is the root cause of username rotation failures
+
+#### `test_multiple_generations_accumulate_in_fingerprint_set`
+**What it tests:** Multiple username generations for same fingerprint accumulate in Redis SET
+**Expected result:** Redis SET contains all previously generated usernames
+**Actual result:** ❌ **FAILS** - no usernames are stored (key never written)
+**Why it matters:** Prevents tracking all usernames generated for a single device
+
+#### `test_fingerprint_set_has_correct_ttl`
+**What it tests:** Fingerprint SET has proper TTL matching `USERNAME_RESERVATION_TTL_MINUTES` (60 minutes = 3600 seconds)
+**Expected result:** Redis key has 3600 second TTL
+**Actual result:** ❌ **FAILS** - key doesn't exist, so TTL is irrelevant
+**Why it matters:** Without TTL, old username reservations won't expire
+
+#### `test_global_reservation_key_exists`
+**What it tests:** Global username reservation works correctly
+**Expected result:** `username:reserved:{username}` key exists after generation
+**Actual result:** ✅ **PASSES** - global reservation IS working
+**Why it matters:** Proves bug is isolated to fingerprint mapping, not global reservation
+
+#### `test_chat_specific_suggestions_exists`
+**What it tests:** Chat-specific recent suggestions cache works correctly
+**Expected result:** `chat:{chat_code}:recent_suggestions` cache contains generated username
+**Actual result:** ✅ **PASSES** - chat suggestions ARE working
+**Why it matters:** Shows bug is isolated, not affecting all caching mechanisms
+
+#### `test_generation_attempts_counter_increments`
+**What it tests:** Generation attempts counter tracks correctly across multiple generations
+**Expected result:** Remaining attempts decrements properly (20, 19, 18...)
+**Actual result:** ✅ **PASSES** - attempt tracking works
+**Why it matters:** Proves attempt tracking works, bug is specifically in fingerprint mapping
+
+**Running This Suite:**
+```bash
+./venv/bin/python manage.py test chats.tests.test_username_generation_redis_bug
+```
+
+---
+
+## 6. Profanity Filtering Tests (`chats/tests/tests_profanity.py`)
 
 **File Location:** `backend/chats/tests/tests_profanity.py`
 **Test Count:** 26 tests
@@ -906,91 +970,7 @@ Tests real-time validation in Join ChatPop modal (POST `/api/chats/{code}/valida
 
 ---
 
-## 4. Rate Limiting Tests (`chats/tests/tests_rate_limits.py`)
-
-**File Location:** `backend/chats/tests/tests_rate_limits.py`
-**Test Count:** 12 tests
-**Test Class:** `UsernameGenerationRateLimitTests`
-
-These tests verify rate limiting for the username suggestion endpoint (`/api/chats/{code}/suggest-username/`).
-
-**Rate Limit:** 20 suggestions per hour per fingerprint per chat
-
-#### `test_username_suggestion_allows_up_to_20_requests`
-**What it tests:** Up to 20 requests are allowed within rate limit
-**How it works:** Makes 20 POST requests with same fingerprint, checks `remaining` field in response
-**Expected result:** All 20 return 200 OK, `remaining` counts down from 19 to 0
-**Why it matters:** Verifies limit enforcement and counter accuracy
-
-#### `test_username_suggestion_blocks_21st_request`
-**What it tests:** 21st request is rate limited
-**How it works:** Makes 20 successful requests, then attempts 21st
-**Expected result:** 21st returns 429 Too Many Requests, `{error: "limit reached", remaining: 0}`
-**Why it matters:** Hard limit enforcement
-
-#### `test_rate_limit_is_per_fingerprint`
-**What it tests:** Rate limits are isolated per fingerprint
-**How it works:** Uses up 20 requests for fingerprint1, tries fingerprint1 again (blocked), tries fingerprint2 (succeeds)
-**Expected result:** fingerprint1 gets 429, fingerprint2 gets 200
-**Why it matters:** Different users have separate limits
-
-#### `test_rate_limit_is_per_chat`
-**What it tests:** Rate limits are isolated per chat room
-**How it works:** Uses up 20 requests in chat1, tries chat1 again (blocked), tries chat2 with same fingerprint (succeeds)
-**Expected result:** chat1 gets 429, chat2 gets 200
-**Why it matters:** User can get suggestions in multiple chats
-
-#### `test_rate_limit_fallback_to_ip_when_no_fingerprint`
-**What it tests:** IP-based rate limiting when fingerprint is missing
-**How it works:** Makes 20 requests without fingerprint field (uses IP), 21st is blocked
-**Expected result:** 20 succeed, 21st gets 429
-**Why it matters:** Fallback mechanism for clients that don't send fingerprint
-
-#### `test_rate_limit_counter_increments_correctly`
-**What it tests:** Remaining counter decrements correctly
-**How it works:** Makes requests and checks `remaining` field: 1st request = 19 remaining, 5th = 15 remaining, 20th = 0 remaining
-**Expected result:** Counter matches expected values
-**Why it matters:** Accurate feedback to frontend
-
-#### `test_rate_limit_error_message_format`
-**What it tests:** Rate limit error has correct structure
-**How it works:** Exhausts limit, checks error response structure
-**Expected result:** `{error: <string>, remaining: <int>}`, error mentions "20" and "hour"
-**Why it matters:** Clear error messages for users
-
-#### `test_rate_limit_only_increments_on_successful_generation`
-**What it tests:** Counter only increments on successful username generation
-**How it works:** Makes 5 successful requests, verifies count is exactly 5
-**Expected result:** Count matches number of successful responses
-**Why it matters:** Errors don't count against limit
-
-#### `test_rate_limit_applies_to_nonexistent_chat`
-**What it tests:** Non-existent chat code returns 404, not rate limit error
-**How it works:** Requests suggestion for `INVALID_CODE`
-**Expected result:** 404 Not Found (not 429)
-**Why it matters:** Proper error precedence
-
-#### `test_different_fingerprints_independent_limits`
-**What it tests:** Different fingerprints have completely independent limits
-**How it works:** Uses 10 from fp1, 5 from fp2, 15 from fp3, checks remaining counts
-**Expected result:** fp1=9 remaining, fp2=14 remaining, fp3=4 remaining
-**Why it matters:** No cross-contamination between users
-
-#### `test_rate_limit_cache_key_format`
-**What it tests:** Correct cache key format is used
-**How it works:** Makes request, checks Redis cache key `username_suggest_limit:{chat_code}:{fingerprint}`
-**Expected result:** Key exists with value = request count
-**Why it matters:** Implementation verification
-
-#### `test_rate_limit_edge_case_exactly_20_requests`
-**What it tests:** Exactly 20 requests (boundary condition)
-**How it works:** Makes 19 requests, then 20th (should succeed with `remaining: 0`), then 21st (should fail)
-**Expected result:** 20th returns 200 + `remaining: 0`, 21st returns 429
-**Why it matters:** Off-by-one edge case
-
----
-
-## 5. Dual Sessions Tests (`chats/tests/tests_dual_sessions.py`)
+## 7. Dual Sessions Tests (`chats/tests/tests_dual_sessions.py`)
 
 **File Location:** `backend/chats/tests/tests_dual_sessions.py`
 **Test Count:** 16 tests
@@ -1108,11 +1088,11 @@ These tests verify rate limiting for the username suggestion endpoint (`/api/cha
 
 ---
 
-## 6. Redis Caching Tests (`chats/tests/tests_redis_cache.py`)
+## 8. Redis Caching Tests (`chats/tests/tests_redis_cache.py`)
 
 **File Location:** `backend/chats/tests/tests_redis_cache.py`
-**Test Count:** 43 tests
-**Test Classes:** `RedisMessageCacheTests` (22 tests), `RedisPerformanceTests` (7 tests), `RedisReactionCacheTests` (10 tests), `ConstanceCacheControlTests` (10 tests)
+**Test Count:** 44 tests
+**Test Classes:** `RedisMessageCacheTests` (23 tests), `RedisPerformanceTests` (7 tests), `RedisReactionCacheTests` (10 tests), `ConstanceCacheControlTests` (10 tests)
 
 ### 6.1 Redis Message Cache Tests (22 tests)
 
@@ -1394,7 +1374,7 @@ These tests verify the Constance dynamic settings for runtime cache control (`RE
 
 ---
 
-## 7. Message Deletion Tests (`chats/tests/tests_message_deletion.py`)
+## 9. Message Deletion Tests (`chats/tests/tests_message_deletion.py`)
 
 **File Location:** `backend/chats/tests/tests_message_deletion.py`
 **Test Count:** 22 tests
@@ -1572,27 +1552,69 @@ These tests verify real-time broadcasting of deletion events to all connected cl
 
 ---
 
-## 8. Reaction Tests (`chats/tests/tests_reactions.py`)
+## 10. Partial Cache Hits Tests (`chats/tests/tests_partial_cache_hits.py`)
 
-**File Location:** `backend/chats/tests/tests_reactions.py`
-**Test Count:** 10 tests (estimated - file not yet created in this summary)
+**File Location:** `backend/chats/tests/tests_partial_cache_hits.py`
+**Test Count:** 8 tests
+**Test Class:** `PartialCacheHitTests`
 
 ### Overview
 
-Tests for emoji reaction functionality including:
-- Adding reactions to messages
-- Removing reactions
-- Reaction count aggregation
-- Real-time WebSocket updates
-- Reaction cache invalidation on message deletion
-- Multiple users reacting with same emoji
-- User-specific reaction tracking
+Verifies Redis hybrid cache/database query handling when cache contains fewer messages than requested (partial hits). Tests real-world scenarios where users scroll through message history that's split between Redis cache and PostgreSQL database.
 
-**Note:** Full test documentation will be added when test file is reviewed.
+#### `test_partial_cache_hit_30_cached_50_requested`
+**What it tests:** Cache has 30 messages, user requests 50
+**Expected result:** First 30 from cache + remaining 20 from database, chronological ordering (oldest first)
+**Verifies:** Source is `hybrid_redis_postgresql`
+**Why it matters:** Performance optimization for large message histories - uses cache as much as possible
+
+#### `test_exact_cache_match_50_cached_50_requested`
+**What it tests:** Cache has exact 50 messages requested
+**Expected result:** All 50 from Redis, no database queries
+**Verifies:** Source is `redis`
+**Why it matters:** Ensures pure cache hits are identified and used efficiently
+
+#### `test_cache_overflow_100_cached_50_requested`
+**What it tests:** Cache has 100 messages, user requests 50
+**Expected result:** Only most recent 50 returned, all from cache
+**Verifies:** Source is `redis`
+**Why it matters:** Tests cache size management and prevents memory waste
+
+#### `test_full_cache_miss_backfill`
+**What it tests:** Cache is empty, user requests 50
+**Expected result:** All from database with backfill to cache, subsequent request hits cache
+**Verifies:** Source is `postgresql_fallback` initially, then `redis` after backfill
+**Why it matters:** Ensures cache is populated on miss for future performance
+
+####  `test_pagination_with_partial_backfill`
+**What it tests:** Database has 100 messages, cache has 30 (most recent), user requests 50 then paginates
+**Expected result:** Hybrid query followed by pagination through older messages
+**Why it matters:** Real-world usage pattern - users scroll through message history
+
+#### `test_partial_cache_hit_with_empty_database_tail`
+**What it tests:** Cache has 30 messages, user requests 50, but database only has 40 total
+**Expected result:** Returns all 40 available (not 50), source is `hybrid_redis_postgresql`, no duplicates
+**Why it matters:** Edge case handling - prevents off-by-one errors
+
+#### `test_performance_hybrid_vs_full_db`
+**What it tests:** Compares performance: full DB query vs hybrid query vs pure cache
+**Benchmark:** 200 messages from PostgreSQL vs 150 from cache + 50 from DB vs 200 from Redis
+**Expected result:** Logs performance metrics for benchmarking
+**Why it matters:** Quantifies performance gains from Redis integration
+
+#### `test_security_limit_enforcement_with_partial_cache`
+**What it tests:** User requests 99,999 messages with partial cache hit
+**Expected result:** System caps at `MESSAGE_HISTORY_MAX_COUNT` (default: 500)
+**Why it matters:** Security - prevents excessive memory use and DoS attacks
+
+**Running This Suite:**
+```bash
+./venv/bin/python manage.py test chats.tests.tests_partial_cache_hits
+```
 
 ---
 
-## 9. User Blocking Tests (`chats/tests/tests_user_blocking.py`)
+## 11. User Blocking Tests (`chats/tests/tests_user_blocking.py`)
 
 **File Location:** `backend/chats/tests/tests_user_blocking.py`
 **Test Count:** 28 tests
@@ -1802,7 +1824,496 @@ These tests benchmark blocking operations with large datasets.
 
 ---
 
-## 10. Account Security Tests (`accounts/tests.py`)
+## 12. Chat Ban Enforcement Tests (`chats/tests/tests_chat_ban_enforcement.py`)
+
+**File Location:** `backend/chats/tests/tests_chat_ban_enforcement.py`
+**Test Count:** 20 tests
+**Test Classes:** `ChatBanEnforcementHTTPTests` (7 tests), `ChatBanEnforcementWebSocketTests` (5 tests), `ChatBanCreationTests` (7 tests), `ChatBanIntegrationTests` (1 test)
+
+### Overview
+
+Chat ban enforcement (ChatBlock) allows hosts to ban disruptive users from their chat rooms. This test suite ensures:
+- Banned users cannot bypass bans through WebSocket or HTTP API
+- Bans work across all identifiers (username, fingerprint, user_id, IP address)
+- Only hosts can create/manage bans
+- Consolidated blocking approach (ONE ChatBlock row with ALL identifiers)
+- Case-insensitive username matching
+
+**Security Model:**
+- **Primary Defense:** WebSocket connection rejected on ban (consumers.py:40-45)
+- **Backup Defense:** WebSocket messages blocked if somehow connected (consumers.py:91-98)
+- **Bypass Prevention:** HTTP API messages blocked (views.py:601-625)
+
+### 10.1 HTTP API Ban Enforcement Tests (7 tests)
+
+**Test Class:** `ChatBanEnforcementHTTPTests`
+
+These tests verify that banned users cannot send messages via direct HTTP API calls, preventing bypass attempts.
+
+#### `test_banned_username_cannot_send_message_http`
+**What it tests:** User banned by username cannot send messages via HTTP API
+**How it works:** Joins chat, gets banned by username, attempts to send message via POST `/api/chats/{code}/messages/send/`
+**Expected result:** 403 Forbidden with error message containing "banned"
+**Why it matters:** Prevents bypassing WebSocket ban by calling HTTP API directly
+
+#### `test_banned_username_case_insensitive_http`
+**What it tests:** Username bans are case-insensitive
+**How it works:** Bans user with lowercase username (`testuser456`), attempts message send with mixed case (`TestUser456`)
+**Expected result:** 403 Forbidden - ban matches regardless of case
+**Why it matters:** Prevents evasion by changing username capitalization
+
+#### `test_banned_fingerprint_cannot_send_message_http`
+**What it tests:** User banned by fingerprint cannot send messages
+**How it works:** Anonymous user with fingerprint joins, gets banned by fingerprint, attempts message send
+**Expected result:** 403 Forbidden with "banned" error
+**Why it matters:** Ensures fingerprint-based bans work for anonymous users
+
+#### `test_banned_user_id_cannot_send_message_http`
+**What it tests:** Registered user banned by user_id cannot send messages
+**How it works:** Logged-in user joins, gets banned by user_id, attempts message send
+**Expected result:** 403 Forbidden with "banned" error
+**Why it matters:** Ensures account-based bans work for registered users
+
+#### `test_non_banned_user_can_send_message_http`
+**What it tests:** Non-banned users can still send messages normally
+**How it works:** User joins chat (no ban), sends message via HTTP API
+**Expected result:** 201 Created, message appears in database
+**Why it matters:** Verifies bans don't affect legitimate users (positive test case)
+
+#### `test_host_can_send_message_after_banning_user`
+**What it tests:** Host unaffected by bans they create
+**How it works:** Host bans a user, then sends their own message
+**Expected result:** 201 Created, host message succeeds
+**Why it matters:** Ensures host functionality not disrupted by ban actions
+
+#### `test_ban_only_affects_specific_chat`
+**What it tests:** Bans are chat-specific, not site-wide
+**How it works:** User banned in Chat A, attempts to send message in Chat B
+**Expected result:** Chat A message blocked (403), Chat B message succeeds (201)
+**Why it matters:** Prevents overly broad bans; hosts control their own chat only
+
+### 10.2 WebSocket Ban Enforcement Tests (5 tests)
+
+**Test Class:** `ChatBanEnforcementWebSocketTests`
+
+These tests verify the primary ban enforcement mechanism: rejecting WebSocket connections from banned users. Uses `channels.testing.WebsocketCommunicator` for async WebSocket testing.
+
+**Technical Note:** Uses `TransactionTestCase` instead of `TestCase` to support async operations with `@database_sync_to_async` decorator.
+
+#### `test_banned_username_cannot_connect_websocket`
+**What it tests:** User banned by username cannot establish WebSocket connection
+**How it works:** Creates ban, attempts WebSocket connection with banned username's session token
+**Expected result:** `connected = False` (connection rejected)
+**Why it matters:** Primary defense - stops banned users at connection level
+
+#### `test_banned_fingerprint_cannot_connect_websocket`
+**What it tests:** User banned by fingerprint cannot connect via WebSocket
+**How it works:** Bans anonymous user by fingerprint, attempts WebSocket connection with that fingerprint's token
+**Expected result:** Connection rejected (`connected = False`)
+**Why it matters:** Prevents anonymous user evasion via fingerprint changes
+
+#### `test_banned_user_id_cannot_connect_websocket`
+**What it tests:** Registered user banned by user_id cannot connect
+**How it works:** Bans logged-in user by user_id, attempts connection with their session token
+**Expected result:** Connection rejected
+**Why it matters:** Ensures account-based bans work at WebSocket level
+
+#### `test_banned_username_case_insensitive_websocket`
+**What it tests:** Username bans are case-insensitive for WebSocket connections
+**How it works:** Bans `testuser456` (lowercase), attempts connection as `TestUser456` (mixed case)
+**Expected result:** Connection rejected despite case difference
+**Why it matters:** Consistent case-insensitive behavior across all enforcement points
+
+#### `test_non_banned_user_can_connect_websocket`
+**What it tests:** Non-banned users can connect normally
+**How it works:** No bans created, attempts WebSocket connection
+**Expected result:** `connected = True` (connection succeeds)
+**Why it matters:** Positive test case - ensures ban system doesn't block legitimate users
+
+### 10.3 Ban Creation & Management Tests (7 tests)
+
+**Test Class:** `ChatBanCreationTests`
+
+These tests verify ban creation authorization, consolidated blocking approach, and IP address tracking.
+
+#### `test_host_can_ban_user_by_username`
+**What it tests:** Host can create bans via API
+**How it works:** Host POSTs to `/api/chats/{code}/block-user/` with `blocked_username`
+**Expected result:** 200 OK, ChatBlock record created with username stored as lowercase
+**Why it matters:** Verifies basic ban creation flow
+
+#### `test_non_host_cannot_ban_users`
+**What it tests:** Non-host users blocked from creating bans
+**How it works:** Regular user attempts to POST to `/api/chats/{code}/block-user/`
+**Expected result:** 403 Forbidden
+**Why it matters:** Authorization check - only hosts can ban
+
+#### `test_ban_requires_session_token`
+**What it tests:** Ban creation requires valid session token
+**How it works:** Attempts ban creation without `session_token` field
+**Expected result:** 400 Bad Request or 403 Forbidden
+**Why it matters:** Authentication requirement for ban actions
+
+#### `test_duplicate_ban_prevented`
+**What it tests:** Duplicate bans handled gracefully (idempotent)
+**How it works:** Creates ban for same user twice
+**Expected result:** Both return 200 OK (second request updates existing block)
+**Why it matters:** API is idempotent - no errors from duplicate ban attempts
+
+#### `test_ban_requires_authentication`
+**What it tests:** Anonymous users cannot create bans
+**How it works:** Logged-out user attempts to create ban
+**Expected result:** 401 Unauthorized or 403 Forbidden
+**Why it matters:** Only authenticated hosts can ban users
+
+#### `test_ban_consolidates_all_identifiers`
+**What it tests:** ONE ChatBlock row created with ALL user identifiers
+**How it works:** Uses `block_participation()` utility, verifies single row with username + fingerprint + user_id + IP address
+**Expected result:** Exactly 1 ChatBlock record with all fields populated
+**Why it matters:** Validates consolidated blocking approach (not multiple rows per identifier)
+
+#### `test_ip_address_is_tracked`
+**What it tests:** IP address stored in ChatBlock for tracking
+**How it works:** Creates ban with `ip_address='10.0.0.42'`, verifies `blocked_ip_address` field
+**Expected result:** IP address stored in database
+**Why it matters:** Future-proofing for IP-based blocking (currently tracked only, not enforced)
+
+### 10.4 Integration Tests (1 test)
+
+**Test Class:** `ChatBanIntegrationTests`
+
+#### `test_complete_ban_workflow`
+**What it tests:** End-to-end ban workflow from join to enforcement
+**How it works:**
+1. User joins chat, sends message successfully
+2. Host joins chat
+3. Host bans the user
+4. Banned user attempts to send another message
+**Expected result:** First message succeeds (201), post-ban message fails (403)
+**Why it matters:** Validates complete ban lifecycle in real-world scenario
+
+### Key Implementation Details
+
+**Consolidated Blocking Approach:**
+- ONE ChatBlock row per ban with ALL identifiers (username, fingerprint, user_id, IP address)
+- More efficient than multiple rows per identifier
+- Easier to manage (single update/delete)
+- Simpler queries (no complex grouping)
+
+**Utility Function:**
+```python
+from chats.utils.security.blocking import block_participation
+
+block = block_participation(
+    chat_room=chat_room,
+    participation=participation_to_block,
+    blocked_by=host_participation,
+    ip_address='192.168.1.100'  # Optional
+)
+```
+
+**Ban Checking (consumers.py:296-339):**
+- Checks username (case-insensitive)
+- Checks fingerprint (anonymous users only)
+- Checks user_id (registered users)
+- Returns True if ANY identifier matches an active ban
+
+**Case-Insensitive Username Storage:**
+- Usernames stored as lowercase in `ChatBlock.blocked_username`
+- Lookups use `__iexact` (case-insensitive)
+- Original case preserved in `ChatParticipation.username`
+
+### Running the Tests
+
+```bash
+# Run all ban enforcement tests
+./venv/bin/python manage.py test chats.tests.tests_chat_ban_enforcement -v 2
+
+# Run specific test class
+./venv/bin/python manage.py test chats.tests.tests_chat_ban_enforcement.ChatBanEnforcementHTTPTests -v 2
+
+# Run specific test
+./venv/bin/python manage.py test chats.tests.tests_chat_ban_enforcement.ChatBanEnforcementHTTPTests.test_banned_username_cannot_send_message_http -v 2
+```
+
+---
+
+## 13. Blocking Tests (`chats/tests/tests_blocking.py`)
+
+**File Location:** `backend/chats/tests/tests_blocking.py`
+**Test Count:** 27 tests
+**Test Classes:** `ChatBlockModelTests` (6 tests), `BlockingUtilityTests` (12 tests), `BlockingAPITests` (4 tests), `JoinEnforcementTests` (5 tests)
+
+### Overview
+
+Comprehensive testing of user blocking functionality including model operations, utility functions, API endpoints, and join enforcement. Covers host-only moderation, multi-identifier blocking (username, fingerprint, account), and entry-point prevention.
+
+### 13.1 ChatBlockModelTests (6 tests)
+
+Tests the ChatBlock model and database operations.
+
+#### `test_create_username_block`, `test_create_fingerprint_block`, `test_create_user_account_block`
+**What they test:** Creating blocks for different identifier types
+**Why they matter:** Basic blocking model functionality for usernames, fingerprints, and user accounts
+
+#### `test_unique_constraint_username`
+**What it tests:** Duplicate username blocks are prevented
+**Expected result:** Exception raised on duplicate
+**Why it matters:** Prevents duplicate blocks, ensures data integrity
+
+#### `test_block_with_expiration`, `test_block_with_reason`
+**What they test:** Timed blocks with expiration and blocks with documented reasons
+**Why they matter:** Temporary suspensions feature and audit trail for moderation
+
+### 13.2 BlockingUtilityTests (12 tests)
+
+Tests `chats/utils/security/blocking.py` utility functions.
+
+#### `test_block_participation_creates_blocks`
+**What it tests:** `block_participation()` function creates blocks for all identifiers
+**Expected result:** For participation with username + fingerprint: creates 2 blocks
+**Why it matters:** Multi-identifier blocking strategy
+
+#### `test_block_participation_with_user_account`
+**What it tests:** Blocks registered user with account + username (NOT fingerprint)
+**Expected result:** Creates 2 blocks (username + user account)
+**Note:** Fingerprint not blocked for logged-in users to prevent false positives
+**Why it matters:** Multi-device consideration - same user can use different devices
+
+#### `test_block_participation_prevents_self_block`
+**What it tests:** Users cannot block themselves
+**Expected result:** ValueError with message "Cannot block yourself"
+**Why it matters:** Security - prevents accidental self-blocks
+
+#### `test_block_participation_requires_host`
+**What it tests:** Only host can block users (not regular participants)
+**Expected result:** ValueError with "Only the host can block users"
+**Why it matters:** Authorization control - host moderation
+
+#### `test_check_if_blocked_by_username`, `test_check_if_blocked_case_insensitive`, `test_check_if_blocked_by_fingerprint`, `test_check_if_blocked_by_user_account`
+**What they test:** `check_if_blocked()` detects blocks by various identifiers, case-insensitive
+**Why they matter:** Join enforcement - blocks at entry point
+
+#### `test_unblock_participation`
+**What it tests:** `unblock_participation()` removes all blocks for a user
+**Expected result:** Returns count of removed blocks
+**Why it matters:** Host unbanning feature
+
+#### `test_get_blocked_users`
+**What it tests:** `get_blocked_users()` returns list of blocked users, properly grouped
+**Why it matters:** Host can view blocked users list
+
+### 13.3 BlockingAPITests (4 tests)
+
+Tests blocking REST API endpoints.
+
+#### `test_block_user_endpoint_requires_auth`, `test_block_user_endpoint_requires_host`
+**What they test:** POST `/api/chats/{code}/block-user/` requires session_token and host role
+**Expected results:** 400 Bad Request without token, 403 Forbidden for non-hosts
+**Why they matter:** Authentication and authorization enforcement
+
+#### `test_block_user_endpoint_success`, `test_unblock_user_endpoint_success`
+**What they test:** Successfully blocking and unblocking users via API
+**Expected results:** Response includes `blocks_created` count, unblock reactivates participation
+**Why they matter:** API functionality for frontend moderation interface
+
+### 13.4 JoinEnforcementTests (5 tests)
+
+Tests blocking enforcement at chat join time.
+
+#### `test_blocked_username_cannot_join`, `test_blocked_fingerprint_cannot_join`, `test_blocked_user_account_cannot_join`
+**What they test:** Blocked users rejected at join time by different identifiers
+**Expected result:** 403 Forbidden for all blocked identifiers
+**Why they matter:** Prevents blocked users from entering chat
+
+#### `test_non_blocked_user_can_join`
+**What it tests:** Non-blocked users successfully join
+**Why it matters:** Unblocked users work normally
+
+**Running This Suite:**
+```bash
+./venv/bin/python manage.py test chats.tests.tests_blocking
+```
+
+---
+
+## 14. Blocking Redirect Tests (`chats/tests/tests_blocking_redirect.py`)
+
+**File Location:** `backend/chats/tests/tests_blocking_redirect.py`
+**Test Count:** 9 tests
+**Test Class:** `BlockingRedirectTests`
+
+### Overview
+
+Tests blocking detection for chat page access - determines if users should be redirected/blocked before entering chat. Provides pre-chat blocking detection for UI via `/api/chats/{code}/my-participation/` endpoint.
+
+#### `test_anonymous_user_not_blocked`, `test_logged_in_user_not_blocked`
+**What they test:** Non-blocked users see `is_blocked=False`
+**Expected result:** `has_joined=False, is_blocked=False` for new visitors
+**Why they matter:** New visitors aren't blocked by default
+
+#### `test_anonymous_user_blocked_by_fingerprint`
+**What it tests:** Anonymous user with blocked fingerprint sees `is_blocked=True`
+**Expected result:** `is_blocked=True` even if `has_joined=False`
+**Why they matter:** Prevents blocked anonymous users from joining
+
+#### `test_logged_in_user_blocked_by_account`
+**What it tests:** Logged-in user with blocked account sees `is_blocked=True`
+**Why it matters:** Account blocks apply to registered users
+
+#### `test_logged_in_user_fingerprint_blocked_but_account_not`
+**What it tests:** Logged-in user NOT blocked by fingerprint, only by account block
+**Important:** Fingerprint blocks don't apply to logged-in users
+**Why it matters:** Prevents multi-device users from being false-positively blocked (User A blocked, User B shares device)
+
+#### `test_returning_anonymous_user_blocked`, `test_returning_logged_in_user_blocked`
+**What they test:** Returning users who are blocked
+**Expected result:** `has_joined=True, is_blocked=True`
+**Why they matter:** Identifies returning blocked users
+
+#### `test_anonymous_blocked_by_username`
+**What it tests:** Username block for anonymous users (edge case)
+**Note:** First-time user won't have username yet (chosen at join time)
+**Expected result:** Not blocked until they pick username
+**Why it matters:** Tests blocking logic edge case
+
+#### `test_multiple_blocks_same_user`
+**What it tests:** User blocked by multiple identifiers (account, username, fingerprint)
+**Expected result:** `is_blocked=True`
+**Why it matters:** Multiple block layers work together
+
+**Running This Suite:**
+```bash
+./venv/bin/python manage.py test chats.tests.tests_blocking_redirect
+```
+
+---
+
+## 15. Voice Messages Tests (`chats/tests/tests_voice_messages.py`)
+
+**File Location:** `backend/chats/tests/tests_voice_messages.py`
+**Test Count:** 19 tests
+**Test Classes:** `VoiceMessageUploadTests` (10 tests), `VoiceMessageStreamTests` (5 tests), `VoiceMessageStorageTests` (3 tests), `VoiceMessageIntegrationTests` (1 test)
+
+### Overview
+
+Complete voice messaging functionality testing including upload, FFmpeg transcoding, streaming, storage abstraction (local/S3), and security. Ensures iOS Safari compatibility (HTTPS + microphone access).
+
+### 15.1 VoiceMessageUploadTests (10 tests)
+
+#### `test_upload_voice_message_success`
+**What it tests:** Successfully uploads voice message with FFmpeg transcoding
+**Expected result:** 201 Created, returns `voice_url`, `storage_path`, `storage_type`
+**Mocks:** FFmpeg to avoid actual transcoding in tests
+**Why it matters:** Core voice upload feature
+
+#### `test_upload_voice_disabled_chat`
+**What it tests:** Upload fails when chat has `voice_enabled=False`
+**Expected result:** 403 Forbidden
+**Why it matters:** Hosts can disable voice feature
+
+#### `test_upload_without_session_token`, `test_upload_invalid_session_token`, `test_upload_wrong_chat_session_token`
+**What they test:** Upload requires valid session_token for current chat
+**Expected results:** 401 Unauthorized for invalid/missing/wrong-chat tokens
+**Why they matter:** Security - requires valid session, prevents cross-chat token reuse
+
+#### `test_upload_no_file`, `test_upload_file_too_large`, `test_upload_invalid_file_type`
+**What they test:** Input validation for uploads
+**Expected results:** 400 Bad Request for missing file, file >10MB, or non-audio files
+**Why they matter:** Prevents storage/bandwidth abuse and malicious uploads
+
+#### `test_upload_various_audio_formats`
+**What it tests:** Accepts multiple audio formats: webm, mp4, mp3, ogg, wav
+**Expected result:** 201 Created for all formats
+**Why it matters:** Cross-browser/device compatibility (iOS: mp4, Android: webm, Desktop: various)
+
+### 15.2 VoiceMessageStreamTests (5 tests)
+
+#### `test_stream_voice_message_success`
+**What it tests:** Successfully streams stored voice message
+**Expected result:** 200 OK with audio data, correct Content-Type, Content-Disposition
+**Why it matters:** Voice message playback feature
+
+#### `test_stream_without_session_token`, `test_stream_invalid_session_token`
+**What they test:** Streaming requires valid session_token
+**Expected result:** 401 Unauthorized
+**Why they matter:** Security - requires valid session
+
+#### `test_stream_file_not_found`
+**What it tests:** Streaming fails when file doesn't exist
+**Expected result:** 404 Not Found
+**Why it matters:** Proper error handling for deleted files
+
+#### `test_stream_content_types`
+**What it tests:** Correct Content-Type for different audio formats
+**Verifies:** webm→audio/webm, mp4→audio/mp4, mp3→audio/mpeg, ogg→audio/ogg, wav→audio/wav
+**Why it matters:** Browser plays audio with correct MIME type
+
+### 15.3 VoiceMessageStorageTests (3 tests)
+
+#### `test_storage_type_detection`, `test_s3_configured_detection`
+**What they test:** Detects storage type as 'local' (development) or 's3' (production)
+**Why they matter:** Fallback to local storage in development, S3 in production
+
+#### `test_save_voice_message`, `test_get_voice_message_url`
+**What they test:** Storage abstraction layer works, generates correct URL format
+**Why they matter:** Frontend can construct playback URLs
+
+### 15.4 VoiceMessageIntegrationTests (1 test)
+
+#### `test_complete_voice_message_flow`
+**What it tests:** End-to-end: Upload → Get URL → Verify Stream Path
+**Why it matters:** Integration test ensuring all components work together
+
+**Running This Suite:**
+```bash
+./venv/bin/python manage.py test chats.tests.tests_voice_messages
+```
+
+---
+
+## 16. WebSocket Tests (`chats/tests/tests_websocket.py`)
+
+**File Location:** `backend/chats/tests/tests_websocket.py`
+**Test Count:** 4 tests
+**Test Class:** `WebSocketSerializationTests`
+
+### Overview
+
+Tests message serialization for WebSocket broadcasting using msgpack binary format. Ensures UUIDs are properly converted to strings for msgpack serialization. **Critical for real-time chat functionality.**
+
+#### `test_message_serialization_with_logged_in_user`
+**What it tests:** Message from logged-in user serializes correctly
+**Critical:** Tests that `user_id` (UUID) is converted to STRING, not left as UUID object
+**Verifies:** msgpack can serialize the result (would fail with UUID objects)
+**Why it matters:** Binary serialization requirement - msgpack cannot serialize UUID objects
+
+#### `test_message_serialization_with_anonymous_user`
+**What it tests:** Message from anonymous user (user=None) serializes correctly
+**Verifies:** `user_id` is None (not UUID object), msgpack can serialize
+**Why it matters:** Anonymous message handling in WebSocket
+
+#### `test_message_serialization_with_reply`
+**What it tests:** Message with reply_to parent message serializes correctly
+**Critical:** Tests that `reply_to_id` (UUID) is converted to STRING
+**Verifies:** All UUIDs (id, user_id, reply_to_id) must be strings
+**Why it matters:** Reply threading in real-time chat
+
+#### `test_all_serialized_fields_are_json_serializable`
+**What it tests:** Message with all possible fields serializes to JSON
+**Tests:** user, reply, pinned, host message type
+**Calls:** Actual consumer `serialize_message_for_broadcast()` method
+**Verifies:** JSON serialization works (can be stringified and parsed back)
+**Why it matters:** Ensures consumer serialization method is correct, browser can JSON.parse() the result
+
+**Running This Suite:**
+```bash
+./venv/bin/python manage.py test chats.tests.tests_websocket
+```
+
+---
+
+## 17. Account Security Tests (`accounts/tests.py`)
 
 **File Location:** `backend/accounts/tests.py`
 **Test Count:** 17 tests

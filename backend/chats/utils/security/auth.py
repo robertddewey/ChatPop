@@ -21,7 +21,8 @@ class ChatSessionValidator:
         cls,
         chat_code: str,
         username: str,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        fingerprint: Optional[str] = None
     ) -> str:
         """
         Create a JWT session token for chat access
@@ -30,6 +31,7 @@ class ChatSessionValidator:
             chat_code: Chat room code
             username: User's display name in chat
             user_id: Optional authenticated user ID
+            fingerprint: Optional browser fingerprint (for anonymous users)
 
         Returns:
             JWT token string
@@ -38,6 +40,7 @@ class ChatSessionValidator:
             'chat_code': chat_code,
             'username': username,
             'user_id': str(user_id) if user_id else None,
+            'fingerprint': fingerprint,  # Include fingerprint for ban enforcement
             'iat': datetime.utcnow(),
             'exp': datetime.utcnow() + timedelta(hours=cls.TOKEN_EXPIRATION_HOURS)
         }

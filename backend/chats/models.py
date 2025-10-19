@@ -399,7 +399,17 @@ class MessageReaction(models.Model):
 
 
 class ChatBlock(models.Model):
-    """Block users from accessing a specific chat"""
+    """
+    Block users from accessing a specific chat.
+
+    Multiple identifiers can be set in a single ban record for comprehensive blocking:
+    - blocked_username: Blocks anyone using that username
+    - blocked_fingerprint: Blocks that specific device/browser
+    - blocked_user: Blocks that registered user account
+    - blocked_ip_address: Tracks IP (for future IP-based blocking)
+
+    Ban checking uses OR logic - if ANY identifier matches, user is blocked.
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Who is being blocked (at least one must be set)
@@ -415,17 +425,6 @@ class ChatBlock(models.Model):
         blank=True,
         help_text="Browser fingerprint block"
     )
-    blocked_email = models.EmailField(
-        null=True,
-        blank=True,
-        help_text="Email block (future)"
-    )
-    blocked_phone = models.CharField(
-        max_length=20,
-        null=True,
-        blank=True,
-        help_text="Phone block (future)"
-    )
     blocked_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -433,6 +432,11 @@ class ChatBlock(models.Model):
         blank=True,
         related_name='chat_blocks',
         help_text="Registered user account block"
+    )
+    blocked_ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text="IP address for tracking (future: may be used for blocking)"
     )
 
     # Who created the block

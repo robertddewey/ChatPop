@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://localhost:9000';
+// Use relative URLs to leverage Next.js proxy (server.js proxies /api/ and /media/ to backend)
+// This allows the app to work from both localhost and network IP addresses
+const API_BASE_URL = '';
 
 // Create axios instance
 export const api = axios.create({
@@ -445,7 +447,13 @@ export const messageApi = {
     blocked_fingerprint?: string;
     blocked_user_id?: number;
   }) => {
-    const response = await api.post(`/api/chats/${code}/block-user/`, data);
+    // Get session token from localStorage (required for host verification)
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
+    const response = await api.post(`/api/chats/${code}/block-user/`, {
+      ...data,
+      session_token: sessionToken,
+    });
     return response.data;
   },
 

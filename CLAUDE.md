@@ -222,9 +222,7 @@ cd backend
 ./venv/bin/python manage.py test chats.tests.tests_security.ChatSessionSecurityTests.test_message_send_requires_session_token
 ```
 
-**Current Test Coverage:** 139+ tests across 7 test suites covering security, validation, profanity filtering, rate limiting, dual sessions, and Redis caching.
-
-See [docs/TESTING.md](docs/TESTING.md) for detailed test documentation.
+See [docs/TESTING.md](docs/TESTING.md) for complete test documentation.
 
 ---
 
@@ -232,7 +230,7 @@ See [docs/TESTING.md](docs/TESTING.md) for detailed test documentation.
 
 Comprehensive documentation is organized in the `docs/` directory:
 
-- **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation (139 tests)
+- **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation
 - **[docs/CACHING.md](docs/CACHING.md)** - Redis message and reaction caching architecture
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
 - **[docs/AUDIO.md](docs/AUDIO.md)** - iOS Safari-compatible audio implementation

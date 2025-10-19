@@ -5,8 +5,8 @@
 
 import FingerprintJS from '@fingerprintjs/fingerprintjs';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://localhost:9000';
-const API_URL = `${API_BASE_URL}/api`;
+// Use relative URL to leverage Next.js proxy (server.js proxies /api/ to backend)
+const API_URL = '/api';
 
 let fpPromise: Promise<any> | null = null;
 

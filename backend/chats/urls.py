@@ -5,9 +5,7 @@ from .views import (
     FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
     VoiceUploadView, VoiceStreamView,
     MessageReactionToggleView, MessageReactionsListView,
-    BlockUserView, UnblockUserView, BlockedUsersListView
-)
-from .user_block_views import (
+    BlockUserView, UnblockUserView, BlockedUsersListView,
     UserBlockView, UserUnblockView, UserBlockListView
 )
 

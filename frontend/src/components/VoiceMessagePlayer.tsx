@@ -3,9 +3,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause } from 'lucide-react';
 
-// Backend API URL (same as api.ts)
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://localhost:9000';
-
 interface VoiceMessagePlayerProps {
   voiceUrl: string;
   duration: number;
@@ -153,10 +150,10 @@ export default function VoiceMessagePlayer({
         // This avoids preload issues that can cause readyState to stay at 0
         if (!srcSetRef.current) {
           console.log('[VoiceMessagePlayer] 🔗 Setting audio src on first play (iOS workaround)');
-          // Convert relative URL to absolute URL pointing to backend
-          const absoluteUrl = voiceUrl.startsWith('http') ? voiceUrl : `${API_BASE_URL}${voiceUrl}`;
-          console.log('[VoiceMessagePlayer] 🔗 Absolute URL:', absoluteUrl);
-          audioRef.current.src = absoluteUrl;
+          // Voice URLs are already relative URLs (e.g., /media/...)
+          // Next.js server.js proxies /media/ requests to backend
+          console.log('[VoiceMessagePlayer] 🔗 URL:', voiceUrl);
+          audioRef.current.src = voiceUrl;
           srcSetRef.current = true; // Mark that we've set the source
         }
 

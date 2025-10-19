@@ -310,7 +310,7 @@ Key variables:
 Comprehensive documentation is organized in the `docs/` directory:
 
 ### Core Documentation
-- **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation (139 tests)
+- **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation
 - **[docs/CACHING.md](docs/CACHING.md)** - Redis message and reaction caching architecture
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
 - **[docs/AUDIO.md](docs/AUDIO.md)** - iOS Safari-compatible audio implementation
