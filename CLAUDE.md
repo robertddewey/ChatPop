@@ -118,15 +118,27 @@ Voice message recording requires HTTPS due to browser security policies for Medi
 
 ```bash
 cd backend
-./venv/bin/python manage.py migrate  # Run migrations (first time only)
+
+# First time setup: Create .env file from template
+cp .env.example .env
+# Edit .env and configure ALLOWED_HOSTS and CORS_ALLOWED_ORIGINS if needed for LAN testing
+
+# Run migrations (first time only)
+./venv/bin/python manage.py migrate
 
 # Start with Daphne and SSL (REQUIRED for voice messages)
-ALLOWED_HOSTS=localhost,127.0.0.1,10.0.0.135 \
-CORS_ALLOWED_ORIGINS="http://localhost:4000,http://127.0.0.1:4000,http://10.0.0.135:4000,https://localhost:4000,https://127.0.0.1:4000,https://10.0.0.135:4000" \
+# Option 1: Use .env file (recommended - configure once in backend/.env)
 ./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
+
+# Option 2: Override with environment variables (for testing different IPs)
+# Find your LAN IP: ifconfig | grep "inet " | grep -v 127.0.0.1
+# ALLOWED_HOSTS=localhost,127.0.0.1,YOUR_LAN_IP \
+# CORS_ALLOWED_ORIGINS="http://localhost:4000,https://localhost:4000,http://YOUR_LAN_IP:4000,https://YOUR_LAN_IP:4000" \
+# ./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
 ```
 
-Backend API: https://localhost:9000
+**Backend API:** https://localhost:9000
+**For mobile/LAN testing:** https://YOUR_LAN_IP:9000 (configure in `.env` first)
 
 **3. Start Frontend (Next.js with HTTPS on port 4000):**
 
