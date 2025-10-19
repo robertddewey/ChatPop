@@ -41,5 +41,11 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+
+# SSL Certificates (machine-specific, generate locally with mkcert)
+certs/*.pem
+certs/*.key
+certs/*.crt
+
 # Exclude full development fixtures (contains test user data)
 backend/fixtures/full_dev_data.json
