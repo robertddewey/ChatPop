@@ -53,6 +53,21 @@ class ChatRoomDetailView(APIView):
     def get(self, request, code):
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
 
+        # Check if host has joined
+        # Only allow non-host users to see the chat if host has joined
+        host_has_joined = ChatParticipation.objects.filter(
+            chat_room=chat_room,
+            user=chat_room.host
+        ).exists()
+
+        # If host hasn't joined, only allow the host to see the chat
+        if not host_has_joined:
+            is_host = request.user.is_authenticated and request.user == chat_room.host
+            if not is_host:
+                # Return 404 to hide the chat from non-host users
+                from django.http import Http404
+                raise Http404("Chat room not found")
+
         # Don't expose access_code in response
         serializer = ChatRoomSerializer(chat_room)
         data = serializer.data
@@ -85,6 +100,22 @@ class ChatRoomJoinView(APIView):
 
     def post(self, request, code):
         chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+
+        # Check if host has joined
+        # Only allow non-host users to join if host has joined first
+        host_has_joined = ChatParticipation.objects.filter(
+            chat_room=chat_room,
+            user=chat_room.host
+        ).exists()
+
+        # If host hasn't joined, only allow the host to join
+        if not host_has_joined:
+            is_host = request.user.is_authenticated and request.user == chat_room.host
+            if not is_host:
+                # Return 404 to hide the chat from non-host users
+                from django.http import Http404
+                raise Http404("Chat room not found")
+
         serializer = ChatRoomJoinSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
@@ -1787,7 +1818,7 @@ class BlockUserView(APIView):
             async_to_sync(channel_layer.group_send)(
                 room_group_name,
                 {
-                    'type': 'user_blocked',
+                    'type': 'user_kicked',
                     'username': participation.username,
                     'message': 'You have been removed from this chat by the host.',
                 }

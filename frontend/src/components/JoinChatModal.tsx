@@ -154,68 +154,12 @@ export default function JoinChatModal({
       return;
     }
 
-    // For anonymous users typing manually: show available (no backend validation)
-    if (!isLoggedIn) {
-      // Anonymous user - manual username shows as available (validated at join time)
-      setUsernameError('');
-      setUsernameAvailable(true);
-      setIsValidatingUsername(false);
-      return;
-    }
-
-    // Start validation after debounce delay (logged-in users typing manually)
-    validationTimeoutRef.current = setTimeout(async () => {
-      // First check format validation (client-side)
-      const validation = validateUsername(username.trim());
-      if (!validation.isValid) {
-        // Show specific format validation error
-        setUsernameError(validation.error || 'Invalid username');
-        setUsernameAvailable(false);
-        setIsValidatingUsername(false);
-        return;
-      }
-
-      // Then check availability (server-side)
-      setIsValidatingUsername(true);
-      setUsernameError('');
-      setUsernameAvailable(false);
-
-      try {
-        const fingerprint = await getFingerprint();
-        const response = await api.post(
-          `/api/chats/${chatRoom.code}/validate-username/`,
-          {
-            username: username.trim(),
-            fingerprint: fingerprint,
-          }
-        );
-
-        const data = response.data;
-
-        if (!data.available) {
-          // Username validation succeeded but username is not available
-          setUsernameError('Unavailable');
-          setUsernameAvailable(false);
-        } else {
-          // Username is available!
-          setUsernameError('');
-          setUsernameAvailable(true);
-        }
-      } catch (err) {
-        // Error from server (400, 500, etc.) or network error
-        setUsernameError('Unavailable');
-        setUsernameAvailable(false);
-      } finally {
-        setIsValidatingUsername(false);
-      }
-    }, 500); // 500ms debounce
-
-    return () => {
-      if (validationTimeoutRef.current) {
-        clearTimeout(validationTimeoutRef.current);
-      }
-    };
-  }, [username, isLoggedIn, hasJoinedBefore, isSuggestingUsername, usernameSource, chatRoom.code]);
+    // For all other cases (manually typed usernames): show as available
+    // Validation will happen at join time
+    setUsernameError('');
+    setUsernameAvailable(true);
+    setIsValidatingUsername(false);
+  }, [username, isLoggedIn, hasJoinedBefore, isSuggestingUsername, usernameSource, currentUserDisplayName, hasReservedUsername]);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -354,6 +298,21 @@ export default function JoinChatModal({
             <div>
               <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
                 Pick a username
+                {hasReservedUsername && currentUserDisplayName && (
+                  <>
+                    {' '}(
+                    <span
+                      onClick={() => {
+                        setUsername(currentUserDisplayName);
+                        setUsernameSource('manual');
+                      }}
+                      className="cursor-pointer hover:text-cyan-400 transition-colors"
+                    >
+                      {currentUserDisplayName}
+                    </span>
+                    )
+                  </>
+                )}
               </label>
               <div className="relative">
                 <input
@@ -390,13 +349,6 @@ export default function JoinChatModal({
                 <p className={`text-xs text-red-500 mt-1`}>
                   {usernameError}
                 </p>
-              )}
-              {usernameAvailable && !usernameError && (
-                <div className="mt-1">
-                  <p className={`text-xs text-green-500`}>
-                    Username is available
-                  </p>
-                </div>
               )}
             </div>
           ) : (

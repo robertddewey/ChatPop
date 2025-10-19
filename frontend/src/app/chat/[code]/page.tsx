@@ -417,13 +417,20 @@ export default function ChatPage() {
 
         setLoading(false);
       } catch (err: any) {
+        // If chat returns 404 (host hasn't joined yet), redirect to homepage
+        if (err.response?.status === 404) {
+          console.log('[Chat Load] Chat not found (404) - redirecting to homepage');
+          router.replace('/');
+          return;
+        }
+
         setError(err.response?.data?.detail || 'Failed to load chat room');
         setLoading(false);
       }
     };
 
     loadChatRoom();
-  }, [code]);
+  }, [code, router]);
 
   // Listen for auth changes (login/register)
   useEffect(() => {
