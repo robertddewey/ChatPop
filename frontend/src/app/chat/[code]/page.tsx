@@ -412,8 +412,15 @@ export default function ChatPage() {
 
         console.log('==============================');
 
-        // Always set hasJoined to false initially - user must join through modal
-        setHasJoined(false);
+        // Check if user has already joined by looking for session token
+        const existingSessionToken = localStorage.getItem(`chat_session_${code}`);
+        if (existingSessionToken) {
+          console.log('[Auto-Join] Session token found - setting hasJoined to true');
+          setHasJoined(true);
+          setSessionToken(existingSessionToken);
+        } else {
+          setHasJoined(false);
+        }
 
         setLoading(false);
       } catch (err: any) {
