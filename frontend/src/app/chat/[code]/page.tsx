@@ -300,6 +300,14 @@ export default function ChatPage() {
     setSessionToken(token);
   }, [code, hasJoined]);
 
+  // Load messages when user auto-joins (has session token on page load)
+  useEffect(() => {
+    if (hasJoined && sessionToken && messages.length === 0) {
+      console.log('[Auto-Join] Loading messages for returning user');
+      loadMessages();
+    }
+  }, [hasJoined, sessionToken]);
+
   // Scroll to bottom when filter mode changes, or when switching between Main Chat and Back Room
   useEffect(() => {
     // Mark that we should auto-scroll
