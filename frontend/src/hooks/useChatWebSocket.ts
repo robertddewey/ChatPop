@@ -29,7 +29,7 @@ export function useChatWebSocket({
   const [isConnecting, setIsConnecting] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const MAX_RECONNECT_ATTEMPTS = 5;
+  const MAX_RECONNECT_ATTEMPTS = Infinity; // Infinite reconnection attempts with polling fallback
   const RECONNECT_DELAY = 2000;
 
   const connect = useCallback(() => {
