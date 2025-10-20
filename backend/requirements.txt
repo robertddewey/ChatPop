@@ -14,7 +14,7 @@ psycopg2-binary>=2.9,<3.0
 # Redis
 redis>=5.0,<5.1
 hiredis>=2.2,<2.3
-django-redis>=5.4,<5.5
+django-redis>=6.0,<6.1
 
 # Environment
 python-dotenv>=1.0,<1.1
@@ -29,7 +29,7 @@ django-extensions>=3.2,<3.3
 ffmpeg-python>=0.2,<0.3  # Voice message transcoding for iOS compatibility
 
 # API Documentation
-drf-spectacular>=0.26,<0.27
+drf-spectacular>=0.28,<0.29
 
 # Dynamic Settings
 # IMPORTANT: Version 4.x+ required for proper JSON deserialization
