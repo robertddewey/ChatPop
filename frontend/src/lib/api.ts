@@ -504,5 +504,24 @@ export const messageApi = {
     const response = await api.get('/api/chats/user-blocks/');
     return response.data;
   },
+
+  // Photo Analysis (Chat Generation)
+  analyzePhoto: async (photo: File): Promise<{
+    suggestions: Array<{
+      name: string;
+      description: string;
+      theme_id: string;
+    }>;
+  }> => {
+    const formData = new FormData();
+    formData.append('photo', photo);
+
+    const response = await api.post('/api/chats/analyze-photo/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
 };
 

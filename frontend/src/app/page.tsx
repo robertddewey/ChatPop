@@ -7,6 +7,7 @@ import LoginModal from "@/components/LoginModal";
 import RegisterModal from "@/components/RegisterModal";
 import CreateChatModal from "@/components/CreateChatModal";
 import { MARKETING } from "@/lib/marketing";
+import { messageApi } from "@/lib/api";
 
 export default function Home() {
   const searchParams = useSearchParams();
@@ -39,11 +40,19 @@ export default function Home() {
       input.accept = 'image/*'; // Accept images only
       input.capture = 'environment'; // Force camera mode (rear camera)
 
-      input.onchange = (e) => {
+      input.onchange = async (e) => {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (file) {
-          // TODO: Handle the captured photo (upload, preview, etc.)
-          console.log('Photo captured from camera:', file.name, file.type);
+          console.log('📸 Photo captured from camera:', file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
+          console.log('🔄 Analyzing photo with OpenAI Vision API...');
+
+          try {
+            const result = await messageApi.analyzePhoto(file);
+            console.log('✅ Analysis complete! Chat suggestions:');
+            console.log(JSON.stringify(result, null, 2));
+          } catch (err: any) {
+            console.error('❌ Photo analysis failed:', err.response?.data || err.message);
+          }
         }
       };
 
@@ -59,11 +68,19 @@ export default function Home() {
       input.accept = 'image/*'; // Accept images only
       // No capture attribute = allows library selection
 
-      input.onchange = (e) => {
+      input.onchange = async (e) => {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (file) {
-          // TODO: Handle the selected photo (upload, preview, etc.)
-          console.log('Photo selected from library:', file.name, file.type);
+          console.log('🖼️ Photo selected from library:', file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
+          console.log('🔄 Analyzing photo with OpenAI Vision API...');
+
+          try {
+            const result = await messageApi.analyzePhoto(file);
+            console.log('✅ Analysis complete! Chat suggestions:');
+            console.log(JSON.stringify(result, null, 2));
+          } catch (err: any) {
+            console.error('❌ Photo analysis failed:', err.response?.data || err.message);
+          }
         }
       };
 

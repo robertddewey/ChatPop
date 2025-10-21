@@ -34,3 +34,6 @@ drf-spectacular>=0.28,<0.29
 # Dynamic Settings
 # IMPORTANT: Version 4.x+ required for proper JSON deserialization
 django-constance[database]>=4.3,<5.0
+
+# AI Integration
+openai>=1.0,<2.0  # Photo analysis for chat generation

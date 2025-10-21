@@ -2114,7 +2114,7 @@ class UserBlockListView(APIView):
     def get(self, request):
         """List all blocked users"""
         from .models import UserBlock
-        
+
         blocks = UserBlock.objects.filter(blocker=request.user).order_by('-created_at')
 
         blocked_users = [
@@ -2130,3 +2130,133 @@ class UserBlockListView(APIView):
             'blocked_users': blocked_users,
             'count': len(blocked_users)
         })
+
+
+class PhotoAnalysisView(APIView):
+    """
+    Analyze an uploaded photo with OpenAI Vision API and generate chat topic suggestions.
+
+    Local Mode (no AWS keys): Saves to media/ directory, processes with OpenAI directly
+    Production Mode (AWS keys): Returns S3 upload URL for frontend to upload directly
+    """
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+
+    def post(self, request):
+        import base64
+        import json
+        import re
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Check if OpenAI is configured
+        if not settings.OPENAI_API_KEY:
+            return Response({
+                'error': 'OpenAI API is not configured. Please set OPENAI_API_KEY in your environment.'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        # Get uploaded file
+        photo = request.FILES.get('photo')
+        if not photo:
+            return Response({
+                'error': 'No photo file provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+        if photo.content_type not in allowed_types:
+            return Response({
+                'error': f'Invalid file type. Allowed types: {", ".join(allowed_types)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file size (max 20MB - OpenAI limit)
+        if photo.size > 20 * 1024 * 1024:
+            return Response({
+                'error': 'Photo too large (max 20MB)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Read and encode image to base64
+            photo_data = photo.read()
+            img_base64 = base64.b64encode(photo_data).decode('utf-8')
+
+            # Determine MIME type from file extension
+            mime_type = photo.content_type
+            logger.info(f"[PHOTO_ANALYSIS] Encoding {mime_type} image ({len(photo_data)} bytes)")
+
+            # Call OpenAI Vision API
+            from openai import OpenAI
+            from constance import config
+            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+            # Get prompt from Constance (editable in Django admin)
+            prompt = config.PHOTO_ANALYSIS_PROMPT
+
+            logger.info("[PHOTO_ANALYSIS] Calling OpenAI Vision API...")
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",  # Cost-effective vision model
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{mime_type};base64,{img_base64}",
+                                    "detail": "low"  # Low detail for faster/cheaper analysis
+                                }
+                            }
+                        ]
+                    }
+                ],
+                max_tokens=500,
+                temperature=0.8,  # Higher temperature for more creative suggestions
+                response_format={"type": "json_object"}  # Force JSON output
+            )
+
+            # Parse response
+            result_text = response.choices[0].message.content.strip()
+            logger.info(f"[PHOTO_ANALYSIS] OpenAI response: {result_text}")
+
+            # Extract JSON from markdown code blocks if present
+            import json
+            import re
+
+            # Remove markdown code blocks if present
+            json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', result_text, re.DOTALL)
+            if json_match:
+                result_text = json_match.group(1)
+
+            result = json.loads(result_text)
+
+            # Validate response structure
+            if 'suggestions' not in result or not isinstance(result['suggestions'], list):
+                raise ValueError("Invalid response format from OpenAI")
+
+            # Ensure we have at least 3 suggestions (OpenAI should return 10)
+            suggestions = result['suggestions']
+            if len(suggestions) < 3:
+                raise ValueError("Insufficient suggestions generated")
+
+            logger.info(f"[PHOTO_ANALYSIS] Successfully generated {len(suggestions)} suggestions")
+
+            return Response({
+                'suggestions': suggestions,
+                'count': len(suggestions)
+            }, status=status.HTTP_200_OK)
+
+        except json.JSONDecodeError as e:
+            logger.error(f"[PHOTO_ANALYSIS] JSON decode error: {str(e)}, raw response: {result_text}")
+            return Response({
+                'error': 'Failed to parse AI response. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f"[PHOTO_ANALYSIS] Error: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': f'Failed to analyze photo: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

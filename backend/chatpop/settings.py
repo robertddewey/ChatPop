@@ -296,6 +296,69 @@ CONSTANCE_CONFIG = {
         'Hours before muted user list expires from Redis (0 = never expire, recommended). Set to 168 (7 days) to auto-cleanup inactive users.',
         int
     ),
+
+    # Photo Analysis Settings
+    'PHOTO_ANALYSIS_PROMPT': (
+        '''You are a chat room title generator.
+Based on a photo or short description, generate 10 concise chat room title ideas.
+
+Your goals:
+
+Capture the core idea or vibe of the scene or topic.
+
+Keep titles short (1–4 words).
+
+Favor general, reusable topics over specific one-offs.
+
+Avoid filler words (like "the", "a", "about", "of").
+
+Always include a single-word version if the subject is a well-known brand, object, or universal concept (e.g., Lego, Cat, Coffee, iPhone, Ocean).
+
+Use a mix of literal (e.g., "Gray Cat", "Coffee Beans") and conceptual (e.g., "Morning Vibes", "Chill Space") titles.
+
+Format Rules:
+- "name" field: Title Case (capitalize first letter of each word, e.g., "Curious Cat", "Coffee Time")
+- "key" field: lowercase with dashes instead of spaces (e.g., "curious-cat", "coffee-time")
+- "description" field: Short phrase describing the chat topic
+
+
+Example:
+Description: "A gray long-haired cat sitting on a marble table by a window."
+
+Expected output (10 suggestions):
+
+1. Cat / cat
+2. Gray Cat / gray-cat
+3. Curious Cat / curious-cat
+4. Window Cat / window-cat
+5. Morning Light / morning-light
+6. Cat Life / cat-life
+7. Chill Cat / chill-cat
+8. Feline Friends / feline-friends
+9. Home Vibes / home-vibes
+10. Cozy Space / cozy-space
+
+You must respond in json format with this exact structure:
+{
+"suggestions": [
+{
+"name": "Curious Cat",
+"key": "curious-cat",
+"description": "Chat about curious cats"
+},
+{
+"name": "Gray Cat",
+"key": "gray-cat",
+"description": "Discuss gray cats and feline friends"
+},
+...
+]
+}
+
+Make the topics diverse (not all similar), engaging, and directly related to what's visible in the photo. Be creative!''',
+        'OpenAI Vision API prompt for generating chat suggestions from photos. Edit to tune the quality/style of suggestions.',
+        str
+    ),
 }
 
 # Custom User Model
@@ -310,6 +373,9 @@ ANONYMOUS_USER_FINGERPRINT = os.getenv("ANONYMOUS_USER_FINGERPRINT", "True") == 
 # Enable real-time monitoring of cache and database operations
 # Disabled by default (zero overhead). Enable with: ENABLE_MONITORING=True
 ENABLE_MONITORING = os.getenv("ENABLE_MONITORING", "False") == "True"
+
+# OpenAI Settings
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # Media Storage Settings
 # AWS S3 Configuration (optional - uses local storage if not configured)
