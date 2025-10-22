@@ -17,6 +17,7 @@ from .serializers import (
 from .utils.security.auth import ChatSessionValidator
 from .utils.performance.cache import MessageCache
 from .utils.performance.monitoring import monitor
+from chatpop.utils.media import save_voice_message, get_voice_message_url, transcode_webm_to_m4a
 import time
 
 
@@ -1429,7 +1430,6 @@ class VoiceUploadView(APIView):
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
 
     def post(self, request, code):
-        from .utils.media.storage import save_voice_message, get_voice_message_url
         from .utils.security.auth import ChatSessionValidator
         from rest_framework.exceptions import PermissionDenied
 
@@ -1490,7 +1490,6 @@ class VoiceUploadView(APIView):
             # iOS Safari workaround: Transcode WebM to M4A for compatibility
             # iOS Safari MediaRecorder produces WebM/Opus that iOS cannot play
             if voice_file.content_type == 'audio/webm':
-                from .utils.media.audio import transcode_webm_to_m4a
                 logger.info(f"[VoiceUpload] ✅ TRANSCODING WebM to M4A for iOS compatibility...")
                 voice_file = transcode_webm_to_m4a(voice_file)
                 transcoded_size = len(voice_file.read())
@@ -1543,7 +1542,7 @@ class VoiceStreamView(APIView):
 
     def get(self, request, storage_path):
         from django.http import HttpResponse, Http404, JsonResponse
-        from .utils.media.storage import MediaStorage
+        from chatpop.utils.media import MediaStorage
         from .utils.security.auth import ChatSessionValidator
         from rest_framework.exceptions import PermissionDenied
         import os

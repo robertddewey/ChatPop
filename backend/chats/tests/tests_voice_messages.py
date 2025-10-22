@@ -63,7 +63,7 @@ class VoiceMessageUploadTests(TestCase):
             content_type='audio/webm'
         )
 
-    @patch('chats.utils.media.audio.transcode_webm_to_m4a')
+    @patch('chats.views.transcode_webm_to_m4a')
     def test_upload_voice_message_success(self, mock_transcode):
         """Test successful voice message upload"""
         # Mock FFmpeg transcoding to avoid actual transcoding in tests
@@ -182,7 +182,7 @@ class VoiceMessageUploadTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('Invalid file type', response.data['error'])
 
-    @patch('chats.utils.media.audio.transcode_webm_to_m4a')
+    @patch('chats.views.transcode_webm_to_m4a')
     def test_upload_various_audio_formats(self, mock_transcode):
         """Test upload accepts various audio formats"""
         # Mock FFmpeg transcoding to avoid actual transcoding in tests
@@ -239,8 +239,8 @@ class VoiceMessageStreamTests(TestCase):
             username='testuser'
         )
 
-    @patch('chats.utils.media.storage.MediaStorage.file_exists')
-    @patch('chats.utils.media.storage.MediaStorage.get_file')
+    @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
+    @patch('chatpop.utils.media.storage.MediaStorage.get_file')
     def test_stream_voice_message_success(self, mock_get_file, mock_file_exists):
         """Test successful voice message streaming"""
         mock_file_exists.return_value = True
@@ -254,7 +254,7 @@ class VoiceMessageStreamTests(TestCase):
         self.assertEqual(response['Content-Type'], 'audio/webm')
         self.assertIn('Content-Disposition', response)
 
-    @patch('chats.utils.media.storage.MediaStorage.file_exists')
+    @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
     def test_stream_without_session_token(self, mock_file_exists):
         """Test streaming fails without session token"""
         mock_file_exists.return_value = True
@@ -264,7 +264,7 @@ class VoiceMessageStreamTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    @patch('chats.utils.media.storage.MediaStorage.file_exists')
+    @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
     def test_stream_invalid_session_token(self, mock_file_exists):
         """Test streaming fails with invalid session token"""
         mock_file_exists.return_value = True
@@ -274,7 +274,7 @@ class VoiceMessageStreamTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    @patch('chats.utils.media.storage.MediaStorage.file_exists')
+    @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
     def test_stream_file_not_found(self, mock_file_exists):
         """Test streaming fails when file doesn't exist"""
         mock_file_exists.return_value = False
@@ -284,8 +284,8 @@ class VoiceMessageStreamTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    @patch('chats.utils.media.storage.MediaStorage.file_exists')
-    @patch('chats.utils.media.storage.MediaStorage.get_file')
+    @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
+    @patch('chatpop.utils.media.storage.MediaStorage.get_file')
     def test_stream_content_types(self, mock_get_file, mock_file_exists):
         """Test correct content-type for different audio formats"""
         mock_file_exists.return_value = True
@@ -313,10 +313,10 @@ class VoiceMessageStorageTests(TestCase):
 
     def test_storage_type_detection(self):
         """Test storage type detection based on AWS config"""
-        from chats.utils.media.storage import MediaStorage
+        from chatpop.utils.media.storage import MediaStorage
 
         # Mock settings for local storage
-        with patch('chats.utils.media.storage.settings') as mock_settings:
+        with patch('chatpop.utils.media.storage.settings') as mock_settings:
             mock_settings.AWS_ACCESS_KEY_ID = ''
             mock_settings.AWS_SECRET_ACCESS_KEY = ''
             mock_settings.AWS_STORAGE_BUCKET_NAME = ''
@@ -326,9 +326,9 @@ class VoiceMessageStorageTests(TestCase):
 
     def test_s3_configured_detection(self):
         """Test S3 detection when AWS credentials present"""
-        from chats.utils.media.storage import MediaStorage
+        from chatpop.utils.media.storage import MediaStorage
 
-        with patch('chats.utils.media.storage.settings') as mock_settings:
+        with patch('chatpop.utils.media.storage.settings') as mock_settings:
             mock_settings.AWS_ACCESS_KEY_ID = 'test_key'
             mock_settings.AWS_SECRET_ACCESS_KEY = 'test_secret'
             mock_settings.AWS_STORAGE_BUCKET_NAME = 'test_bucket'
@@ -336,10 +336,10 @@ class VoiceMessageStorageTests(TestCase):
             self.assertTrue(MediaStorage.is_s3_configured())
             self.assertEqual(MediaStorage.get_storage_type(), 's3')
 
-    @patch('chats.utils.media.storage.default_storage.save')
+    @patch('chatpop.utils.media.storage.default_storage.save')
     def test_save_voice_message(self, mock_save):
         """Test saving voice message to storage"""
-        from chats.utils.media.storage import save_voice_message
+        from chatpop.utils.media.storage import save_voice_message
 
         mock_file = MagicMock()
         mock_file.read.return_value = b'fake audio data'
@@ -352,7 +352,7 @@ class VoiceMessageStorageTests(TestCase):
 
     def test_get_voice_message_url(self):
         """Test voice message URL generation"""
-        from chats.utils.media.storage import get_voice_message_url
+        from chatpop.utils.media.storage import get_voice_message_url
 
         url = get_voice_message_url('voice_messages/test.webm')
 
@@ -385,7 +385,7 @@ class VoiceMessageIntegrationTests(TestCase):
             username='testuser'
         )
 
-    @patch('chats.utils.media.audio.transcode_webm_to_m4a')
+    @patch('chats.views.transcode_webm_to_m4a')
     def test_complete_voice_message_flow(self, mock_transcode):
         """Test complete flow: upload -> get URL -> stream"""
         # Mock FFmpeg transcoding to avoid actual transcoding in tests
