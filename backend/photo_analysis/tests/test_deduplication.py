@@ -62,8 +62,8 @@ class DeduplicationTests(TestCase):
         return mock_response
 
     @patch('photo_analysis.views.get_vision_provider')
-    @patch('photo_analysis.views.MediaStorage')
-    def test_duplicate_image_returns_cached_analysis(self, mock_storage, mock_get_vision_provider):
+    @patch('photo_analysis.views.MediaStorage.save_file')
+    def test_duplicate_image_returns_cached_analysis(self, mock_save_file, mock_get_vision_provider):
         """Test that uploading the same image twice returns cached analysis."""
         # Configure mocks
         mock_provider = MagicMock()
@@ -71,10 +71,8 @@ class DeduplicationTests(TestCase):
         mock_provider.get_model_name.return_value = 'gpt-4o'
         mock_get_vision_provider.return_value = mock_provider
 
-        mock_storage_instance = MagicMock()
-        mock_storage_instance.is_s3_configured.return_value = False
-        mock_storage_instance.save_local.return_value = 'photo_analysis/test.jpg'
-        mock_storage.return_value = mock_storage_instance
+        # Mock MediaStorage.save_file to return (storage_path, storage_type) tuple
+        mock_save_file.return_value = ('photo_analysis/test.jpg', 'local')
 
         # Mock vision provider response
         from photo_analysis.utils.vision.base import AnalysisResult, ChatSuggestion
@@ -128,8 +126,8 @@ class DeduplicationTests(TestCase):
         self.assertEqual(mock_provider.analyze_image.call_count, 1)
 
     @patch('photo_analysis.views.get_vision_provider')
-    @patch('photo_analysis.views.MediaStorage')
-    def test_duplicate_image_does_not_call_api_again(self, mock_storage, mock_get_vision_provider):
+    @patch('photo_analysis.views.MediaStorage.save_file')
+    def test_duplicate_image_does_not_call_api_again(self, mock_save_file, mock_get_vision_provider):
         """Test that duplicate images don't trigger additional API calls."""
         # Configure mocks
         mock_provider = MagicMock()
@@ -137,10 +135,8 @@ class DeduplicationTests(TestCase):
         mock_provider.get_model_name.return_value = 'gpt-4o'
         mock_get_vision_provider.return_value = mock_provider
 
-        mock_storage_instance = MagicMock()
-        mock_storage_instance.is_s3_configured.return_value = False
-        mock_storage_instance.save_local.return_value = 'photo_analysis/test.jpg'
-        mock_storage.return_value = mock_storage_instance
+        # Mock MediaStorage.save_file to return (storage_path, storage_type) tuple
+        mock_save_file.return_value = ('photo_analysis/test.jpg', 'local')
 
         # Mock vision provider response
         from photo_analysis.utils.vision.base import AnalysisResult, ChatSuggestion
@@ -177,8 +173,8 @@ class DeduplicationTests(TestCase):
 
     @patch('photo_analysis.utils.rate_limit.config')
     @patch('photo_analysis.views.get_vision_provider')
-    @patch('photo_analysis.views.MediaStorage')
-    def test_duplicate_image_response_has_cached_flag(self, mock_storage, mock_get_vision_provider, mock_config):
+    @patch('photo_analysis.views.MediaStorage.save_file')
+    def test_duplicate_image_response_has_cached_flag(self, mock_save_file, mock_get_vision_provider, mock_config):
         """Test that cached responses include 'cached': true flag."""
         # Disable rate limiting for this test
         mock_config.PHOTO_ANALYSIS_ENABLE_RATE_LIMITING = False
@@ -189,10 +185,8 @@ class DeduplicationTests(TestCase):
         mock_provider.get_model_name.return_value = 'gpt-4o'
         mock_get_vision_provider.return_value = mock_provider
 
-        mock_storage_instance = MagicMock()
-        mock_storage_instance.is_s3_configured.return_value = False
-        mock_storage_instance.save_local.return_value = 'photo_analysis/test.jpg'
-        mock_storage.return_value = mock_storage_instance
+        # Mock MediaStorage.save_file to return (storage_path, storage_type) tuple
+        mock_save_file.return_value = ('photo_analysis/test.jpg', 'local')
 
         # Mock vision provider response
         from photo_analysis.utils.vision.base import AnalysisResult, ChatSuggestion
@@ -231,8 +225,8 @@ class DeduplicationTests(TestCase):
         self.assertTrue(data2['cached'])
 
     @patch('photo_analysis.views.get_vision_provider')
-    @patch('photo_analysis.views.MediaStorage')
-    def test_different_image_creates_new_analysis(self, mock_storage, mock_get_vision_provider):
+    @patch('photo_analysis.views.MediaStorage.save_file')
+    def test_different_image_creates_new_analysis(self, mock_save_file, mock_get_vision_provider):
         """Test that different images create separate analysis records."""
         # Configure mocks
         mock_provider = MagicMock()
@@ -240,10 +234,8 @@ class DeduplicationTests(TestCase):
         mock_provider.get_model_name.return_value = 'gpt-4o'
         mock_get_vision_provider.return_value = mock_provider
 
-        mock_storage_instance = MagicMock()
-        mock_storage_instance.is_s3_configured.return_value = False
-        mock_storage_instance.save_local.return_value = 'photo_analysis/test.jpg'
-        mock_storage.return_value = mock_storage_instance
+        # Mock MediaStorage.save_file to return (storage_path, storage_type) tuple
+        mock_save_file.return_value = ('photo_analysis/test.jpg', 'local')
 
         # Mock vision provider response
         from photo_analysis.utils.vision.base import AnalysisResult, ChatSuggestion

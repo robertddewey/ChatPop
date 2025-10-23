@@ -1,6 +1,6 @@
 # Testing Documentation
 
-**Total Test Count:** 385 tests across 22 test suites
+**Total Test Count:** 401 tests across 23 test suites
 
 This document provides comprehensive documentation of all backend tests, including what each test does and why it's important.
 
@@ -32,6 +32,7 @@ This document provides comprehensive documentation of all backend tests, includi
 | [Photo Deduplication](#20-photo-deduplication-tests-photo_analysisteststest_deduplicationpy) | `photo_analysis/tests/test_deduplication.py` | 5 tests | Dual-hash deduplication (pHash + MD5), cached result return, times-used counter |
 | [Image Fingerprinting](#21-image-fingerprinting-tests-photo_analysisteststest_phash_comparisonpy) | `photo_analysis/tests/test_phash_comparison.py` | 8 tests | Perceptual hash similarity detection, Hamming distance calculation |
 | [Photo Storage](#22-photo-storage-tests-photo_analysisteststest_storagepy) | `photo_analysis/tests/test_storage.py` | 26 tests | MediaStorage utility, local and S3 storage, file path generation |
+| [Image Resizing](#23-image-resizing-tests-photo_analysisteststest_image_resizingpy) | `photo_analysis/tests/test_image_resizing.py` | 16 tests | Automatic image resizing, aspect ratio preservation, token usage optimization |
 
 ---
 
@@ -2482,7 +2483,7 @@ cd backend
 
 ## Photo Analysis App Tests
 
-The photo_analysis app provides AI-powered chat name suggestions based on uploaded images. It uses OpenAI's GPT-4o Vision API to analyze photos and generate contextually relevant chat room names. The test suite (62 tests) ensures robust functionality for vision API integration, rate limiting, image deduplication, and file storage.
+The photo_analysis app provides AI-powered chat name suggestions based on uploaded images. It uses OpenAI's GPT-4o Vision API to analyze photos and generate contextually relevant chat room names. The test suite (78 tests) ensures robust functionality for vision API integration, rate limiting, image deduplication, and file storage.
 
 ### Running Photo Analysis Tests
 
@@ -2495,6 +2496,7 @@ cd backend
 ./venv/bin/python manage.py test photo_analysis.tests.test_vision_api
 ./venv/bin/python manage.py test photo_analysis.tests.test_rate_limiting
 ./venv/bin/python manage.py test photo_analysis.tests.test_deduplication
+./venv/bin/python manage.py test photo_analysis.tests.test_image_resizing
 ```
 
 ---
@@ -2629,10 +2631,132 @@ cd backend
 
 ---
 
+### 23. Image Resizing Tests (`photo_analysis/tests/test_image_resizing.py`)
+
+**File Location:** `backend/photo_analysis/tests/test_image_resizing.py`
+**Test Count:** 16 tests
+**Created:** 2025-10-22
+
+**What it tests:**
+- Automatic image resizing to reduce OpenAI Vision API token usage
+- Aspect ratio preservation (portrait, landscape, square)
+- Megapixel limit enforcement (configurable via Constance)
+- RGBA→RGB conversion for JPEG output
+- Error handling for invalid images
+- Image dimensions utility functions
+
+**Why it matters:**
+OpenAI's Vision API token cost scales with image size. The `resize_image_if_needed()` function automatically resizes large images (default: 2.0 MP limit) while preserving aspect ratio. This can reduce token usage by 60-70% for high-resolution photos with minimal quality loss.
+
+**Configuration:**
+- `PHOTO_ANALYSIS_MAX_MEGAPIXELS` (Constance) - Default: 2.0 MP (~1414x1414 pixels)
+- Images below this limit are not resized
+- Resizing preserves aspect ratio and orientation
+
+**Key tests:**
+
+#### `test_small_image_is_not_resized`
+**What it tests:** Images below max megapixels are returned unchanged
+**How it works:** Creates 1000x1000 image (1.0 MP), resizes with 2.0 MP limit
+**Expected result:** `was_resized=False`, dimensions unchanged (1000x1000)
+**Why it matters:** Avoids unnecessary processing for images already within limits
+
+#### `test_large_image_is_resized`
+**What it tests:** Images exceeding max megapixels are resized down
+**How it works:** Creates 3000x2000 image (6.0 MP), resizes with 2.0 MP limit
+**Expected result:** `was_resized=True`, output ~2.0 MP (within 5% tolerance)
+**Why it matters:** Core functionality - reduces token usage for large images
+
+#### `test_resize_preserves_aspect_ratio`
+**What it tests:** Aspect ratio is maintained after resizing
+**How it works:** Creates 4000x2000 image (2:1 ratio), resizes to 2.0 MP
+**Expected result:** Output has same 2:1 aspect ratio (within rounding tolerance)
+**Why it matters:** Prevents image distortion, preserves visual accuracy
+
+#### `test_resize_handles_rgba_to_rgb_conversion`
+**What it tests:** RGBA images are converted to RGB for JPEG output
+**How it works:** Creates RGBA image with transparency, converts to RGB, resizes
+**Expected result:** Output is RGB mode, JPEG format (no transparency channel)
+**Why it matters:** JPEG doesn't support transparency - ensures proper format conversion
+
+#### `test_resize_quality_setting`
+**What it tests:** Resized JPEGs use quality=85 setting
+**How it works:** Creates large image, resizes, verifies output is valid JPEG
+**Expected result:** Output format is JPEG
+**Why it matters:** Balances file size and visual quality
+
+#### `test_different_max_megapixel_limits`
+**What it tests:** Different megapixel limits work correctly
+**How it works:** Creates 2000x2000 image (4.0 MP), tests with 1.0 MP and 5.0 MP limits
+**Expected result:** Resized at 1.0 MP, not resized at 5.0 MP
+**Why it matters:** Validates configurable threshold via Constance settings
+
+#### `test_square_image_resize`
+**What it tests:** Square images remain square after resize
+**How it works:** Creates 3000x3000 square image (9.0 MP), resizes to 2.0 MP
+**Expected result:** Output is still square (width == height)
+**Why it matters:** Preserves aspect ratio for special case of 1:1 ratio
+
+#### `test_portrait_orientation_preserved`
+**What it tests:** Portrait orientation (width < height) is maintained
+**How it works:** Creates 1000x2000 portrait image, resizes to 1.0 MP
+**Expected result:** Output still has width < height
+**Why it matters:** Ensures orientation is not flipped during resize
+
+#### `test_landscape_orientation_preserved`
+**What it tests:** Landscape orientation (width > height) is maintained
+**How it works:** Creates 2000x1000 landscape image, resizes to 1.0 MP
+**Expected result:** Output still has width > height
+**Why it matters:** Ensures orientation is not flipped during resize
+
+#### `test_invalid_image_raises_value_error`
+**What it tests:** Invalid image data raises ValueError
+**How it works:** Passes non-image bytes to resize function
+**Expected result:** `ValueError` with message "Failed to process image"
+**Why it matters:** Graceful error handling for corrupted uploads
+
+#### `test_get_image_dimensions`
+**What it tests:** Utility function to read image dimensions
+**How it works:** Creates 1920x1080 image, reads dimensions
+**Expected result:** Returns (1920, 1080) and resets file pointer to 0
+**Why it matters:** Validates helper function used in resize logic
+
+#### `test_get_image_dimensions_invalid_image`
+**What it tests:** get_image_dimensions handles invalid images
+**How it works:** Passes non-image bytes to dimensions function
+**Expected result:** `ValueError` with message "Failed to read image dimensions"
+**Why it matters:** Error handling for corrupted data
+
+#### `test_resize_returns_bytesio_object`
+**What it tests:** Resize function returns BytesIO object
+**How it works:** Resizes image, checks return type
+**Expected result:** Returns `io.BytesIO` instance
+**Why it matters:** Validates API contract for downstream consumers
+
+#### `test_resize_exact_limit_not_resized`
+**What it tests:** Images exactly at limit are not resized
+**How it works:** Creates 1414x1414 image (~2.0 MP), tests with 2.0 MP limit
+**Expected result:** `was_resized=False` (no resize at exact threshold)
+**Why it matters:** Avoids unnecessary processing at boundary conditions
+
+#### `test_resize_very_small_image`
+**What it tests:** Very small images (thumbnails) are not resized
+**How it works:** Creates 100x100 image (0.01 MP), tests with 2.0 MP limit
+**Expected result:** `was_resized=False`, dimensions unchanged
+**Why it matters:** Handles edge case of very small images
+
+#### `test_resize_extreme_aspect_ratio`
+**What it tests:** Extreme aspect ratios (panoramas) are handled correctly
+**How it works:** Creates 5000x500 panorama (10:1 ratio, 2.5 MP), resizes to 2.0 MP
+**Expected result:** Aspect ratio preserved (~10:1), megapixels reduced
+**Why it matters:** Validates edge case of very wide/tall images
+
+---
+
 ### Photo Analysis Recent Fixes Summary
 
-**Date:** 2025-10-22  
-**Tests Fixed:** 12 tests (62/62 now passing)
+**Date:** 2025-10-22
+**Tests Fixed:** 12 tests, 16 tests added (78/78 now passing)
 
 **Issue 1: Vision API Image Format Error (7 tests)**
 - **Problem**: Tests used invalid PNG byte sequence causing `PIL.UnidentifiedImageError`
@@ -2654,7 +2778,24 @@ cd backend
 - **Solution**: Disabled rate limiting for test and added flexible response parsing
 - **Files**: `test_deduplication.py:178-184, 211-227`
 
-**All 62 photo_analysis tests now passing!**
+**Issue 5: MediaStorage Mock Configuration (4 tests - Deduplication)**
+- **Problem**: Tests failed with "not enough values to unpack (expected 2, got 0)" at `storage_path, storage_type = MediaStorage.save_file(...)`
+- **Root Cause**: Mocks were treating `MediaStorage` as an instance when `save_file()` is actually a `@staticmethod` returning `tuple[str, str]`
+- **Solution**: Changed patch target from `'photo_analysis.views.MediaStorage'` to `'photo_analysis.views.MediaStorage.save_file'` and set return value to `('photo_analysis/test.jpg', 'local')`
+- **Files**: `test_deduplication.py:66, 130, 177, 229`
+
+**New Test Coverage Added (16 tests - Image Resizing)**
+- **Coverage Gap**: The `resize_image_if_needed()` function had ZERO test coverage despite being critical for reducing OpenAI API token costs
+- **Tests Created**: Comprehensive test suite with 16 tests covering:
+  - Small/large image handling
+  - Aspect ratio preservation (portrait, landscape, square, panorama)
+  - RGBA→RGB conversion for JPEG output
+  - Different megapixel limits (1.0, 2.0, 5.0 MP)
+  - Error handling for invalid images
+  - Edge cases (very small images, exact limits)
+- **File**: `test_image_resizing.py` (NEW)
+
+**All 78 photo_analysis tests now passing!**
 
 ./venv/bin/python manage.py test chats.tests.tests_reactions
 
@@ -2696,5 +2837,6 @@ cd backend
 | Photo Deduplication | `photo_analysis/tests/test_deduplication.py` | 5 tests | Dual-hash deduplication (pHash + MD5), cached result return, times-used counter |
 | Image Fingerprinting | `photo_analysis/tests/test_phash_comparison.py` | 8 tests | Perceptual hash similarity detection, Hamming distance calculation |
 | Photo Storage | `photo_analysis/tests/test_storage.py` | 26 tests | MediaStorage utility, local and S3 storage, file path generation |
+| Image Resizing | `photo_analysis/tests/test_image_resizing.py` | 16 tests | Automatic image resizing, aspect ratio preservation, token usage optimization |
 
 **Overall Coverage:** 254 tests covering security, validation, username generation, caching, messaging, real-time features, and user moderation
