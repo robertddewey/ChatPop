@@ -154,7 +154,7 @@ export default function ChatSettingsSheet({
   };
 
   const handleCopyLink = () => {
-    const link = `${window.location.origin}/chat/${chatRoom.code}`;
+    const link = `${window.location.origin}${chatRoom.url}`;
     navigator.clipboard.writeText(link);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -169,7 +169,11 @@ export default function ChatSettingsSheet({
     setSuccess('');
 
     try {
-      const updatedRoom = await chatApi.updateChat(chatRoom.code, formData);
+      const updatedRoom = await chatApi.updateChat(
+        chatRoom.code,
+        formData,
+        chatRoom.host.reserved_username
+      );
       setSuccess('Settings updated successfully!');
       onUpdate?.(updatedRoom);
       setTimeout(() => {
@@ -183,7 +187,7 @@ export default function ChatSettingsSheet({
     }
   };
 
-  const shareLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/chat/${chatRoom.code}`;
+  const shareLink = `${typeof window !== 'undefined' ? window.location.origin : ''}${chatRoom.url}`;
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -387,7 +391,7 @@ export default function ChatSettingsSheet({
             <div className={`flex items-center justify-between p-3 rounded-lg ${styles.card}`}>
               <div className="flex-1 min-w-0">
                 <p className={`text-xs ${styles.subtext}`}>Share Link</p>
-                <p className={`text-sm font-mono truncate ${styles.text}`}>{shareLink}</p>
+                <p className={`text-sm font-mono truncate ${styles.text}`}>{chatRoom.url}</p>
               </div>
               <button
                 onClick={handleCopyLink}

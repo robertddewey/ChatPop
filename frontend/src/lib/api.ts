@@ -242,6 +242,19 @@ export interface ChatParticipation {
   first_joined_at?: string;
   last_seen_at?: string;
   theme?: ChatTheme | null;
+  is_blocked?: boolean;
+}
+
+/**
+ * Build chat base URL based on room type:
+ * - Manual rooms (with username): /api/chats/{username}/{code}
+ * - AI rooms (discover): /api/chats/discover/{code}
+ */
+function buildChatUrl(code: string, roomUsername?: string): string {
+  if (roomUsername) {
+    return `/api/chats/${roomUsername}/${code}`;
+  }
+  return `/api/chats/discover/${code}`;
 }
 
 export const chatApi = {
@@ -258,19 +271,19 @@ export const chatApi = {
     return response.data;
   },
 
-  getChatByCode: async (code: string): Promise<ChatRoom> => {
-    const response = await api.get(`/api/chats/${code}/`);
+  getChatByCode: async (code: string, roomUsername?: string): Promise<ChatRoom> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/`);
     return response.data;
   },
 
-  getMyParticipation: async (code: string, fingerprint?: string): Promise<ChatParticipation> => {
-    const response = await api.get(`/api/chats/${code}/my-participation/`, {
+  getMyParticipation: async (code: string, fingerprint?: string, roomUsername?: string): Promise<ChatParticipation> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/my-participation/`, {
       params: { fingerprint },
     });
     return response.data;
   },
 
-  validateUsername: async (code: string, username: string, fingerprint?: string): Promise<{
+  validateUsername: async (code: string, username: string, fingerprint?: string, roomUsername?: string): Promise<{
     available: boolean;
     username: string;
     in_use_in_chat: boolean;
@@ -278,24 +291,24 @@ export const chatApi = {
     has_reserved_badge: boolean;
     message: string;
   }> => {
-    const response = await api.post(`/api/chats/${code}/validate-username/`, {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/validate-username/`, {
       username,
       fingerprint,
     });
     return response.data;
   },
 
-  suggestUsername: async (code: string, fingerprint?: string): Promise<{
+  suggestUsername: async (code: string, fingerprint?: string, roomUsername?: string): Promise<{
     username: string;
     remaining: number;
   }> => {
-    const response = await api.post(`/api/chats/${code}/suggest-username/`, {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/suggest-username/`, {
       fingerprint,
     });
     return response.data;
   },
 
-  checkRateLimit: async (code: string, fingerprint?: string): Promise<{
+  checkRateLimit: async (code: string, fingerprint?: string, roomUsername?: string): Promise<{
     can_join: boolean;
     is_rate_limited: boolean;
     anonymous_count?: number;
@@ -303,12 +316,12 @@ export const chatApi = {
     existing_username?: string;
   }> => {
     const params = fingerprint ? { fingerprint } : {};
-    const response = await api.get(`/api/chats/${code}/check-rate-limit/`, { params });
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/check-rate-limit/`, { params });
     return response.data;
   },
 
-  joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string) => {
-    const response = await api.post(`/api/chats/${code}/join/`, {
+  joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string, roomUsername?: string) => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/join/`, {
       username,
       access_code: accessCode,
       fingerprint,
@@ -337,13 +350,13 @@ export const chatApi = {
     photo_enabled?: boolean;
     is_active?: boolean;
     theme_id?: string;
-  }): Promise<ChatRoom> => {
-    const response = await api.put(`/api/chats/${code}/update/`, data);
+  }, roomUsername?: string): Promise<ChatRoom> => {
+    const response = await api.put(`${buildChatUrl(code, roomUsername)}/update/`, data);
     return response.data;
   },
 
-  updateMyTheme: async (code: string, themeId: string, fingerprint?: string): Promise<{ success: boolean; theme: ChatTheme | null }> => {
-    const response = await api.post(`/api/chats/${code}/update-my-theme/`, {
+  updateMyTheme: async (code: string, themeId: string, fingerprint?: string, roomUsername?: string): Promise<{ success: boolean; theme: ChatTheme | null }> => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/update-my-theme/`, {
       theme_id: themeId,
       fingerprint,
     });
@@ -352,16 +365,16 @@ export const chatApi = {
 };
 
 export const messageApi = {
-  getMessages: async (code: string): Promise<Message[]> => {
-    const response = await api.get(`/api/chats/${code}/messages/`);
+  getMessages: async (code: string, roomUsername?: string): Promise<Message[]> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/`);
     // Support new Redis cache response format: { messages: [...], pinned_messages: [...], source: "redis" }
     // Fallback to old paginated format: { results: [...] }
     // Fallback to direct array: [...]
     return response.data.messages || response.data.results || response.data;
   },
 
-  getMessagesBefore: async (code: string, beforeTimestamp: number, limit: number = 50): Promise<{ messages: Message[], hasMore: boolean }> => {
-    const response = await api.get(`/api/chats/${code}/messages/`, {
+  getMessagesBefore: async (code: string, beforeTimestamp: number, limit: number = 50, roomUsername?: string): Promise<{ messages: Message[], hasMore: boolean }> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/`, {
       params: {
         before: beforeTimestamp,
         limit
@@ -376,11 +389,11 @@ export const messageApi = {
     return { messages, hasMore };
   },
 
-  sendMessage: async (code: string, username: string, content: string): Promise<Message> => {
+  sendMessage: async (code: string, username: string, content: string, roomUsername?: string): Promise<Message> => {
     // Get session token from localStorage
     const sessionToken = localStorage.getItem(`chat_session_${code}`);
 
-    const response = await api.post(`/api/chats/${code}/messages/send/`, {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/send/`, {
       username,
       content,
       session_token: sessionToken,
@@ -388,15 +401,15 @@ export const messageApi = {
     return response.data;
   },
 
-  pinMessage: async (code: string, messageId: string, amount: number, duration_minutes: number = 60) => {
-    const response = await api.post(`/api/chats/${code}/messages/${messageId}/pin/`, {
+  pinMessage: async (code: string, messageId: string, amount: number, duration_minutes: number = 60, roomUsername?: string) => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/pin/`, {
       amount,
       duration_minutes,
     });
     return response.data;
   },
 
-  uploadVoiceMessage: async (code: string, audioBlob: Blob, username: string): Promise<{ voice_url: string; storage_path: string; storage_type: string }> => {
+  uploadVoiceMessage: async (code: string, audioBlob: Blob, username: string, roomUsername?: string): Promise<{ voice_url: string; storage_path: string; storage_type: string }> => {
     const sessionToken = localStorage.getItem(`chat_session_${code}`);
 
     const formData = new FormData();
@@ -404,7 +417,7 @@ export const messageApi = {
     formData.append('session_token', sessionToken || '');
 
     const response = await axios.post(
-      `${API_BASE_URL}/api/chats/${code}/voice/upload/`,
+      `${API_BASE_URL}${buildChatUrl(code, roomUsername)}/voice/upload/`,
       formData,
       {
         headers: {
@@ -416,7 +429,7 @@ export const messageApi = {
   },
 
   // Reactions
-  toggleReaction: async (code: string, messageId: string, emoji: string, username: string, fingerprint?: string): Promise<{
+  toggleReaction: async (code: string, messageId: string, emoji: string, username: string, fingerprint?: string, roomUsername?: string): Promise<{
     action: 'added' | 'removed' | 'updated';
     message: string;
     emoji: string;
@@ -424,7 +437,7 @@ export const messageApi = {
   }> => {
     const sessionToken = localStorage.getItem(`chat_session_${code}`);
 
-    const response = await api.post(`/api/chats/${code}/messages/${messageId}/react/`, {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/react/`, {
       emoji,
       session_token: sessionToken,
       username,
@@ -433,12 +446,12 @@ export const messageApi = {
     return response.data;
   },
 
-  getReactions: async (code: string, messageId: string): Promise<{
+  getReactions: async (code: string, messageId: string, roomUsername?: string): Promise<{
     reactions: MessageReaction[];
     summary: ReactionSummary[];
     total_count: number;
   }> => {
-    const response = await api.get(`/api/chats/${code}/messages/${messageId}/reactions/`);
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/reactions/`);
     return response.data;
   },
 
@@ -446,25 +459,25 @@ export const messageApi = {
     blocked_username?: string;
     blocked_fingerprint?: string;
     blocked_user_id?: number;
-  }) => {
+  }, roomUsername?: string) => {
     // Get session token from localStorage (required for host verification)
     const sessionToken = localStorage.getItem(`chat_session_${code}`);
 
-    const response = await api.post(`/api/chats/${code}/block-user/`, {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/block-user/`, {
       ...data,
       session_token: sessionToken,
     });
     return response.data;
   },
 
-  deleteMessage: async (code: string, messageId: string): Promise<{
+  deleteMessage: async (code: string, messageId: string, roomUsername?: string): Promise<{
     success: boolean;
     message: string;
     message_id: string;
   }> => {
     const sessionToken = localStorage.getItem(`chat_session_${code}`);
 
-    const response = await api.post(`/api/chats/${code}/messages/${messageId}/delete/`, {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/delete/`, {
       session_token: sessionToken,
     });
     return response.data;

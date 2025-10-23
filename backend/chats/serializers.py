@@ -80,8 +80,21 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        from .utils.slug import generate_unique_chat_code
+
         request = self.context.get('request')
         validated_data['host'] = request.user
+
+        # Auto-generate URL-safe code from name
+        name = validated_data.get('name', '')
+        validated_data['code'] = generate_unique_chat_code(
+            name=name,
+            host=request.user,
+            source='manual'
+        )
+
+        # Set source to 'manual' for user-created rooms
+        validated_data['source'] = 'manual'
 
         # Get theme by theme_id
         theme_id = validated_data.pop('theme_id', 'dark-mode')
@@ -102,7 +115,7 @@ class ChatRoomUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'name', 'description', 'access_mode', 'access_code',
             'voice_enabled', 'video_enabled', 'photo_enabled',
-            'default_theme', 'theme_locked', 'is_active'
+            'theme_locked', 'is_active'
         ]
 
     def validate_access_code(self, value):

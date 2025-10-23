@@ -120,8 +120,25 @@ class ChatRoom(models.Model):
         (ACCESS_PRIVATE, 'Private'),
     ]
 
+    SOURCE_MANUAL = 'manual'
+    SOURCE_AI = 'ai'
+    SOURCE_CHOICES = [
+        (SOURCE_MANUAL, 'User-created (manual)'),
+        (SOURCE_AI, 'AI-generated (collaborative discovery)'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    code = models.CharField(max_length=8, unique=True, db_index=True)
+    code = models.CharField(
+        max_length=100,
+        db_index=True,
+        help_text="URL-safe room identifier (e.g., 'bar-room', 'roberts-storm-chasing-room')"
+    )
+    source = models.CharField(
+        max_length=10,
+        choices=SOURCE_CHOICES,
+        default=SOURCE_MANUAL,
+        help_text="How this room was created: manual (user) or ai (photo analysis)"
+    )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
@@ -149,8 +166,23 @@ class ChatRoom(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['code']),
+            models.Index(fields=['code', 'source']),
+            models.Index(fields=['host', 'code']),
             models.Index(fields=['created_at']),
+        ]
+        constraints = [
+            # Manual rooms: code must be unique per user (allows robert/bar-room and alice/bar-room)
+            models.UniqueConstraint(
+                fields=['host', 'code'],
+                condition=models.Q(source='manual'),
+                name='unique_manual_room_per_user'
+            ),
+            # AI rooms: code must be globally unique (only one /chat/discover/bar-room)
+            models.UniqueConstraint(
+                fields=['code'],
+                condition=models.Q(source='ai'),
+                name='unique_ai_room_global'
+            ),
         ]
 
     def save(self, *args, **kwargs):
@@ -168,8 +200,18 @@ class ChatRoom(models.Model):
 
     @property
     def url(self):
-        """Get the chat room URL"""
-        return f"/chat/{self.code}"
+        """
+        Get the chat room URL based on source type.
+
+        Manual rooms: /chat/{username}/{code}
+        AI rooms: /chat/discover/{code}
+        """
+        if self.source == self.SOURCE_AI:
+            return f"/chat/discover/{self.code}"
+        else:
+            # Manual rooms use user's reserved_username or email prefix
+            username = self.host.reserved_username if self.host.reserved_username else self.host.email.split('@')[0]
+            return f"/chat/{username}/{self.code}"
 
     @property
     def message_count(self):

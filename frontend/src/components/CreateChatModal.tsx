@@ -62,7 +62,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
               console.log('[CreateChatModal] Chat created successfully:', chatRoom);
               // Clear saved form data AFTER successful creation
               localStorage.removeItem(FORM_STORAGE_KEY);
-              router.push(`/chat/${chatRoom.code}`);
+              router.push(chatRoom.url);
             } catch (err: any) {
               console.error('[CreateChatModal] Failed to create chat:', err);
               setError(err.response?.data?.detail || 'Failed to create chat room');
@@ -112,7 +112,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
       localStorage.removeItem(FORM_STORAGE_KEY);
 
       // Redirect to the chat room
-      router.push(`/chat/${chatRoom.code}`);
+      router.push(chatRoom.url);
     } catch (err: any) {
       console.error('[CreateChatModal] Error creating chat room:', err);
       setError(err.response?.data?.detail || 'Failed to create chat room');

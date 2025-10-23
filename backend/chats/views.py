@@ -31,6 +31,50 @@ def get_client_ip(request):
     return ip
 
 
+def get_chat_room_by_url(code, username=None):
+    """
+    Get chat room by code and optional username.
+
+    Supports two URL patterns:
+    - AI rooms: /discover/{code}/ (username=None)
+    - Manual rooms: /{username}/{code}/ (username provided)
+
+    Args:
+        code: The chat room code (URL slug)
+        username: Optional username for manual rooms (case-insensitive lookup)
+
+    Returns:
+        ChatRoom instance
+
+    Raises:
+        Http404: If chat room not found
+    """
+    from django.http import Http404
+
+    if username:
+        # Manual room: lookup by username (case-insensitive) + code
+        # Uses the (host__reserved_username, code) composite index for efficiency
+        chat_room = ChatRoom.objects.filter(
+            host__reserved_username__iexact=username,
+            code=code,
+            source=ChatRoom.SOURCE_MANUAL,
+            is_active=True
+        ).select_related('host', 'theme').first()
+
+        if not chat_room:
+            raise Http404("Chat room not found")
+    else:
+        # AI room: lookup by code only (globally unique)
+        chat_room = get_object_or_404(
+            ChatRoom,
+            code=code,
+            source=ChatRoom.SOURCE_AI,
+            is_active=True
+        )
+
+    return chat_room
+
+
 class ChatRoomCreateView(generics.CreateAPIView):
     """Create a new chat room (requires authentication)"""
     serializer_class = ChatRoomCreateSerializer
@@ -48,11 +92,11 @@ class ChatRoomCreateView(generics.CreateAPIView):
 
 
 class ChatRoomDetailView(APIView):
-    """Get chat room details by code"""
+    """Get chat room details by code (and username for manual rooms)"""
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+    def get(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
 
         # Check if host has joined
         # Only allow non-host users to see the chat if host has joined
@@ -81,8 +125,8 @@ class ChatRoomUpdateView(APIView):
     """Update chat room settings (host only)"""
     permission_classes = [permissions.IsAuthenticated]
 
-    def put(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code)
+    def put(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
 
         # Verify user is the host
         if request.user != chat_room.host:
@@ -99,8 +143,8 @@ class ChatRoomJoinView(APIView):
     """Join a chat room (validates access for private rooms)"""
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+    def post(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
 
         # Check if host has joined
         # Only allow non-host users to join if host has joined first
@@ -329,8 +373,8 @@ class MessageListView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+    def get(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
 
         # Query params
         limit = int(request.query_params.get('limit', config.MESSAGE_LIST_DEFAULT_LIMIT))
@@ -614,8 +658,8 @@ class MessageCreateView(generics.CreateAPIView):
     serializer_class = MessageCreateSerializer
     permission_classes = [permissions.AllowAny]
 
-    def create(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+    def create(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
 
         # Validate session token
         session_token = request.data.get('session_token')
@@ -674,8 +718,8 @@ class MessagePinView(APIView):
     """Pin a message (requires payment)"""
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, code, message_id):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+    def post(self, request, code, message_id, username=None):
+        chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
 
         serializer = MessagePinSerializer(data=request.data)
@@ -699,7 +743,7 @@ class FingerprintUsernameView(APIView):
     """Get or set username by fingerprint for anonymous users"""
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, code):
+    def get(self, request, code, username=None):
         """Get username for a fingerprint if it exists"""
         # Check if fingerprinting is enabled
         if not settings.ANONYMOUS_USER_FINGERPRINT:
@@ -708,7 +752,7 @@ class FingerprintUsernameView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
 
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        chat_room = get_chat_room_by_url(code, username)
         fingerprint = request.query_params.get('fingerprint')
 
         if not fingerprint:
@@ -734,7 +778,7 @@ class FingerprintUsernameView(APIView):
                 'found': False
             })
 
-    def post(self, request, code):
+    def post(self, request, code, username=None):
         """Set username for a fingerprint"""
         # Check if fingerprinting is enabled
         if not settings.ANONYMOUS_USER_FINGERPRINT:
@@ -743,7 +787,7 @@ class FingerprintUsernameView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
 
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        chat_room = get_chat_room_by_url(code, username)
         fingerprint = request.data.get('fingerprint')
         username = request.data.get('username')
 
@@ -773,8 +817,8 @@ class MyParticipationView(APIView):
     """Get current user's participation in a chat"""
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+    def get(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
         fingerprint = request.query_params.get('fingerprint')
 
         participation = None
@@ -852,8 +896,8 @@ class UpdateMyThemeView(APIView):
     """Update user's theme preference for a chat"""
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+    def post(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
 
         # Check if theme is locked
         if chat_room.theme_locked:
@@ -918,8 +962,8 @@ class CheckRateLimitView(APIView):
     """Check if user can join chat (rate limit check for anonymous users)"""
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, code):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+    def get(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
         fingerprint = request.query_params.get('fingerprint')
 
         # Logged-in users are always allowed
@@ -979,11 +1023,11 @@ class UsernameValidationView(APIView):
     """Validate username availability for a specific chat room"""
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, code):
+    def post(self, request, code, username=None):
         from chats.utils.username.validators import validate_username
         from django.core.exceptions import ValidationError as DjangoValidationError
 
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        chat_room = get_chat_room_by_url(code, username)
         username = request.data.get('username', '').strip()
         fingerprint = request.data.get('fingerprint')
 
@@ -1068,13 +1112,13 @@ class SuggestUsernameView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, code):
+    def post(self, request, code, username=None):
         from .utils.username.generator import generate_username
         import logging
         logger = logging.getLogger(__name__)
 
         # Get chat room
-        chat_room = get_object_or_404(ChatRoom, code=code)
+        chat_room = get_chat_room_by_url(code, username)
 
         # Get fingerprint or IP for rate limiting
         fingerprint = request.data.get('fingerprint')
@@ -1270,11 +1314,11 @@ class MessageReactionToggleView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, code, message_id):
+    def post(self, request, code, message_id, username=None):
         from channels.layers import get_channel_layer
         from asgiref.sync import async_to_sync
 
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
 
         # Validate session token
@@ -1393,8 +1437,8 @@ class MessageReactionsListView(APIView):
     """Get all reactions for a specific message"""
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, code, message_id):
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+    def get(self, request, code, message_id, username=None):
+        chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
 
         reactions = MessageReaction.objects.filter(message=message).order_by('-created_at')
@@ -1429,12 +1473,12 @@ class VoiceUploadView(APIView):
     permission_classes = [permissions.AllowAny]
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
 
-    def post(self, request, code):
+    def post(self, request, code, username=None):
         from .utils.security.auth import ChatSessionValidator
         from rest_framework.exceptions import PermissionDenied
 
         # Get chat room
-        chat_room = get_object_or_404(ChatRoom, code=code)
+        chat_room = get_chat_room_by_url(code, username)
 
         # Check if voice messages are enabled for this chat
         if not chat_room.voice_enabled:
@@ -1685,7 +1729,7 @@ class BlockUserView(APIView):
     """Block a user from the chat (host only)"""
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, code):
+    def post(self, request, code, username=None):
         from .utils.security.blocking import block_participation
         from .utils.security.auth import ChatSessionValidator
         import logging
@@ -1694,7 +1738,7 @@ class BlockUserView(APIView):
         logger.info(f"[BLOCK] Starting block request for chat {code}")
         logger.info(f"[BLOCK] Request data: {request.data}")
 
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        chat_room = get_chat_room_by_url(code, username)
         logger.info(f"[BLOCK] Chat room found: {chat_room.id}, host: {chat_room.host}")
 
         # Validate session token
@@ -1843,10 +1887,10 @@ class UnblockUserView(APIView):
     """Unblock a user from the chat (host only)"""
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request, code):
+    def post(self, request, code, username=None):
         from .utils.security.blocking import unblock_participation
 
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        chat_room = get_chat_room_by_url(code, username)
 
         # Verify user is the host
         if request.user != chat_room.host:
@@ -1893,10 +1937,10 @@ class BlockedUsersListView(APIView):
     """Get list of blocked users in a chat (host only)"""
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, code):
+    def get(self, request, code, username=None):
         from .utils.security.blocking import get_blocked_users
 
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        chat_room = get_chat_room_by_url(code, username)
 
         # Verify user is the host
         if request.user != chat_room.host:
@@ -1915,7 +1959,7 @@ class MessageDeleteView(APIView):
     """Soft delete a message (host only)"""
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, code, message_id):
+    def post(self, request, code, message_id, username=None):
         from channels.layers import get_channel_layer
         from asgiref.sync import async_to_sync
         import logging
@@ -1923,7 +1967,7 @@ class MessageDeleteView(APIView):
 
         logger.info(f"[MESSAGE_DELETE] Starting delete request for message {message_id} in chat {code}")
 
-        chat_room = get_object_or_404(ChatRoom, code=code, is_active=True)
+        chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room)
 
         # Validate session token

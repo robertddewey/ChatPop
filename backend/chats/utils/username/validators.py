@@ -6,6 +6,27 @@ from django.core.exceptions import ValidationError
 from django.db.models import Q
 
 
+# Reserved usernames that cannot be registered by users
+# These are system-level reserved names to prevent namespace collisions
+RESERVED_USERNAMES = [
+    'discover',    # Used for AI-generated collaborative chat rooms (/chat/discover/room-name)
+    'admin',       # System administration
+    'api',         # API namespace
+    'static',      # Static assets
+    'media',       # Media files
+    'system',      # System operations
+    'help',        # Help pages
+    'about',       # About pages
+    'settings',    # Settings pages
+    'dashboard',   # Dashboard namespace
+    'support',     # Support pages
+    'contact',     # Contact pages
+    'privacy',     # Privacy policy
+    'terms',       # Terms of service
+    'chat',        # Chat namespace (avoid confusion)
+]
+
+
 def validate_username(value, skip_badwords_check=False):
     """
     Validate username format for both reserved usernames and chat usernames.
@@ -35,6 +56,13 @@ def validate_username(value, skip_badwords_check=False):
     # Check allowed characters (letters, numbers, underscores only)
     if not re.match(r'^[a-zA-Z0-9_]+$', value):
         raise ValidationError("Username can only contain letters, numbers, and underscores (no spaces)")
+
+    # Check if username is a reserved system name (case-insensitive)
+    if value.lower() in RESERVED_USERNAMES:
+        raise ValidationError(
+            f"Username '{value}' is reserved by the system and cannot be used. "
+            "Please choose a different username."
+        )
 
     # Profanity check (only for user-chosen usernames)
     if not skip_badwords_check:
