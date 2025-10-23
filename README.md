@@ -318,6 +318,7 @@ Comprehensive documentation is organized in the `docs/` directory:
 - **[docs/MANAGEMENT_TOOLS.md](docs/MANAGEMENT_TOOLS.md)** - Redis cache inspection and debugging tools
 - **[docs/MONITORING.md](docs/MONITORING.md)** - Real-time cache & database monitoring system
 - **[docs/blocking-feature-spec.md](docs/blocking-feature-spec.md)** - User blocking feature specification
+- **[backend/photo_analysis/README.md](backend/photo_analysis/README.md)** - AI-powered photo analysis API for chat name suggestions
 
 ### Deployment & Scaling
 - **[docs/AWS_DEPLOYMENT_SCALING.md](docs/AWS_DEPLOYMENT_SCALING.md)** - AWS ECS Fargate production deployment guide

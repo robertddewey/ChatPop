@@ -1,6 +1,6 @@
 # Testing Documentation
 
-**Total Test Count:** 323 tests across 17 test suites
+**Total Test Count:** 385 tests across 22 test suites
 
 This document provides comprehensive documentation of all backend tests, including what each test does and why it's important.
 
@@ -10,23 +10,28 @@ This document provides comprehensive documentation of all backend tests, includi
 
 | Test Suite | File | Test Count | Purpose |
 |------------|------|------------|---------|
-| Security Tests | `chats/tests/tests_security.py` | 26 tests | JWT authentication, username reservations, attack prevention |
-| Username Validation | `chats/tests/tests_validators.py` | 10 tests | Username format and character validation |
-| Username Generation | `chats/tests/tests_username_generation.py` | 48 tests | Global username uniqueness, rate limiting, case preservation, per-chat rotation |
-| Username Flow Integration | `chats/tests/tests_username_flow_integration.py` | 10 tests | End-to-end username suggest→join flow, case preservation, rotation without consecutive duplicates |
-| Username Generation Redis Bug | `chats/tests/test_username_generation_redis_bug.py` | 6 tests | Regression tests for Redis SET atomicity fix |
-| Profanity Filtering | `chats/tests/tests_profanity.py` | 26 tests | Profanity detection across all username entry points |
-| Dual Sessions | `chats/tests/tests_dual_sessions.py` | 16 tests | Anonymous/logged-in user coexistence |
-| Redis Caching | `chats/tests/tests_redis_cache.py` | 44 tests | Message caching, cache backfill, Constance controls, performance |
-| Partial Cache Hits | `chats/tests/tests_partial_cache_hits.py` | 8 tests | Handling messages split between Redis and PostgreSQL |
-| Message Deletion | `chats/tests/tests_message_deletion.py` | 22 tests | Soft delete, cache invalidation, authorization, WebSocket broadcasting |
-| User Blocking | `chats/tests/tests_user_blocking.py` | 28 tests | User-to-user blocking, Redis cache sync, SQL injection prevention |
-| Chat Ban Enforcement | `chats/tests/tests_chat_ban_enforcement.py` | 20 tests | Host-only chat bans, consolidated blocking, WebSocket & HTTP enforcement |
-| Blocking | `chats/tests/tests_blocking.py` | 27 tests | Blocking utility functions, consolidated blocking model |
-| Blocking Redirect | `chats/tests/tests_blocking_redirect.py` | 9 tests | Redirect enforcement for blocked users |
-| Voice Messages | `chats/tests/tests_voice_messages.py` | 19 tests | Voice upload, streaming, authorization, storage |
-| WebSocket Tests | `chats/tests/tests_websocket.py` | 4 tests | WebSocket connection, authentication, message broadcasting |
-| Account Security | `accounts/tests.py` | 17 tests | Registration username security, race condition prevention, API bypass protection |
+| [Security Tests](#1-security-tests-chatsteststs_securitypy) | `chats/tests/tests_security.py` | 26 tests | JWT authentication, username reservations, attack prevention |
+| [Username Validation](#2-username-validation-tests-chatsteststs_validatorspy) | `chats/tests/tests_validators.py` | 10 tests | Username format and character validation |
+| [Username Generation](#3-username-generation-tests-chatsteststs_username_generationpy) | `chats/tests/tests_username_generation.py` | 48 tests | Global username uniqueness, rate limiting, case preservation, per-chat rotation |
+| [Username Flow Integration](#4-username-flow-integration-tests-chatsteststs_username_flow_integrationpy) | `chats/tests/tests_username_flow_integration.py` | 10 tests | End-to-end username suggest→join flow, case preservation, rotation without consecutive duplicates |
+| [Username Generation Redis Bug](#5-username-generation-redis-bug-tests-chatsteststest_username_generation_redis_bugpy) | `chats/tests/test_username_generation_redis_bug.py` | 6 tests | Regression tests for Redis SET atomicity fix |
+| [Profanity Filtering](#6-profanity-filtering-tests-chatsteststs_profanitypy) | `chats/tests/tests_profanity.py` | 26 tests | Profanity detection across all username entry points |
+| [Dual Sessions](#7-dual-sessions-tests-chatsteststs_dual_sessionspy) | `chats/tests/tests_dual_sessions.py` | 16 tests | Anonymous/logged-in user coexistence |
+| [Redis Caching](#8-redis-caching-tests-chatsteststs_redis_cachepy) | `chats/tests/tests_redis_cache.py` | 44 tests | Message caching, cache backfill, Constance controls, performance |
+| [Partial Cache Hits](#10-partial-cache-hits-tests-chatsteststs_partial_cache_hitspy) | `chats/tests/tests_partial_cache_hits.py` | 8 tests | Handling messages split between Redis and PostgreSQL |
+| [Message Deletion](#9-message-deletion-tests-chatsteststs_message_deletionpy) | `chats/tests/tests_message_deletion.py` | 22 tests | Soft delete, cache invalidation, authorization, WebSocket broadcasting |
+| [User Blocking](#11-user-blocking-tests-chatsteststs_user_blockingpy) | `chats/tests/tests_user_blocking.py` | 28 tests | User-to-user blocking, Redis cache sync, SQL injection prevention |
+| [Chat Ban Enforcement](#12-chat-ban-enforcement-tests-chatsteststs_chat_ban_enforcementpy) | `chats/tests/tests_chat_ban_enforcement.py` | 20 tests | Host-only chat bans, consolidated blocking, WebSocket & HTTP enforcement |
+| [Blocking](#13-blocking-tests-chatsteststs_blockingpy) | `chats/tests/tests_blocking.py` | 27 tests | Blocking utility functions, consolidated blocking model |
+| [Blocking Redirect](#14-blocking-redirect-tests-chatsteststs_blocking_redirectpy) | `chats/tests/tests_blocking_redirect.py` | 9 tests | Redirect enforcement for blocked users |
+| [Voice Messages](#15-voice-messages-tests-chatsteststs_voice_messagespy) | `chats/tests/tests_voice_messages.py` | 19 tests | Voice upload, streaming, authorization, storage |
+| [WebSocket Tests](#16-websocket-tests-chatsteststs_websocketpy) | `chats/tests/tests_websocket.py` | 4 tests | WebSocket connection, authentication, message broadcasting |
+| [Account Security](#17-account-security-tests-accountstestspy) | `accounts/tests.py` | 17 tests | Registration username security, race condition prevention, API bypass protection |
+| [Vision API Tests](#18-vision-api-tests-photo_analysisteststest_vision_apipy) | `photo_analysis/tests/test_vision_api.py` | 11 tests | OpenAI GPT-4o Vision API integration (mocked), JSON parsing, token usage, error handling |
+| [Photo Rate Limiting](#19-photo-rate-limiting-tests-photo_analysisteststest_rate_limitingpy) | `photo_analysis/tests/test_rate_limiting.py` | 12 tests | Redis-based upload rate limiting, client identifier extraction, per-hour limits |
+| [Photo Deduplication](#20-photo-deduplication-tests-photo_analysisteststest_deduplicationpy) | `photo_analysis/tests/test_deduplication.py` | 5 tests | Dual-hash deduplication (pHash + MD5), cached result return, times-used counter |
+| [Image Fingerprinting](#21-image-fingerprinting-tests-photo_analysisteststest_phash_comparisonpy) | `photo_analysis/tests/test_phash_comparison.py` | 8 tests | Perceptual hash similarity detection, Hamming distance calculation |
+| [Photo Storage](#22-photo-storage-tests-photo_analysisteststest_storagepy) | `photo_analysis/tests/test_storage.py` | 26 tests | MediaStorage utility, local and S3 storage, file path generation |
 
 ---
 
@@ -2472,6 +2477,185 @@ cd backend
 ./venv/bin/python manage.py test chats.tests.tests_message_deletion
 
 # Reaction tests (10 tests)
+
+---
+
+## Photo Analysis App Tests
+
+The photo_analysis app provides AI-powered chat name suggestions based on uploaded images. It uses OpenAI's GPT-4o Vision API to analyze photos and generate contextually relevant chat room names. The test suite (62 tests) ensures robust functionality for vision API integration, rate limiting, image deduplication, and file storage.
+
+### Running Photo Analysis Tests
+
+```bash
+# All photo_analysis tests
+cd backend
+./venv/bin/python manage.py test photo_analysis
+
+# Specific test module
+./venv/bin/python manage.py test photo_analysis.tests.test_vision_api
+./venv/bin/python manage.py test photo_analysis.tests.test_rate_limiting
+./venv/bin/python manage.py test photo_analysis.tests.test_deduplication
+```
+
+---
+
+### 18. Vision API Tests (`photo_analysis/tests/test_vision_api.py`)
+
+**File Location:** `backend/photo_analysis/tests/test_vision_api.py`
+**Test Count:** 11 tests
+**All API calls are mocked** - no real OpenAI API requests are made
+
+**What it tests:**
+- OpenAI GPT-4o Vision API integration with mocked responses
+- JSON response parsing (plain JSON and markdown-wrapped JSON)
+- Token usage tracking (prompt_tokens, completion_tokens, total_tokens)
+- Error handling for missing/invalid API keys
+- ChatSuggestion object format validation
+- Max suggestions limit enforcement
+
+**Key tests:**
+- `test_vision_provider_analyzes_image_successfully` - Validates complete analysis workflow
+- `test_vision_provider_parses_json_response` - Tests plain JSON parsing
+- `test_vision_provider_parses_markdown_wrapped_json` - Tests markdown code block parsing  
+- `test_vision_provider_handles_api_error` - Ensures graceful error handling
+- `test_vision_provider_includes_token_usage` - Verifies token tracking
+
+**Recent fixes (2025-10-22):**
+- ✅ Fixed PIL.UnidentifiedImageError by generating valid JPEG test images with PIL (7 tests)
+- ✅ Fixed settings tests to prevent API key fallback from environment variables (2 tests)
+
+---
+
+### 19. Photo Rate Limiting Tests (`photo_analysis/tests/test_rate_limiting.py`)
+
+**File Location:** `backend/photo_analysis/tests/test_rate_limiting.py`
+**Test Count:** 12 tests
+
+**What it tests:**
+- Redis-based rate limiting for photo uploads (per-hour limits)
+- Different limits for authenticated vs. anonymous users (20 vs. 5 uploads/hour)
+- Rate limit key generation with priority: user_id > fingerprint > IP address
+- Client identifier extraction from DRF Request objects
+- X-Forwarded-For header support for proxies/load balancers
+- Rate limit isolation per user
+
+**Key tests:**
+- `test_rate_limit_allows_first_request` - First upload always allowed
+- `test_rate_limit_blocks_after_limit_exceeded` - 21st request blocked for authenticated users
+- `test_rate_limit_blocks_anonymous_after_5_requests` - Anonymous limit enforcement
+- `test_rate_limit_key_prioritizes_user_id` - User ID takes precedence
+- `test_rate_limit_isolated_per_user` - Separate limits per user
+
+**Recent fixes (2025-10-22):**
+- ✅ Fixed DRF Request parsing errors with try/except and fallback to POST dict (2 tests)
+- ✅ Properly wrapped Django requests in DRF Request objects for tests
+
+---
+
+### 20. Photo Deduplication Tests (`photo_analysis/tests/test_deduplication.py`)
+
+**File Location:** `backend/photo_analysis/tests/test_deduplication.py`
+**Test Count:** 5 tests
+
+**What it tests:**
+- Dual-hash deduplication strategy (perceptual hash + MD5)
+- Cached result return for duplicate images (no additional API calls)
+- `cached: true/false` flag in responses
+- Different images create separate analysis records
+- Times-used counter increment for duplicates
+
+**Deduplication strategy:**
+1. **Perceptual hash (pHash)** - Detects visually similar images (cropped, resized, compressed)
+2. **MD5 hash** - Detects exact byte-for-byte duplicates
+
+**Key tests:**
+- `test_duplicate_image_returns_cached_analysis` - Returns cached results without API call
+- `test_duplicate_image_does_not_call_api_again` - API only called once for duplicates
+- `test_duplicate_image_response_has_cached_flag` - Response includes cached flag
+- `test_different_image_creates_new_analysis` - New images trigger new analysis
+- `test_duplicate_increments_times_used_counter` - Usage tracking
+
+**Recent fixes (2025-10-22):**
+- ✅ Fixed rate limit interference by disabling rate limiting in test (1 test)
+- ✅ Added flexible response parsing to handle both DRF Response and Django JsonResponse
+
+---
+
+### 21. Image Fingerprinting Tests (`photo_analysis/tests/test_phash_comparison.py`)
+
+**File Location:** `backend/photo_analysis/tests/test_phash_comparison.py`
+**Test Count:** 8 tests
+
+**What it tests:**
+- Perceptual hash (pHash) generation for images
+- Hamming distance calculation between phashes
+- Similarity threshold tuning for duplicate detection
+- Performance of pHash algorithms
+- False positive/negative rates
+
+**Key concepts:**
+- **pHash**: Perceptual hash that detects visually similar images
+- **Hamming distance**: Number of differing bits between two hashes (lower = more similar)
+- **Threshold**: Distance below which images are considered duplicates
+
+**Key tests:**
+- `test_identical_images_have_same_phash` - Exact duplicates have distance 0
+- `test_similar_images_have_low_hamming_distance` - Near-duplicates detected
+- `test_different_images_have_high_hamming_distance` - Different images distinguished
+
+---
+
+### 22. Photo Storage Tests (`photo_analysis/tests/test_storage.py`)
+
+**File Location:** `backend/photo_analysis/tests/test_storage.py`
+**Test Count:** 26 tests
+
+**What it tests:**
+- MediaStorage utility for local and S3 storage
+- File path generation (unique, collision-free)
+- Storage type selection (local vs. S3 based on configuration)
+- File cleanup on deletion
+- S3 upload integration
+
+**Storage types:**
+- **Local storage**: Files saved to `MEDIA_ROOT/photo_analysis/`
+- **S3 storage**: Files uploaded to configured S3 bucket
+
+**Key tests:**
+- `test_local_storage_saves_file` - Validates local file saving
+- `test_s3_storage_uploads_file` - Tests S3 integration
+- `test_storage_generates_unique_paths` - Ensures unique file paths
+- `test_storage_cleanup_on_deletion` - Verifies file cleanup
+
+---
+
+### Photo Analysis Recent Fixes Summary
+
+**Date:** 2025-10-22  
+**Tests Fixed:** 12 tests (62/62 now passing)
+
+**Issue 1: Vision API Image Format Error (7 tests)**
+- **Problem**: Tests used invalid PNG byte sequence causing `PIL.UnidentifiedImageError`
+- **Solution**: Generated valid JPEG images programmatically using PIL `Image.new()` and `save()`
+- **Files**: `test_vision_api.py:20-28`
+
+**Issue 2: Rate Limiting Request Parsing (2 tests)**
+- **Problem**: DRF Request parsing failed with `UnsupportedMediaType` when accessing `request.data`
+- **Solution**: Added try/except with fallback to Django POST dict in `get_client_identifier()`
+- **Files**: `rate_limit.py:143-161`, `test_rate_limiting.py:169-199`
+
+**Issue 3: Vision API Settings Fallback (2 tests)**
+- **Problem**: Tests with `api_key=None` fell back to environment variable `OPENAI_API_KEY`
+- **Solution**: Added `@patch('...settings')` decorator and used empty string instead of None
+- **Files**: `test_vision_api.py:137-148, 211-227`
+
+**Issue 4: Deduplication Rate Limit Interference (1 test)**
+- **Problem**: Test hit anonymous user rate limit (5 uploads), JsonResponse has no `.data` attribute
+- **Solution**: Disabled rate limiting for test and added flexible response parsing
+- **Files**: `test_deduplication.py:178-184, 211-227`
+
+**All 62 photo_analysis tests now passing!**
+
 ./venv/bin/python manage.py test chats.tests.tests_reactions
 
 # User blocking tests (28 tests)
@@ -2507,5 +2691,10 @@ cd backend
 | Reactions | 10 | Comprehensive - add/remove reactions, cache sync, real-time updates |
 | User Blocking | 28 | Comprehensive - block/unblock operations, SQL injection prevention, Redis cache sync, WebSocket broadcasting, performance |
 | Account Security | 17 | Comprehensive - registration security, API bypass prevention, race conditions |
+| Vision API Tests | `photo_analysis/tests/test_vision_api.py` | 11 tests | OpenAI GPT-4o Vision API integration (mocked), JSON parsing, token usage, error handling |
+| Photo Rate Limiting | `photo_analysis/tests/test_rate_limiting.py` | 12 tests | Redis-based upload rate limiting, client identifier extraction, per-hour limits |
+| Photo Deduplication | `photo_analysis/tests/test_deduplication.py` | 5 tests | Dual-hash deduplication (pHash + MD5), cached result return, times-used counter |
+| Image Fingerprinting | `photo_analysis/tests/test_phash_comparison.py` | 8 tests | Perceptual hash similarity detection, Hamming distance calculation |
+| Photo Storage | `photo_analysis/tests/test_storage.py` | 26 tests | MediaStorage utility, local and S3 storage, file path generation |
 
 **Overall Coverage:** 254 tests covering security, validation, username generation, caching, messaging, real-time features, and user moderation
