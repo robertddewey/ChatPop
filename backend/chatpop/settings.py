@@ -30,7 +30,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-z2vf5na(z&i^73$f3=^
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.0.135").split(",")
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.0.135,testserver").split(",")
 
 
 # Application definition
@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     # Local apps
     "accounts",
     "chats",
+    "photo_analysis",
 ]
 
 MIDDLEWARE = [
@@ -141,6 +142,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
@@ -356,7 +360,52 @@ You must respond in json format with this exact structure:
 }
 
 Make the topics diverse (not all similar), engaging, and directly related to what's visible in the photo. Be creative!''',
-        'OpenAI Vision API prompt for generating chat suggestions from photos. Edit to tune the quality/style of suggestions.',
+        'OpenAI Vision API prompt for generating chat suggestions from photos. Edit to tune the quality/style of suggestions. (TIP: Drag the bottom-right corner of the textarea to manually resize for easier editing)',
+        str
+    ),
+    'PHOTO_ANALYSIS_OPENAI_MODEL': (
+        'gpt-4o-mini',
+        'OpenAI model to use for photo analysis (gpt-4o, gpt-4o-mini)',
+        str
+    ),
+    'PHOTO_ANALYSIS_RATE_LIMIT_AUTHENTICATED': (
+        20,
+        'Maximum photo uploads per hour for authenticated users',
+        int
+    ),
+    'PHOTO_ANALYSIS_RATE_LIMIT_ANONYMOUS': (
+        5,
+        'Maximum photo uploads per hour for anonymous users (tracked by fingerprint + IP)',
+        int
+    ),
+    'PHOTO_ANALYSIS_ENABLE_RATE_LIMITING': (
+        True,
+        'Enable rate limiting for photo analysis uploads',
+        bool
+    ),
+    'PHOTO_ANALYSIS_MAX_FILE_SIZE_MB': (
+        10,
+        'Maximum file size for photo uploads (in megabytes)',
+        int
+    ),
+    'PHOTO_ANALYSIS_IMAGE_TTL_HOURS': (
+        168,
+        'Hours before uploaded images are auto-deleted (168 = 7 days, 0 = never delete)',
+        int
+    ),
+    'PHOTO_ANALYSIS_USE_S3': (
+        True,
+        'Store uploaded photos in S3 (if configured). If False or S3 not configured, uses local storage.',
+        bool
+    ),
+    'PHOTO_ANALYSIS_MAX_MEGAPIXELS': (
+        2.0,
+        'Maximum megapixels for uploaded images before auto-resize (reduces OpenAI token usage). 2.0 MP = ~1414x1414 pixels. Images exceeding this limit are automatically resized while preserving aspect ratio.',
+        float
+    ),
+    'PHOTO_ANALYSIS_DETAIL_MODE': (
+        'low',
+        'OpenAI Vision API detail mode: "low" (fixed ~85 tokens, faster, cheaper) or "high" (tokens scale with image size, higher quality). WARNING: "high" mode currently uses ~8x more tokens than expected for unknown reasons.',
         str
     ),
 }
