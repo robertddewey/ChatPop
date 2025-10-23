@@ -121,6 +121,85 @@ class PhotoAnalysis(models.Model):
         help_text="API token usage for cost tracking"
     )
 
+    # === IMAGE CAPTION (For Embeddings) ===
+
+    # Short title extracted from the image
+    # - Example: "Budweiser", "Coffee Mug", "Veterans Memorial"
+    # - Used for quick reference and display
+    caption_title = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text="Short title extracted from image"
+    )
+
+    # Category classification of the image
+    # - Example: "beer bottle", "coffee mug", "military memorial"
+    # - Used for grouping and filtering
+    caption_category = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="Category classification of the image"
+    )
+
+    # Any visible text found in the image
+    # - Example: "Budweiser, King of Beers", "Starbucks Coffee"
+    # - Extracted using OCR capabilities of vision model
+    caption_visible_text = models.TextField(
+        blank=True,
+        default='',
+        help_text="Visible text, labels, or brand names in the image"
+    )
+
+    # Full semantic caption optimized for embedding
+    # - Example: "Budweiser beer bottle labeled 'King of Beers' with red and white
+    #   logo on a wooden table. A classic American lager brand."
+    # - This is the text that gets converted to an embedding vector
+    # - One or two concise sentences capturing visual and semantic meaning
+    caption_full = models.TextField(
+        blank=True,
+        default='',
+        help_text="Full semantic caption used for embedding generation"
+    )
+
+    # When the caption was generated
+    caption_generated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when caption was generated"
+    )
+
+    # === CAPTION API METADATA ===
+
+    # AI model used for caption generation
+    # - Separate from ai_vision_model (which is for suggestions)
+    # - Example: "gpt-4o-mini", "gpt-4o"
+    caption_model = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="AI model used for caption generation (e.g., gpt-4o-mini)"
+    )
+
+    # Token usage for caption generation API call
+    # - Format: {"prompt_tokens": 850, "completion_tokens": 45, "total_tokens": 895}
+    # - Separate from token_usage (which is for suggestions)
+    caption_token_usage = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Caption API token usage for cost tracking"
+    )
+
+    # Full raw response from caption generation API
+    # - Useful for debugging and reprocessing
+    # - Separate from raw_response (which is for suggestions)
+    caption_raw_response = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Complete caption API response for debugging"
+    )
+
     # === USAGE TRACKING ===
 
     # User who uploaded the photo (if authenticated)

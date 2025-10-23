@@ -4,14 +4,19 @@ Django management command to test photo analysis upload end-to-end.
 Usage:
     ./venv/bin/python manage.py test_photo_upload <image_filename>
     ./venv/bin/python manage.py test_photo_upload test_coffee_mug.jpeg
+    ./venv/bin/python manage.py test_photo_upload test_coffee_mug.jpeg --no-cache
     ./venv/bin/python manage.py test_photo_upload --list
 """
 import os
 import json
+import io
 from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
+
+from photo_analysis.models import PhotoAnalysis
+from photo_analysis.utils.fingerprinting.file_hash import calculate_md5
 
 
 class Command(BaseCommand):
@@ -34,6 +39,11 @@ class Command(BaseCommand):
             type=str,
             default='cli-test-fp',
             help='Client fingerprint for rate limiting (default: cli-test-fp)'
+        )
+        parser.add_argument(
+            '--no-cache',
+            action='store_true',
+            help='Delete any cached analysis for this image before uploading (forces fresh API calls)'
         )
 
     def handle(self, *args, **options):
@@ -68,6 +78,23 @@ class Command(BaseCommand):
         # Read image file
         with open(image_path, 'rb') as f:
             image_bytes = f.read()
+
+        # If --no-cache is set, delete any cached analyses for this image
+        if options.get('no_cache'):
+            # Calculate file hash to find cached entries
+            image_file_for_hash = io.BytesIO(image_bytes)
+            file_hash = calculate_md5(image_file_for_hash)
+
+            # Delete cached analyses
+            cached_analyses = PhotoAnalysis.objects.filter(file_hash=file_hash)
+            count = cached_analyses.count()
+
+            if count > 0:
+                self.stdout.write(self.style.WARNING(f'\n--no-cache: Deleting {count} cached analysis record(s) for file_hash={file_hash}'))
+                cached_analyses.delete()
+                self.stdout.write(self.style.SUCCESS('Cache cleared. Fresh API calls will be made.\n'))
+            else:
+                self.stdout.write(self.style.SUCCESS('\n--no-cache: No cached records found for this image.\n'))
 
         # Determine content type
         ext = image_path.suffix.lower()
@@ -168,7 +195,40 @@ class Command(BaseCommand):
                             )
                             if suggestion.get('description'):
                                 self.stdout.write(f'     {suggestion.get("description")}')
-                
+
+                    # Caption Data (generated in parallel with suggestions)
+                    caption_title = analysis.get('caption_title', '')
+                    caption_category = analysis.get('caption_category', '')
+                    caption_visible_text = analysis.get('caption_visible_text', '')
+                    caption_full = analysis.get('caption_full', '')
+                    caption_generated_at = analysis.get('caption_generated_at')
+                    caption_model = analysis.get('caption_model', '')
+                    caption_token_usage = analysis.get('caption_token_usage')
+
+                    if caption_title or caption_full:
+                        self.stdout.write(self.style.SUCCESS('\nCaption Data (for embeddings):'))
+                        if caption_title:
+                            self.stdout.write(f'  Title: {self.style.SUCCESS(caption_title)}')
+                        if caption_category:
+                            self.stdout.write(f'  Category: {caption_category}')
+                        if caption_visible_text:
+                            self.stdout.write(f'  Visible Text: "{caption_visible_text}"')
+                        if caption_full:
+                            self.stdout.write(f'  Full Caption: {caption_full}')
+                        if caption_model:
+                            self.stdout.write(f'  Model: {caption_model}')
+                        if caption_generated_at:
+                            self.stdout.write(f'  Generated At: {caption_generated_at}')
+
+                        # Caption Token Usage
+                        if caption_token_usage:
+                            self.stdout.write(f'\nCaption Token Usage:')
+                            self.stdout.write(f'  Prompt: {caption_token_usage.get("prompt_tokens")}')
+                            self.stdout.write(f'  Completion: {caption_token_usage.get("completion_tokens")}')
+                            self.stdout.write(f'  Total: {caption_token_usage.get("total_tokens")}')
+                    else:
+                        self.stdout.write(self.style.WARNING('\nCaption Data: Not generated (disabled or failed)'))
+
                 # Rate limit info
                 rate_limit = data.get('rate_limit', {})
                 if rate_limit:

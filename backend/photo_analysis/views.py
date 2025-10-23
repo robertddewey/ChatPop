@@ -1,7 +1,9 @@
 """
 DRF Views for Photo Analysis API.
 """
+import io
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework import viewsets, status
@@ -22,6 +24,7 @@ from .utils.fingerprinting.image_hash import calculate_phash
 from .utils.fingerprinting.file_hash import calculate_md5, get_file_size
 from .utils.vision.openai_vision import get_vision_provider
 from .utils.image_processing import resize_image_if_needed
+from .utils.caption import generate_caption
 from chatpop.utils.media import MediaStorage
 
 logger = logging.getLogger(__name__)
@@ -148,15 +151,71 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                     status=status.HTTP_503_SERVICE_UNAVAILABLE
                 )
 
-            # Analyze image with OpenAI Vision
-            # Use resized image (or original if no resize was needed)
-            logger.info(f"Analyzing image with {vision_provider.get_model_name()}")
+            # Create separate copies of the image for parallel processing
+            # This is necessary because both API calls need to read the image independently
             resized_image.seek(0)
-            analysis_result = vision_provider.analyze_image(
-                image_file=resized_image,
-                prompt=config.PHOTO_ANALYSIS_PROMPT,
-                max_suggestions=10
-            )
+            image_bytes = resized_image.read()
+
+            image_for_suggestions = io.BytesIO(image_bytes)
+            image_for_captions = io.BytesIO(image_bytes)
+
+            # Define worker functions for parallel execution
+            def analyze_suggestions():
+                """Worker: Analyze image for chat name suggestions."""
+                logger.info(f"Analyzing image for suggestions with {vision_provider.get_model_name()}")
+                image_for_suggestions.seek(0)
+                return vision_provider.analyze_image(
+                    image_file=image_for_suggestions,
+                    prompt=config.PHOTO_ANALYSIS_PROMPT,
+                    max_suggestions=10,
+                    temperature=config.PHOTO_ANALYSIS_TEMPERATURE
+                )
+
+            def analyze_captions():
+                """Worker: Generate semantic caption for embeddings."""
+                if not config.PHOTO_ANALYSIS_ENABLE_CAPTIONS:
+                    logger.info("Caption generation disabled, skipping")
+                    return None
+
+                logger.info(f"Generating caption with model={config.PHOTO_ANALYSIS_CAPTION_MODEL}")
+                image_for_captions.seek(0)
+                return generate_caption(image_file=image_for_captions)
+
+            # Execute both API calls in parallel using ThreadPoolExecutor
+            logger.info("Starting parallel API execution (suggestions + captions)")
+            analysis_result = None
+            caption_data = None
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                # Submit both tasks
+                future_suggestions = executor.submit(analyze_suggestions)
+                future_captions = executor.submit(analyze_captions)
+
+                # Wait for both to complete and collect results
+                for future in as_completed([future_suggestions, future_captions]):
+                    try:
+                        result = future.result()
+
+                        # Identify which task completed
+                        if future == future_suggestions:
+                            analysis_result = result
+                            logger.info("Suggestions analysis completed")
+                        elif future == future_captions:
+                            caption_data = result
+                            logger.info("Caption generation completed")
+
+                    except Exception as e:
+                        # Log error but continue - one task can fail without breaking the other
+                        if future == future_suggestions:
+                            logger.error(f"Suggestions analysis failed: {str(e)}", exc_info=True)
+                            raise  # Suggestions are required, so re-raise
+                        elif future == future_captions:
+                            logger.warning(f"Caption generation failed (non-fatal): {str(e)}", exc_info=True)
+                            caption_data = None  # Captions are optional
+
+            # Verify we got the required suggestions result
+            if analysis_result is None:
+                raise RuntimeError("Vision analysis failed to produce suggestions")
 
             # Store image file using unified MediaStorage API
             import uuid
@@ -192,6 +251,23 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 'count': len(analysis_result.suggestions)
             }
 
+            # Prepare caption fields (if caption generation succeeded)
+            caption_fields = {}
+            if caption_data:
+                caption_fields = {
+                    'caption_title': caption_data.title,
+                    'caption_category': caption_data.category,
+                    'caption_visible_text': caption_data.visible_text,
+                    'caption_full': caption_data.caption,
+                    'caption_generated_at': timezone.now(),
+                    'caption_model': caption_data.model,
+                    'caption_token_usage': caption_data.token_usage,
+                    'caption_raw_response': caption_data.raw_response
+                }
+                logger.info(f"Caption fields populated: title='{caption_data.title}', category='{caption_data.category}', model='{caption_data.model}'")
+            else:
+                logger.info("No caption data available, caption fields will be empty")
+
             # Create PhotoAnalysis record
             photo_analysis = PhotoAnalysis.objects.create(
                 image_phash=image_phash,
@@ -206,7 +282,8 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 token_usage=analysis_result.token_usage,
                 user=request.user if request.user.is_authenticated else None,
                 fingerprint=fingerprint,
-                ip_address=ip_address
+                ip_address=ip_address,
+                **caption_fields  # Unpack caption fields (will be empty dict if no caption data)
             )
 
             # Return analysis result

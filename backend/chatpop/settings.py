@@ -408,6 +408,57 @@ Make the topics diverse (not all similar), engaging, and directly related to wha
         'OpenAI Vision API detail mode: "low" (fixed ~85 tokens, faster, cheaper) or "high" (tokens scale with image size, higher quality). WARNING: "high" mode currently uses ~8x more tokens than expected for unknown reasons.',
         str
     ),
+    'PHOTO_ANALYSIS_TEMPERATURE': (
+        0.7,
+        'Temperature for chat suggestion generation (0.0-2.0). Higher = more creative/random, Lower = more deterministic. Default 0.7 for diverse chat name suggestions.',
+        float
+    ),
+
+    # Photo Caption Generation Settings (for embeddings/search)
+    'PHOTO_ANALYSIS_ENABLE_CAPTIONS': (
+        True,
+        'Enable automatic caption generation for uploaded photos. Captions are used for embedding-based image search and retrieval.',
+        bool
+    ),
+    'PHOTO_ANALYSIS_CAPTION_PROMPT': (
+        '''You are an expert visual captioner for a multimodal search system.
+Your goal is to produce one or two compact, factual sentences that capture the full meaning of the image for use in a text embedding model.
+
+The first sentence should describe what is visually present.
+The second, if helpful, should add semantic or contextual meaning (e.g., what it represents, its purpose, or its genre).
+
+Include any visible text, titles, brand names, or labels.
+Avoid speculation, humor, or opinions. Do not include camera details.
+
+Return a JSON object with this exact structure:
+{
+  "title": "A short, descriptive title (2-4 words)",
+  "category": "General category of the image (e.g., beverage, food, animal, memorial, product)",
+  "visible_text": "Any visible text, labels, or brand names in the image",
+  "caption": "One or two concise sentences optimized for semantic embeddings"
+}
+
+Example:
+For an image of a Budweiser beer bottle:
+{
+  "title": "Budweiser Beer Bottle",
+  "category": "beer bottle",
+  "visible_text": "Budweiser, King of Beers",
+  "caption": "Budweiser beer bottle labeled 'King of Beers' with red and white logo on a wooden table. A classic American lager brand."
+}''',
+        'Prompt for generating semantic captions from photos. Captions are converted to embeddings for similarity search. Edit to tune caption quality/style.',
+        str
+    ),
+    'PHOTO_ANALYSIS_CAPTION_MODEL': (
+        'gpt-4o-mini',
+        'OpenAI model for caption generation (gpt-4o-mini, gpt-4o). Separate from suggestion model for independent tuning.',
+        str
+    ),
+    'PHOTO_ANALYSIS_CAPTION_TEMPERATURE': (
+        0.2,
+        'Temperature for caption generation (0.0-2.0). Lower = more factual/deterministic (recommended for embeddings). Default 0.2.',
+        float
+    ),
 }
 
 # Custom User Model

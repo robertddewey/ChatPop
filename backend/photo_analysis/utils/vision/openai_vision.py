@@ -141,7 +141,8 @@ class OpenAIVisionProvider(VisionProvider):
         self,
         image_file: BinaryIO,
         prompt: str,
-        max_suggestions: int = 10
+        max_suggestions: int = 10,
+        temperature: float = 0.7
     ) -> AnalysisResult:
         """
         Analyze an image using OpenAI Vision API.
@@ -150,6 +151,7 @@ class OpenAIVisionProvider(VisionProvider):
             image_file: Image file to analyze
             prompt: System prompt for analysis
             max_suggestions: Number of suggestions to generate
+            temperature: Sampling temperature (0.0-2.0, default 0.7)
 
         Returns:
             AnalysisResult with suggestions and metadata
@@ -194,7 +196,7 @@ class OpenAIVisionProvider(VisionProvider):
                 model=self.model,
                 messages=messages,
                 max_tokens=500,
-                temperature=0.8,  # Higher temperature for more creative suggestions
+                temperature=temperature,  # Configurable temperature from Constance
                 response_format={"type": "json_object"}  # Force JSON output
             )
 
