@@ -536,5 +536,18 @@ export const messageApi = {
     });
     return response.data;
   },
+
+  // Create Chat from Photo Analysis
+  createChatFromPhoto: async (data: {
+    photo_analysis_id: string;
+    suggestion_index: number;
+  }): Promise<{
+    created: boolean;
+    chat_room: ChatRoom;
+    message: string;
+  }> => {
+    const response = await api.post('/api/chats/create-from-photo/', data);
+    return response.data;
+  },
 };
 

@@ -1192,13 +1192,424 @@ For implementation questions or clarification, consult:
 
 ---
 
-**Last Updated**: 2025-10-22
+---
+
+## Semantic Embeddings for Collaborative Discovery
+
+### Overview
+
+The photo analysis system uses a **dual-embedding strategy** to enable collaborative room discovery. When Person A uploads a beer photo and creates "bar-room", Person B uploading a similar photo will see "bar-room (1 user)" as a recommendation alongside fresh AI suggestions.
+
+**Key Concept:** Two embeddings with different purposes:
+1. **Embedding 1 (Caption/Semantic)**: Groups by visual content - "what's in the image"
+2. **Embedding 2 (Suggestions/Topic - PRIMARY)**: Groups by conversation potential - "what people might chat about"
+
+### Why Two Embeddings?
+
+**Problem:** Visual similarity ≠ Conversation similarity
+- A "Budweiser beer bottle" and "craft IPA" look different visually
+- But users want to chat about similar topics: beer, breweries, happy hour, etc.
+- Visual embeddings alone would miss this connection
+
+**Solution:** Embed the AI's understanding of conversation potential
+- Include all 10 suggested chat names + descriptions
+- These capture semantic themes: "bar-room", "happy-hour", "brew-talk"
+- Similar photos generate similar suggestion themes → cluster together
+
+### Database Schema
+
+```python
+# In backend/photo_analysis/models.py
+
+class PhotoAnalysis(models.Model):
+    # ... caption fields ...
+    caption_title = models.CharField(max_length=255)           # "Budweiser Beer Bottle"
+    caption_category = models.CharField(max_length=100)        # "beer bottle"
+    caption_visible_text = models.TextField()                  # "Budweiser, King of Beers"
+    caption_full = models.TextField()                          # Full semantic caption
+
+    # Embedding 1: Semantic/Content (broad clustering by visual content)
+    caption_embedding = VectorField(
+        dimensions=1536,
+        null=True,
+        blank=True,
+        help_text="Semantic/Content embedding for broad categorization (text-embedding-3-small, 1536d)"
+    )
+    caption_embedding_generated_at = models.DateTimeField(null=True, blank=True)
+
+    # Embedding 2: Conversational/Topic (PRIMARY for collaborative discovery)
+    suggestions_embedding = VectorField(
+        dimensions=1536,
+        null=True,
+        blank=True,
+        help_text="Conversational/Topic embedding for finding similar chat rooms (text-embedding-3-small, 1536d)"
+    )
+    suggestions_embedding_generated_at = models.DateTimeField(null=True, blank=True)
+```
+
+### String Manipulation Process
+
+#### Embedding 1: Caption/Semantic
+
+**Purpose:** Broad categorization by visual content (beverages, food, nature, vehicles)
+
+**Source Fields (in priority order):**
+1. `caption_title` - Short title extracted from image
+2. `caption_category` - Category classification
+3. `caption_visible_text` - OCR text from image
+4. `caption_full` - Full semantic caption
+
+**Concatenation Logic:**
+
+```python
+def _combine_caption_fields(
+    caption_full: str,
+    caption_visible_text: str,
+    caption_title: str,
+    caption_category: str
+) -> str:
+    """
+    Combine caption fields into a single text string for embedding.
+
+    Filters out empty fields automatically.
+    Joins with periods for natural sentence flow.
+    """
+    parts = []
+
+    if caption_title:
+        parts.append(caption_title.strip())
+    if caption_category:
+        parts.append(caption_category.strip())
+    if caption_visible_text:
+        parts.append(caption_visible_text.strip())
+    if caption_full:
+        parts.append(caption_full.strip())
+
+    # Join with periods for natural sentence flow
+    combined = ". ".join(parts)
+    return combined
+```
+
+**Example Input Text:**
+```
+Budweiser Beer Bottle. beer bottle. Budweiser, King of Beers. A classic Budweiser beer bottle with red and white branding on a wooden table, labeled as the King of Beers
+```
+
+**API Call:**
+```python
+response = client.embeddings.create(
+    input="Budweiser Beer Bottle. beer bottle. Budweiser, King of Beers. A classic Budweiser...",
+    model="text-embedding-3-small"
+)
+embedding = response.data[0].embedding  # List[float] with 1536 dimensions
+```
+
+#### Embedding 2: Suggestions/Topic (PRIMARY)
+
+**Purpose:** Groups by conversation potential and social context (PRIMARY for collaborative discovery)
+
+**Source Fields (in priority order):**
+1. `caption_title` - Short title
+2. `caption_category` - Category
+3. `caption_visible_text` - Visible text
+4. `caption_full` - Full caption
+5. **All 10 suggestion names** (e.g., "Bar Room", "Happy Hour", "Brew Talk")
+6. **All 10 suggestion descriptions** (e.g., "Discuss favorite beers and breweries")
+
+**Concatenation Logic:**
+
+```python
+def _combine_suggestions_with_captions(
+    caption_full: str,
+    caption_visible_text: str,
+    caption_title: str,
+    caption_category: str,
+    suggestions: List[Dict[str, str]]  # List of {"name": "...", "description": "..."}
+) -> str:
+    """
+    Combine caption fields with ALL suggestion names and descriptions.
+
+    This is the KEY DIFFERENCE from Embedding 1:
+    - Includes conversation topics from AI-generated suggestions
+    - Enables "bar-room", "happy-hour", "brew-talk" to cluster together
+    """
+    parts = []
+
+    # Start with caption fields (same as Embedding 1)
+    if caption_title:
+        parts.append(caption_title.strip())
+    if caption_category:
+        parts.append(caption_category.strip())
+    if caption_visible_text:
+        parts.append(caption_visible_text.strip())
+    if caption_full:
+        parts.append(caption_full.strip())
+
+    # Add ALL suggestion names and descriptions
+    # This is where conversation potential gets embedded
+    for suggestion in suggestions:
+        name = suggestion.get('name', '').strip()
+        description = suggestion.get('description', '').strip()
+
+        if name:
+            parts.append(name)
+        if description:
+            parts.append(description)
+
+    # Join with periods for natural sentence flow
+    combined = ". ".join(parts)
+    return combined
+```
+
+**Example Input Text:**
+```
+Budweiser Beer Bottle. beer bottle. Budweiser, King of Beers. A classic Budweiser beer bottle with red and white branding on a wooden table, labeled as the King of Beers. Bar Room. Discuss favorite beers and breweries. Happy Hour. Share cocktail recipes and bar stories. Brew Talk. Chat about craft beers and home brewing. Beer Enthusiasts. Connect with fellow beer lovers. Pub Chat. Talk about local bars and nightlife. Cheers. Celebrate good times with friends. Cold One. Share photos of your favorite beverages. Beer Garden. Discuss outdoor drinking spots. Bottle Collection. Show off your beer bottle collection. King Of Beers. Budweiser fans unite
+```
+
+**API Call:**
+```python
+response = client.embeddings.create(
+    input="Budweiser Beer Bottle. beer bottle. Budweiser, King of Beers. A classic Budweiser... Bar Room. Discuss favorite beers... Happy Hour. Share cocktail recipes...",
+    model="text-embedding-3-small"
+)
+embedding = response.data[0].embedding  # List[float] with 1536 dimensions
+```
+
+### Why Period-Separated Concatenation?
+
+**Design Decision:** Use `. ` (period + space) as separator instead of commas, pipes, or newlines
+
+**Rationale:**
+1. **Natural Language Flow**: Embedding models are trained on natural text with periods
+2. **Semantic Boundaries**: Periods signal semantic breaks between distinct concepts
+3. **Token Efficiency**: No special tokens needed (unlike `\n` which may tokenize differently)
+4. **Readability**: Human-readable for debugging and logging
+
+**Alternative Approaches Considered:**
+- **Comma-separated**: Too weak of a boundary, may blur concepts together
+- **Newline-separated**: Tokenization unpredictability, some models treat `\n` specially
+- **Pipe-separated**: Unnatural for language models trained on prose
+- **No separator**: Concepts would blend together semantically
+
+### Field Order and Priority
+
+**Why Title → Category → Visible Text → Full Caption?**
+
+1. **Title First**: Most concise, highest signal-to-noise ratio
+2. **Category Second**: Provides broad context before details
+3. **Visible Text Third**: OCR text is often brand names or key identifiers
+4. **Full Caption Last**: Provides comprehensive context after key facts established
+
+**Why Suggestions After Captions?**
+
+- **Grounding First**: Visual content establishes concrete reality
+- **Topics Second**: Conversation themes build on that foundation
+- **Semantic Layering**: Model learns "image shows X → people might chat about Y"
+
+### Implementation in Upload Workflow
+
+**File:** `backend/photo_analysis/views.py`
+
+```python
+# After caption generation succeeds, generate both embeddings
+
+# Embedding 1: Caption/Semantic
+try:
+    logger.info("Generating caption embedding (Embedding 1: Semantic/Content)")
+    embedding_data = generate_embedding(
+        caption_full=caption_data.caption,
+        caption_visible_text=caption_data.visible_text,
+        caption_title=caption_data.title,
+        caption_category=caption_data.category,
+        model="text-embedding-3-small"
+    )
+
+    caption_fields['caption_embedding'] = embedding_data.embedding
+    caption_fields['caption_embedding_generated_at'] = timezone.now()
+
+except Exception as e:
+    logger.warning(f"Caption embedding generation failed (non-fatal): {str(e)}")
+
+# Embedding 2: Suggestions/Topic (PRIMARY)
+try:
+    logger.info("Generating suggestions embedding (Embedding 2: Conversational/Topic - PRIMARY)")
+
+    # Convert Suggestion objects to dictionaries
+    suggestions_list = [
+        {'name': s.name, 'description': s.description}
+        for s in analysis_result.suggestions
+    ]
+
+    suggestions_embedding_data = generate_suggestions_embedding(
+        caption_full=caption_data.caption,
+        caption_visible_text=caption_data.visible_text,
+        caption_title=caption_data.title,
+        caption_category=caption_data.category,
+        suggestions=suggestions_list,  # All 10 suggestions
+        model="text-embedding-3-small"
+    )
+
+    caption_fields['suggestions_embedding'] = suggestions_embedding_data.embedding
+    caption_fields['suggestions_embedding_generated_at'] = timezone.now()
+
+except Exception as e:
+    logger.warning(f"Suggestions embedding generation failed (non-fatal): {str(e)}")
+```
+
+**Key Implementation Details:**
+- **Non-Fatal Failures**: Photo analysis succeeds even if embeddings fail
+- **Parallel Generation**: Both embeddings generated in sequence after caption generation
+- **Token Tracking**: Each embedding API call tracks token usage separately
+- **Logging**: Clear log messages distinguish which embedding is being generated
+
+### Token Usage and Cost
+
+**Embedding 1 (Caption/Semantic):**
+- **Typical Input**: 50-150 tokens
+- **Example**: "Budweiser Beer Bottle. beer bottle. Budweiser, King of Beers. A classic..."
+- **Cost**: ~$0.000001 per embedding (text-embedding-3-small: $0.02 per 1M tokens)
+
+**Embedding 2 (Suggestions/Topic):**
+- **Typical Input**: 300-500 tokens (includes 10 names + 10 descriptions)
+- **Example**: "Budweiser Beer Bottle... Bar Room. Discuss favorite beers... Happy Hour..."
+- **Cost**: ~$0.000006 per embedding (3-6x more than Embedding 1)
+
+**Combined Cost per Upload:**
+- **Vision API**: ~$0.0015 (dominant cost, ~150 tokens)
+- **Caption Generation**: ~$0.0001 (~20 tokens)
+- **Embedding 1**: ~$0.000001 (~50 tokens)
+- **Embedding 2**: ~$0.000006 (~300 tokens)
+- **Total**: ~$0.0016 per photo analysis
+
+**Optimization:** Caching (pHash + MD5) reduces API calls by 50-70%, cutting costs proportionally
+
+### Similarity Search (Future Implementation)
+
+**Query Pattern:**
+
+```python
+from django.db.models import F
+from pgvector.django import CosineDistance
+
+def find_similar_photos(photo_analysis, limit=10):
+    """
+    Find photos with similar conversation potential.
+    Uses suggestions_embedding (PRIMARY) for semantic similarity.
+    """
+    # Get embedding from uploaded photo
+    query_embedding = photo_analysis.suggestions_embedding
+
+    # Find similar photos using pgvector cosine distance
+    similar_photos = PhotoAnalysis.objects.annotate(
+        distance=CosineDistance('suggestions_embedding', query_embedding)
+    ).exclude(
+        id=photo_analysis.id  # Exclude self
+    ).order_by('distance')[:limit]
+
+    return similar_photos
+
+# Find rooms created from similar photos
+def find_recommended_rooms(photo_analysis):
+    """
+    Find existing chat rooms created from similar photos.
+    Returns rooms with active users.
+    """
+    similar_photos = find_similar_photos(photo_analysis, limit=20)
+
+    # Filter to photos where user selected a suggestion and created a room
+    room_codes = similar_photos.filter(
+        selected_suggestion_code__isnull=False
+    ).values_list('selected_suggestion_code', flat=True)
+
+    # Get actual ChatRoom objects
+    from chats.models import ChatRoom
+    recommended_rooms = ChatRoom.objects.filter(
+        code__in=room_codes
+    ).annotate(
+        user_count=Count('participants')
+    ).filter(
+        user_count__gt=0  # Only recommend rooms with active users
+    )
+
+    return recommended_rooms
+```
+
+**Response Format:**
+
+```json
+{
+  "fresh_suggestions": [
+    {"name": "Bar Room", "key": "bar-room", "description": "Discuss favorite beers..."},
+    // ... 9 more fresh AI suggestions
+  ],
+  "recommended_rooms": [
+    {
+      "name": "Happy Hour",
+      "code": "abc123",
+      "user_count": 3,
+      "similarity_score": 0.92,
+      "created_at": "2025-10-22T14:30:00Z"
+    }
+  ]
+}
+```
+
+### Testing the Embedding System
+
+**CLI Test Command:**
+
+```bash
+cd backend
+./venv/bin/python manage.py test_photo_upload test_drink_glass.jpeg --fingerprint test1 --no-cache
+```
+
+**Expected Output:**
+
+```
+Caption Data (for embeddings):
+  Title: Coffee Cup
+  Category: beverage
+  Visible Text: "Starbucks Coffee"
+  Full Caption: A white Starbucks coffee cup on a wooden table with steam rising
+  Model: gpt-4o-mini
+
+✓ Embedding 1 (Caption/Semantic): Generated
+  Dimensions: 1536 (text-embedding-3-small)
+  Source: caption fields (title, category, visible_text, full)
+  Purpose: Broad categorization by visual content
+
+✓ Embedding 2 (Suggestions/Topic - PRIMARY): Generated
+  Dimensions: 1536 (text-embedding-3-small)
+  Source: captions + all 10 suggestion names + descriptions
+  Purpose: Collaborative discovery - finding similar chat rooms
+  How: "coffee-chat", "morning-brew", "cafe-talk" cluster together
+```
+
+### Why This Approach Works
+
+**Scenario: Person A uploads beer photo**
+1. AI generates suggestions: "Bar Room", "Happy Hour", "Brew Talk", etc.
+2. Embedding 2 captures these conversation themes
+3. Person A selects "Bar Room" and creates chat room
+
+**Scenario: Person B uploads different beer photo**
+1. AI generates similar suggestions: "Beer Chat", "Happy Hour", "Pub Talk", etc.
+2. Embedding 2 captures overlapping themes
+3. System finds Person A's "Bar Room" via high cosine similarity (0.85+)
+4. Person B sees: "Bar Room (1 user) - Recommended" alongside fresh suggestions
+
+**Key Insight:** The AI naturally generates similar conversation topics for similar visual content, even if the exact photos differ. By embedding these suggestions, we enable collaborative discovery without requiring users to independently invent the same room names.
+
+---
+
+**Last Updated**: 2025-10-23
 **Status**: ✅ **Fully Implemented & Production Ready**
 **Test Coverage**: 78/78 tests passing
 **Cost Optimization**: 80-90% reduction vs naive implementation
+**Embedding System**: ✅ **Dual embeddings implemented** (caption + suggestions)
 
 **Next Steps**:
-- Deploy to production
-- Monitor token usage and cost metrics
-- Gather user feedback on suggestion quality
-- Consider adding alternative AI providers (Phase 2)
+- Implement similarity search using `suggestions_embedding`
+- Build room recommendation endpoint
+- Test collaborative discovery with real users
+- Monitor embedding quality and similarity thresholds

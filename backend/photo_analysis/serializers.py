@@ -140,6 +140,10 @@ class PhotoAnalysisDetailSerializer(PhotoAnalysisSerializer):
     caption_token_usage = serializers.JSONField(read_only=True)
     caption_raw_response = serializers.JSONField(read_only=True)
 
+    # Embedding metadata
+    caption_embedding_generated_at = serializers.DateTimeField(read_only=True)
+    suggestions_embedding_generated_at = serializers.DateTimeField(read_only=True)
+
     class Meta(PhotoAnalysisSerializer.Meta):
         fields = PhotoAnalysisSerializer.Meta.fields + [
             'expires_at',
@@ -154,6 +158,8 @@ class PhotoAnalysisDetailSerializer(PhotoAnalysisSerializer):
             'caption_model',
             'caption_token_usage',
             'caption_raw_response',
+            'caption_embedding_generated_at',
+            'suggestions_embedding_generated_at',
         ]
 
     def get_is_expired(self, obj):

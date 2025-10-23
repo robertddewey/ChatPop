@@ -229,6 +229,37 @@ class Command(BaseCommand):
                     else:
                         self.stdout.write(self.style.WARNING('\nCaption Data: Not generated (disabled or failed)'))
 
+                    # Embedding Data (two types generated from captions)
+                    caption_embedding_generated_at = analysis.get('caption_embedding_generated_at')
+                    suggestions_embedding_generated_at = analysis.get('suggestions_embedding_generated_at')
+
+                    # Embedding 1: Caption/Semantic (broad clustering)
+                    if caption_embedding_generated_at:
+                        self.stdout.write(self.style.SUCCESS('\n✓ Embedding 1 (Caption/Semantic): Generated'))
+                        self.stdout.write(f'  Dimensions: 1536 (text-embedding-3-small)')
+                        self.stdout.write(f'  Generated At: {caption_embedding_generated_at}')
+                        self.stdout.write(f'  Source: caption fields (title, category, visible_text, full)')
+                        self.stdout.write(f'  Purpose: Broad categorization by visual content')
+                    else:
+                        if caption_title or caption_full:
+                            self.stdout.write(self.style.WARNING('\n✗ Embedding 1 (Caption/Semantic): Not generated (failed or disabled)'))
+                        else:
+                            self.stdout.write(self.style.WARNING('\n✗ Embedding 1 (Caption/Semantic): Not generated (no captions available)'))
+
+                    # Embedding 2: Suggestions/Topic (PRIMARY for collaborative discovery)
+                    if suggestions_embedding_generated_at:
+                        self.stdout.write(self.style.SUCCESS('\n✓ Embedding 2 (Suggestions/Topic - PRIMARY): Generated'))
+                        self.stdout.write(f'  Dimensions: 1536 (text-embedding-3-small)')
+                        self.stdout.write(f'  Generated At: {suggestions_embedding_generated_at}')
+                        self.stdout.write(f'  Source: captions + all 10 suggestion names + descriptions')
+                        self.stdout.write(f'  Purpose: Collaborative discovery - finding similar chat rooms')
+                        self.stdout.write(f'  How: "bar-room", "happy-hour", "brew-talk" cluster together')
+                    else:
+                        if caption_title or caption_full:
+                            self.stdout.write(self.style.WARNING('\n✗ Embedding 2 (Suggestions/Topic - PRIMARY): Not generated (failed or disabled)'))
+                        else:
+                            self.stdout.write(self.style.WARNING('\n✗ Embedding 2 (Suggestions/Topic - PRIMARY): Not generated (no captions available)'))
+
                 # Rate limit info
                 rate_limit = data.get('rate_limit', {})
                 if rate_limit:

@@ -327,3 +327,24 @@ class MessageReactionCreateSerializer(serializers.Serializer):
         if value not in ALLOWED_EMOJIS:
             raise serializers.ValidationError(f"Emoji must be one of: {', '.join(ALLOWED_EMOJIS)}")
         return value
+
+
+class ChatRoomCreateFromPhotoSerializer(serializers.Serializer):
+    """
+    Serializer for creating a chat room from photo analysis.
+
+    Security: Only accepts photo_analysis_id and suggestion_index.
+    All other data (name, description, theme) is pulled from the
+    server-side PhotoAnalysis record to prevent client tampering.
+    """
+    photo_analysis_id = serializers.UUIDField(required=True)
+    suggestion_index = serializers.IntegerField(required=True, min_value=0, max_value=9)
+
+    def validate_photo_analysis_id(self, value):
+        """Verify photo analysis exists"""
+        from photo_analysis.models import PhotoAnalysis
+        try:
+            PhotoAnalysis.objects.get(id=value)
+        except PhotoAnalysis.DoesNotExist:
+            raise serializers.ValidationError("Photo analysis not found")
+        return value

@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
+from django.utils import timezone
 from constance import config
 from accounts.models import User
 from .models import ChatRoom, Message, AnonymousUserFingerprint, ChatParticipation, ChatTheme, MessageReaction
@@ -2173,6 +2174,123 @@ class UserBlockListView(APIView):
             'blocked_users': blocked_users,
             'count': len(blocked_users)
         })
+
+
+class ChatRoomCreateFromPhotoView(APIView):
+    """
+    Create a chat room from a photo analysis suggestion (AI-generated rooms).
+
+    Security: Only accepts photo_analysis_id and suggestion_index.
+    All room data (name, description, theme) is pulled from the
+    server-side PhotoAnalysis record to prevent client tampering.
+
+    Note: Uses system user as host - discover rooms are community-owned,
+    not controlled by any individual user.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from photo_analysis.models import PhotoAnalysis
+        from .serializers import ChatRoomCreateFromPhotoSerializer
+        from django.contrib.auth import get_user_model
+        import logging
+
+        User = get_user_model()
+        logger = logging.getLogger(__name__)
+
+        # Validate input (only photo_analysis_id + suggestion_index)
+        serializer = ChatRoomCreateFromPhotoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        photo_analysis_id = serializer.validated_data['photo_analysis_id']
+        suggestion_index = serializer.validated_data['suggestion_index']
+
+        try:
+            # Get or create system user for discover rooms
+            system_user, created = User.objects.get_or_create(
+                email='discover@chatpop.app',
+                defaults={
+                    'reserved_username': 'ChatPopDiscover',
+                    'is_active': False,  # Cannot login
+                }
+            )
+            if created:
+                system_user.set_unusable_password()
+                system_user.save()
+                logger.info("Created system user for discover rooms")
+
+            # Fetch PhotoAnalysis record (server-side source of truth)
+            photo_analysis = PhotoAnalysis.objects.get(id=photo_analysis_id)
+
+            # Validate that suggestion_index is within the available suggestions
+            suggestions = photo_analysis.suggestions.get('suggestions', [])
+            if suggestion_index >= len(suggestions):
+                raise ValidationError(f"Invalid suggestion_index. Only {len(suggestions)} suggestions available (0-{len(suggestions)-1})")
+
+            # Extract the selected suggestion (ALL data comes from server)
+            selected_suggestion = suggestions[suggestion_index]
+            chat_name = selected_suggestion['name']
+            chat_code = selected_suggestion['key']
+            chat_description = selected_suggestion.get('description', '')
+
+            logger.info(f"Creating chat from photo analysis: name='{chat_name}', code='{chat_code}'")
+
+            # Check if this chat already exists (prevent duplicates)
+            existing_chat = ChatRoom.objects.filter(
+                code=chat_code,
+                source=ChatRoom.SOURCE_AI
+            ).first()
+
+            if existing_chat:
+                # Chat already exists - return it
+                logger.info(f"Chat '{chat_code}' already exists, returning existing room")
+                return Response({
+                    'created': False,
+                    'chat_room': ChatRoomSerializer(existing_chat).data,
+                    'message': 'This chat room already exists'
+                }, status=status.HTTP_200_OK)
+
+            # Get default theme for AI rooms (dark-mode)
+            theme = ChatTheme.objects.filter(theme_id='dark-mode').first()
+            if not theme:
+                # Fallback to any theme if dark-mode doesn't exist
+                theme = ChatTheme.objects.first()
+
+            # Create the chat room with server-validated data
+            # Use system user as host - discover rooms are community-owned
+            chat_room = ChatRoom.objects.create(
+                code=chat_code,  # Use the AI-generated key as the code
+                name=chat_name,
+                description=chat_description,
+                host=system_user,  # System user owns all discover rooms
+                source=ChatRoom.SOURCE_AI,  # Mark as AI-generated
+                access_mode=ChatRoom.ACCESS_PUBLIC,  # AI rooms are always public
+                theme=theme,
+                theme_locked=False,  # Users can change theme
+                photo_enabled=True,
+                voice_enabled=False,
+                video_enabled=False,
+                is_active=True
+            )
+
+            # Update PhotoAnalysis to track which suggestion was selected
+            photo_analysis.selected_suggestion_code = chat_code
+            photo_analysis.selected_at = timezone.now()
+            photo_analysis.save(update_fields=['selected_suggestion_code', 'selected_at', 'updated_at'])
+
+            logger.info(f"Created chat room '{chat_code}' (ID: {chat_room.id}) from photo analysis")
+
+            return Response({
+                'created': True,
+                'chat_room': ChatRoomSerializer(chat_room).data,
+                'message': 'Chat room created successfully'
+            }, status=status.HTTP_201_CREATED)
+
+        except PhotoAnalysis.DoesNotExist:
+            raise ValidationError("Photo analysis not found")
+        except Exception as e:
+            logger.error(f"Failed to create chat from photo: {str(e)}", exc_info=True)
+            raise ValidationError(f"Failed to create chat room: {str(e)}")
 
 
 class PhotoAnalysisView(APIView):

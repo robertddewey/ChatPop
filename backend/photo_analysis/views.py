@@ -25,6 +25,7 @@ from .utils.fingerprinting.file_hash import calculate_md5, get_file_size
 from .utils.vision.openai_vision import get_vision_provider
 from .utils.image_processing import resize_image_if_needed
 from .utils.caption import generate_caption
+from .utils.embedding import generate_embedding, generate_suggestions_embedding
 from chatpop.utils.media import MediaStorage
 
 logger = logging.getLogger(__name__)
@@ -265,6 +266,74 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                     'caption_raw_response': caption_data.raw_response
                 }
                 logger.info(f"Caption fields populated: title='{caption_data.title}', category='{caption_data.category}', model='{caption_data.model}'")
+
+                # Generate Embedding 1: Semantic/Content embedding from caption fields
+                try:
+                    logger.info("Generating caption embedding (Embedding 1: Semantic/Content)")
+                    embedding_data = generate_embedding(
+                        caption_full=caption_data.caption,
+                        caption_visible_text=caption_data.visible_text,
+                        caption_title=caption_data.title,
+                        caption_category=caption_data.category,
+                        model="text-embedding-3-small"
+                    )
+
+                    # Add caption embedding fields
+                    caption_fields['caption_embedding'] = embedding_data.embedding
+                    caption_fields['caption_embedding_generated_at'] = timezone.now()
+
+                    logger.info(
+                        f"Caption embedding generated successfully: "
+                        f"dimensions={len(embedding_data.embedding)}, "
+                        f"tokens={embedding_data.token_usage['total_tokens']}, "
+                        f"model={embedding_data.model}"
+                    )
+
+                except Exception as e:
+                    # Caption embedding generation is non-fatal - log warning and continue
+                    logger.warning(f"Caption embedding generation failed (non-fatal): {str(e)}", exc_info=True)
+                    # caption_embedding and caption_embedding_generated_at will remain null in database
+
+                # Generate Embedding 2: Conversational/Topic embedding (PRIMARY for collaborative discovery)
+                # This combines caption fields + all 10 suggestion names + all 10 descriptions
+                # Groups by conversation potential: "bar-room", "happy-hour", "brew-talk" cluster together
+                try:
+                    logger.info("Generating suggestions embedding (Embedding 2: Conversational/Topic - PRIMARY)")
+
+                    # Convert Suggestion objects to dictionaries for embedding generation
+                    suggestions_list = [
+                        {
+                            'name': s.name,
+                            'description': s.description
+                        }
+                        for s in analysis_result.suggestions
+                    ]
+
+                    suggestions_embedding_data = generate_suggestions_embedding(
+                        caption_full=caption_data.caption,
+                        caption_visible_text=caption_data.visible_text,
+                        caption_title=caption_data.title,
+                        caption_category=caption_data.category,
+                        suggestions=suggestions_list,  # All 10 suggestions with names + descriptions
+                        model="text-embedding-3-small"
+                    )
+
+                    # Add suggestions embedding fields
+                    caption_fields['suggestions_embedding'] = suggestions_embedding_data.embedding
+                    caption_fields['suggestions_embedding_generated_at'] = timezone.now()
+
+                    logger.info(
+                        f"Suggestions embedding generated successfully: "
+                        f"dimensions={len(suggestions_embedding_data.embedding)}, "
+                        f"tokens={suggestions_embedding_data.token_usage['total_tokens']}, "
+                        f"model={suggestions_embedding_data.model}"
+                    )
+
+                except Exception as e:
+                    # Suggestions embedding generation is non-fatal - log warning and continue
+                    logger.warning(f"Suggestions embedding generation failed (non-fatal): {str(e)}", exc_info=True)
+                    # suggestions_embedding and suggestions_embedding_generated_at will remain null in database
+
             else:
                 logger.info("No caption data available, caption fields will be empty")
 

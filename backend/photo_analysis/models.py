@@ -5,6 +5,7 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from pgvector.django import VectorField
 
 
 class PhotoAnalysis(models.Model):
@@ -200,6 +201,49 @@ class PhotoAnalysis(models.Model):
         help_text="Complete caption API response for debugging"
     )
 
+    # === SEMANTIC EMBEDDINGS ===
+
+    # Embedding 1: Semantic/Content (broad clustering)
+    # - Generated from: caption_full + caption_visible_text + caption_title + caption_category
+    # - Model: text-embedding-3-small (1536 dimensions)
+    # - Groups by: visual content (beverages, food, nature, vehicles)
+    # - Use: General categorization, future features
+    caption_embedding = VectorField(
+        dimensions=1536,
+        null=True,
+        blank=True,
+        help_text="Semantic/Content embedding for broad categorization (text-embedding-3-small, 1536d)"
+    )
+
+    # When the caption embedding was generated
+    caption_embedding_generated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when caption embedding was generated"
+    )
+
+    # Embedding 2: Conversational/Topic (PRIMARY for collaborative discovery)
+    # - Generated from: caption_full + caption_visible_text + all 10 suggestion names + all 10 descriptions
+    # - Model: text-embedding-3-small (1536 dimensions)
+    # - Groups by: conversation potential and social context
+    # - Use: Finding existing chat rooms from similar photos
+    # - Why: "bar-room", "happy-hour", "brew-talk" all cluster in the same semantic space
+    # - Enables collaborative discovery (Person A uploads beer → creates "bar-room",
+    #   Person B uploads similar photo → sees "bar-room (1 user)" as recommendation)
+    suggestions_embedding = VectorField(
+        dimensions=1536,
+        null=True,
+        blank=True,
+        help_text="Conversational/Topic embedding for finding similar chat rooms (text-embedding-3-small, 1536d)"
+    )
+
+    # When the suggestions embedding was generated
+    suggestions_embedding_generated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when suggestions embedding was generated"
+    )
+
     # === USAGE TRACKING ===
 
     # User who uploaded the photo (if authenticated)
@@ -235,6 +279,27 @@ class PhotoAnalysis(models.Model):
     times_used = models.PositiveIntegerField(
         default=0,
         help_text="How many chats were created from these suggestions"
+    )
+
+    # === CHAT CREATION TRACKING ===
+
+    # Which suggestion the user selected (if any)
+    # - Stores the chat code/slug directly (e.g., 'bar-room', 'coffee-chat')
+    # - Used for finding similar photos that created discover rooms
+    # - Null = user hasn't selected a suggestion yet
+    selected_suggestion_code = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Chat code user selected (e.g., 'bar-room')"
+    )
+
+    # When the user made their selection
+    selected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When user selected a suggestion"
     )
 
     # === TIMESTAMPS ===

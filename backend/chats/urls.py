@@ -7,7 +7,7 @@ from .views import (
     MessageReactionToggleView, MessageReactionsListView,
     BlockUserView, UnblockUserView, BlockedUsersListView,
     UserBlockView, UserUnblockView, UserBlockListView,
-    PhotoAnalysisView
+    PhotoAnalysisView, ChatRoomCreateFromPhotoView
 )
 
 app_name = 'chats'
@@ -20,6 +20,7 @@ urlpatterns = [
 
     # Photo Analysis (Chat Generation)
     path('analyze-photo/', PhotoAnalysisView.as_view(), name='analyze-photo'),
+    path('create-from-photo/', ChatRoomCreateFromPhotoView.as_view(), name='chat-create-from-photo'),
 
     # Chat Management
     path('create/', ChatRoomCreateView.as_view(), name='chat-create'),
