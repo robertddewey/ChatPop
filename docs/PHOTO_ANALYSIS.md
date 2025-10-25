@@ -33,12 +33,20 @@ backend/
       storage/                 # Image storage utilities
         __init__.py
         images.py              # Image-specific helpers (dimensions, validation, etc.)
+      caption.py               # Caption generation (NEW)
+      embedding.py             # Embedding generation (NEW)
+      similarity.py            # Similarity search / collaborative discovery (NEW)
+    management/                # Django management commands
+      commands/
+        __init__.py
+        test_photo_upload.py   # End-to-end testing command
     tests/
       __init__.py
       tests_analysis.py        # Photo analysis tests
       tests_deduplication.py   # Hash/fingerprint tests
       tests_rate_limits.py     # Rate limiting tests
       tests_storage.py         # Storage tests
+      test_image_resizing.py   # Image resizing tests (16 tests)
 ```
 
 ---
@@ -51,7 +59,7 @@ backend/
 class PhotoAnalysis(models.Model):
     """
     Stores photo analysis results from AI vision models.
-    Enables deduplication, caching, and analytics tracking.
+    Enables deduplication, caching, collaborative discovery, and analytics tracking.
     """
 
     # Primary Key
@@ -129,40 +137,168 @@ class PhotoAnalysis(models.Model):
         help_text="AI-generated chat name suggestions"
     )
 
-    # Full raw response from the AI vision model
+    # Full raw response from the AI vision model (DEPRECATED - use ai_vision_response_metadata)
     # - Useful for debugging and reprocessing
     # - Includes all metadata from the API response
     raw_response = models.JSONField(
         null=True,
         blank=True,
-        help_text="Complete API response for debugging/reprocessing"
+        help_text="DEPRECATED: Complete API response for debugging (use ai_vision_response_metadata instead)"
     )
 
-    # === AI MODEL METADATA ===
+    # === AI MODEL METADATA (Vision API for Suggestions) ===
 
     # AI vision model identifier
-    # - Initially: "gpt-4-vision-preview", "gpt-4o", etc.
+    # - Initially: "gpt-4-vision-preview", "gpt-4o", "gpt-4o-mini", etc.
     # - Future: Could reference a separate AIModel table via ForeignKey
     # - Kept as string for flexibility (may switch providers)
     ai_vision_model = models.CharField(
         max_length=100,
-        default="gpt-4o",
-        help_text="AI vision model used for analysis (e.g., gpt-4o, claude-3-opus)"
+        default="gpt-4o-mini",
+        help_text="AI vision model used for suggestion analysis (e.g., gpt-4o-mini, gpt-4o)"
     )
 
-    # Token usage for cost tracking
-    # - Format: {"prompt_tokens": 1234, "completion_tokens": 567, "total_tokens": 1801}
+    # Vision API response metadata (replaces raw_response)
+    # - Format: {"token_usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}, ...}
+    # - More structured than raw_response
+    ai_vision_response_metadata = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Vision API response metadata (token usage, etc.)"
+    )
+
+    # DEPRECATED: Legacy token_usage field (use ai_vision_response_metadata['token_usage'] instead)
     token_usage = models.JSONField(
         null=True,
         blank=True,
-        help_text="API token usage for cost tracking"
+        help_text="DEPRECATED: API token usage (use ai_vision_response_metadata instead)"
+    )
+
+    # === CAPTION FIELDS (for Embeddings) ===
+
+    # Short title extracted from the image
+    # - Example: "Coffee Cup on Table", "Golden Gate Bridge"
+    # - Used as primary source for embeddings
+    caption_title = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text="Short title extracted from image (for embeddings)"
+    )
+
+    # Category classification
+    # - Example: "beverage", "landmark", "nature"
+    # - Helps with broad semantic grouping
+    caption_category = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="Category classification (for embeddings)"
+    )
+
+    # Visible text extracted from image (OCR)
+    # - Example: "Starbucks Coffee", "Stop Sign"
+    # - Helps identify brand names, text on objects
+    caption_visible_text = models.TextField(
+        blank=True,
+        default='',
+        help_text="Visible text extracted from image via OCR (for embeddings)"
+    )
+
+    # Full semantic caption
+    # - Example: "A white coffee cup sitting on a wooden table with steam rising"
+    # - Most detailed description of image content
+    caption_full = models.TextField(
+        blank=True,
+        default='',
+        help_text="Full semantic caption describing image content (for embeddings)"
+    )
+
+    # Caption generation model (e.g., "gpt-4o-mini")
+    caption_model = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="AI model used for caption generation"
+    )
+
+    # Caption generation timestamp
+    caption_generated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When caption was generated"
+    )
+
+    # Caption generation token usage
+    # - Format: {"prompt_tokens": 20, "completion_tokens": 30, "total_tokens": 50}
+    caption_token_usage = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Token usage for caption generation (separate from suggestions)"
+    )
+
+    # === EMBEDDING FIELDS (Dual Embedding System) ===
+
+    # Embedding 1: Caption/Semantic (Broad Categorization)
+    # - Generated from caption fields (title, category, visible_text, full)
+    # - Purpose: Groups photos by visual content (beverages, food, nature, vehicles)
+    # - Dimensions: 1536 (text-embedding-3-small)
+    caption_embedding = VectorField(
+        dimensions=1536,
+        null=True,
+        blank=True,
+        help_text="Caption/Semantic embedding for broad categorization (text-embedding-3-small)"
+    )
+
+    caption_embedding_generated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When caption embedding was generated"
+    )
+
+    # Embedding 2: Suggestions/Topic (PRIMARY for Collaborative Discovery)
+    # - Generated from caption fields + all 10 suggestion names + descriptions
+    # - Purpose: Groups photos by conversation potential and chat topic similarity
+    # - Dimensions: 1536 (text-embedding-3-small)
+    # - Example: "bar-room", "happy-hour", "brew-talk" cluster together
+    suggestions_embedding = VectorField(
+        dimensions=1536,
+        null=True,
+        blank=True,
+        help_text="Suggestions/Topic embedding for collaborative discovery (text-embedding-3-small)"
+    )
+
+    suggestions_embedding_generated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When suggestions embedding was generated"
+    )
+
+    # === ROOM SELECTION TRACKING ===
+
+    # Which suggestion key was selected by the user (if any)
+    # - Example: "bar-room", "coffee-chat", "happy-hour"
+    # - Tracks analytics: which suggestions lead to room creation?
+    # - Updated when user creates/joins room from this photo
+    selected_suggestion_code = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Suggestion key that was selected by user (for analytics)"
+    )
+
+    # When the suggestion was selected
+    selected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When user selected a suggestion from this photo"
     )
 
     # === USAGE TRACKING ===
 
     # User who uploaded the photo (if authenticated)
     user = models.ForeignKey(
-        'accounts.User',  # Adjust to your User model path
+        'accounts.User',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -189,10 +325,12 @@ class PhotoAnalysis(models.Model):
         help_text="IP address for rate limiting"
     )
 
-    # Number of times this analysis was used to create chats
+    # Number of times this photo's suggestions were used to create/join chats
+    # - Increments each time a user selects a suggestion from this photo
+    # - Tracks popularity and conversion rate
     times_used = models.PositiveIntegerField(
         default=0,
-        help_text="How many chats were created from these suggestions"
+        help_text="How many times suggestions from this photo were selected"
     )
 
     # === ANALYTICS TRACKING ===
@@ -217,6 +355,9 @@ class PhotoAnalysis(models.Model):
             models.Index(fields=['file_hash', 'created_at']),
             models.Index(fields=['fingerprint', 'ip_address']),
             models.Index(fields=['expires_at']),
+            # pgvector HNSW indexes for fast similarity search
+            # HnswIndex(fields=['caption_embedding'], name='caption_embedding_hnsw', m=16, ef_construction=64),
+            # HnswIndex(fields=['suggestions_embedding'], name='suggestions_embedding_hnsw', m=16, ef_construction=64),
         ]
 
     def __str__(self):
@@ -327,6 +468,58 @@ You must respond in json format with this exact structure:
         'low',
         'OpenAI Vision API detail mode: "low" (fixed ~85 tokens, faster, cheaper) or "high" (tokens scale with image size, higher quality). WARNING: "high" mode currently uses ~8x more tokens than expected for unknown reasons.',
         str
+    ),
+
+    # === Caption Generation Settings (NEW) ===
+
+    # Enable/Disable Caption Generation
+    'PHOTO_CAPTION_GENERATION_ENABLED': (
+        True,
+        'Enable AI caption generation for embeddings (title, category, visible_text, full caption)',
+        bool
+    ),
+
+    # Caption Generation Model
+    'PHOTO_CAPTION_OPENAI_MODEL': (
+        'gpt-4o-mini',
+        'OpenAI model for caption generation (gpt-4o-mini is faster and cheaper than gpt-4o)',
+        str
+    ),
+
+    # Caption Generation Prompt
+    'PHOTO_CAPTION_PROMPT': (
+        '''Extract detailed information from this image in JSON format:
+{
+  "title": "short descriptive title (3-5 words)",
+  "category": "single-word category (e.g., beverage, food, nature, architecture)",
+  "visible_text": "any visible text in the image (OCR)",
+  "caption": "full semantic description of the image content"
+}''',
+        'OpenAI prompt for caption generation',
+        str
+    ),
+
+    # === Similarity Search Settings (NEW - Collaborative Discovery) ===
+
+    # Maximum Cosine Distance for Similarity
+    'PHOTO_SIMILARITY_MAX_DISTANCE': (
+        0.3,
+        'Maximum cosine distance for photo similarity (0.0=identical, 1.0=opposite). Lower = stricter matching. Recommended: 0.2-0.4',
+        float
+    ),
+
+    # Maximum Similar Rooms to Return
+    'PHOTO_SIMILARITY_MAX_RESULTS': (
+        5,
+        'Maximum number of similar rooms to return in collaborative discovery',
+        int
+    ),
+
+    # Minimum Active Users for Room Recommendation
+    'PHOTO_SIMILARITY_MIN_USERS': (
+        1,
+        'Minimum active users required to recommend a room (last_seen_at within 24h)',
+        int
     ),
 }
 ```
@@ -732,30 +925,100 @@ position_stats = ChatRoom.objects.filter(
 
 ## API Endpoints
 
-### 1. Analyze Photo
+### 1. Upload Photo for Analysis
 
 ```
-POST /api/photo-analysis/analyze/
+POST /api/photo-analysis/upload/
 Content-Type: multipart/form-data
 
 Request Body:
-- image: File (JPEG, PNG, WEBP)
-- fingerprint: string (optional - browser fingerprint)
+- image: File (JPEG, PNG, WEBP, HEIC)
+- fingerprint: string (optional - browser fingerprint for rate limiting)
 
-Response 200 OK:
+Response 200 OK (NEW upload):
 {
-  "analysis_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "suggestions": [
-    {
-      "name": "Veterans Tribute",
-      "key": "veterans-tribute",
-      "description": "Discuss topics related to veterans and their service"
+  "cached": false,
+  "analysis": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "image_phash": "d879f4f8e3b0c1a2",
+    "file_hash": "098f6bcd4621d373cade4e832627b4f6",
+    "file_size": 123456,
+    "image_path": "photo_analysis/uuid.jpg",
+    "storage_type": "local",
+
+    "suggestions": [
+      {
+        "name": "Veterans Tribute",
+        "key": "veterans-tribute",
+        "description": "Discuss topics related to veterans and their service"
+      },
+      // ... 9 more suggestions (10 total)
+    ],
+
+    "ai_vision_model": "gpt-4o-mini",
+    "ai_vision_response_metadata": {
+      "token_usage": {
+        "prompt_tokens": 100,
+        "completion_tokens": 50,
+        "total_tokens": 150
+      }
     },
-    // ... 9 more suggestions
+
+    // Caption fields (for embeddings)
+    "caption_title": "Veterans Memorial",
+    "caption_category": "monument",
+    "caption_visible_text": "Remember Our Heroes",
+    "caption_full": "A bronze statue of a soldier at a veterans memorial",
+    "caption_model": "gpt-4o-mini",
+    "caption_generated_at": "2025-10-22T14:30:02Z",
+    "caption_token_usage": {
+      "prompt_tokens": 20,
+      "completion_tokens": 30,
+      "total_tokens": 50
+    },
+
+    // Embedding status
+    "caption_embedding_generated_at": "2025-10-22T14:30:03Z",
+    "suggestions_embedding_generated_at": "2025-10-22T14:30:04Z",
+
+    // Room selection tracking
+    "selected_suggestion_code": null,
+    "selected_at": null,
+    "times_used": 0,
+
+    "created_at": "2025-10-22T14:30:00Z",
+    "updated_at": "2025-10-22T14:30:05Z"
+  },
+
+  // NEW: Collaborative discovery - similar existing rooms
+  "similar_rooms": [
+    {
+      "room_id": "f7e8d9c0-1234-5678-90ab-cdef12345678",
+      "room_code": "veterans-tribute",
+      "room_name": "Veterans Tribute",
+      "room_url": "/chat/discover/veterans-tribute",
+      "active_users": 3,
+      "similarity_distance": 0.1234,
+      "source_photo_id": "b2c3d4e5-6789-0abc-def1-234567890abc"
+    }
   ],
-  "count": 10,
-  "cached": false,  // true if returned from cache
-  "created_at": "2025-10-22T14:30:00Z"
+
+  "rate_limit": {
+    "used": 2,
+    "limit": 20,
+    "remaining": 18
+  }
+}
+
+Response 200 OK (CACHED upload - duplicate detected):
+{
+  "cached": true,
+  "analysis": {
+    // Same structure as above
+    "times_used": 5  // Incremented on reuse
+  },
+  "similar_rooms": [...],
+  "rate_limit": {...}
 }
 
 Response 400 Bad Request:
@@ -793,25 +1056,73 @@ Response 404 Not Found:
 }
 ```
 
-### 3. Create Chat from Suggestion
+### 3. Create/Join Chat Room from Photo Analysis
+
+**Note:** This endpoint is in the `chats` app, not `photo_analysis`.
 
 ```
-POST /api/photo-analysis/{analysis_id}/create-chat/
+POST /api/chats/create-from-photo/
 Content-Type: application/json
 
 Request Body:
 {
-  "suggestion_index": 0,  // Which suggestion to use (0-9)
-  "is_private": true,
-  "access_code": "secret123"  // if is_private=true
+  "photo_analysis_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",  // UUID of PhotoAnalysis
+  "room_code": "veterans-tribute"  // Must be from AI suggestions OR similar_rooms
 }
 
-Response 201 Created:
+Security: The backend validates that room_code is in one of:
+- The 10 AI-generated suggestions for this photo
+- The similar_rooms returned by collaborative discovery
+
+This prevents users from creating arbitrary rooms via photo analysis.
+
+Response 201 Created (NEW room created):
 {
-  "chat_code": "abc123",
-  "chat_name": "Veterans Tribute",
-  "chat_key": "veterans-tribute",
-  "url": "/chat/abc123"
+  "created": true,
+  "message": "Chat room created successfully",
+  "chat_room": {
+    "id": "f7e8d9c0-1234-5678-90ab-cdef12345678",
+    "code": "veterans-tribute",
+    "name": "Veterans Tribute",
+    "description": "",
+    "url": "/chat/discover/veterans-tribute",
+    "host": {
+      "id": "user-uuid",
+      "username": "john_doe",
+      "reserved_username": "john_doe"
+    },
+    "access_mode": "public",
+    "is_active": true,
+    "created_at": "2025-10-22T14:35:00Z",
+    "source": "photo_analysis"
+  }
+}
+
+Response 200 OK (EXISTING room joined):
+{
+  "created": false,
+  "message": "Joined existing chat room",
+  "chat_room": {
+    // Same structure as above
+    "id": "existing-room-uuid",
+    "code": "veterans-tribute",
+    "name": "Veterans Tribute",
+    // ...
+  }
+}
+
+Response 400 Bad Request (Invalid room_code):
+{
+  "non_field_errors": [
+    "Invalid room selection: 'arbitrary-room' is not in AI suggestions or similar rooms for this photo"
+  ]
+}
+
+Response 400 Bad Request (Similar room doesn't exist):
+{
+  "non_field_errors": [
+    "Cannot create new room from similar room code 'bar-room' - similar rooms can only be joined, not created"
+  ]
 }
 ```
 
