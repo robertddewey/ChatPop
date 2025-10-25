@@ -2191,6 +2191,7 @@ class ChatRoomCreateFromPhotoView(APIView):
 
     def post(self, request):
         from photo_analysis.models import PhotoAnalysis
+        from photo_analysis.utils.similarity import find_similar_rooms
         from .serializers import ChatRoomCreateFromPhotoSerializer
         from django.contrib.auth import get_user_model
         import logging
@@ -2198,14 +2199,83 @@ class ChatRoomCreateFromPhotoView(APIView):
         User = get_user_model()
         logger = logging.getLogger(__name__)
 
-        # Validate input (only photo_analysis_id + suggestion_index)
+        # Validate input (photo_analysis_id + room_code)
         serializer = ChatRoomCreateFromPhotoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         photo_analysis_id = serializer.validated_data['photo_analysis_id']
-        suggestion_index = serializer.validated_data['suggestion_index']
+        room_code = serializer.validated_data['room_code']
 
         try:
+            # Fetch PhotoAnalysis record (server-side source of truth)
+            photo_analysis = PhotoAnalysis.objects.get(id=photo_analysis_id)
+
+            # Build allowed room codes set: AI suggestions + similar_rooms
+            allowed_codes = {}  # code -> suggestion_data (name, description)
+
+            # Add all AI-generated suggestions
+            suggestions = photo_analysis.suggestions.get('suggestions', [])
+            for suggestion in suggestions:
+                key = suggestion['key']
+                allowed_codes[key] = {
+                    'name': suggestion['name'],
+                    'description': suggestion.get('description', '')
+                }
+
+            # Add similar room codes (if embedding exists)
+            similar_room_codes = set()
+            if photo_analysis.suggestions_embedding is not None:
+                try:
+                    similar_rooms = find_similar_rooms(
+                        embedding_vector=photo_analysis.suggestions_embedding,
+                        exclude_photo_id=str(photo_analysis.id)
+                    )
+                    for room in similar_rooms:
+                        similar_room_codes.add(room.room_code)
+                        # Similar rooms don't need metadata - they already exist
+                except Exception as e:
+                    logger.warning(f"Similarity search failed (non-fatal): {str(e)}")
+
+            # Validate room_code is in allowed set
+            is_ai_suggestion = room_code in allowed_codes
+            is_similar_room = room_code in similar_room_codes
+
+            if not (is_ai_suggestion or is_similar_room):
+                raise ValidationError(
+                    f"Invalid room selection. Room code '{room_code}' is not in the list of "
+                    f"suggestions or similar rooms for this photo analysis."
+                )
+
+            logger.info(f"User selected room code '{room_code}' (AI suggestion: {is_ai_suggestion}, similar room: {is_similar_room})")
+
+            # Check if room already exists
+            existing_chat = ChatRoom.objects.filter(
+                code=room_code,
+                source=ChatRoom.SOURCE_AI,
+                is_active=True
+            ).first()
+
+            # Track selection REGARDLESS of whether room already exists
+            photo_analysis.selected_suggestion_code = room_code
+            photo_analysis.selected_at = timezone.now()
+            photo_analysis.save(update_fields=['selected_suggestion_code', 'selected_at', 'updated_at'])
+
+            if existing_chat:
+                # Room already exists - user is joining existing room
+                logger.info(f"User joining existing room '{room_code}' (ID: {existing_chat.id})")
+                return Response({
+                    'created': False,
+                    'chat_room': ChatRoomSerializer(existing_chat).data,
+                    'message': 'Joined existing chat room'
+                }, status=status.HTTP_200_OK)
+
+            # Room doesn't exist - create it (only possible for AI suggestions)
+            if not is_ai_suggestion:
+                # This should never happen - similar rooms must already exist
+                raise ValidationError(
+                    f"Room '{room_code}' does not exist. Cannot create from similar room."
+                )
+
             # Get or create system user for discover rooms
             system_user, created = User.objects.get_or_create(
                 email='discover@chatpop.app',
@@ -2219,47 +2289,20 @@ class ChatRoomCreateFromPhotoView(APIView):
                 system_user.save()
                 logger.info("Created system user for discover rooms")
 
-            # Fetch PhotoAnalysis record (server-side source of truth)
-            photo_analysis = PhotoAnalysis.objects.get(id=photo_analysis_id)
-
-            # Validate that suggestion_index is within the available suggestions
-            suggestions = photo_analysis.suggestions.get('suggestions', [])
-            if suggestion_index >= len(suggestions):
-                raise ValidationError(f"Invalid suggestion_index. Only {len(suggestions)} suggestions available (0-{len(suggestions)-1})")
-
-            # Extract the selected suggestion (ALL data comes from server)
-            selected_suggestion = suggestions[suggestion_index]
-            chat_name = selected_suggestion['name']
-            chat_code = selected_suggestion['key']
-            chat_description = selected_suggestion.get('description', '')
-
-            logger.info(f"Creating chat from photo analysis: name='{chat_name}', code='{chat_code}'")
-
-            # Check if this chat already exists (prevent duplicates)
-            existing_chat = ChatRoom.objects.filter(
-                code=chat_code,
-                source=ChatRoom.SOURCE_AI
-            ).first()
-
-            if existing_chat:
-                # Chat already exists - return it
-                logger.info(f"Chat '{chat_code}' already exists, returning existing room")
-                return Response({
-                    'created': False,
-                    'chat_room': ChatRoomSerializer(existing_chat).data,
-                    'message': 'This chat room already exists'
-                }, status=status.HTTP_200_OK)
-
             # Get default theme for AI rooms (dark-mode)
             theme = ChatTheme.objects.filter(theme_id='dark-mode').first()
             if not theme:
                 # Fallback to any theme if dark-mode doesn't exist
                 theme = ChatTheme.objects.first()
 
+            # Extract suggestion data for new room
+            suggestion_data = allowed_codes[room_code]
+            chat_name = suggestion_data['name']
+            chat_description = suggestion_data['description']
+
             # Create the chat room with server-validated data
-            # Use system user as host - discover rooms are community-owned
             chat_room = ChatRoom.objects.create(
-                code=chat_code,  # Use the AI-generated key as the code
+                code=room_code,
                 name=chat_name,
                 description=chat_description,
                 host=system_user,  # System user owns all discover rooms
@@ -2273,12 +2316,7 @@ class ChatRoomCreateFromPhotoView(APIView):
                 is_active=True
             )
 
-            # Update PhotoAnalysis to track which suggestion was selected
-            photo_analysis.selected_suggestion_code = chat_code
-            photo_analysis.selected_at = timezone.now()
-            photo_analysis.save(update_fields=['selected_suggestion_code', 'selected_at', 'updated_at'])
-
-            logger.info(f"Created chat room '{chat_code}' (ID: {chat_room.id}) from photo analysis")
+            logger.info(f"Created new room '{room_code}' (ID: {chat_room.id}) from photo analysis")
 
             return Response({
                 'created': True,
@@ -2289,8 +2327,8 @@ class ChatRoomCreateFromPhotoView(APIView):
         except PhotoAnalysis.DoesNotExist:
             raise ValidationError("Photo analysis not found")
         except Exception as e:
-            logger.error(f"Failed to create chat from photo: {str(e)}", exc_info=True)
-            raise ValidationError(f"Failed to create chat room: {str(e)}")
+            logger.error(f"Failed to create/join chat from photo: {str(e)}", exc_info=True)
+            raise ValidationError(f"Failed to process room selection: {str(e)}")
 
 
 class PhotoAnalysisView(APIView):
