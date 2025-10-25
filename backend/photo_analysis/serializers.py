@@ -5,6 +5,34 @@ from rest_framework import serializers
 from .models import PhotoAnalysis
 
 
+class SimilarRoomSerializer(serializers.Serializer):
+    """Serializer for similar room recommendations (collaborative discovery)."""
+    room_id = serializers.UUIDField(
+        help_text="UUID of the chat room"
+    )
+    room_code = serializers.CharField(
+        max_length=100,
+        help_text="Room code (e.g., 'bar-room')"
+    )
+    room_name = serializers.CharField(
+        max_length=200,
+        help_text="Room name (e.g., 'Bar Room')"
+    )
+    room_url = serializers.CharField(
+        max_length=500,
+        help_text="URL to join the room (e.g., '/chat/discover/bar-room')"
+    )
+    active_users = serializers.IntegerField(
+        help_text="Number of active users in room (last_seen_at within 24h)"
+    )
+    similarity_distance = serializers.FloatField(
+        help_text="Cosine distance (0.0 = identical, 1.0 = opposite)"
+    )
+    source_photo_id = serializers.UUIDField(
+        help_text="ID of the PhotoAnalysis that matched this room"
+    )
+
+
 class ChatSuggestionSerializer(serializers.Serializer):
     """Serializer for individual chat room name suggestions."""
     name = serializers.CharField(

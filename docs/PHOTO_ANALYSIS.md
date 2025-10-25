@@ -1483,78 +1483,187 @@ except Exception as e:
 
 **Optimization:** Caching (pHash + MD5) reduces API calls by 50-70%, cutting costs proportionally
 
-### Similarity Search (Future Implementation)
+### Similarity Search (Collaborative Discovery) - ✅ IMPLEMENTED
 
-**Query Pattern:**
+**Implementation:** `backend/photo_analysis/utils/similarity.py`
+
+**Core Algorithm:**
+
+The `find_similar_rooms()` function implements collaborative discovery by finding existing chat rooms created from similar photos:
+
+1. **Query Similar Photos**: Use pgvector's `CosineDistance` to find photos with similar `suggestions_embedding` vectors
+2. **Extract Room Codes**: Collect all suggestion keys from similar photos (these are potential room codes)
+3. **Find Active Rooms**: Query `ChatRoom` for rooms matching those codes with active users
+4. **Count Active Users**: Use Django ORM annotations to count users with `last_seen_at` within past 24 hours
+5. **Filter by Minimum**: Only return rooms with at least N active users (configurable)
+6. **Sort by Similarity**: Order results by cosine distance (closest first)
 
 ```python
-from django.db.models import F
 from pgvector.django import CosineDistance
+from constance import config
 
-def find_similar_photos(photo_analysis, limit=10):
+def find_similar_rooms(
+    embedding_vector: List[float],
+    exclude_photo_id: str = None
+) -> List[SimilarRoom]:
     """
-    Find photos with similar conversation potential.
-    Uses suggestions_embedding (PRIMARY) for semantic similarity.
-    """
-    # Get embedding from uploaded photo
-    query_embedding = photo_analysis.suggestions_embedding
+    Find existing chat rooms similar to the given embedding vector.
 
-    # Find similar photos using pgvector cosine distance
+    Returns rooms with active users (last_seen_at within 24h).
+    Configurable via Constance settings:
+    - PHOTO_SIMILARITY_MAX_DISTANCE (default: 0.3)
+    - PHOTO_SIMILARITY_MAX_RESULTS (default: 5)
+    - PHOTO_SIMILARITY_MIN_USERS (default: 1)
+    """
+    # Step 1: Find similar photos by embedding
     similar_photos = PhotoAnalysis.objects.annotate(
-        distance=CosineDistance('suggestions_embedding', query_embedding)
-    ).exclude(
-        id=photo_analysis.id  # Exclude self
-    ).order_by('distance')[:limit]
-
-    return similar_photos
-
-# Find rooms created from similar photos
-def find_recommended_rooms(photo_analysis):
-    """
-    Find existing chat rooms created from similar photos.
-    Returns rooms with active users.
-    """
-    similar_photos = find_similar_photos(photo_analysis, limit=20)
-
-    # Filter to photos where user selected a suggestion and created a room
-    room_codes = similar_photos.filter(
-        selected_suggestion_code__isnull=False
-    ).values_list('selected_suggestion_code', flat=True)
-
-    # Get actual ChatRoom objects
-    from chats.models import ChatRoom
-    recommended_rooms = ChatRoom.objects.filter(
-        code__in=room_codes
-    ).annotate(
-        user_count=Count('participants')
+        distance=CosineDistance('suggestions_embedding', embedding_vector)
     ).filter(
-        user_count__gt=0  # Only recommend rooms with active users
+        distance__lt=config.PHOTO_SIMILARITY_MAX_DISTANCE,
+        suggestions_embedding__isnull=False
+    ).order_by('distance')[:config.PHOTO_SIMILARITY_MAX_RESULTS * 5]
+
+    if exclude_photo_id:
+        similar_photos = similar_photos.exclude(id=exclude_photo_id)
+
+    # Step 2: Extract suggestion keys from similar photos
+    room_codes_to_check = set()
+    for photo in similar_photos:
+        suggestions_list = photo.suggestions.get('suggestions', [])
+        for suggestion in suggestions_list:
+            if 'key' in suggestion:
+                room_codes_to_check.add(suggestion['key'])
+
+    # Step 3: Find active rooms (users with last_seen_at within 24h)
+    activity_threshold = timezone.now() - timedelta(hours=24)
+    rooms = ChatRoom.objects.filter(
+        code__in=room_codes_to_check,
+        is_active=True
+    ).annotate(
+        active_user_count=Count(
+            'participations',
+            filter=Q(participations__last_seen_at__gte=activity_threshold)
+        )
+    ).filter(
+        active_user_count__gte=config.PHOTO_SIMILARITY_MIN_USERS
     )
 
-    return recommended_rooms
+    # Step 4: Build SimilarRoom results
+    # Returns: room_id, room_code, room_name, room_url,
+    #          active_users, similarity_distance, source_photo_id
 ```
 
-**Response Format:**
+**Constance Settings** (configurable via Django Admin):
 
-```json
-{
-  "fresh_suggestions": [
-    {"name": "Bar Room", "key": "bar-room", "description": "Discuss favorite beers..."},
-    // ... 9 more fresh AI suggestions
-  ],
-  "recommended_rooms": [
-    {
-      "name": "Happy Hour",
-      "code": "abc123",
-      "user_count": 3,
-      "similarity_score": 0.92,
-      "created_at": "2025-10-22T14:30:00Z"
-    }
-  ]
+```python
+# In backend/chatpop/settings.py
+CONSTANCE_CONFIG = {
+    # Similarity Search Configuration
+    'PHOTO_SIMILARITY_MAX_DISTANCE': (
+        0.3,
+        'Maximum cosine distance for photo similarity (0.0=identical, 1.0=opposite). Lower = stricter matching.',
+        float
+    ),
+    'PHOTO_SIMILARITY_MAX_RESULTS': (
+        5,
+        'Maximum number of similar rooms to return',
+        int
+    ),
+    'PHOTO_SIMILARITY_MIN_USERS': (
+        1,
+        'Minimum active users required to recommend a room (last_seen_at within 24h)',
+        int
+    ),
 }
 ```
 
-### Testing the Embedding System
+**API Response Format:**
+
+When uploading a photo, the API now returns both AI suggestions AND similar existing rooms:
+
+```json
+{
+  "cached": false,
+  "analysis": {
+    "id": "a1b2c3d4-...",
+    "suggestions": [
+      {"name": "Bar Room", "key": "bar-room", "description": "Discuss favorite beers..."},
+      {"name": "Happy Hour", "key": "happy-hour", "description": "Share cocktail recipes..."},
+      // ... 8 more fresh AI suggestions
+    ],
+    "ai_vision_model": "gpt-4o-mini",
+    "times_used": 0,
+    // ... caption and embedding metadata
+  },
+  "similar_rooms": [
+    {
+      "room_id": "f7e8d9c0-...",
+      "room_code": "bar-room",
+      "room_name": "Bar Room",
+      "room_url": "/chat/discover/bar-room",
+      "active_users": 3,
+      "similarity_distance": 0.1523,
+      "source_photo_id": "b2c3d4e5-..."
+    },
+    {
+      "room_id": "a9b8c7d6-...",
+      "room_code": "happy-hour",
+      "room_name": "Happy Hour",
+      "room_url": "/chat/discover/happy-hour",
+      "active_users": 1,
+      "similarity_distance": 0.2134,
+      "source_photo_id": "c3d4e5f6-..."
+    }
+  ],
+  "rate_limit": {
+    "used": 2,
+    "limit": 20,
+    "remaining": 18
+  }
+}
+```
+
+**Integration into Upload Workflow:**
+
+The similarity search is integrated into both new uploads and cached uploads in `views.py`:
+
+```python
+# For NEW uploads (after generating embeddings):
+similar_rooms = []
+if caption_fields.get('suggestions_embedding'):
+    try:
+        logger.info("Searching for similar existing chat rooms")
+        similar_rooms = find_similar_rooms(
+            embedding_vector=caption_fields['suggestions_embedding'],
+            exclude_photo_id=None  # PhotoAnalysis not created yet
+        )
+        logger.info(f"Found {len(similar_rooms)} similar rooms")
+    except Exception as e:
+        logger.warning(f"Similarity search failed (non-fatal): {str(e)}")
+        similar_rooms = []
+
+# For CACHED uploads (using existing embedding):
+similar_rooms = []
+if existing_analysis.suggestions_embedding is not None:
+    try:
+        logger.info("Searching for similar existing chat rooms (cached analysis)")
+        similar_rooms = find_similar_rooms(
+            embedding_vector=existing_analysis.suggestions_embedding,
+            exclude_photo_id=str(existing_analysis.id)
+        )
+        logger.info(f"Found {len(similar_rooms)} similar rooms")
+    except Exception as e:
+        logger.warning(f"Similarity search failed (non-fatal): {str(e)}")
+        similar_rooms = []
+```
+
+**Key Implementation Details:**
+- **Non-Fatal**: Similarity search failures don't break photo uploads
+- **Both Paths**: Works for fresh and cached analyses
+- **Exclude Self**: Cached uploads exclude their own photo from results
+- **Logging**: Clear log messages for debugging
+
+### Testing the Embedding System & Similarity Search
 
 **CLI Test Command:**
 
@@ -1563,7 +1672,7 @@ cd backend
 ./venv/bin/python manage.py test_photo_upload test_drink_glass.jpeg --fingerprint test1 --no-cache
 ```
 
-**Expected Output:**
+**Expected Output (including similar rooms):**
 
 ```
 Caption Data (for embeddings):
@@ -1583,7 +1692,27 @@ Caption Data (for embeddings):
   Source: captions + all 10 suggestion names + descriptions
   Purpose: Collaborative discovery - finding similar chat rooms
   How: "coffee-chat", "morning-brew", "cafe-talk" cluster together
+
+Similar Existing Rooms (Collaborative Discovery): 2 found
+  1. Morning Brew (2 active users)
+     Code: morning-brew
+     URL: /chat/discover/morning-brew
+     Similarity: 0.1234 (cosine distance)
+     Source Photo ID: b2c3d4e5-...
+  2. Coffee Chat (1 active user)
+     Code: coffee-chat
+     URL: /chat/discover/coffee-chat
+     Similarity: 0.1876 (cosine distance)
+     Source Photo ID: c3d4e5f6-...
 ```
+
+**No Similar Rooms Found:**
+
+```
+No similar existing rooms found
+```
+
+This indicates no active rooms match the photo's semantic themes (either no similar photos were uploaded, or no rooms were created from similar suggestions).
 
 ### Why This Approach Works
 
@@ -1607,9 +1736,17 @@ Caption Data (for embeddings):
 **Test Coverage**: 78/78 tests passing
 **Cost Optimization**: 80-90% reduction vs naive implementation
 **Embedding System**: ✅ **Dual embeddings implemented** (caption + suggestions)
+**Collaborative Discovery**: ✅ **Similarity search fully implemented**
+
+**Completed Features**:
+- ✅ Dual embedding system (caption + suggestions)
+- ✅ Similarity search using pgvector CosineDistance
+- ✅ Room recommendation in API responses (similar_rooms array)
+- ✅ CLI test command shows collaborative discovery results
+- ✅ Configurable via Django Admin (max_distance, max_results, min_users)
 
 **Next Steps**:
-- Implement similarity search using `suggestions_embedding`
-- Build room recommendation endpoint
+- Frontend UI to display similar room recommendations
 - Test collaborative discovery with real users
-- Monitor embedding quality and similarity thresholds
+- Monitor embedding quality and adjust similarity thresholds
+- A/B testing: do users prefer joining existing rooms vs creating new ones?

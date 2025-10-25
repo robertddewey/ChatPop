@@ -459,6 +459,23 @@ For an image of a Budweiser beer bottle:
         'Temperature for caption generation (0.0-2.0). Lower = more factual/deterministic (recommended for embeddings). Default 0.2.',
         float
     ),
+
+    # Photo Similarity Search Settings (for collaborative discovery)
+    'PHOTO_SIMILARITY_MAX_DISTANCE': (
+        0.3,
+        'Maximum cosine distance for similar room recommendations (0.0-1.0). Lower = more strict matching. Typical values: <0.2 very similar, <0.3 similar (recommended), <0.4 somewhat similar, <0.5 loosely related.',
+        float
+    ),
+    'PHOTO_SIMILARITY_MAX_RESULTS': (
+        5,
+        'Maximum number of similar existing rooms to recommend when user uploads a photo',
+        int
+    ),
+    'PHOTO_SIMILARITY_MIN_USERS': (
+        1,
+        'Minimum active users required in a room before recommending it as similar',
+        int
+    ),
 }
 
 # Custom User Model

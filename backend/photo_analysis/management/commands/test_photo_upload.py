@@ -196,6 +196,22 @@ class Command(BaseCommand):
                             if suggestion.get('description'):
                                 self.stdout.write(f'     {suggestion.get("description")}')
 
+                    # Similar Rooms (collaborative discovery)
+                    similar_rooms = data.get('similar_rooms', [])
+                    if similar_rooms:
+                        self.stdout.write(self.style.SUCCESS(f'\nSimilar Existing Rooms (Collaborative Discovery): {len(similar_rooms)} found'))
+                        for i, room in enumerate(similar_rooms, 1):
+                            self.stdout.write(
+                                f'  {i}. {self.style.SUCCESS(room.get("room_name"))} '
+                                f'({room.get("active_users")} active user{"s" if room.get("active_users") != 1 else ""})'
+                            )
+                            self.stdout.write(f'     Code: {room.get("room_code")}')
+                            self.stdout.write(f'     URL: {room.get("room_url")}')
+                            self.stdout.write(f'     Similarity: {room.get("similarity_distance"):.4f} (cosine distance)')
+                            self.stdout.write(f'     Source Photo ID: {room.get("source_photo_id")}')
+                    else:
+                        self.stdout.write(self.style.WARNING('\nNo similar existing rooms found'))
+
                     # Caption Data (generated in parallel with suggestions)
                     caption_title = analysis.get('caption_title', '')
                     caption_category = analysis.get('caption_category', '')

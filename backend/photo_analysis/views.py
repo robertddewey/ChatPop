@@ -18,6 +18,7 @@ from .serializers import (
     PhotoAnalysisDetailSerializer,
     PhotoAnalysisListSerializer,
     PhotoUploadSerializer,
+    SimilarRoomSerializer,
 )
 from .utils.rate_limit import photo_analysis_rate_limit, get_client_identifier
 from .utils.fingerprinting.image_hash import calculate_phash
@@ -26,6 +27,7 @@ from .utils.vision.openai_vision import get_vision_provider
 from .utils.image_processing import resize_image_if_needed
 from .utils.caption import generate_caption
 from .utils.embedding import generate_embedding, generate_suggestions_embedding
+from .utils.similarity import find_similar_rooms
 from chatpop.utils.media import MediaStorage
 
 logger = logging.getLogger(__name__)
@@ -120,13 +122,31 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
             if existing_analysis:
                 # Return cached analysis
                 logger.info(f"Returning cached analysis for file_hash={file_hash}")
+
+                # Find similar rooms for cached analysis too
+                similar_rooms = []
+                if existing_analysis.suggestions_embedding is not None:
+                    try:
+                        logger.info("Searching for similar existing chat rooms (cached analysis)")
+                        similar_rooms = find_similar_rooms(
+                            embedding_vector=existing_analysis.suggestions_embedding,
+                            exclude_photo_id=str(existing_analysis.id)
+                        )
+                        logger.info(f"Found {len(similar_rooms)} similar rooms")
+                    except Exception as e:
+                        logger.warning(f"Similarity search failed (non-fatal): {str(e)}", exc_info=True)
+                        similar_rooms = []
+
                 serializer = PhotoAnalysisDetailSerializer(
                     existing_analysis,
                     context={'request': request}
                 )
+                similar_rooms_serializer = SimilarRoomSerializer(similar_rooms, many=True)
+
                 return Response({
                     'cached': True,
-                    'analysis': serializer.data
+                    'analysis': serializer.data,
+                    'similar_rooms': similar_rooms_serializer.data
                 }, status=status.HTTP_200_OK)
 
             # Resize image if needed to reduce token usage
@@ -337,6 +357,24 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
             else:
                 logger.info("No caption data available, caption fields will be empty")
 
+            # Find similar existing chat rooms (collaborative discovery)
+            # This runs after embeddings are generated (if caption data exists)
+            similar_rooms = []
+            if caption_fields.get('suggestions_embedding'):
+                try:
+                    logger.info("Searching for similar existing chat rooms")
+                    similar_rooms = find_similar_rooms(
+                        embedding_vector=caption_fields['suggestions_embedding'],
+                        exclude_photo_id=None  # Will exclude after PhotoAnalysis is created
+                    )
+                    logger.info(f"Found {len(similar_rooms)} similar rooms")
+                except Exception as e:
+                    # Similarity search is non-fatal - log warning and continue
+                    logger.warning(f"Similarity search failed (non-fatal): {str(e)}", exc_info=True)
+                    similar_rooms = []
+            else:
+                logger.info("Skipping similarity search (no suggestions embedding available)")
+
             # Create PhotoAnalysis record
             photo_analysis = PhotoAnalysis.objects.create(
                 image_phash=image_phash,
@@ -355,6 +393,9 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 **caption_fields  # Unpack caption fields (will be empty dict if no caption data)
             )
 
+            # Serialize similar rooms for response
+            similar_rooms_serializer = SimilarRoomSerializer(similar_rooms, many=True)
+
             # Return analysis result
             serializer = PhotoAnalysisDetailSerializer(
                 photo_analysis,
@@ -363,7 +404,8 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
 
             return Response({
                 'cached': False,
-                'analysis': serializer.data
+                'analysis': serializer.data,
+                'similar_rooms': similar_rooms_serializer.data
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
