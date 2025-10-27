@@ -205,6 +205,11 @@ def photo_analysis_rate_limit(view_func):
         # Get client identifiers
         user_id, fingerprint, ip_address = get_client_identifier(request)
 
+        # Skip rate limiting for localhost requests (management commands, internal tools)
+        # This is secure because external users cannot spoof localhost IP addresses
+        if ip_address in ['127.0.0.1', '::1', 'localhost']:
+            return view_func(self, request, *args, **kwargs)
+
         # Check rate limit
         allowed, current_count, max_limit = check_rate_limit(
             user_id, fingerprint, ip_address

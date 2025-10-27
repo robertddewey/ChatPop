@@ -2,8 +2,10 @@
 Embedding generation utility for photo analysis.
 Generates semantic embeddings from image captions using OpenAI's text-embedding models.
 """
+
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from django.conf import settings
 from openai import OpenAI
 
@@ -13,13 +15,7 @@ logger = logging.getLogger(__name__)
 class EmbeddingData:
     """Embedding generation result."""
 
-    def __init__(
-        self,
-        embedding: List[float],
-        model: str,
-        token_usage: Dict[str, int],
-        input_text: str
-    ):
+    def __init__(self, embedding: List[float], model: str, token_usage: Dict[str, int], input_text: str):
         self.embedding = embedding
         self.model = model
         self.token_usage = token_usage
@@ -27,10 +23,7 @@ class EmbeddingData:
 
 
 def _combine_caption_fields(
-    caption_full: str,
-    caption_visible_text: str,
-    caption_title: str,
-    caption_category: str
+    caption_full: str, caption_visible_text: str, caption_title: str, caption_category: str
 ) -> str:
     """
     Combine caption fields into a single text string for embedding.
@@ -75,10 +68,7 @@ def _combine_caption_fields(
     # Join with periods for natural sentence flow
     combined = ". ".join(parts)
 
-    logger.debug(
-        f"Combined caption fields: {len(parts)} parts, "
-        f"{len(combined)} characters"
-    )
+    logger.debug(f"Combined caption fields: {len(parts)} parts, " f"{len(combined)} characters")
 
     return combined
 
@@ -88,7 +78,7 @@ def generate_embedding(
     caption_visible_text: str = "",
     caption_title: str = "",
     caption_category: str = "",
-    model: str = "text-embedding-3-small"
+    model: str = "text-embedding-3-small",
 ) -> EmbeddingData:
     """
     Generate semantic embedding from caption fields using OpenAI Embeddings API.
@@ -141,28 +131,19 @@ def generate_embedding(
             caption_full=caption_full,
             caption_visible_text=caption_visible_text,
             caption_title=caption_title,
-            caption_category=caption_category
+            caption_category=caption_category,
         )
 
-        logger.info(
-            f"Generating embedding with model={model}, "
-            f"input_length={len(input_text)} chars"
-        )
+        logger.info(f"Generating embedding with model={model}, " f"input_length={len(input_text)} chars")
 
         # Call OpenAI Embeddings API
-        response = client.embeddings.create(
-            input=input_text,
-            model=model
-        )
+        response = client.embeddings.create(input=input_text, model=model)
 
         # Extract embedding vector
         embedding = response.data[0].embedding
 
         # Extract token usage
-        token_usage = {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "total_tokens": response.usage.total_tokens
-        }
+        token_usage = {"prompt_tokens": response.usage.prompt_tokens, "total_tokens": response.usage.total_tokens}
 
         logger.info(
             f"Embedding generated successfully: "
@@ -171,75 +152,42 @@ def generate_embedding(
             f"model={response.model}"
         )
 
-        return EmbeddingData(
-            embedding=embedding,
-            model=response.model,
-            token_usage=token_usage,
-            input_text=input_text
-        )
+        return EmbeddingData(embedding=embedding, model=response.model, token_usage=token_usage, input_text=input_text)
 
     except Exception as e:
         logger.error(f"Embedding generation failed: {str(e)}", exc_info=True)
         raise RuntimeError(f"Embedding generation failed: {str(e)}")
 
 
-def _combine_suggestions_with_captions(
-    caption_full: str,
-    caption_visible_text: str,
-    caption_title: str,
-    caption_category: str,
-    suggestions: List[Dict[str, str]]
-) -> str:
+def _combine_suggestions_only(suggestions: List[Dict[str, str]]) -> str:
     """
-    Combine caption fields with ALL suggestion names and descriptions.
+    Combine suggestion names and descriptions for conversational/topic embedding.
 
     This creates the input text for Embedding 2 (Conversational/Topic embedding),
-    which groups photos by conversation potential and social context.
+    which groups photos by conversation potential and social context, NOT by visual content.
 
     Args:
-        caption_full: Full semantic caption
-        caption_visible_text: Visible text/labels from image
-        caption_title: Short title
-        caption_category: Category classification
         suggestions: List of suggestion dicts with 'name' and 'description' keys
 
     Returns:
-        Combined text string optimized for conversational topic embedding
+        Combined text string of all suggestion names and descriptions
 
     Example:
         >>> suggestions = [
         ...     {"name": "Bar Room", "description": "Discuss favorite beers and breweries"},
         ...     {"name": "Happy Hour", "description": "Share cocktail recipes and bar stories"}
         ... ]
-        >>> _combine_suggestions_with_captions(
-        ...     caption_full="Budweiser beer bottle...",
-        ...     caption_visible_text="Budweiser, King of Beers",
-        ...     caption_title="Budweiser Beer Bottle",
-        ...     caption_category="beer bottle",
-        ...     suggestions=suggestions
-        ... )
-        'Budweiser Beer Bottle. beer bottle. Budweiser, King of Beers. Budweiser beer bottle... Bar Room. Discuss favorite beers and breweries. Happy Hour. Share cocktail recipes and bar stories.'
+        >>> _combine_suggestions_only(suggestions)
+        'Bar Room. Discuss favorite beers and breweries. Happy Hour. Share cocktail recipes and bar stories.'
     """
     parts = []
 
-    # Start with caption fields (same as caption embedding)
-    if caption_title:
-        parts.append(caption_title.strip())
-
-    if caption_category:
-        parts.append(caption_category.strip())
-
-    if caption_visible_text:
-        parts.append(caption_visible_text.strip())
-
-    if caption_full:
-        parts.append(caption_full.strip())
-
     # Add ALL suggestion names and descriptions
-    # This is the key difference from caption embedding - we include conversation topics
+    # This enables clustering by conversation topics (e.g., "Bar Room", "Happy Hour")
+    # rather than visual content (e.g., "beer bottle", "bar photo")
     for suggestion in suggestions:
-        name = suggestion.get('name', '').strip()
-        description = suggestion.get('description', '').strip()
+        name = suggestion.get("name", "").strip()
+        description = suggestion.get("description", "").strip()
 
         if name:
             parts.append(name)
@@ -250,7 +198,7 @@ def _combine_suggestions_with_captions(
     combined = ". ".join(parts)
 
     logger.debug(
-        f"Combined caption + suggestions: {len(parts)} parts, "
+        f"Combined suggestions only: {len(parts)} parts, "
         f"{len(suggestions)} suggestions, {len(combined)} characters"
     )
 
@@ -263,7 +211,7 @@ def generate_suggestions_embedding(
     caption_title: str,
     caption_category: str,
     suggestions: List[Dict[str, str]],
-    model: str = "text-embedding-3-small"
+    model: str = "text-embedding-3-small",
 ) -> EmbeddingData:
     """
     Generate conversational/topic embedding from caption fields + ALL suggestion names/descriptions.
@@ -323,14 +271,9 @@ def generate_suggestions_embedding(
         # Initialize OpenAI client
         client = OpenAI(api_key=api_key)
 
-        # Combine caption fields + ALL suggestions (names + descriptions)
-        input_text = _combine_suggestions_with_captions(
-            caption_full=caption_full,
-            caption_visible_text=caption_visible_text,
-            caption_title=caption_title,
-            caption_category=caption_category,
-            suggestions=suggestions
-        )
+        # Combine ALL suggestions (names + descriptions) for topic/conversation embedding
+        # Caption fields are NOT used here - this is intentional for collaborative discovery
+        input_text = _combine_suggestions_only(suggestions=suggestions)
 
         logger.info(
             f"Generating suggestions embedding with model={model}, "
@@ -339,19 +282,13 @@ def generate_suggestions_embedding(
         )
 
         # Call OpenAI Embeddings API
-        response = client.embeddings.create(
-            input=input_text,
-            model=model
-        )
+        response = client.embeddings.create(input=input_text, model=model)
 
         # Extract embedding vector
         embedding = response.data[0].embedding
 
         # Extract token usage
-        token_usage = {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "total_tokens": response.usage.total_tokens
-        }
+        token_usage = {"prompt_tokens": response.usage.prompt_tokens, "total_tokens": response.usage.total_tokens}
 
         logger.info(
             f"Suggestions embedding generated successfully: "
@@ -360,12 +297,7 @@ def generate_suggestions_embedding(
             f"model={response.model}"
         )
 
-        return EmbeddingData(
-            embedding=embedding,
-            model=response.model,
-            token_usage=token_usage,
-            input_text=input_text
-        )
+        return EmbeddingData(embedding=embedding, model=response.model, token_usage=token_usage, input_text=input_text)
 
     except Exception as e:
         logger.error(f"Suggestions embedding generation failed: {str(e)}", exc_info=True)

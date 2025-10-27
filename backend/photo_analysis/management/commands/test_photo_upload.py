@@ -14,9 +14,12 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
+from constance import config
 
 from photo_analysis.models import PhotoAnalysis
 from photo_analysis.utils.fingerprinting.file_hash import calculate_md5
+from photo_analysis.utils.suggestion_blending import MAX_COSINE_DISTANCE
+from pgvector.django import CosineDistance
 
 
 class Command(BaseCommand):
@@ -146,12 +149,20 @@ class Command(BaseCommand):
         
         try:
             data = response.json()
-            
+
             # Pretty print JSON response
             self.stdout.write(f'\n{json.dumps(data, indent=2)}\n')
-            
+
             # Highlight key information
             if response.status_code < 400:
+                # Query database directly for internal fields (removed from API for security)
+                analysis_id = data.get('analysis', {}).get('id')
+                db_record = None
+                if analysis_id:
+                    try:
+                        db_record = PhotoAnalysis.objects.get(id=analysis_id)
+                    except PhotoAnalysis.DoesNotExist:
+                        pass
                 self.stdout.write(self.style.WARNING(f'\n{"=" * 80}'))
                 self.stdout.write(self.style.WARNING('KEY INFORMATION'))
                 self.stdout.write(self.style.WARNING(f'{"=" * 80}\n'))
@@ -165,36 +176,76 @@ class Command(BaseCommand):
                 analysis = data.get('analysis', {})
                 if analysis:
                     self.stdout.write(f'\nAnalysis ID: {analysis.get("id")}')
-                    self.stdout.write(f'Model: {analysis.get("ai_vision_model")}')
+
+                    # Internal fields (from database, not in API)
+                    if db_record:
+                        self.stdout.write(f'Model: {db_record.ai_vision_model} (DB)')
+                        self.stdout.write(f'Storage: {db_record.storage_type} (DB)')
+                        self.stdout.write(f'Times Used: {db_record.times_used} (DB)')
+
+                    # Public fields (from API)
                     self.stdout.write(f'Image pHash: {analysis.get("image_phash")}')
                     self.stdout.write(f'File MD5: {analysis.get("file_hash")}')
                     self.stdout.write(f'File Size: {analysis.get("file_size")} bytes')
-                    self.stdout.write(f'Storage: {analysis.get("storage_type")}')
-                    self.stdout.write(f'Times Used: {analysis.get("times_used")}')
                     
-                    # Token usage
-                    if analysis.get('ai_vision_response_metadata'):
-                        metadata = analysis.get('ai_vision_response_metadata', {})
-                        if 'token_usage' in metadata:
-                            usage = metadata['token_usage']
-                            self.stdout.write(f'\nToken Usage:')
-                            self.stdout.write(f'  Prompt: {usage.get("prompt_tokens")}')
-                            self.stdout.write(f'  Completion: {usage.get("completion_tokens")}')
-                            self.stdout.write(f'  Total: {usage.get("total_tokens")}')
+                    # Token usage (from database)
+                    if db_record and db_record.token_usage:
+                        self.stdout.write(f'\nToken Usage: (DB)')
+                        self.stdout.write(f'  Prompt: {db_record.token_usage.get("prompt_tokens")}')
+                        self.stdout.write(f'  Completion: {db_record.token_usage.get("completion_tokens")}')
+                        self.stdout.write(f'  Total: {db_record.token_usage.get("total_tokens")}')
                     
-                    # Suggestions
+                    # Suggestions (with blended metadata)
                     suggestions = analysis.get('suggestions', [])
                     count = len(suggestions)
                     self.stdout.write(f'\nSuggestions Count: {count}')
                     if suggestions:
-                        self.stdout.write(self.style.SUCCESS('\nChat Name Suggestions:'))
+                        self.stdout.write(self.style.SUCCESS('\nChat Name Suggestions (Blended):'))
+
+                        # Count by source type for summary
+                        existing_rooms_count = sum(1 for s in suggestions if s.get('source') == 'existing_room')
+                        popular_count = sum(1 for s in suggestions if s.get('source') == 'popular')
+                        ai_count = sum(1 for s in suggestions if s.get('source') == 'ai')
+
+                        self.stdout.write(f'  Sources: {existing_rooms_count} existing rooms, {popular_count} popular, {ai_count} fresh AI\n')
+
                         for i, suggestion in enumerate(suggestions, 1):
+                            # Determine source styling
+                            source = suggestion.get('source', 'unknown')
+                            if source == 'existing_room':
+                                source_label = self.style.SUCCESS('[EXISTING ROOM]')
+                            elif source == 'popular':
+                                source_label = self.style.WARNING('[POPULAR]')
+                            else:
+                                source_label = '[AI]'
+
+                            # Main line: name, key, source
                             self.stdout.write(
                                 f'  {i}. {self.style.SUCCESS(suggestion.get("name"))} '
-                                f'(key: {suggestion.get("key")})'
+                                f'(key: {suggestion.get("key")}) {source_label}'
                             )
+
+                            # Description
                             if suggestion.get('description'):
                                 self.stdout.write(f'     {suggestion.get("description")}')
+
+                            # Additional metadata based on source
+                            metadata_parts = []
+
+                            # Existing room: show active users and room URL
+                            if suggestion.get('has_room'):
+                                active_users = suggestion.get('active_users', 0)
+                                metadata_parts.append(f'{active_users} active user{"s" if active_users != 1 else ""}')
+                                if suggestion.get('room_url'):
+                                    metadata_parts.append(f'URL: {suggestion.get("room_url")}')
+
+                            # Popular: show occurrence count
+                            popularity_score = suggestion.get('popularity_score', 0)
+                            if popularity_score > 0:
+                                metadata_parts.append(f'seen in {popularity_score} similar photo{"s" if popularity_score != 1 else ""}')
+
+                            if metadata_parts:
+                                self.stdout.write(f'     {" | ".join(metadata_parts)}')
 
                     # Similar Rooms (collaborative discovery)
                     similar_rooms = data.get('similar_rooms', [])
@@ -218,8 +269,6 @@ class Command(BaseCommand):
                     caption_visible_text = analysis.get('caption_visible_text', '')
                     caption_full = analysis.get('caption_full', '')
                     caption_generated_at = analysis.get('caption_generated_at')
-                    caption_model = analysis.get('caption_model', '')
-                    caption_token_usage = analysis.get('caption_token_usage')
 
                     if caption_title or caption_full:
                         self.stdout.write(self.style.SUCCESS('\nCaption Data (for embeddings):'))
@@ -231,50 +280,124 @@ class Command(BaseCommand):
                             self.stdout.write(f'  Visible Text: "{caption_visible_text}"')
                         if caption_full:
                             self.stdout.write(f'  Full Caption: {caption_full}')
-                        if caption_model:
-                            self.stdout.write(f'  Model: {caption_model}')
                         if caption_generated_at:
                             self.stdout.write(f'  Generated At: {caption_generated_at}')
 
-                        # Caption Token Usage
-                        if caption_token_usage:
-                            self.stdout.write(f'\nCaption Token Usage:')
-                            self.stdout.write(f'  Prompt: {caption_token_usage.get("prompt_tokens")}')
-                            self.stdout.write(f'  Completion: {caption_token_usage.get("completion_tokens")}')
-                            self.stdout.write(f'  Total: {caption_token_usage.get("total_tokens")}')
+                        # Caption Model and Token Usage (from database)
+                        if db_record:
+                            if db_record.caption_model:
+                                self.stdout.write(f'  Model: {db_record.caption_model} (DB)')
+                            if db_record.caption_token_usage:
+                                self.stdout.write(f'\nCaption Token Usage: (DB)')
+                                self.stdout.write(f'  Prompt: {db_record.caption_token_usage.get("prompt_tokens")}')
+                                self.stdout.write(f'  Completion: {db_record.caption_token_usage.get("completion_tokens")}')
+                                self.stdout.write(f'  Total: {db_record.caption_token_usage.get("total_tokens")}')
                     else:
                         self.stdout.write(self.style.WARNING('\nCaption Data: Not generated (disabled or failed)'))
 
-                    # Embedding Data (two types generated from captions)
-                    caption_embedding_generated_at = analysis.get('caption_embedding_generated_at')
-                    suggestions_embedding_generated_at = analysis.get('suggestions_embedding_generated_at')
-
-                    # Embedding 1: Caption/Semantic (broad clustering)
-                    if caption_embedding_generated_at:
-                        self.stdout.write(self.style.SUCCESS('\n✓ Embedding 1 (Caption/Semantic): Generated'))
-                        self.stdout.write(f'  Dimensions: 1536 (text-embedding-3-small)')
-                        self.stdout.write(f'  Generated At: {caption_embedding_generated_at}')
-                        self.stdout.write(f'  Source: caption fields (title, category, visible_text, full)')
-                        self.stdout.write(f'  Purpose: Broad categorization by visual content')
-                    else:
-                        if caption_title or caption_full:
-                            self.stdout.write(self.style.WARNING('\n✗ Embedding 1 (Caption/Semantic): Not generated (failed or disabled)'))
+                    # Embedding Data (two types generated from captions) - from database
+                    if db_record:
+                        # Embedding 1: Caption/Semantic (broad clustering)
+                        if db_record.caption_embedding_generated_at:
+                            self.stdout.write(self.style.SUCCESS('\n✓ Embedding 1 (Caption/Semantic): Generated (DB)'))
+                            self.stdout.write(f'  Dimensions: 1536 (text-embedding-3-small)')
+                            self.stdout.write(f'  Generated At: {db_record.caption_embedding_generated_at}')
+                            self.stdout.write(f'  Source: caption fields (title, category, visible_text, full)')
+                            self.stdout.write(f'  Purpose: Broad categorization by visual content')
                         else:
-                            self.stdout.write(self.style.WARNING('\n✗ Embedding 1 (Caption/Semantic): Not generated (no captions available)'))
+                            if caption_title or caption_full:
+                                self.stdout.write(self.style.WARNING('\n✗ Embedding 1 (Caption/Semantic): Not generated (failed or disabled)'))
+                            else:
+                                self.stdout.write(self.style.WARNING('\n✗ Embedding 1 (Caption/Semantic): Not generated (no captions available)'))
 
-                    # Embedding 2: Suggestions/Topic (PRIMARY for collaborative discovery)
-                    if suggestions_embedding_generated_at:
-                        self.stdout.write(self.style.SUCCESS('\n✓ Embedding 2 (Suggestions/Topic - PRIMARY): Generated'))
-                        self.stdout.write(f'  Dimensions: 1536 (text-embedding-3-small)')
-                        self.stdout.write(f'  Generated At: {suggestions_embedding_generated_at}')
-                        self.stdout.write(f'  Source: captions + all 10 suggestion names + descriptions')
-                        self.stdout.write(f'  Purpose: Collaborative discovery - finding similar chat rooms')
-                        self.stdout.write(f'  How: "bar-room", "happy-hour", "brew-talk" cluster together')
-                    else:
-                        if caption_title or caption_full:
-                            self.stdout.write(self.style.WARNING('\n✗ Embedding 2 (Suggestions/Topic - PRIMARY): Not generated (failed or disabled)'))
+                        # Embedding 2: Suggestions/Topic (PRIMARY for collaborative discovery)
+                        if db_record.suggestions_embedding_generated_at:
+                            self.stdout.write(self.style.SUCCESS('\n✓ Embedding 2 (Suggestions/Topic - PRIMARY): Generated (DB)'))
+                            self.stdout.write(f'  Dimensions: 1536 (text-embedding-3-small)')
+                            self.stdout.write(f'  Generated At: {db_record.suggestions_embedding_generated_at}')
+                            self.stdout.write(f'  Source: captions + all 10 suggestion names + descriptions')
+                            self.stdout.write(f'  Purpose: Collaborative discovery - finding similar chat rooms')
+                            self.stdout.write(f'  How: "bar-room", "happy-hour", "brew-talk" cluster together')
                         else:
-                            self.stdout.write(self.style.WARNING('\n✗ Embedding 2 (Suggestions/Topic - PRIMARY): Not generated (no captions available)'))
+                            if caption_title or caption_full:
+                                self.stdout.write(self.style.WARNING('\n✗ Embedding 2 (Suggestions/Topic - PRIMARY): Not generated (failed or disabled)'))
+                            else:
+                                self.stdout.write(self.style.WARNING('\n✗ Embedding 2 (Suggestions/Topic - PRIMARY): Not generated (no captions available)'))
+
+                        # EMBEDDING SIMILARITY ANALYSIS
+                        # Show top 10 most similar photos for each embedding type
+                        self.stdout.write(self.style.WARNING(f'\n{"=" * 80}'))
+                        self.stdout.write(self.style.WARNING('EMBEDDING SIMILARITY ANALYSIS'))
+                        self.stdout.write(self.style.WARNING(f'{"=" * 80}\n'))
+
+                        # Embedding 1: Caption/Semantic Similarity
+                        if db_record.caption_embedding is not None:
+                            self.stdout.write(self.style.SUCCESS('Top 10 Similar Photos (Embedding 1: Caption/Semantic)'))
+                            self.stdout.write('Purpose: Visual content similarity - "what\'s in the image"\n')
+
+                            similar_caption = PhotoAnalysis.objects.annotate(
+                                distance=CosineDistance('caption_embedding', db_record.caption_embedding)
+                            ).filter(
+                                caption_embedding__isnull=False
+                            ).exclude(
+                                id=db_record.id  # Exclude the uploaded photo itself
+                            ).order_by('distance')[:10]
+
+                            if similar_caption.exists():
+                                for i, photo in enumerate(similar_caption, 1):
+                                    self.stdout.write(
+                                        f'  {i}. Distance: {photo.distance:.4f} | '
+                                        f'Title: {self.style.SUCCESS(photo.caption_title or "N/A")} | '
+                                        f'Category: {photo.caption_category or "N/A"}'
+                                    )
+                                    self.stdout.write(f'     ID: {photo.id} | pHash: {photo.image_phash}')
+                                    if photo.caption_full:
+                                        # Truncate long captions
+                                        caption_preview = photo.caption_full[:100] + '...' if len(photo.caption_full) > 100 else photo.caption_full
+                                        self.stdout.write(f'     Caption: {caption_preview}')
+                            else:
+                                self.stdout.write('  No other photos with caption embeddings found in database')
+                        else:
+                            self.stdout.write(self.style.WARNING('Embedding 1 (Caption/Semantic): Not available - cannot show similarity'))
+
+                        # Embedding 2: Suggestions/Topic Similarity (PRIMARY)
+                        if db_record.suggestions_embedding is not None:
+                            # Use hardcoded distance cutoff from suggestion_blending module (matches production K-NN query)
+                            max_distance = MAX_COSINE_DISTANCE  # 0.4 (from suggestion_blending.py)
+
+                            self.stdout.write(self.style.SUCCESS('\nTop 10 Similar Photos (Embedding 2: Suggestions/Topic - PRIMARY)'))
+                            self.stdout.write(f'Purpose: Conversation similarity - "what people might chat about"')
+                            self.stdout.write(f'Distance cutoff: {max_distance} (photos farther than this are NOT used for popular suggestions)\n')
+
+                            similar_suggestions = PhotoAnalysis.objects.annotate(
+                                distance=CosineDistance('suggestions_embedding', db_record.suggestions_embedding)
+                            ).filter(
+                                suggestions_embedding__isnull=False,
+                                distance__lt=max_distance  # Only show photos within clustering distance
+                            ).exclude(
+                                id=db_record.id  # Exclude the uploaded photo itself
+                            ).order_by('distance')[:10]
+
+                            if similar_suggestions.exists():
+                                for i, photo in enumerate(similar_suggestions, 1):
+                                    # Get first 3 suggestion names for preview
+                                    suggestion_names = []
+                                    if photo.suggestions and 'suggestions' in photo.suggestions:
+                                        for sug in photo.suggestions['suggestions'][:3]:
+                                            suggestion_names.append(sug.get('name', ''))
+                                    suggestions_preview = ', '.join(suggestion_names) if suggestion_names else 'N/A'
+
+                                    self.stdout.write(
+                                        f'  {i}. Distance: {photo.distance:.4f} | '
+                                        f'Title: {self.style.SUCCESS(photo.caption_title or "N/A")} | '
+                                        f'Category: {photo.caption_category or "N/A"}'
+                                    )
+                                    self.stdout.write(f'     ID: {photo.id} | pHash: {photo.image_phash}')
+                                    self.stdout.write(f'     Top Suggestions: {suggestions_preview}')
+                            else:
+                                self.stdout.write('  No other photos with suggestion embeddings found in database')
+                        else:
+                            self.stdout.write(self.style.WARNING('\nEmbedding 2 (Suggestions/Topic): Not available - cannot show similarity'))
 
                 # Rate limit info
                 rate_limit = data.get('rate_limit', {})

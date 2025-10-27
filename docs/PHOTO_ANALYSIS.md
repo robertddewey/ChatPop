@@ -2042,8 +2042,8 @@ This indicates no active rooms match the photo's semantic themes (either no simi
 
 ---
 
-**Last Updated**: 2025-10-23
-**Status**: ✅ **Fully Implemented & Production Ready**
+**Last Updated**: 2025-10-26
+**Status**: ✅ **Fully Implemented & Production Ready** | 🚧 **Brand Detection & SerpAPI Enhancement In Progress**
 **Test Coverage**: 78/78 tests passing
 **Cost Optimization**: 80-90% reduction vs naive implementation
 **Embedding System**: ✅ **Dual embeddings implemented** (caption + suggestions)
@@ -2061,3 +2061,935 @@ This indicates no active rooms match the photo's semantic themes (either no simi
 - Test collaborative discovery with real users
 - Monitor embedding quality and adjust similarity thresholds
 - A/B testing: do users prefer joining existing rooms vs creating new ones?
+
+---
+
+## Brand Detection & SerpAPI Integration (Phase 2 - In Progress)
+
+### Overview
+
+This enhancement adds intelligent brand/product detection and reverse image search capabilities to improve chat name suggestions for branded products and merchandise.
+
+**Key Goals:**
+1. **Brand-Specific Suggestions**: Generate 1-2 brand-specific chat names when prominent brands detected (e.g., "Budweiser Bar" instead of just "Bar Room")
+2. **Smart Product Detection**: Distinguish between branded products (Pikachu, Labubu, Budweiser) and generic items (sunset, cat, dog)
+3. **Conditional SerpAPI Search**: Only trigger reverse image search for unknown branded products
+4. **Cost Optimization**: Avoid unnecessary API calls for non-products and known brands
+5. **Enhanced Collaborative Discovery**: Better semantic clustering for brand-specific rooms
+
+### Problem Statement
+
+**Current Behavior:**
+- Photo of Budweiser beer → Suggestions: "Bar Room", "Happy Hour", "Brew Talk"
+- Photo of Pikachu plush → Suggestions: "Yellow Friend", "Cute Companion", "Toy Talk"
+- Photo of Labubu doll → Suggestions: "Doll Collection", "Toy Room", "Collectibles"
+
+**Desired Behavior:**
+- Photo of Budweiser beer → Suggestions: "Budweiser Bar", "Bar Room", "Happy Hour", "Brew Talk", etc.
+- Photo of Pikachu plush → Suggestions: "Pikachu Room", "Pokemon Fans", "Happy Hour", "Toy Talk", etc.
+- Photo of Labubu doll → Suggestions: "Labubu Lovers", "Collectible Fans", "Toy Room", etc.
+
+**Benefits:**
+- **Better Collaborative Discovery**: Users uploading same brand cluster into same rooms
+- **Recognizable Room Names**: Brand-specific names are more appealing and descriptive
+- **Product Identification**: SerpAPI can identify unknown products for better suggestions
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. User uploads photo                                               │
+└────────────────┬────────────────────────────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 2. Calculate hashes (MD5 + pHash)                                   │
+└────────────────┬────────────────────────────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ 3. Check for cached analysis (exact + similar)                      │
+└────────┬───────────────────────────────┬────────────────────────────┘
+         │                               │
+    Cache HIT                       Cache MISS
+         │                               │
+         ▼                               ▼
+┌─────────────────────┐    ┌─────────────────────────────────────────┐
+│ Skip brand detection│    │ 4. PARALLEL API CALLS:                  │
+│ Skip SerpAPI        │    │    - Brand Detection (gpt-4o-mini, fast)│
+│ Return cached       │    │    - Caption Generation (gpt-4o-mini)   │
+│ suggestions         │    │    - Chat Suggestions (gpt-4o-mini)     │
+└─────────────────────┘    └────────┬────────────────────────────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────────────────────────┐
+                          │ 5. Brand Detection Analysis:             │
+                          │    - contains_product: true/false        │
+                          │    - product_type: toy/beverage/etc      │
+                          │    - detected_brand: "Budweiser"/"GENERIC│
+                          └────────┬─────────────────────────────────┘
+                                   │
+                                   ▼
+                          ┌──────────────────────────────────────────┐
+                          │ 6. Smart SerpAPI Trigger Logic:          │
+                          │    IF contains_product = true            │
+                          │    AND product_type is valid             │
+                          │    AND detected_brand = "GENERIC"        │
+                          │    THEN trigger SerpAPI reverse search   │
+                          │    ELSE skip SerpAPI                     │
+                          └────────┬─────────────────────────────────┘
+                                   │
+                    ┌──────────────┴──────────────┐
+                    │                             │
+             Skip SerpAPI                  Run SerpAPI
+                    │                             │
+                    ▼                             ▼
+         ┌────────────────────┐      ┌──────────────────────────────┐
+         │ Use detected_brand │      │ Extract best product match   │
+         │ from vision API    │      │ from SerpAPI results         │
+         └────────┬───────────┘      └────────┬─────────────────────┘
+                  │                           │
+                  └──────────┬────────────────┘
+                             │
+                             ▼
+                  ┌──────────────────────────────────────────────────┐
+                  │ 7. Generate Brand-Enhanced Suggestions:          │
+                  │    - 1-2 brand-specific (e.g., "Budweiser Bar")  │
+                  │    - 8 generic (e.g., "Happy Hour", "Bar Room")  │
+                  └────────┬─────────────────────────────────────────┘
+                           │
+                           ▼
+                  ┌──────────────────────────────────────────────────┐
+                  │ 8. Generate Dual Embeddings:                     │
+                  │    - Caption embedding (visual content)          │
+                  │    - Suggestions embedding (conversation topics) │
+                  └────────┬─────────────────────────────────────────┘
+                           │
+                           ▼
+                  ┌──────────────────────────────────────────────────┐
+                  │ 9. Collaborative Discovery:                      │
+                  │    - Find similar rooms using embeddings         │
+                  │    - Merge existing rooms + new suggestions      │
+                  └────────┬─────────────────────────────────────────┘
+                           │
+                           ▼
+                  ┌──────────────────────────────────────────────────┐
+                  │ 10. Return to user:                              │
+                  │     - 10 suggestions (1-2 brand + 8 generic)     │
+                  │     - Similar existing rooms                     │
+                  │     - Brand metadata (for analytics)             │
+                  └──────────────────────────────────────────────────┘
+```
+
+### Database Schema Additions
+
+New fields added to `PhotoAnalysis` model:
+
+```python
+class PhotoAnalysis(models.Model):
+    # ... existing fields ...
+
+    # === BRAND/PRODUCT DETECTION (NEW) ===
+
+    # Brand detected from vision API or SerpAPI
+    # - Examples: "Budweiser", "Pikachu", "Labubu", "Starbucks", "GENERIC"
+    # - "GENERIC" means no specific brand identified
+    # - Used for brand-enhanced suggestions
+    caption_detected_brand = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Brand detected from vision API or SerpAPI (GENERIC if unknown)"
+    )
+
+    # How the brand was detected
+    # - 'vision_api': Detected by OpenAI Vision during brand scan
+    # - 'serpapi': Identified via SerpAPI reverse image search
+    # - 'none': No brand detection performed
+    brand_detection_source = models.CharField(
+        max_length=20,
+        choices=[
+            ('vision_api', 'Vision API'),
+            ('serpapi', 'SerpAPI'),
+            ('none', 'None')
+        ],
+        default='none',
+        help_text="How the brand was detected"
+    )
+
+    # Whether image prominently features a product/merchandise
+    # - true: Image shows a specific product (toy, beverage, collectible, etc.)
+    # - false: Image shows generic scene (sunset, cat, dog, nature, etc.)
+    # - Determines if SerpAPI search should be triggered
+    contains_product = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Whether image prominently features a product/merchandise"
+    )
+
+    # Type of product if contains_product=true
+    # - Used for categorization and analytics
+    # - Helps determine if SerpAPI is worth the cost
+    product_type = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        choices=[
+            ('toy', 'Toy/Plush'),
+            ('beverage', 'Beverage'),
+            ('collectible', 'Collectible'),
+            ('merchandise', 'Merchandise'),
+            ('packaged_good', 'Packaged Good'),
+            ('electronics', 'Electronics'),
+            ('apparel', 'Apparel/Clothing'),
+            ('other', 'Other Product')
+        ],
+        help_text="Type of product if contains_product=true"
+    )
+
+    # === SERPAPI INTEGRATION (NEW) ===
+
+    # Whether SerpAPI reverse image search was performed
+    # - true: SerpAPI was called (costs money)
+    # - false: SerpAPI was skipped (no product, known brand, or cached)
+    serpapi_searched = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Whether SerpAPI reverse image search was performed"
+    )
+
+    # Raw SerpAPI response data
+    # - Format: {"visual_matches": [...], "knowledge_graph": {...}, ...}
+    # - Useful for debugging and reprocessing
+    # - Null if SerpAPI not called
+    serpapi_results = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Raw SerpAPI response data"
+    )
+
+    # Best product match from SerpAPI
+    # - Example: "Pikachu Pokemon Plush Toy", "Budweiser Lager Beer"
+    # - Extracted from SerpAPI knowledge graph or visual matches
+    # - Used to enhance chat suggestions with specific product names
+    serpapi_identified_product = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Best product match from SerpAPI"
+    )
+
+    # Token usage for SerpAPI call (cost tracking)
+    # - SerpAPI doesn't use tokens, but we track credits/searches used
+    # - Format: {"searches_used": 1, "cost_estimate_usd": 0.01}
+    serpapi_cost_data = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="SerpAPI cost tracking data"
+    )
+
+    # === CHAT CREATION TRACKING (UPDATED) ===
+
+    # Chat code created from this analysis
+    # - Example: "budweiser-bar", "pikachu-room", "happy-hour"
+    # - Used for analytics: which suggestions led to room creation?
+    # - Links PhotoAnalysis → ChatRoom
+    created_chat_code = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Chat code created from this analysis"
+    )
+```
+
+**Migration Required:**
+```bash
+cd backend
+./venv/bin/python manage.py makemigrations photo_analysis
+./venv/bin/python manage.py migrate photo_analysis
+```
+
+### Brand Detection Strategy
+
+**Approach:** Parallel Quick Scan (gpt-4o-mini)
+
+**API Call Timing:**
+- **When:** Immediately after cache miss (parallel with caption generation)
+- **Model:** gpt-4o-mini (fast, cheap: ~$0.0003 per call)
+- **Tokens:** ~50 tokens per request
+- **Latency:** ~200-300ms (runs in parallel with caption)
+
+**Brand Detection Prompt:**
+
+```python
+BRAND_DETECTION_PROMPT = """Analyze this image and extract product/brand information in JSON format:
+
+{
+  "contains_product": true/false,
+  "product_type": "toy|beverage|collectible|merchandise|packaged_good|electronics|apparel|other|null",
+  "detected_brand": "brand name or GENERIC"
+}
+
+Rules:
+- contains_product: true ONLY if image prominently features a specific product, merchandise, or branded item
+- contains_product: false for generic scenes (sunset, cat, dog, nature, landscapes, people without products)
+- product_type: category of product (null if contains_product=false)
+- detected_brand: specific brand name (e.g., "Budweiser", "Pikachu", "Labubu") or "GENERIC" if unidentified
+
+Examples:
+- Budweiser beer bottle → {"contains_product": true, "product_type": "beverage", "detected_brand": "Budweiser"}
+- Generic sunset → {"contains_product": false, "product_type": null, "detected_brand": null}
+- Unknown plush toy → {"contains_product": true, "product_type": "toy", "detected_brand": "GENERIC"}
+- Pikachu plush → {"contains_product": true, "product_type": "toy", "detected_brand": "Pikachu"}
+- Cat sitting on couch → {"contains_product": false, "product_type": null, "detected_brand": null}
+"""
+```
+
+**Implementation:**
+
+```python
+# In backend/photo_analysis/utils/vision/brand_detection.py
+
+from openai import OpenAI
+from constance import config
+
+def detect_brand_quick_scan(image_file: BinaryIO) -> BrandDetectionResult:
+    """
+    Quick brand detection using gpt-4o-mini (parallel with caption).
+
+    Returns:
+        BrandDetectionResult with:
+        - contains_product: bool
+        - product_type: str | None
+        - detected_brand: str | None
+        - token_usage: dict
+    """
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+    # Encode image to base64
+    base64_image = encode_image_to_base64(image_file)
+
+    # Call OpenAI Vision API with brand detection prompt
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": BRAND_DETECTION_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}",
+                            "detail": "low"  # Low detail = faster + cheaper
+                        }
+                    }
+                ]
+            }
+        ],
+        max_tokens=100,
+        temperature=0.3,  # Low temperature for consistent extraction
+        response_format={"type": "json_object"}
+    )
+
+    # Parse response
+    data = json.loads(response.choices[0].message.content)
+
+    return BrandDetectionResult(
+        contains_product=data.get('contains_product', False),
+        product_type=data.get('product_type'),
+        detected_brand=data.get('detected_brand'),
+        token_usage={
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.total_tokens
+        }
+    )
+```
+
+### Smart SerpAPI Trigger Logic
+
+**Decision Tree:**
+
+```python
+def should_trigger_serpapi(brand_result: BrandDetectionResult) -> bool:
+    """
+    Determine if SerpAPI reverse image search should be triggered.
+
+    Three conditions must ALL be true:
+    1. Image contains a product (not generic scene)
+    2. Product type is valid (not null/unknown)
+    3. Brand is unknown (detected_brand == "GENERIC")
+
+    Returns:
+        bool: True if SerpAPI should be called, False otherwise
+    """
+    # Condition 1: Must be a product
+    if not brand_result.contains_product:
+        logger.info("Skipping SerpAPI: No product in image")
+        return False
+
+    # Condition 2: Must have valid product type
+    valid_types = ['toy', 'beverage', 'collectible', 'merchandise',
+                   'packaged_good', 'electronics', 'apparel', 'other']
+    if not brand_result.product_type or brand_result.product_type not in valid_types:
+        logger.info("Skipping SerpAPI: Invalid product type")
+        return False
+
+    # Condition 3: Must be unknown brand
+    if brand_result.detected_brand and brand_result.detected_brand != "GENERIC":
+        logger.info(f"Skipping SerpAPI: Brand already detected ({brand_result.detected_brand})")
+        return False
+
+    logger.info("Triggering SerpAPI: Unknown branded product detected")
+    return True
+```
+
+**Examples:**
+
+| Image | contains_product | product_type | detected_brand | SerpAPI? | Reason |
+|-------|-----------------|--------------|----------------|----------|--------|
+| Budweiser bottle | true | beverage | Budweiser | ❌ No | Brand known |
+| Generic sunset | false | null | null | ❌ No | Not a product |
+| Unknown toy | true | toy | GENERIC | ✅ Yes | Unknown product |
+| Pikachu plush | true | toy | Pikachu | ❌ No | Brand known |
+| Cat photo | false | null | null | ❌ No | Not a product |
+| Unknown beer can | true | beverage | GENERIC | ✅ Yes | Unknown product |
+| Labubu doll | true | collectible | Labubu | ❌ No | Brand known |
+| Unknown gadget | true | electronics | GENERIC | ✅ Yes | Unknown product |
+
+**Cost Savings:**
+
+- **Without filtering:** 100% of uploads trigger SerpAPI ($0.01 each)
+- **With filtering:** ~33% of uploads trigger SerpAPI (only unknown products)
+- **Savings:** ~67% reduction in SerpAPI costs
+
+### SerpAPI Integration
+
+**Library:** `google-search-results` (official SerpAPI Python client)
+
+```bash
+pip install google-search-results
+```
+
+**Implementation:**
+
+```python
+# In backend/photo_analysis/utils/serpapi/reverse_search.py
+
+from serpapi import GoogleSearch
+from constance import config
+
+def reverse_image_search(image_url: str) -> SerpAPIResult:
+    """
+    Perform reverse image search using SerpAPI Google Lens API.
+
+    Args:
+        image_url: Public URL to image (must be accessible by SerpAPI)
+
+    Returns:
+        SerpAPIResult with:
+        - identified_product: str | None
+        - raw_results: dict
+        - search_cost: float
+    """
+    params = {
+        "engine": "google_lens",
+        "url": image_url,
+        "api_key": settings.SERPAPI_API_KEY
+    }
+
+    search = GoogleSearch(params)
+    results = search.get_dict()
+
+    # Extract best product match
+    identified_product = extract_best_product_match(results)
+
+    return SerpAPIResult(
+        identified_product=identified_product,
+        raw_results=results,
+        search_cost=0.01  # $0.01 per search (50 free/month, then paid)
+    )
+
+def extract_best_product_match(results: dict) -> str | None:
+    """
+    Extract the most likely product name from SerpAPI results.
+
+    Priority:
+    1. Knowledge graph title (most authoritative)
+    2. First visual match title (most similar image)
+    3. None (no confident match)
+    """
+    # Try knowledge graph first
+    if 'knowledge_graph' in results and 'title' in results['knowledge_graph']:
+        return results['knowledge_graph']['title']
+
+    # Try visual matches
+    if 'visual_matches' in results and len(results['visual_matches']) > 0:
+        first_match = results['visual_matches'][0]
+        if 'title' in first_match:
+            return first_match['title']
+
+    return None
+```
+
+**Image URL Handling:**
+
+SerpAPI requires a publicly accessible image URL. We have two options:
+
+**Option A: Temporary Signed S3 URL** (Recommended)
+```python
+# Generate temporary URL valid for 5 minutes
+s3_url = MediaStorage.generate_presigned_url(
+    image_path=photo_analysis.image_path,
+    expiration=300  # 5 minutes
+)
+serpapi_result = reverse_image_search(s3_url)
+```
+
+**Option B: Django Proxy Endpoint**
+```python
+# Use public-facing Django endpoint
+# Requires ALLOWED_HOSTS to include public domain
+django_url = f"https://chatpop.app/api/photo-analysis/media/{image_path}"
+serpapi_result = reverse_image_search(django_url)
+```
+
+### Enhanced Suggestion Generation
+
+**Brand-Context Prompt:**
+
+```python
+def generate_brand_enhanced_prompt(
+    base_prompt: str,
+    detected_brand: str | None
+) -> str:
+    """
+    Enhance the suggestion prompt with brand context.
+
+    Args:
+        base_prompt: Original PHOTO_ANALYSIS_PROMPT from Constance
+        detected_brand: Brand name or None
+
+    Returns:
+        Enhanced prompt with brand instructions
+    """
+    if not detected_brand or detected_brand == "GENERIC":
+        return base_prompt
+
+    brand_instruction = f"""
+IMPORTANT: This image features the brand "{detected_brand}".
+
+Include 1-2 suggestions that incorporate the brand name naturally:
+- Example: "Budweiser Bar", "Budweiser Fans", "Budweiser Lounge"
+- Example: "Pikachu Room", "Pikachu Fans", "Pikachu Lovers"
+
+The remaining 8 suggestions should be generic conversation topics related to the image subject.
+
+Ensure the brand-specific suggestions are in Title Case and use the exact brand name.
+"""
+
+    return base_prompt + brand_instruction
+```
+
+**Suggestion Composition:**
+
+```python
+def generate_suggestions_with_brand_context(
+    image_file: BinaryIO,
+    brand_result: BrandDetectionResult,
+    serpapi_result: SerpAPIResult | None
+) -> List[ChatSuggestion]:
+    """
+    Generate 10 suggestions with brand context.
+
+    Composition:
+    - 1-2 brand-specific suggestions (if brand detected)
+    - 8-9 generic suggestions (conversation topics)
+
+    Example for Budweiser photo:
+    1. "Budweiser Bar" (brand-specific)
+    2. "Happy Hour" (generic)
+    3. "Bar Room" (generic)
+    4. "Brew Talk" (generic)
+    5. "Beer Enthusiasts" (generic)
+    6. "Pub Chat" (generic)
+    7. "Cheers" (generic)
+    8. "Cold One" (generic)
+    9. "Beer Garden" (generic)
+    10. "King Of Beers" (brand-specific, references Budweiser slogan)
+    """
+    # Determine final brand name
+    final_brand = (
+        serpapi_result.identified_product if serpapi_result
+        else brand_result.detected_brand
+    )
+
+    # Generate enhanced prompt
+    enhanced_prompt = generate_brand_enhanced_prompt(
+        base_prompt=config.PHOTO_ANALYSIS_PROMPT,
+        detected_brand=final_brand
+    )
+
+    # Call Vision API with brand-enhanced prompt
+    vision_provider = get_vision_provider()
+    analysis_result = vision_provider.analyze_image(
+        image_file=image_file,
+        prompt=enhanced_prompt,
+        max_suggestions=10,
+        temperature=0.7
+    )
+
+    return analysis_result.suggestions
+```
+
+### Collaborative Discovery Enhancement
+
+**Brand-Based Semantic Clustering:**
+
+The existing dual-embedding system already supports brand-based clustering naturally:
+
+**How it works:**
+1. Brand-specific suggestions are included in `suggestions_embedding`
+2. Photos of same brand generate similar suggestion names
+3. Embedding vectors cluster together semantically
+
+**Example:**
+
+**Person A uploads Budweiser bottle:**
+- Suggestions: "Budweiser Bar", "Happy Hour", "Brew Talk", etc.
+- Embedding captures: "Budweiser", "bar", "beer", "happy hour"
+- Creates room: "Budweiser Bar"
+
+**Person B uploads Budweiser can:**
+- Suggestions: "Budweiser Lounge", "Beer Chat", "Happy Hour", etc.
+- Embedding captures: "Budweiser", "lounge", "beer", "happy hour"
+- Cosine distance: ~0.15 (very similar)
+- Sees "Budweiser Bar (1 user)" in similar_rooms
+
+**Key Insight:** No template matching needed. The LLM naturally generates similar brand-specific names for the same brand, creating semantic clustering through embeddings.
+
+### Constance Settings (Django Admin)
+
+New configurable settings:
+
+```python
+CONSTANCE_CONFIG = {
+    # ... existing settings ...
+
+    # === Brand Detection Settings (NEW) ===
+
+    'PHOTO_BRAND_DETECTION_ENABLED': (
+        True,
+        'Enable AI brand/product detection for photo analysis',
+        bool
+    ),
+
+    'PHOTO_BRAND_DETECTION_MODEL': (
+        'gpt-4o-mini',
+        'OpenAI model for brand detection (gpt-4o-mini recommended for speed)',
+        str
+    ),
+
+    # === SerpAPI Settings (NEW) ===
+
+    'PHOTO_SERPAPI_ENABLED': (
+        True,
+        'Enable SerpAPI reverse image search for unknown products',
+        bool
+    ),
+
+    'PHOTO_SERPAPI_ONLY_UNKNOWN_BRANDS': (
+        True,
+        'Only use SerpAPI for products with detected_brand=GENERIC (recommended for cost savings)',
+        bool
+    ),
+
+    'PHOTO_SERPAPI_SKIP_GENERIC_SCENES': (
+        True,
+        'Skip SerpAPI for non-products (sunset, cat, dog, etc.) to save costs',
+        bool
+    ),
+
+    # === Brand-Enhanced Suggestions (NEW) ===
+
+    'PHOTO_BRAND_SUGGESTIONS_MAX': (
+        2,
+        'Maximum number of brand-specific suggestions (rest will be generic)',
+        int
+    ),
+}
+```
+
+### Cost Analysis
+
+**Per-Upload Cost Breakdown (WITH Brand Detection & SerpAPI):**
+
+| Component | Model/Service | Tokens | Cost | When |
+|-----------|--------------|--------|------|------|
+| Brand Detection | gpt-4o-mini | ~50 | $0.0003 | Always (if enabled) |
+| Caption Generation | gpt-4o-mini | ~50 | $0.0001 | Always |
+| Suggestion Generation | gpt-4o-mini | ~150 | $0.0015 | Always |
+| Caption Embedding | text-embedding-3-small | ~50 | $0.000001 | Always |
+| Suggestions Embedding | text-embedding-3-small | ~300 | $0.000006 | Always |
+| SerpAPI Search | Google Lens API | N/A | $0.01 | Conditional (~33%) |
+| **Total (with SerpAPI)** | | ~600 | **$0.0119** | 33% of uploads |
+| **Total (without SerpAPI)** | | ~600 | **$0.0019** | 67% of uploads |
+
+**Monthly Cost Estimates (1000 uploads/month):**
+
+| Scenario | SerpAPI Trigger Rate | OpenAI Cost | SerpAPI Cost | Total Cost |
+|----------|---------------------|-------------|--------------|------------|
+| **No filtering** (naive) | 100% | $1.90 | $10.00 | **$11.90** |
+| **Smart filtering** (recommended) | 33% | $1.90 | $3.30 | **$5.20** |
+| **Disabled SerpAPI** | 0% | $1.90 | $0.00 | **$1.90** |
+
+**Cost Savings:** 56% reduction with smart filtering vs naive approach
+
+### Implementation Phases
+
+**Phase 1: Foundation** (Current)
+- [x] Install SerpAPI Python client library
+- [ ] Create brand detection utility module
+- [ ] Create SerpAPI utility module
+- [ ] Update PhotoAnalysis model with new fields
+- [ ] Create database migration
+- [ ] Add Constance settings
+
+**Phase 2: Core Integration**
+- [ ] Implement parallel brand detection API call
+- [ ] Implement smart SerpAPI trigger logic
+- [ ] Integrate SerpAPI reverse image search
+- [ ] Extract product names from SerpAPI results
+- [ ] Update suggestion generation with brand context
+
+**Phase 3: Testing & Validation**
+- [ ] Test with branded products (Budweiser, Pikachu, Labubu)
+- [ ] Test with generic scenes (sunset, cat, dog)
+- [ ] Test with unknown products
+- [ ] Validate cost savings (SerpAPI trigger rate)
+- [ ] Test collaborative discovery with brand clustering
+
+**Phase 4: Progressive WebSocket Updates** (Future)
+- [ ] Create WebSocket consumer for photo analysis
+- [ ] Update routing configuration
+- [ ] Refactor analysis service for progressive updates
+- [ ] Update frontend to handle WebSocket stream
+- [ ] Implement phased suggestion delivery:
+  1. Immediate: Generic suggestions
+  2. +500ms: Brand-specific suggestions added
+  3. +2s: SerpAPI results added (if applicable)
+
+**Phase 5: Monitoring & Optimization**
+- [ ] Track SerpAPI trigger rate and cost
+- [ ] Monitor brand detection accuracy
+- [ ] A/B test: brand-specific vs generic suggestions
+- [ ] Analyze collaborative discovery effectiveness
+- [ ] Optimize prompts based on user behavior
+
+### Progressive WebSocket Updates (Phase 4 - Future)
+
+**Goal:** Deliver suggestions progressively as analysis completes
+
+**User Experience:**
+1. User uploads photo → sees "Analyzing..." spinner
+2. **Immediate (500ms):** Generic suggestions appear ("Happy Hour", "Bar Room")
+3. **+1s:** Brand detected → brand-specific suggestions added ("Budweiser Bar")
+4. **+3s:** SerpAPI completes → refined suggestions added
+
+**WebSocket Message Types:**
+
+```python
+# Message 1: Initial generic suggestions (fast)
+{
+  "type": "suggestions_initial",
+  "suggestions": [
+    {"name": "Happy Hour", "key": "happy-hour", "description": "..."},
+    {"name": "Bar Room", "key": "bar-room", "description": "..."},
+    # ... 8 more generic suggestions
+  ]
+}
+
+# Message 2: Brand detected (brand detection completes)
+{
+  "type": "brand_detected",
+  "brand": "Budweiser",
+  "product_type": "beverage"
+}
+
+# Message 3: Brand-enhanced suggestions (replaces initial)
+{
+  "type": "suggestions_enhanced",
+  "suggestions": [
+    {"name": "Budweiser Bar", "key": "budweiser-bar", "description": "...", "is_brand_specific": true},
+    {"name": "Happy Hour", "key": "happy-hour", "description": "..."},
+    # ... 8 more suggestions (mix of brand + generic)
+  ]
+}
+
+# Message 4: SerpAPI product identified (if applicable)
+{
+  "type": "product_identified",
+  "product": "Budweiser Lager Beer (12oz Can)",
+  "source": "serpapi"
+}
+
+# Message 5: Analysis complete
+{
+  "type": "analysis_complete",
+  "analysis_id": "a1b2c3d4-...",
+  "similar_rooms": [...],
+  "rate_limit": {...}
+}
+```
+
+**WebSocket Architecture (Microservice-Ready):**
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ AWS Application Load Balancer (ALB)                              │
+│ - Routes WebSocket connections to backend                        │
+│ - Sticky sessions (route by connection ID)                       │
+└────────────────┬─────────────────────────────────────────────────┘
+                 │
+                 ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ ECS/Fargate Service (Auto-scaling)                               │
+│ - Multiple Django + Daphne containers                            │
+│ - Each container handles WebSocket connections                   │
+└────────────────┬─────────────────────────────────────────────────┘
+                 │
+                 ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ Redis Channel Layer (Distributed)                                │
+│ - Broadcasts messages across all containers                      │
+│ - Enables horizontal scaling                                     │
+│ - Same code works on monolith or microservices                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Key Insight:** WebSocket code is IDENTICAL for monolith and microservices. Redis channel layer abstracts the distribution.
+
+### Testing Strategy
+
+**Manual Testing:**
+
+```bash
+# Test 1: Known brand (should skip SerpAPI)
+./venv/bin/python manage.py test_photo_upload budweiser_bottle.jpg --no-cache
+# Expected: brand="Budweiser", serpapi_searched=false
+
+# Test 2: Generic scene (should skip SerpAPI)
+./venv/bin/python manage.py test_photo_upload sunset.jpg --no-cache
+# Expected: contains_product=false, serpapi_searched=false
+
+# Test 3: Unknown product (should trigger SerpAPI)
+./venv/bin/python manage.py test_photo_upload unknown_toy.jpg --no-cache
+# Expected: brand="GENERIC", serpapi_searched=true, product identified
+
+# Test 4: Pikachu plush (should skip SerpAPI)
+./venv/bin/python manage.py test_photo_upload pikachu_plush.jpg --no-cache
+# Expected: brand="Pikachu", serpapi_searched=false
+```
+
+**Unit Tests:**
+
+```python
+# backend/photo_analysis/tests/test_brand_detection.py
+
+class BrandDetectionTests(TestCase):
+    def test_detect_known_brand(self):
+        """Brand detection identifies known brands"""
+        # Test with Budweiser image
+        # Assert: detected_brand="Budweiser"
+
+    def test_detect_generic_product(self):
+        """Brand detection returns GENERIC for unknown products"""
+        # Test with unknown toy
+        # Assert: detected_brand="GENERIC"
+
+    def test_non_product_scene(self):
+        """Brand detection returns null for non-products"""
+        # Test with sunset image
+        # Assert: contains_product=false
+
+class SerpAPITriggerTests(TestCase):
+    def test_trigger_for_unknown_product(self):
+        """SerpAPI triggers for unknown branded products"""
+        # Assert: should_trigger_serpapi() returns True
+
+    def test_skip_for_known_brand(self):
+        """SerpAPI skips for known brands"""
+        # Assert: should_trigger_serpapi() returns False
+
+    def test_skip_for_non_product(self):
+        """SerpAPI skips for generic scenes"""
+        # Assert: should_trigger_serpapi() returns False
+
+class BrandSuggestionsTests(TestCase):
+    def test_brand_specific_suggestions(self):
+        """Suggestions include brand-specific names"""
+        # Test with Budweiser
+        # Assert: "Budweiser Bar" in suggestions
+
+    def test_suggestion_composition(self):
+        """Suggestions have 1-2 brand + 8 generic"""
+        # Assert: brand_suggestions <= 2
+        # Assert: total_suggestions == 10
+```
+
+### Analytics & Monitoring
+
+**Key Metrics to Track:**
+
+```python
+# Brand Detection Accuracy
+brand_detection_rate = PhotoAnalysis.objects.filter(
+    caption_detected_brand__isnull=False
+).count() / PhotoAnalysis.objects.count()
+
+# SerpAPI Trigger Rate (target: ~33%)
+serpapi_trigger_rate = PhotoAnalysis.objects.filter(
+    serpapi_searched=True
+).count() / PhotoAnalysis.objects.count()
+
+# SerpAPI Success Rate (identified product)
+serpapi_success_rate = PhotoAnalysis.objects.filter(
+    serpapi_searched=True,
+    serpapi_identified_product__isnull=False
+).count() / PhotoAnalysis.objects.filter(serpapi_searched=True).count()
+
+# Brand-Specific Room Creation Rate
+brand_room_rate = ChatRoom.objects.filter(
+    created_from_photo__caption_detected_brand__isnull=False
+).count() / ChatRoom.objects.filter(created_from_photo__isnull=False).count()
+
+# Cost Analysis
+total_serpapi_cost = PhotoAnalysis.objects.filter(
+    serpapi_searched=True
+).count() * 0.01  # $0.01 per search
+```
+
+### Known Limitations
+
+1. **SerpAPI Rate Limits**: 50 free searches/month, then paid
+2. **Image URL Accessibility**: SerpAPI requires publicly accessible URLs
+3. **Brand Detection Accuracy**: May misidentify or miss brands (~80-90% accuracy)
+4. **Product Type Coverage**: Limited to predefined categories
+5. **WebSocket Scaling**: Requires Redis for multi-container deployments
+
+### Future Enhancements
+
+- **Custom Brand Database**: Pre-load common brands to skip API calls
+- **User Brand Corrections**: Allow users to correct misidentified brands
+- **Brand Analytics Dashboard**: Show most popular brands, conversion rates
+- **Multi-Language Support**: Detect brands in non-English text
+- **Vision API Alternatives**: Test Claude 3 Opus, Gemini Vision for comparison
+
+---
+
+**Phase 2 Status**: 🚧 **In Progress**
+**Next Milestone**: Complete brand detection and SerpAPI integration core modules
+**Target Completion**: TBD

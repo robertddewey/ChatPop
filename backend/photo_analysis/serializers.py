@@ -5,34 +5,6 @@ from rest_framework import serializers
 from .models import PhotoAnalysis
 
 
-class SimilarRoomSerializer(serializers.Serializer):
-    """Serializer for similar room recommendations (collaborative discovery)."""
-    room_id = serializers.UUIDField(
-        help_text="UUID of the chat room"
-    )
-    room_code = serializers.CharField(
-        max_length=100,
-        help_text="Room code (e.g., 'bar-room')"
-    )
-    room_name = serializers.CharField(
-        max_length=200,
-        help_text="Room name (e.g., 'Bar Room')"
-    )
-    room_url = serializers.CharField(
-        max_length=500,
-        help_text="URL to join the room (e.g., '/chat/discover/bar-room')"
-    )
-    active_users = serializers.IntegerField(
-        help_text="Number of active users in room (last_seen_at within 24h)"
-    )
-    similarity_distance = serializers.FloatField(
-        help_text="Cosine distance (0.0 = identical, 1.0 = opposite)"
-    )
-    source_photo_id = serializers.UUIDField(
-        help_text="ID of the PhotoAnalysis that matched this room"
-    )
-
-
 class ChatSuggestionSerializer(serializers.Serializer):
     """Serializer for individual chat room name suggestions."""
     name = serializers.CharField(
@@ -57,35 +29,38 @@ class PhotoAnalysisSerializer(serializers.ModelSerializer):
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
 
-    # Custom representation for suggestions
-    suggestions = serializers.SerializerMethodField()
+    # Suggestions field (extracts from database JSON structure)
+    suggestions = serializers.SerializerMethodField(
+        help_text="Array of AI-generated chat name suggestions"
+    )
 
     # User information (optional)
-    username = serializers.SerializerMethodField()
+    username = serializers.SerializerMethodField(
+        help_text="Username of the user who uploaded this photo (if authenticated)"
+    )
 
     class Meta:
         model = PhotoAnalysis
         fields = [
             'id',
             'suggestions',
-            'ai_vision_model',
-            'token_usage',
-            'times_used',
             'username',
             'created_at',
             'updated_at',
         ]
         read_only_fields = [
             'id',
-            'ai_vision_model',
-            'token_usage',
-            'times_used',
             'created_at',
             'updated_at',
         ]
 
     def get_suggestions(self, obj):
-        """Format suggestions as array of ChatSuggestion objects."""
+        """
+        Extract and format suggestions from database JSON field.
+
+        Returns:
+            list[dict]: Array of suggestion objects with name, key, and description fields.
+        """
         suggestions_data = obj.suggestions
 
         if isinstance(suggestions_data, dict):
@@ -95,13 +70,15 @@ class PhotoAnalysisSerializer(serializers.ModelSerializer):
             # Already a list
             suggestions_list = suggestions_data
         else:
-            return []
+            suggestions_list = []
 
         # Validate and serialize each suggestion
         serializer = ChatSuggestionSerializer(data=suggestions_list, many=True)
         if serializer.is_valid():
             return serializer.data
-        return suggestions_list  # Return raw data if validation fails
+        else:
+            # Return raw data if validation fails
+            return suggestions_list
 
     def get_username(self, obj):
         """Get username if user is authenticated."""
@@ -156,43 +133,80 @@ class PhotoAnalysisDetailSerializer(PhotoAnalysisSerializer):
     expires_at = serializers.DateTimeField(read_only=True)
     is_expired = serializers.SerializerMethodField()
 
+    # File hashes (for debugging/deduplication)
+    image_phash = serializers.CharField(read_only=True)
+    file_hash = serializers.CharField(read_only=True)
+    file_size = serializers.IntegerField(read_only=True)
+
     # Caption fields (for embeddings)
-    caption_title = serializers.CharField(read_only=True)
-    caption_category = serializers.CharField(read_only=True)
-    caption_visible_text = serializers.CharField(read_only=True)
-    caption_full = serializers.CharField(read_only=True)
-    caption_generated_at = serializers.DateTimeField(read_only=True)
+    caption_title = serializers.CharField(read_only=True, allow_blank=True)
+    caption_category = serializers.CharField(read_only=True, allow_blank=True)
+    caption_visible_text = serializers.CharField(read_only=True, allow_blank=True)
+    caption_full = serializers.CharField(read_only=True, allow_blank=True)
+    caption_generated_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
-    # Caption API metadata
-    caption_model = serializers.CharField(read_only=True)
-    caption_token_usage = serializers.JSONField(read_only=True)
-    caption_raw_response = serializers.JSONField(read_only=True)
+    # Seed suggestions (original 10 AI suggestions before refinement - for debugging)
+    seed_suggestions = serializers.SerializerMethodField(
+        help_text="Original 10 AI suggestions before refinement (audit trail for debugging)"
+    )
 
-    # Embedding metadata
-    caption_embedding_generated_at = serializers.DateTimeField(read_only=True)
-    suggestions_embedding_generated_at = serializers.DateTimeField(read_only=True)
+    # Room selection tracking
+    selected_suggestion_code = serializers.CharField(read_only=True, allow_blank=True, allow_null=True)
+    selected_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
     class Meta(PhotoAnalysisSerializer.Meta):
         fields = PhotoAnalysisSerializer.Meta.fields + [
             'expires_at',
             'is_expired',
+            'image_phash',
+            'file_hash',
             'file_size',
-            'storage_type',
             'caption_title',
             'caption_category',
             'caption_visible_text',
             'caption_full',
             'caption_generated_at',
-            'caption_model',
-            'caption_token_usage',
-            'caption_raw_response',
-            'caption_embedding_generated_at',
-            'suggestions_embedding_generated_at',
+            'seed_suggestions',
+            'selected_suggestion_code',
+            'selected_at',
         ]
 
     def get_is_expired(self, obj):
         """Check if analysis has expired."""
         return obj.is_expired()
+
+    def get_seed_suggestions(self, obj):
+        """
+        Extract and format seed suggestions from database JSON field.
+
+        Seed suggestions are the initial 10 AI-generated suggestions before refinement.
+        Used for debugging and comparing refinement effectiveness.
+
+        Returns:
+            list[dict]: Array of seed suggestion objects with name, key, and description fields.
+                        Returns None if seed_suggestions field is null (older records).
+        """
+        if not obj.seed_suggestions:
+            return None
+
+        seed_suggestions_data = obj.seed_suggestions
+
+        if isinstance(seed_suggestions_data, dict):
+            # Extract suggestions array from JSON
+            suggestions_list = seed_suggestions_data.get('suggestions', [])
+        elif isinstance(seed_suggestions_data, list):
+            # Already a list
+            suggestions_list = seed_suggestions_data
+        else:
+            return None
+
+        # Validate and serialize each suggestion
+        serializer = ChatSuggestionSerializer(data=suggestions_list, many=True)
+        if serializer.is_valid():
+            return serializer.data
+        else:
+            # Return raw data if validation fails
+            return suggestions_list
 
 
 class PhotoAnalysisListSerializer(PhotoAnalysisSerializer):
@@ -205,8 +219,6 @@ class PhotoAnalysisListSerializer(PhotoAnalysisSerializer):
         fields = [
             'id',
             'suggestion_count',
-            'ai_vision_model',
-            'times_used',
             'username',
             'created_at',
         ]
@@ -220,3 +232,26 @@ class PhotoAnalysisListSerializer(PhotoAnalysisSerializer):
         elif isinstance(suggestions_data, list):
             return len(suggestions_data)
         return 0
+
+
+class PhotoUploadResponseSerializer(serializers.Serializer):
+    """
+    Response serializer for /upload/ endpoint.
+
+    This documents the complete response structure including:
+    - cached: Whether this is a cached result
+    - analysis: Full PhotoAnalysis object with blended suggestions
+
+    The analysis.suggestions field contains blended suggestions with metadata:
+    - source: 'existing_room', 'popular', or 'ai'
+    - has_room: boolean indicating if a room already exists
+    - active_users: number of active users (for existing rooms)
+    - popularity_score: frequency count (for popular suggestions)
+    - room_id, room_code, room_url: room details (for existing rooms)
+    """
+    cached = serializers.BooleanField(
+        help_text="Whether this analysis was cached (true) or freshly generated (false)"
+    )
+    analysis = PhotoAnalysisDetailSerializer(
+        help_text="Complete photo analysis with AI suggestions, captions, and embeddings"
+    )

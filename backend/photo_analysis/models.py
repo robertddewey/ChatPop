@@ -79,7 +79,21 @@ class PhotoAnalysis(models.Model):
 
     # === ANALYSIS RESULTS ===
 
-    # Chat name suggestions (JSON array of objects)
+    # Seed suggestions (initial AI output before refinement)
+    # - Stored for audit trail and refinement input
+    # - 10 initial suggestions from GPT-4 Vision
+    # - May contain duplicates (e.g., "Bar Room", "Drinking Lounge", "Cheers!")
+    # - Used as input for LLM refinement process
+    seed_suggestions = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Initial 10 AI suggestions before refinement (audit trail)"
+    )
+
+    # Chat name suggestions (refined output for display/embedding)
+    # - 5-7 refined, deduplicated suggestions
+    # - Result of LLM-based refinement if enabled, otherwise same as seed_suggestions
+    # - Removes true duplicates while preserving distinct entities
     # Format:
     # {
     #   "suggestions": [
@@ -87,10 +101,10 @@ class PhotoAnalysis(models.Model):
     #     {"name": "Coffee Mug", "key": "coffee-mug", "description": "..."},
     #     ...
     #   ],
-    #   "count": 10
+    #   "count": 5-7
     # }
     suggestions = models.JSONField(
-        help_text="AI-generated chat name suggestions"
+        help_text="Refined chat name suggestions (used for display and embeddings)"
     )
 
     # Full raw response from the AI vision model
@@ -129,8 +143,8 @@ class PhotoAnalysis(models.Model):
     # - Used for quick reference and display
     caption_title = models.CharField(
         max_length=255,
+        null=True,
         blank=True,
-        default='',
         help_text="Short title extracted from image"
     )
 
@@ -139,8 +153,8 @@ class PhotoAnalysis(models.Model):
     # - Used for grouping and filtering
     caption_category = models.CharField(
         max_length=100,
+        null=True,
         blank=True,
-        default='',
         help_text="Category classification of the image"
     )
 
@@ -148,8 +162,8 @@ class PhotoAnalysis(models.Model):
     # - Example: "Budweiser, King of Beers", "Starbucks Coffee"
     # - Extracted using OCR capabilities of vision model
     caption_visible_text = models.TextField(
+        null=True,
         blank=True,
-        default='',
         help_text="Visible text, labels, or brand names in the image"
     )
 
@@ -159,8 +173,8 @@ class PhotoAnalysis(models.Model):
     # - This is the text that gets converted to an embedding vector
     # - One or two concise sentences capturing visual and semantic meaning
     caption_full = models.TextField(
+        null=True,
         blank=True,
-        default='',
         help_text="Full semantic caption used for embedding generation"
     )
 
@@ -178,8 +192,8 @@ class PhotoAnalysis(models.Model):
     # - Example: "gpt-4o-mini", "gpt-4o"
     caption_model = models.CharField(
         max_length=100,
+        null=True,
         blank=True,
-        default='',
         help_text="AI model used for caption generation (e.g., gpt-4o-mini)"
     )
 

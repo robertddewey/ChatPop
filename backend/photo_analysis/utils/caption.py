@@ -21,9 +21,9 @@ class CaptionData:
 
     def __init__(
         self,
-        title: str,
-        category: str,
-        visible_text: str,
+        title: Optional[str],
+        category: Optional[str],
+        visible_text: Optional[str],
         caption: str,
         raw_response: Optional[Dict[str, Any]] = None,
         token_usage: Optional[Dict[str, int]] = None,
@@ -37,7 +37,7 @@ class CaptionData:
         self.token_usage = token_usage or {}
         self.model = model
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, Optional[str]]:
         """Convert to dictionary for storage."""
         return {
             'title': self.title,
@@ -118,11 +118,20 @@ def _parse_caption_response(content: str) -> Dict[str, str]:
         # Parse JSON
         data = json.loads(content)
 
-        # Extract required fields
-        title = data.get('title', '').strip()
-        category = data.get('category', '').strip()
-        visible_text = data.get('visible_text', '').strip()
-        caption = data.get('caption', '').strip()
+        # Extract and normalize fields (convert empty strings and "None" to None)
+        def normalize_field(value):
+            """Convert empty strings and string 'None' to Python None."""
+            if value is None:
+                return None
+            value = str(value).strip()
+            if value == '' or value.lower() == 'none':
+                return None
+            return value
+
+        title = normalize_field(data.get('title'))
+        category = normalize_field(data.get('category'))
+        visible_text = normalize_field(data.get('visible_text'))
+        caption = normalize_field(data.get('caption'))
 
         if not caption:
             raise ValueError("Caption field is required but was empty")
