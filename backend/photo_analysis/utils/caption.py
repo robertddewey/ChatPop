@@ -13,6 +13,8 @@ from django.conf import settings
 from openai import OpenAI
 from constance import config
 
+from .performance import perf_track
+
 logger = logging.getLogger(__name__)
 
 
@@ -237,13 +239,14 @@ def generate_caption(
             f"temperature={temperature}, detail={detail_mode}"
         )
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=300,  # Captions are shorter than suggestions
-            temperature=temperature,
-            response_format={"type": "json_object"}  # Force JSON output
-        )
+        with perf_track(f"Caption generation API ({model})"):
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=300,  # Captions are shorter than suggestions
+                temperature=temperature,
+                response_format={"type": "json_object"}  # Force JSON output
+            )
 
         # Extract response content
         content = response.choices[0].message.content

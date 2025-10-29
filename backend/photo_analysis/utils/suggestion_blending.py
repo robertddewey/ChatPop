@@ -18,6 +18,8 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from pgvector.django import CosineDistance
 
+from .performance import perf_track
+
 logger = logging.getLogger(__name__)
 
 # K-Nearest Neighbors configuration for collaborative discovery
@@ -65,15 +67,16 @@ def get_similar_photo_popular_suggestions(
         k_nearest = K_NEAREST_NEIGHBORS
 
     # Find similar photos by suggestions_embedding
-    similar_photos_query = PhotoAnalysis.objects.annotate(
-        distance=CosineDistance("suggestions_embedding", embedding_vector)
-    ).filter(distance__lt=max_distance, suggestions_embedding__isnull=False)
+    with perf_track("K-NN search for similar photos", metadata=f"k={k_nearest}"):
+        similar_photos_query = PhotoAnalysis.objects.annotate(
+            distance=CosineDistance("suggestions_embedding", embedding_vector)
+        ).filter(distance__lt=max_distance, suggestions_embedding__isnull=False)
 
-    # Exclude current photo BEFORE slicing
-    if exclude_photo_id:
-        similar_photos_query = similar_photos_query.exclude(id=exclude_photo_id)
+        # Exclude current photo BEFORE slicing
+        if exclude_photo_id:
+            similar_photos_query = similar_photos_query.exclude(id=exclude_photo_id)
 
-    similar_photos = similar_photos_query.order_by("distance")[:k_nearest]
+        similar_photos = similar_photos_query.order_by("distance")[:k_nearest]
 
     logger.info(f"Found {similar_photos.count()} similar photos for extracting popular suggestions")
     logger.info(f"DEBUG: Similar photos details: {[(p.id, p.distance) for p in similar_photos]}")
@@ -243,17 +246,18 @@ def blend_suggestions(
     # =========================================================================
     rooms_dict = {}
     if suggestion_keys:
-        rooms = ChatRoom.objects.filter(
-            code__in=suggestion_keys,
-            source=ChatRoom.SOURCE_AI,  # Only AI-generated collaborative discovery rooms
-            is_active=True,
-        ).annotate(
-            active_user_count=Count("participations", filter=Q(participations__last_seen_at__gte=activity_threshold))
-        )
+        with perf_track("Room lookup query", metadata=f"{len(suggestion_keys)} keys"):
+            rooms = ChatRoom.objects.filter(
+                code__in=suggestion_keys,
+                source=ChatRoom.SOURCE_AI,  # Only AI-generated collaborative discovery rooms
+                is_active=True,
+            ).annotate(
+                active_user_count=Count("participations", filter=Q(participations__last_seen_at__gte=activity_threshold))
+            )
 
-        # Build dict: key → room
-        for room in rooms:
-            rooms_dict[room.code] = room
+            # Build dict: key → room
+            for room in rooms:
+                rooms_dict[room.code] = room
 
         logger.info(f"Found {len(rooms_dict)} existing rooms out of {len(suggestion_keys)} refined suggestions")
 

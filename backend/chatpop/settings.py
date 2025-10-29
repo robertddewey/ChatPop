@@ -482,6 +482,10 @@ ENABLE_MONITORING = os.getenv("ENABLE_MONITORING", "False") == "True"
 # OpenAI Settings
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
+# Photo Analysis Performance Tracking
+# Enable performance tracking for photo analysis pipeline (disabled by default)
+PHOTO_ANALYSIS_PERFORMANCE_TRACKING = os.getenv("PHOTO_ANALYSIS_PERFORMANCE_TRACKING", "False") == "True"
+
 # Media Storage Settings
 # AWS S3 Configuration (optional - uses local storage if not configured)
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
@@ -502,3 +506,37 @@ else:
     DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
     MEDIA_ROOT = BASE_DIR / "media"
     MEDIA_URL = "/media/"
+
+# Logging Configuration
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "loggers": {
+        "photo_analysis": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "WARNING",
+    },
+}

@@ -30,6 +30,7 @@ from .utils.embedding import generate_embedding, generate_suggestions_embedding
 from .utils.suggestion_blending import blend_suggestions, get_similar_photo_popular_suggestions
 from .utils.refinement import refine_suggestions
 from .utils.ranking import rank_by_canonical_match
+from .utils.performance import PerformanceTracker
 from chatpop.utils.media import MediaStorage
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,9 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Get client identifiers
         user_id, fingerprint, ip_address = get_client_identifier(request)
+
+        # Initialize performance tracker
+        tracker = PerformanceTracker()
 
         try:
             # Calculate file hashes for deduplication

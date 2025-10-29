@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from django.conf import settings
 from openai import OpenAI
 
+from .performance import perf_track
+
 logger = logging.getLogger(__name__)
 
 
@@ -137,7 +139,8 @@ def generate_embedding(
         logger.info(f"Generating embedding with model={model}, " f"input_length={len(input_text)} chars")
 
         # Call OpenAI Embeddings API
-        response = client.embeddings.create(input=input_text, model=model)
+        with perf_track(f"Caption embedding API ({model})"):
+            response = client.embeddings.create(input=input_text, model=model)
 
         # Extract embedding vector
         embedding = response.data[0].embedding
@@ -282,7 +285,8 @@ def generate_suggestions_embedding(
         )
 
         # Call OpenAI Embeddings API
-        response = client.embeddings.create(input=input_text, model=model)
+        with perf_track(f"Suggestions embedding API ({model})"):
+            response = client.embeddings.create(input=input_text, model=model)
 
         # Extract embedding vector
         embedding = response.data[0].embedding

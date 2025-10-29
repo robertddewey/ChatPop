@@ -13,6 +13,8 @@ from django.conf import settings
 from django.db.models import Count
 from openai import OpenAI
 
+from .performance import perf_track
+
 logger = logging.getLogger(__name__)
 
 # Refinement configuration (hardcoded sensible defaults)
@@ -201,12 +203,13 @@ def refine_suggestions(
         )
 
         # Call OpenAI Chat Completions API
-        response = client.chat.completions.create(
-            model=REFINEMENT_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=REFINEMENT_TEMPERATURE,
-        )
+        with perf_track(f"Refinement LLM API ({REFINEMENT_MODEL})", metadata=f"{seed_count} input"):
+            response = client.chat.completions.create(
+                model=REFINEMENT_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=REFINEMENT_TEMPERATURE,
+            )
 
         # Extract refined suggestions from JSON response
         result = json.loads(response.choices[0].message.content)
