@@ -31,20 +31,29 @@ PHOTO CONTEXT:
 - Full Caption: {caption_full}
 - Visible Text: {caption_visible_text}
 
-SEED SUGGESTIONS ({seed_count} initial AI suggestions):
+INPUT SUGGESTIONS ({seed_count} suggestions - mix of popular and seed):
 {seed_suggestions}
 
+NOTE: Input suggestions are marked with 'source':
+- 'popular' = From similar photos uploaded by other users (collaborative discovery)
+- 'seed' = Fresh AI-generated suggestions for this specific photo
+
 YOUR TASK:
-Refine the seed suggestions to {min_suggestions}-{max_suggestions} distinct, high-quality chat room names.
+Refine the input suggestions to {min_suggestions}-{max_suggestions} distinct, high-quality chat room names.
 
 RULES:
 1. Remove TRUE DUPLICATES - merge semantically identical suggestions
 
-   Duplicates are generic phrases describing the same conversation topic with different words.
+   A. EXACT DUPLICATES - identical name with identical key from different sources:
+      - If same suggestion appears in BOTH popular and seed → Always keep the popular version
+      - Example: "Cheers!" (popular, key: cheers) + "Cheers!" (seed, key: cheers) → Keep "Cheers!" with source: "popular"
+      - Punctuation variations: "Cheers" vs "Cheers!" with same key → Keep one consistent form (prefer with punctuation)
+      - Wrong: Marking exact duplicates as "preserved_distinct_entity" (they're identical, not distinct!)
 
-   Critical question: "Would these attract the SAME people having the SAME conversation?"
-   - If YES → They're duplicates, keep only 1
-   - If NO → They're distinct topics, keep both
+   B. SEMANTIC DUPLICATES - generic phrases describing same topic with different words:
+      Critical question: "Would these attract the SAME people having the SAME conversation?"
+      - If YES → They're duplicates, keep only 1
+      - If NO → They're distinct topics, keep both
 
 2. Preserve DISTINCT ENTITIES - specific named entities are NOT duplicates
 
@@ -80,6 +89,17 @@ RULES:
    Example: "Bar Room", "Happy Hour", "Craft Beer" (generic topics, no articles needed)
    Example: "Coffee Lovers", "Recipe Exchange", "Travel Stories" (generic, stay concise)
 
+6. PRESERVE SOURCE TRACKING - include 'source' field in your output
+   - If you keep a suggestion unchanged, preserve its original source ('popular' or 'seed')
+   - If you merge/modify suggestions from DIFFERENT sources, mark as 'refined'
+   - If you merge/modify suggestions from SAME source, preserve that source
+
+   Examples:
+   - Keep "Cheers!" from popular suggestions → source: "popular"
+   - Merge "Bar Room" (seed) + "Drinking Lounge" (seed) → "Bar Room" with source: "seed"
+   - Merge "Jim Beam" (popular) + "Bourbon Bottles" (seed) → "Jim Beam" with source: "refined"
+   - Restore proper noun "Matrix Fans" (seed) → "The Matrix" with source: "seed"
+
 OUTPUT FORMAT (JSON):
 {{
   "refined_suggestions": [
@@ -87,6 +107,7 @@ OUTPUT FORMAT (JSON):
       "name": "Chat Name",
       "key": "chat-name",
       "description": "Brief description of chat topic",
+      "source": "popular|seed|refined",
       "reasoning": "Why this suggestion was kept (removed_duplicates: [...] or preserved_distinct_entity or matched_popular_suggestion or restored_proper_noun: 'original → canonical')"
     }}
   ],

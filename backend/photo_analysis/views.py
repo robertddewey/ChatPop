@@ -369,42 +369,64 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 logger.info("No caption data available, skipping suggestions embedding generation")
 
             # =========================================================================
-            # Three-tier suggestion strategy (simpler approach for guaranteed clustering):
-            # 1. Popular suggestions from K-NN (usage_count >= 1) → ALWAYS included
-            # 2. Fresh AI seed suggestions → LLM refines for deduplication only
-            # 3. Combine popular + refined = final suggestions
+            # Unified refinement strategy: Pass popular + seed suggestions to LLM together
+            # This allows the LLM to deduplicate semantic duplicates ACROSS both sets
+            # while preserving distinct entities (e.g., "Twister" vs "Twisters" vs "The Twisters")
             # =========================================================================
             refined_suggestions_list = None
             if caption_data:
                 try:
-                    logger.info("Refining SEED suggestions with LLM (deduplication only, no popular context)")
+                    # Prepare combined input for refinement: popular + seed suggestions
+                    combined_suggestions_for_refinement = []
 
-                    # Convert Suggestion objects to dictionaries for refinement
+                    # Add popular suggestions first (mark with source='popular' for LLM context)
+                    if similar_photo_popular and len(similar_photo_popular) > 0:
+                        logger.info(f"Adding {len(similar_photo_popular)} popular suggestions to refinement input")
+                        for popular in similar_photo_popular:
+                            combined_suggestions_for_refinement.append({
+                                'name': popular['name'],
+                                'key': popular['key'],
+                                'description': '',  # Popular suggestions don't have descriptions
+                                'source': 'popular',  # Mark source for LLM to understand context
+                                'usage_count': popular.get('usage_count', 1)
+                            })
+
+                    # Add seed suggestions (mark with source='seed')
                     seed_suggestions_list = [
                         {
                             'name': s.name,
                             'key': s.key,
-                            'description': s.description
+                            'description': s.description,
+                            'source': 'seed'  # Mark as fresh AI suggestion
                         }
                         for s in analysis_result.suggestions
                     ]
+                    combined_suggestions_for_refinement.extend(seed_suggestions_list)
 
-                    # Call refinement with ONLY seed suggestions (no popular context)
-                    # This ensures LLM only deduplicates fresh AI suggestions
+                    logger.info(
+                        f"Refining combined suggestions with LLM: "
+                        f"{len(similar_photo_popular or [])} popular + {len(seed_suggestions_list)} seed = "
+                        f"{len(combined_suggestions_for_refinement)} total input"
+                    )
+
+                    # Call refinement with COMBINED popular + seed suggestions
+                    # LLM will deduplicate semantic duplicates while preserving distinct entities
                     refined_suggestions_list = refine_suggestions(
-                        seed_suggestions=seed_suggestions_list,
+                        seed_suggestions=combined_suggestions_for_refinement,
                         caption_title=caption_data.title,
                         caption_category=caption_data.category,
                         caption_full=caption_data.caption,
                         caption_visible_text=caption_data.visible_text,
-                        similar_photo_popular=None  # DO NOT pass popular - we'll add them separately
+                        similar_photo_popular=None  # Already included in seed_suggestions
                     )
 
-                    logger.info(f"Refinement complete: {len(seed_suggestions_list)} → {len(refined_suggestions_list)} refined suggestions")
+                    logger.info(
+                        f"Refinement complete: {len(combined_suggestions_for_refinement)} → "
+                        f"{len(refined_suggestions_list)} refined suggestions"
+                    )
 
-                    # Mark refined suggestions with source='refined'
-                    for suggestion in refined_suggestions_list:
-                        suggestion['source'] = 'refined'
+                    # Source tracking is now handled by LLM (included in JSON output schema)
+                    # LLM returns 'popular', 'seed', or 'refined' based on suggestion origin
 
                 except Exception as e:
                     # Refinement is non-fatal - log warning and fall back to seed suggestions
@@ -414,58 +436,25 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 logger.info("Skipping suggestion refinement (no caption data available)")
 
             # =========================================================================
-            # Combine popular + refined = final suggestions (three-tier strategy)
-            # Popular suggestions are ALWAYS included first (guarantees clustering)
+            # Use refined suggestions directly (no concatenation needed)
+            # If refinement failed, fall back to seed suggestions only
             # =========================================================================
-            final_suggestions_list = []
-
-            # Add popular suggestions first (if any)
-            if similar_photo_popular and len(similar_photo_popular) > 0:
-                logger.info(f"Adding {len(similar_photo_popular)} popular suggestions (guaranteed clustering)")
-                for popular in similar_photo_popular:
-                    final_suggestions_list.append({
-                        'name': popular['name'],
-                        'key': popular['key'],
-                        'description': '',  # Popular suggestions don't have descriptions
-                        'source': 'popular',
-                        'usage_count': popular.get('usage_count', 1)
-                    })
-
-            # Add refined suggestions (or seed fallback) - but EXCLUDE any that match popular keys
-            popular_keys = {s['key'] for s in similar_photo_popular} if similar_photo_popular else set()
-
             if refined_suggestions_list:
-                # Use refined suggestions, filtering out any that match popular keys
-                for suggestion in refined_suggestions_list:
-                    if suggestion['key'] not in popular_keys:
-                        final_suggestions_list.append(suggestion)
-                    else:
-                        logger.debug(f"Skipping refined suggestion '{suggestion['name']}' (already in popular)")
-
-                logger.info(
-                    f"Final suggestions: {len(similar_photo_popular or [])} popular + "
-                    f"{len([s for s in refined_suggestions_list if s['key'] not in popular_keys])} refined = "
-                    f"{len(final_suggestions_list)} total"
-                )
+                # Use refined output directly (already deduplicated by LLM)
+                final_suggestions_list = refined_suggestions_list
+                logger.info(f"Using {len(final_suggestions_list)} refined suggestions (deduplicated by LLM)")
             else:
-                # Fallback to seed suggestions if refinement failed, filtering out popular keys
-                for s in analysis_result.suggestions:
-                    if s.key not in popular_keys:
-                        final_suggestions_list.append({
-                            'name': s.name,
-                            'key': s.key,
-                            'description': s.description,
-                            'source': 'seed'
-                        })
-                    else:
-                        logger.debug(f"Skipping seed suggestion '{s.name}' (already in popular)")
-
-                logger.info(
-                    f"Final suggestions (refinement failed, using seed): "
-                    f"{len(similar_photo_popular or [])} popular + "
-                    f"{len([s for s in analysis_result.suggestions if s.key not in popular_keys])} seed = "
-                    f"{len(final_suggestions_list)} total"
-                )
+                # Fallback to seed suggestions if refinement failed
+                final_suggestions_list = [
+                    {
+                        'name': s.name,
+                        'key': s.key,
+                        'description': s.description,
+                        'source': 'seed'
+                    }
+                    for s in analysis_result.suggestions
+                ]
+                logger.info(f"Refinement failed, using {len(final_suggestions_list)} seed suggestions as fallback")
 
             # =========================================================================
             # Apply intelligent ranking: Move canonical match to #1
