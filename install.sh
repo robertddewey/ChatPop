@@ -369,6 +369,118 @@ print_completion() {
     echo ""
 }
 
+# Detect and clean previous installation
+detect_previous_installation() {
+    print_header "Checking for Previous Installation"
+
+    local needs_cleanup=0
+    local issues=()
+
+    # Check for backend venv
+    if [ -d "backend/venv" ]; then
+        issues+=("Backend virtual environment (backend/venv)")
+        needs_cleanup=1
+    fi
+
+    # Check for backend .env
+    if [ -f "backend/.env" ]; then
+        issues+=("Backend configuration file (backend/.env)")
+        needs_cleanup=1
+    fi
+
+    # Check for frontend node_modules
+    if [ -d "frontend/node_modules" ]; then
+        issues+=("Frontend dependencies (frontend/node_modules)")
+        needs_cleanup=1
+    fi
+
+    # Check for frontend .env.local
+    if [ -f "frontend/.env.local" ]; then
+        issues+=("Frontend configuration file (frontend/.env.local)")
+        needs_cleanup=1
+    fi
+
+    # Check if Docker containers are running
+    if docker ps --filter "name=chatpop" 2>/dev/null | grep -q chatpop; then
+        issues+=("Running Docker containers")
+        needs_cleanup=1
+    fi
+
+    # Check for Docker volumes (even if stopped)
+    if docker volume ls 2>/dev/null | grep -q chatpop; then
+        issues+=("Docker volumes with database data")
+        needs_cleanup=1
+    fi
+
+    if [ $needs_cleanup -eq 0 ]; then
+        print_success "No previous installation detected"
+        return 0
+    fi
+
+    # Found previous installation
+    print_warning "Detected previous installation artifacts:"
+    for issue in "${issues[@]}"; do
+        echo "  - $issue"
+    done
+    echo ""
+
+    print_warning "A previous or partial installation may cause conflicts."
+    echo ""
+    echo -e "${YELLOW}Recommended: Clean up and start fresh${NC}"
+    echo -e "${BLUE}This will:${NC}"
+    echo "  1. Stop and remove Docker containers & volumes (database will be reset)"
+    echo "  2. Remove backend virtual environment"
+    echo "  3. Remove backend/frontend configuration files (.env, .env.local)"
+    echo "  4. Keep: node_modules (will be reused), SSL certificates, source code"
+    echo ""
+
+    read -p "Clean up previous installation? (Y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        print_info "Continuing with existing installation artifacts"
+        print_warning "This may cause errors if the previous installation was incomplete"
+        echo ""
+        read -p "Are you sure you want to continue? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Installation cancelled"
+            exit 0
+        fi
+        return 0
+    fi
+
+    # Perform cleanup
+    print_info "Cleaning up previous installation..."
+
+    # Stop and remove Docker containers with volumes
+    if docker ps --filter "name=chatpop" 2>/dev/null | grep -q chatpop; then
+        print_info "Stopping Docker containers..."
+        docker-compose down -v 2>/dev/null || true
+    fi
+
+    # Remove backend artifacts
+    if [ -d "backend/venv" ]; then
+        print_info "Removing backend virtual environment..."
+        rm -rf backend/venv
+    fi
+
+    if [ -f "backend/.env" ]; then
+        print_info "Removing backend .env file..."
+        rm backend/.env
+    fi
+
+    # Remove frontend artifacts
+    if [ -f "frontend/.env.local" ]; then
+        print_info "Removing frontend .env.local file..."
+        rm frontend/.env.local
+    fi
+
+    # Note: We keep node_modules and SSL certificates to save time
+
+    print_success "Cleanup completed"
+    echo ""
+}
+
 # Clone or update repository
 setup_repository() {
     print_header "Repository Setup"
@@ -522,6 +634,9 @@ main() {
         print_error "Not in ChatPop project root directory after repository setup"
         exit 1
     fi
+
+    # Check for and clean previous installation artifacts
+    detect_previous_installation
 
     # Confirm installation
     echo ""
