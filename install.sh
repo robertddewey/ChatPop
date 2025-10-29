@@ -578,8 +578,56 @@ setup_repository() {
 
     # Check if directory already exists
     if [ -d "$CLONE_DIR" ]; then
-        print_error "Directory $CLONE_DIR already exists"
-        exit 1
+        print_warning "Directory $CLONE_DIR already exists"
+
+        # Check if it looks like a ChatPop directory
+        if [ -f "$CLONE_DIR/docker-compose.yml" ] && [ -d "$CLONE_DIR/backend" ] && [ -d "$CLONE_DIR/frontend" ]; then
+            print_info "Found existing ChatPop installation in $CLONE_DIR"
+            echo ""
+            read -p "Use this existing directory? (Y/n): " -n 1 -r
+            echo
+
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                # Change into existing directory
+                cd "$CLONE_DIR" || {
+                    print_error "Failed to change into directory $CLONE_DIR"
+                    exit 1
+                }
+
+                print_success "Using existing directory: $CLONE_DIR"
+
+                # Check if it's a git repo and offer to update
+                if [ -d ".git" ]; then
+                    CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+                    print_info "Current branch: ${YELLOW}$CURRENT_BRANCH${NC}"
+
+                    echo ""
+                    read -p "Pull latest changes from remote? (Y/n): " -n 1 -r
+                    echo
+
+                    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                        print_info "Fetching latest changes..."
+                        git fetch origin 2>/dev/null || print_warning "Could not fetch from remote"
+
+                        print_info "Pulling latest changes..."
+                        git pull 2>/dev/null || print_warning "Could not pull latest changes"
+
+                        print_success "Repository updated"
+                    else
+                        print_info "Skipping repository update"
+                    fi
+                fi
+
+                return 0
+            else
+                print_error "Please remove or rename the existing $CLONE_DIR directory and try again"
+                exit 1
+            fi
+        else
+            print_error "$CLONE_DIR exists but doesn't appear to be a ChatPop directory"
+            print_info "Please remove or rename it and try again"
+            exit 1
+        fi
     fi
 
     # Clone the repository
