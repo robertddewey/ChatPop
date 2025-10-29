@@ -3,6 +3,7 @@
 import django.db.models.deletion
 import uuid
 from django.conf import settings
+from django.contrib.postgres.operations import CreateExtension
 from django.db import migrations, models
 
 
@@ -15,6 +16,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Enable pgvector extension for vector similarity search
+        CreateExtension("vector"),
         migrations.CreateModel(
             name="PhotoAnalysis",
             fields=[
