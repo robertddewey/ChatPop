@@ -11,7 +11,9 @@ A platform that allows users to create and join chat rooms with various customiz
 - **Payments:** Stripe
 - **Infrastructure:** Docker (PostgreSQL & Redis)
 
-## Getting Started
+## Installation Guide
+
+**Quick Setup:** Run `./install.sh` (macOS/Linux) or follow the manual steps below.
 
 ### Prerequisites
 
@@ -231,7 +233,7 @@ For experienced developers, here's the quick version:
 ```bash
 # 1. Install mkcert and generate certificates
 brew install mkcert && mkcert -install
-mkdir -p certs && cd certs && mkcert localhost 127.0.0.1 10.0.0.135 ::1 && cd ..
+mkdir -p certs && cd certs && mkcert localhost 127.0.0.1 ::1 && cd ..
 
 # 2. Start Docker services
 docker-compose up -d
@@ -251,7 +253,7 @@ cp .env.example .env.local  # Create if doesn't exist
 
 # 5. Start servers (in separate terminals)
 # Terminal 1 - Backend
-ALLOWED_HOSTS=localhost,127.0.0.1,10.0.0.135 \
+ALLOWED_HOSTS=localhost,127.0.0.1 \
 CORS_ALLOWED_ORIGINS="https://localhost:4000" \
 ./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
 

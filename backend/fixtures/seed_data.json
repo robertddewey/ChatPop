@@ -1,4 +1,341 @@
+[info] Loaded allowlists: 7142 tokens, 16 substrings
 [
+{
+  "model": "constance.constance",
+  "pk": 1,
+  "fields": {
+    "key": "USERNAME_RESERVATION_TTL_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 60}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 2,
+  "fields": {
+    "key": "MESSAGE_LIST_DEFAULT_LIMIT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 50}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 3,
+  "fields": {
+    "key": "MESSAGE_HISTORY_MAX_COUNT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 4,
+  "fields": {
+    "key": "REDIS_CACHE_ENABLED",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 5,
+  "fields": {
+    "key": "ENABLE_MONITORING",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 6,
+  "fields": {
+    "key": "MESSAGE_HISTORY_MAX_DAYS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 7}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 34,
+  "fields": {
+    "key": "MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 3}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 35,
+  "fields": {
+    "key": "MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 36,
+  "fields": {
+    "key": "MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 37,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_PROMPT",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"You are a chat room title generator. Generate 5 concise chat room title ideas based on a photo or description.\\n\\nGoals:\\n- Capture core idea/vibe\\n- Keep titles short (1-4 words)\\n- Favor general, reusable topics over one-offs\\n- Avoid filler words (like \\\"a\\\", \\\"about\\\", \\\"of\\\") EXCEPT in official titles/proper nouns\\n- Include single-word version if subject is well-known (Lego, Cat, Coffee, iPhone, Ocean)\\n- For proper nouns (brands, movies, products, places): use official names with articles when part of name (e.g., \\\"The Matrix (1999)\\\", \\\"iPhone 15 Pro\\\")\\n- Mix literal (e.g., \\\"Gray Cat\\\") and conceptual (e.g., \\\"Morning Vibes\\\") titles\\n\\nFormat:\\n- \\\"name\\\": Title Case\\n- \\\"key\\\": lowercase-with-dashes\\n- \\\"description\\\": Short phrase\\n- \\\"is_proper_noun\\\": true for named entities (movies, brands, products, places), false for generic topics\\n\\nResponse JSON:\\n{\\n\\\"suggestions\\\": [\\n{\\\"name\\\": \\\"Title Here\\\", \\\"key\\\": \\\"title-here\\\", \\\"description\\\": \\\"Chat about topic\\\", \\\"is_proper_noun\\\": false}\\n]\\n}\\n\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 38,
+  "fields": {
+    "key": "REDIS_CACHE_MAX_COUNT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 39,
+  "fields": {
+    "key": "REDIS_CACHE_TTL_HOURS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 24}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 40,
+  "fields": {
+    "key": "USERNAME_VALIDATION_TTL_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 41,
+  "fields": {
+    "key": "USER_BLOCK_CACHE_TTL_HOURS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 42,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_OPENAI_MODEL",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"gpt-4o-mini\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 43,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_RATE_LIMIT_AUTHENTICATED",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 44,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_RATE_LIMIT_ANONYMOUS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 45,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_ENABLE_RATE_LIMITING",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 46,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_MAX_FILE_SIZE_MB",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 47,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_IMAGE_TTL_HOURS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 168}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 48,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_USE_S3",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 49,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_MAX_MEGAPIXELS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 2.0}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 50,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_DETAIL_MODE",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"low\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 51,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_ENABLE_CAPTIONS",
+    "value": "{\"__type__\": \"default\", \"__value__\": false}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 52,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_TEMPERATURE",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0.3}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 53,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_CAPTION_MODEL",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"gpt-4o-mini\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 54,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_CAPTION_PROMPT",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"You are an expert visual captioner for a multimodal search system.\\nYour goal is to produce one or two compact, factual sentences that capture the full meaning of the image for use in a text embedding model.\\n\\nThe first sentence should describe what is visually present.\\nThe second, if helpful, should add semantic or contextual meaning (e.g., what it represents, its purpose, or its genre).\\n\\nInclude any visible text, titles, brand names, or labels.\\nAvoid speculation, humor, or opinions. Do not include camera details.\\n\\nReturn a JSON object with this exact structure:\\n{\\n  \\\"title\\\": \\\"A short, descriptive title (2-4 words)\\\",\\n  \\\"category\\\": \\\"General category of the image (e.g., beverage, food, animal, memorial, product)\\\",\\n  \\\"visible_text\\\": \\\"Any visible text, labels, or brand names in the image\\\",\\n  \\\"caption\\\": \\\"One or two concise sentences optimized for semantic embeddings\\\"\\n}\\n\\nExample:\\nFor an image of a Budweiser beer bottle:\\n{\\n  \\\"title\\\": \\\"Budweiser Beer Bottle\\\",\\n  \\\"category\\\": \\\"beer bottle\\\",\\n  \\\"visible_text\\\": \\\"Budweiser, King of Beers\\\",\\n  \\\"caption\\\": \\\"Budweiser beer bottle labeled 'King of Beers' with red and white logo on a wooden table. A classic American lager brand.\\\"\\n}\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 55,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_CAPTION_TEMPERATURE",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0.2}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 56,
+  "fields": {
+    "key": "PHOTO_SIMILARITY_MAX_DISTANCE",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0.3}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 57,
+  "fields": {
+    "key": "PHOTO_SIMILARITY_MAX_RESULTS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 58,
+  "fields": {
+    "key": "PHOTO_SIMILARITY_MIN_USERS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 1}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 60,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_BLEND_MIN_POPULAR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0.5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 61,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_CLUSTERING_DISTANCE",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0.4}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 64,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_ENABLE_CAPTION_EMBEDDING",
+    "value": "{\"__type__\": \"default\", \"__value__\": false}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 65,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_ENABLE_REFINEMENT",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 66,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_REFINEMENT_POPULAR_LIMIT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 67,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_REFINEMENT_MODEL",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"gpt-4o-mini\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 68,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_REFINEMENT_TEMPERATURE",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0.3}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 69,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_REFINEMENT_MIN",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 70,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_REFINEMENT_MAX",
+    "value": "{\"__type__\": \"default\", \"__value__\": 7}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 71,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_REFINEMENT_PROMPT",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"You are a suggestion refinement assistant for a photo-based chat discovery system.\\n\\nCONTEXT:\\n- User uploaded a photo with AI-generated seed suggestions (key, name, description)\\n- We've found {similar_count} similar photos from other users\\n- Popular suggestions from similar photos are provided WITH usage scores\\n- Your job: Create 5 REFINED suggestions that balance popular clustering with fresh ideas\\n\\nINPUT FORMAT:\\n1. SEED SUGGESTIONS (AI-generated from current photo):\\n   - These are fresh ideas based ONLY on the current photo\\n   - Format: {{\\\"key\\\": \\\"...\\\", \\\"name\\\": \\\"...\\\", \\\"description\\\": \\\"...\\\"}}\\n\\n2. POPULAR SUGGESTIONS (from {similar_count} similar photos):\\n   - These appear frequently in similar photo contexts\\n   - Format: {{\\\"name\\\": \\\"...\\\", \\\"key\\\": \\\"...\\\", \\\"usage_count\\\": N}}\\n   - usage_count = how many similar photos used this suggestion\\n   - Higher usage_count = stronger community preference\\n\\nREFINEMENT RULES:\\n\\nRule #0: TOPICAL RELEVANCE IS MANDATORY (CRITICAL!)\\n- **BEFORE considering usage_count, check if popular suggestions match the photo subject**\\n- ONLY use popular suggestions if they are DIRECTLY RELEVANT to the photo content\\n- Examples of IRRELEVANT popular suggestions (DO NOT USE):\\n  - Photo shows \\\"beer/whiskey\\\" \\u2192 Popular has \\\"Tornado\\\", \\\"Storm Chasers\\\", \\\"Twisters\\\" (WRONG TOPIC!)\\n  - Photo shows \\\"coffee mug\\\" \\u2192 Popular has \\\"Storm Chasers\\\", \\\"Weather\\\" (WRONG TOPIC!)\\n  - Photo shows \\\"sunset\\\" \\u2192 Popular has \\\"Bourbon Room\\\", \\\"Beer Time\\\" (WRONG TOPIC!)\\n- Examples of RELEVANT popular suggestions (OK TO USE):\\n  - Photo shows \\\"beer can\\\" \\u2192 Popular has \\\"Cheers!\\\", \\\"Bar Room\\\", \\\"Brew Talk\\\" (CORRECT TOPIC!)\\n  - Photo shows \\\"Jim Beam bottle\\\" \\u2192 Popular has \\\"Bourbon Room\\\", \\\"Whiskey Lovers\\\" (CORRECT TOPIC!)\\n  - Photo shows \\\"tornado movie poster\\\" \\u2192 Popular has \\\"Storm Chasers\\\", \\\"Twisters\\\" (CORRECT TOPIC!)\\n- **If popular suggestions are topically irrelevant, IGNORE THEM COMPLETELY and use seed suggestions only**\\n- Usage count is IRRELEVANT if the topic doesn't match\\n\\nRule #1: OUTPUT EXACTLY 5 SUGGESTIONS\\n- Always return exactly 5 suggestions in the same format as seed\\n- Format: [{{\\\"key\\\": \\\"...\\\", \\\"name\\\": \\\"...\\\", \\\"description\\\": \\\"...\\\"}}, ...]\\n\\nRule #2: PRESERVE DISTINCT ENTITIES\\n- \\\"Twister\\\" (1996 movie) vs \\\"Twisters\\\" (2024 movie) = DIFFERENT entities\\n- \\\"Jim Beam\\\" vs \\\"Beer\\\" = DIFFERENT products despite both being beverages\\n- \\\"Labubu\\\" vs \\\"Collectible Toys\\\" = DIFFERENT despite semantic overlap\\n- DO NOT merge distinct proper nouns into generic categories\\n- If seed has specific entity AND popular has generic, keep BOTH (if relevant)\\n\\nRule #3: STRONGLY PREFER POPULAR SUGGESTIONS FOR CLUSTERING (CRITICAL!)\\n- **usage_count >= 2:** MUST use the popular suggestion EXACTLY (same key + name) - NO EXCEPTIONS\\n  - Example: Seed has \\\"Whiskey Tasting\\\", popular has \\\"Whiskey Tasting\\\" (count=2) \\u2192 Use popular EXACTLY\\n  - Example: Seed has \\\"Tasting Notes\\\", popular has \\\"Whiskey Tasting\\\" (count=2) \\u2192 Use \\\"Whiskey Tasting\\\" to cluster\\n- **usage_count = 1:** STRONGLY prefer the popular suggestion unless seed has a clearly superior option\\n  - Example: Seed has \\\"Bourbon Chat\\\", popular has \\\"Bourbon Room\\\" (count=1) \\u2192 Prefer \\\"Bourbon Room\\\" for clustering\\n- **Goal:** Converge similar photos onto the same suggestion keys for natural room clustering\\n- **Only generate NEW suggestions** to fill remaining slots after using all popular suggestions\\n- **Distinct entities exception:** Even with high usage_count, preserve both if they represent different things\\n  - Example: Seed has \\\"Twisters\\\", popular has \\\"Twister\\\" (count=8) \\u2192 Keep BOTH if referring to different movies (1996 vs 2024)\\n\\nRule #4: BALANCE CLUSTERING WITH DIVERSITY\\n- Aim for 2-3 popular suggestions (guide users to active rooms)\\n- Aim for 2-3 fresh seed suggestions (maintain discovery diversity)\\n- Adjust based on popular suggestion quality and relevance\\n\\nRule #5: RESTORE PROPER NOUNS FROM PHOTO CONTEXT\\n- If photo caption mentions \\\"THE TWISTERS\\\" explicitly \\u2192 Preserve exact proper noun\\n- If seed says \\\"Twister Movie\\\" but photo clearly shows \\\"The Twisters\\\" \\u2192 Use \\\"The Twisters\\\"\\n- Movie titles, brand names, product names should match visible text when clear\\n- Check photo_caption field for explicit proper noun mentions\\n\\nRule #6: DEDUPLICATION LOGIC\\n- Semantic duplicates: \\\"Coffee Lovers\\\" \\u2248 \\\"Coffee Chat\\\" \\u2192 Keep ONE (prefer popular if score >= 3 AND topically relevant)\\n- Distinct entities: \\\"Twister\\\" \\u2260 \\\"Twisters\\\" \\u2192 Keep BOTH\\n- Generic vs Specific: \\\"Bar Room\\\" \\u2248 \\\"Bourbon Room\\\" \\u2192 Keep specific if distinct product visible\\n\\nRule #7: PRESERVE KEY CONSISTENCY\\n- Keys should be lowercase, hyphenated slugs\\n- \\\"Twisters\\\" \\u2192 \\\"twisters\\\", not \\\"twister\\\"\\n- \\\"The Twisters\\\" \\u2192 \\\"the-twisters\\\", not \\\"twister\\\" or \\\"twisters\\\"\\n- Distinct keys for distinct entities\\n\\nOUTPUT:\\nReturn a JSON object with a \\\"refined_suggestions\\\" array of exactly 5 suggestions. No explanations, no markdown:\\n{{\\n  \\\"refined_suggestions\\\": [\\n    {{\\\"key\\\": \\\"...\\\", \\\"name\\\": \\\"...\\\", \\\"description\\\": \\\"...\\\"}},\\n    {{\\\"key\\\": \\\"...\\\", \\\"name\\\": \\\"...\\\", \\\"description\\\": \\\"...\\\"}},\\n    {{\\\"key\\\": \\\"...\\\", \\\"name\\\": \\\"...\\\", \\\"description\\\": \\\"...\\\"}},\\n    {{\\\"key\\\": \\\"...\\\", \\\"name\\\": \\\"...\\\", \\\"description\\\": \\\"...\\\"}},\\n    {{\\\"key\\\": \\\"...\\\", \\\"name\\\": \\\"...\\\", \\\"description\\\": \\\"...\\\"}}\\n  ]\\n}}\\n\\nPHOTO CONTEXT (use for topical relevance checks):\\n- Title: {caption_title}\\n- Category: {caption_category}\\n- Visible Text: {caption_visible_text}\\n- Full Caption: {caption_full}\\n\\nSEED SUGGESTIONS ({seed_count} suggestions from GPT-4o Vision):\\n{seed_suggestions}\\n\\nPOPULAR SUGGESTIONS ({similar_count} from similar photos):\\n{popular_suggestions}\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 72,
+  "fields": {
+    "key": "PHOTO_SUGGESTION_CLUSTERING_LIMIT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
 {
   "model": "chats.chattheme",
   "pk": 1,
@@ -74,35 +411,35 @@
     "badge_icon_color": "text-emerald-400",
     "reply_icon_color": "text-emerald-300",
     "my_username": "text-xs font-semibold text-white",
-    "regular_username": "text-xs font-semibold text-gray-400",
+    "regular_username": "text-xs font-semibold text-white",
     "host_username": "text-sm font-semibold",
     "pinned_username": "text-xs font-semibold text-gray-400",
-    "sticky_host_username": "text-xs font-semibold text-white",
-    "sticky_pinned_username": "text-xs font-semibold text-white",
-    "my_timestamp": "text-xs \\!text-white opacity-60",
-    "regular_timestamp": "text-xs \\!text-white opacity-60",
+    "sticky_host_username": "text-sm font-semibold text-white",
+    "sticky_pinned_username": "text-sm font-semibold text-white",
+    "my_timestamp": "text-xs text-white opacity-60",
+    "regular_timestamp": "text-xs text-white opacity-60",
     "host_timestamp": "text-xs opacity-60",
     "pinned_timestamp": "text-xs opacity-60",
-    "reply_preview_container": "flex items-center justify-between px-4 py-2 bg-black/60 backdrop-blur-sm border-b border-white/10 rounded-lg",
-    "reply_preview_icon": "w-4 h-4 flex-shrink-0 text-gray-300",
-    "reply_preview_username": "text-xs font-semibold text-white",
-    "reply_preview_content": "text-xs text-gray-300 truncate",
-    "reply_preview_close_button": "p-1 hover:bg-white/10 rounded",
-    "reply_preview_close_icon": "w-4 h-4 text-gray-400",
-    "created_at": "2025-10-06T21:17:41.767Z",
-    "updated_at": "2025-10-09T22:52:14.161Z"
+    "reply_preview_container": "flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700",
+    "reply_preview_icon": "w-4 h-4 flex-shrink-0 text-blue-500",
+    "reply_preview_username": "text-xs font-semibold text-gray-700 dark:text-gray-300",
+    "reply_preview_content": "text-xs text-gray-600 dark:text-gray-400 truncate",
+    "reply_preview_close_button": "p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded",
+    "reply_preview_close_icon": "w-4 h-4 text-gray-500",
+    "created_at": "2025-10-20T08:17:57.625Z",
+    "updated_at": "2025-10-20T09:12:11.526Z"
   }
 },
 {
   "model": "chats.chattheme",
-  "pk": 27,
+  "pk": 2,
   "fields": {
     "theme_id": "light-mode",
     "name": "Light Mode",
     "is_dark_mode": false,
     "theme_color_light": "#ffffff",
     "theme_color_dark": "#f9fafb",
-    "container": "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-white",
+    "container": "h-[100dvh] w-screen max-w-full overflow-x-hidden flex flex-col bg-gray-50",
     "header": "border-b border-gray-200 bg-white px-4 py-3 flex-shrink-0",
     "header_title": "text-lg font-bold text-gray-900",
     "header_title_fade": "bg-gradient-to-l from-white to-transparent",
@@ -110,46 +447,42 @@
     "sticky_section": "absolute top-0 left-0 right-0 z-20 border-b border-gray-200 bg-white/90 backdrop-blur-lg px-4 py-2 space-y-2 shadow-md",
     "messages_area": "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
     "messages_area_container": "bg-white",
-    "messages_area_bg": "bg-[url('/bg-pattern.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.04] [filter:grayscale(1)]",
-    "host_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-3 bg-red-500 font-medium transition-all duration-300 shadow-md",
-    "sticky_host_message": "w-full rounded-xl px-4 py-3 pr-[calc(2.5%+5rem-5px)] bg-red-500 font-medium transition-all duration-300 shadow-md",
+    "messages_area_bg": "bg-[url('/bg-pattern-light.svg')] bg-repeat bg-[length:800px_533px] opacity-[0.30]",
+    "host_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-2.5 bg-red-500 font-medium transition-all duration-300 shadow-md",
+    "sticky_host_message": "w-full rounded-xl px-4 py-2.5 pr-[calc(2.5%+5rem-5px)] bg-red-500 font-medium transition-all duration-300 shadow-md",
     "host_text": "text-white",
     "host_message_fade": "bg-gradient-to-l from-red-500 to-transparent",
-    "pinned_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-3 bg-purple-600 font-medium transition-all duration-300 shadow-md",
-    "sticky_pinned_message": "w-full rounded-xl px-4 py-3 pr-[calc(2.5%+5rem-5px)] bg-purple-600 font-medium transition-all duration-300 shadow-md",
+    "pinned_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-2.5 bg-purple-600 font-medium transition-all duration-300 shadow-md",
+    "sticky_pinned_message": "w-full rounded-xl px-4 py-2.5 pr-[calc(2.5%+5rem-5px)] bg-purple-600 font-medium transition-all duration-300 shadow-md",
     "pinned_text": "text-white",
     "pinned_message_fade": "bg-gradient-to-l from-purple-600 to-transparent",
-    "regular_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-3 bg-gray-100 shadow-sm",
+    "regular_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-2.5 bg-gray-100 shadow-sm",
     "regular_text": "text-gray-900",
-    "my_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-3 bg-blue-500 shadow-md",
+    "my_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-2.5 bg-blue-500 shadow-md",
     "my_text": "text-white",
     "voice_message_styles": {
-      "playButton": "bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600",
-      "playIconColor": "text-white",
-      "waveformActive": "bg-gradient-to-t from-purple-500 to-blue-500",
-      "waveformInactive": "bg-gray-400 dark:bg-gray-500",
-      "durationTextColor": "text-gray-500 dark:text-gray-400"
+      "playButton": "",
+      "playIconColor": "",
+      "waveformActive": "",
+      "waveformInactive": ""
     },
     "my_voice_message_styles": {
-      "playButton": "bg-white hover:bg-gray-100",
-      "playIconColor": "text-gray-900",
-      "waveformActive": "bg-gray-400",
-      "waveformInactive": "bg-white",
-      "durationTextColor": "text-white"
+      "playButton": "",
+      "playIconColor": "",
+      "waveformActive": "",
+      "waveformInactive": ""
     },
     "host_voice_message_styles": {
-      "playButton": "bg-white hover:bg-gray-100",
-      "playIconColor": "text-gray-900",
-      "waveformActive": "bg-gray-400",
-      "waveformInactive": "bg-white",
-      "durationTextColor": "text-white"
+      "playButton": "",
+      "playIconColor": "",
+      "waveformActive": "",
+      "waveformInactive": ""
     },
     "pinned_voice_message_styles": {
-      "playButton": "bg-white hover:bg-gray-100",
-      "playIconColor": "text-gray-900",
-      "waveformActive": "bg-gray-400",
-      "waveformInactive": "bg-white",
-      "durationTextColor": "text-white"
+      "playButton": "",
+      "playIconColor": "",
+      "waveformActive": "",
+      "waveformInactive": ""
     },
     "filter_button_active": "px-3 py-1.5 rounded-lg text-xs tracking-wider bg-blue-500 text-white border border-blue-600 shadow-sm",
     "filter_button_inactive": "px-3 py-1.5 rounded-lg text-xs tracking-wider bg-white text-gray-600 border border-gray-300 hover:bg-gray-50",
@@ -159,14 +492,14 @@
     "crown_icon_color": "text-yellow-400",
     "badge_icon_color": "text-blue-400",
     "reply_icon_color": "text-cyan-400",
-    "my_username": "text-xs font-semibold \\!text-white",
-    "regular_username": "text-xs font-semibold \\!text-white",
+    "my_username": "text-xs font-semibold text-white",
+    "regular_username": "text-xs font-semibold text-white",
     "host_username": "text-sm font-semibold",
     "pinned_username": "text-sm font-semibold",
     "sticky_host_username": "text-sm font-semibold text-white",
     "sticky_pinned_username": "text-sm font-semibold text-white",
-    "my_timestamp": "text-xs \\!text-white opacity-60",
-    "regular_timestamp": "text-xs \\!text-white opacity-60",
+    "my_timestamp": "text-xs text-white opacity-60",
+    "regular_timestamp": "text-xs text-white opacity-60",
     "host_timestamp": "text-xs opacity-60",
     "pinned_timestamp": "text-xs opacity-60",
     "reply_preview_container": "flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700",
@@ -175,128 +508,8 @@
     "reply_preview_content": "text-xs text-gray-600 dark:text-gray-400 truncate",
     "reply_preview_close_button": "p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded",
     "reply_preview_close_icon": "w-4 h-4 text-gray-500",
-    "created_at": "2025-10-08T16:08:46.684Z",
-    "updated_at": "2025-10-09T19:41:28.903Z"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 1,
-  "fields": {
-    "key": "MESSAGE_HISTORY_MAX_DAYS",
-    "value": "{\"__type__\": \"default\", \"__value__\": 7}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 3,
-  "fields": {
-    "key": "MESSAGE_HISTORY_MAX_COUNT",
-    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 4,
-  "fields": {
-    "key": "REDIS_CACHE_ENABLED",
-    "value": "{\"__type__\": \"default\", \"__value__\": true}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 5,
-  "fields": {
-    "key": "REDIS_CACHE_WRITE_ENABLED",
-    "value": "{\"__type__\": \"default\", \"__value__\": true}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 6,
-  "fields": {
-    "key": "REDIS_CACHE_TTL_HOURS",
-    "value": "{\"__type__\": \"default\", \"__value__\": 24}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 7,
-  "fields": {
-    "key": "REDIS_CACHE_MAX_COUNT",
-    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 8,
-  "fields": {
-    "key": "MESSAGE_LIST_DEFAULT_LIMIT",
-    "value": "{\"__type__\": \"default\", \"__value__\": 50}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 9,
-  "fields": {
-    "key": "ENABLE_MONITORING",
-    "value": "{\"__type__\": \"default\", \"__value__\": true}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 10,
-  "fields": {
-    "key": "MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT",
-    "value": "{\"__type__\": \"default\", \"__value__\": 3}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 11,
-  "fields": {
-    "key": "USER_BLOCK_CACHE_TTL_HOURS",
-    "value": "{\"__type__\": \"default\", \"__value__\": 0}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 12,
-  "fields": {
-    "key": "MAX_ANONYMOUS_USERNAME_GENERATION_ATTEMPTS",
-    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 13,
-  "fields": {
-    "key": "USERNAME_RESERVATION_TTL_MINUTES",
-    "value": "{\"__type__\": \"default\", \"__value__\": 60}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 14,
-  "fields": {
-    "key": "USERNAME_VALIDATION_TTL_MINUTES",
-    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 15,
-  "fields": {
-    "key": "MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL",
-    "value": "{\"__type__\": \"default\", \"__value__\": 50}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 16,
-  "fields": {
-    "key": "MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT",
-    "value": "{\"__type__\": \"default\", \"__value__\": 3}"
+    "created_at": "2025-10-20T08:17:57.660Z",
+    "updated_at": "2025-10-20T08:17:58.453Z"
   }
 }
 ]
