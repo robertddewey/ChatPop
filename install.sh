@@ -285,6 +285,11 @@ setup_backend() {
         print_info "Skipping full development data"
     fi
 
+    # Collect static files for Django admin
+    print_info "Collecting static files for Django admin..."
+    ./venv/bin/python manage.py collectstatic --noinput
+    print_success "Static files collected"
+
     # Deactivate virtual environment
     deactivate
 
