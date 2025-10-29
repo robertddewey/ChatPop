@@ -369,6 +369,125 @@ print_completion() {
     echo ""
 }
 
+# Clone or update repository
+setup_repository() {
+    print_header "Repository Setup"
+
+    # Check if we're already in a ChatPop directory
+    if [ -f "docker-compose.yml" ] && [ -d "backend" ] && [ -d "frontend" ]; then
+        print_info "Already in ChatPop directory"
+
+        # Check if it's a git repository
+        if [ -d ".git" ]; then
+            # Show current branch
+            CURRENT_BRANCH=$(git branch --show-current)
+            print_info "Current branch: ${YELLOW}$CURRENT_BRANCH${NC}"
+
+            # Ask if they want to switch branches
+            echo ""
+            read -p "Enter branch name (or press Enter to use current branch): " BRANCH
+
+            if [ -n "$BRANCH" ]; then
+                print_info "Switching to branch: $BRANCH"
+
+                # Fetch latest branches
+                print_info "Fetching latest branches..."
+                git fetch origin
+
+                # Check if branch exists remotely
+                if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+                    # Checkout the branch
+                    git checkout "$BRANCH" || {
+                        print_error "Failed to checkout branch $BRANCH"
+                        exit 1
+                    }
+
+                    # Pull latest changes
+                    print_info "Pulling latest changes..."
+                    git pull origin "$BRANCH" || {
+                        print_error "Failed to pull latest changes"
+                        exit 1
+                    }
+
+                    print_success "Switched to branch $BRANCH and pulled latest changes"
+                else
+                    print_error "Branch $BRANCH does not exist remotely"
+                    exit 1
+                fi
+            else
+                # Pull latest changes for current branch
+                print_info "Pulling latest changes for current branch..."
+                git pull origin "$CURRENT_BRANCH" || {
+                    print_warning "Could not pull latest changes (may not be a remote tracking branch)"
+                }
+                print_success "Using current branch: $CURRENT_BRANCH"
+            fi
+        else
+            print_warning "Not a git repository - skipping repository update"
+        fi
+
+        return
+    fi
+
+    # Not in ChatPop directory - need to clone
+    print_info "ChatPop repository not found in current directory"
+    echo ""
+
+    # Default repository URL
+    DEFAULT_REPO="https://github.com/robertddewey/ChatPop.git"
+
+    echo -e "${BLUE}Enter GitHub repository URL${NC}"
+    echo -e "${YELLOW}(Press Enter for default: $DEFAULT_REPO)${NC}"
+    read -p "Repository URL: " REPO_URL
+
+    if [ -z "$REPO_URL" ]; then
+        REPO_URL="$DEFAULT_REPO"
+    fi
+
+    # Ask for branch
+    echo ""
+    echo -e "${BLUE}Enter branch name${NC}"
+    echo -e "${YELLOW}(Press Enter for default: main)${NC}"
+    read -p "Branch: " BRANCH
+
+    if [ -z "$BRANCH" ]; then
+        BRANCH="main"
+    fi
+
+    # Ask where to clone
+    echo ""
+    echo -e "${BLUE}Enter directory name to clone into${NC}"
+    echo -e "${YELLOW}(Press Enter for default: ChatPop)${NC}"
+    read -p "Directory: " CLONE_DIR
+
+    if [ -z "$CLONE_DIR" ]; then
+        CLONE_DIR="ChatPop"
+    fi
+
+    # Check if directory already exists
+    if [ -d "$CLONE_DIR" ]; then
+        print_error "Directory $CLONE_DIR already exists"
+        exit 1
+    fi
+
+    # Clone the repository
+    print_info "Cloning repository..."
+    if git clone -b "$BRANCH" "$REPO_URL" "$CLONE_DIR"; then
+        print_success "Repository cloned successfully"
+
+        # Change into the directory
+        cd "$CLONE_DIR" || {
+            print_error "Failed to change into directory $CLONE_DIR"
+            exit 1
+        }
+
+        print_success "Changed into directory: $CLONE_DIR"
+    else
+        print_error "Failed to clone repository"
+        exit 1
+    fi
+}
+
 # Main installation flow
 main() {
     clear
@@ -384,13 +503,28 @@ main() {
     echo -e "${NC}"
     echo -e "${BLUE}Automated Installation Script for macOS/Linux${NC}\n"
 
-    # Check if we're in the correct directory
+    # Check if git is installed
+    if ! command_exists git; then
+        print_error "git is required but not found"
+        echo ""
+        echo "Install git:"
+        echo "  macOS:  brew install git"
+        echo "  Linux:  sudo apt install git  # Debian/Ubuntu"
+        echo ""
+        exit 1
+    fi
+
+    # Setup repository (clone or update)
+    setup_repository
+
+    # Verify we're now in the correct directory
     if [ ! -f "docker-compose.yml" ] || [ ! -d "backend" ] || [ ! -d "frontend" ]; then
-        print_error "This script must be run from the ChatPop project root directory"
+        print_error "Not in ChatPop project root directory after repository setup"
         exit 1
     fi
 
     # Confirm installation
+    echo ""
     read -p "This will install ChatPop.app on your system. Continue? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
