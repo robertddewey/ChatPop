@@ -7,6 +7,9 @@
 
 set -e  # Exit on error
 
+# Store the directory where the script is located (for finding .env files)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -238,9 +241,16 @@ setup_backend() {
 
     # Create .env file
     if [ ! -f ".env" ]; then
-        print_info "Creating backend .env file..."
-        cp .env.example .env
-        print_success "Backend .env file created"
+        # Check if .env exists in script directory (parent of ChatPop)
+        if [ -f "$SCRIPT_DIR/.env" ]; then
+            print_info "Found .env in script directory - copying to backend..."
+            cp "$SCRIPT_DIR/.env" .env
+            print_success "Backend .env file copied from $SCRIPT_DIR/.env"
+        else
+            print_info "Creating backend .env file from template..."
+            cp .env.example .env
+            print_success "Backend .env file created"
+        fi
     else
         print_info "Backend .env file already exists"
     fi
@@ -295,8 +305,13 @@ setup_frontend() {
 
     # Create .env.local file
     if [ ! -f ".env.local" ]; then
-        if [ -f ".env.example" ]; then
-            print_info "Creating frontend .env.local file..."
+        # Check if .env.local exists in script directory (parent of ChatPop)
+        if [ -f "$SCRIPT_DIR/.env.local" ]; then
+            print_info "Found .env.local in script directory - copying to frontend..."
+            cp "$SCRIPT_DIR/.env.local" .env.local
+            print_success "Frontend .env.local file copied from $SCRIPT_DIR/.env.local"
+        elif [ -f ".env.example" ]; then
+            print_info "Creating frontend .env.local file from template..."
             cp .env.example .env.local
             print_success "Frontend .env.local file created"
         else
