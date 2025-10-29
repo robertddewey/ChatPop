@@ -227,7 +227,7 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 return vision_provider.analyze_image(
                     image_file=image_for_suggestions,
                     prompt=config.PHOTO_ANALYSIS_PROMPT,
-                    max_suggestions=10,
+                    max_suggestions=5,
                     temperature=config.PHOTO_ANALYSIS_TEMPERATURE
                 )
 
@@ -304,7 +304,8 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                     {
                         'name': s.name,
                         'key': s.key,
-                        'description': s.description
+                        'description': s.description,
+                        'is_proper_noun': s.is_proper_noun
                     }
                     for s in analysis_result.suggestions
                 ],

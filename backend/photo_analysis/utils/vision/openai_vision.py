@@ -37,12 +37,13 @@ class OpenAIVisionProvider(VisionProvider):
         """Get the model identifier."""
         return self.model
 
-    def _encode_image_to_base64(self, image_file: BinaryIO) -> str:
+    def _encode_image_to_base64(self, image_file: BinaryIO, max_size: int = 768) -> str:
         """
-        Encode image to base64 string.
+        Encode image to base64 string with optional resizing.
 
         Args:
             image_file: Image file to encode
+            max_size: Maximum width/height (default: 768 for text readability)
 
         Returns:
             Base64-encoded image string
@@ -58,17 +59,48 @@ class OpenAIVisionProvider(VisionProvider):
             # Read and validate image
             image_data = image_file.read()
 
-            # Verify it's a valid image and log dimensions
-            try:
-                img = Image.open(io.BytesIO(image_data))
-                width, height = img.size
-                megapixels = (width * height) / 1_000_000
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.info(f"Encoding image for OpenAI: {width}x{height} ({megapixels:.2f}MP), base64 size: {len(image_data)} bytes")
-                img.verify()
-            except Exception as e:
-                raise ValueError(f"Invalid image file: {str(e)}")
+            # Open and resize image
+            import logging
+            logger = logging.getLogger(__name__)
+
+            img = Image.open(io.BytesIO(image_data))
+            original_width, original_height = img.size
+            original_megapixels = (original_width * original_height) / 1_000_000
+
+            # Convert RGBA to RGB (JPEG doesn't support transparency)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # Create white background
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = background
+
+            # Resize if larger than max_size
+            if original_width > max_size or original_height > max_size:
+                # Calculate new size maintaining aspect ratio
+                if original_width > original_height:
+                    new_width = max_size
+                    new_height = int(original_height * (max_size / original_width))
+                else:
+                    new_height = max_size
+                    new_width = int(original_width * (max_size / original_height))
+
+                # Resize with high-quality resampling
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+                # Save resized image to bytes
+                output = io.BytesIO()
+                img.save(output, format='JPEG', quality=85, optimize=True)
+                image_data = output.getvalue()
+
+                logger.info(f"Resized image: {original_width}x{original_height} ({original_megapixels:.2f}MP) → {new_width}x{new_height}, base64 size: {len(image_data)} bytes")
+            else:
+                # Still need to convert to JPEG even if not resizing
+                output = io.BytesIO()
+                img.save(output, format='JPEG', quality=85, optimize=True)
+                image_data = output.getvalue()
+                logger.info(f"Image within size limit: {original_width}x{original_height} ({original_megapixels:.2f}MP), base64 size: {len(image_data)} bytes")
 
             # Encode to base64
             return base64.b64encode(image_data).decode('utf-8')
@@ -122,12 +154,14 @@ class OpenAIVisionProvider(VisionProvider):
                 name = item.get('name', '').strip()
                 key = item.get('key', '').strip()
                 description = item.get('description', '').strip()
+                is_proper_noun = item.get('is_proper_noun', False)
 
                 if name and key:  # Require at least name and key
                     suggestions.append(ChatSuggestion(
                         name=name,
                         key=key,
-                        description=description or f"Chat about {name.lower()}"
+                        description=description or f"Chat about {name.lower()}",
+                        is_proper_noun=is_proper_noun
                     ))
 
             return suggestions

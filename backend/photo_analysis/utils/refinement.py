@@ -25,104 +25,40 @@ REFINEMENT_MAX_SUGGESTIONS = 7
 REFINEMENT_K_NEAREST_NEIGHBORS = 10  # Number of similar photos to fetch for popular suggestions
 
 # Refinement prompt template
-REFINEMENT_PROMPT_TEMPLATE = """You are refining AI-generated chat room suggestions for a photo-based social app.
+REFINEMENT_PROMPT_TEMPLATE = """Refine {seed_count} AI-generated chat room suggestions to {min_suggestions}-{max_suggestions} distinct, high-quality names.
 
 PHOTO CONTEXT:
-- Title: {caption_title}
-- Category: {caption_category}
-- Full Caption: {caption_full}
-- Visible Text: {caption_visible_text}
+Title: {caption_title} | Category: {caption_category} | Caption: {caption_full} | Visible Text: {caption_visible_text}
 
-INPUT SUGGESTIONS ({seed_count} suggestions - mix of popular and seed):
-{seed_suggestions}
-
-NOTE: Input suggestions are marked with 'source':
-- 'popular' = From similar photos uploaded by other users (collaborative discovery)
-- 'seed' = Fresh AI-generated suggestions for this specific photo
-
-YOUR TASK:
-Refine the input suggestions to {min_suggestions}-{max_suggestions} distinct, high-quality chat room names.
+INPUT: {seed_suggestions}
 
 RULES:
-1. Remove TRUE DUPLICATES - merge semantically identical suggestions
+1. DUPLICATES: Remove semantically identical suggestions. Ask: "Would these attract the same people having the same conversation?" If yes, keep only one. Prefer 'popular' source over 'seed'.
 
-   A. EXACT DUPLICATES - identical name with identical key from different sources:
-      - If same suggestion appears in BOTH popular and seed → Always keep the popular version
-      - Example: "Cheers!" (popular, key: cheers) + "Cheers!" (seed, key: cheers) → Keep "Cheers!" with source: "popular"
-      - Punctuation variations: "Cheers" vs "Cheers!" with same key → Keep one consistent form (prefer with punctuation)
-      - Wrong: Marking exact duplicates as "preserved_distinct_entity" (they're identical, not distinct!)
+2. DISTINCT ENTITIES: Keep different proper nouns (Star Wars ≠ Star Trek, Budweiser ≠ Miller). They're distinct even if related.
 
-   B. SEMANTIC DUPLICATES - generic phrases describing same topic with different words:
-      Critical question: "Would these attract the SAME people having the SAME conversation?"
-      - If YES → They're duplicates, keep only 1
-      - If NO → They're distinct topics, keep both
+3. DIVERSITY: Ensure different aspects of photo, not just synonyms. "Brewery Tour" + "Beer Tasting" = diverse (location + activity). "Excitement" + "Thrills" = redundant.
 
-2. Preserve DISTINCT ENTITIES - specific named entities are NOT duplicates
+4. PROPER NOUNS: Restore canonical names from context. "Matrix Fans" + caption "The Matrix movie poster" → "The Matrix". Use official titles, include "The" if part of name, add year for disambiguation (e.g., "The Matrix (1999)").
 
-   Different proper nouns refer to different real-world things, even if related.
-   Example: "Star Wars" vs "Star Trek" → Keep both (different franchises)
-   Example: "Budweiser" vs "Miller" → Keep both (different brands)
+5. PROPER NOUN DETECTION: Mark "is_proper_noun": true for specific named entities:
+   - Movies/Shows: "The Matrix (1999)", "Twister (1996)", "Twisters (2024)"
+   - Brands: "Budweiser", "Apple", "Nike"
+   - Products: "iPhone 15 Pro", "Tesla Model 3"
+   - Named Places: "Eiffel Tower", "Grand Canyon"
+   Mark "is_proper_noun": false for generic topics: "Coffee Chat", "Beer Tasting", "Cat Lovers"
 
-3. Maintain DIVERSE TOPICS - ensure refined suggestions cover different conversation angles
+6. SOURCE TRACKING:
+   - Keep unchanged → preserve original source
+   - Merge same source → preserve that source
+   - Merge different sources → mark 'refined'
 
-   Diversity means different ASPECTS of the photo, not just different ADJECTIVES.
-   Example: "Brewery Tour" (location) vs "Beer Tasting" (activity) → Keep both (different aspects)
-
-   Not diverse: Multiple generic reactions to the same thing (excitement, thrills, chaos, action)
-
-4. RESTORE PROPER NOUNS - use full canonical names for specific entities
-   Example: Seed "Matrix Fans" + Caption "The Matrix movie poster" → "The Matrix" or "The Matrix (1999)"
-   Example: Seed "Godfather Talk" + Visible Text "THE GODFATHER" → "The Godfather"
-   Example: Seed "Beatles Music" + Caption "The Beatles album cover" → "The Beatles"
-
-   When to restore proper nouns:
-   - Movie/TV titles: Use official title from caption/visible text (include "The" if part of title)
-   - Book titles: Use full canonical title
-   - Band/artist names: Use official name (include "The" if part of name)
-   - Brand/product names: Preserve exact spelling from visible text
-   - Add year/edition for disambiguation when helpful: "The Matrix (1999)", "The Office (US)"
-
-   Clues that suggest proper nouns:
-   - category contains: "movie poster", "album cover", "book cover", "product", "logo"
-   - visible_text contains: ALL CAPS TEXT (often brand/title)
-   - caption mentions: "titled", "called", "featuring", "by [artist]", "[year]"
-
-5. General suggestions can omit articles and stay concise
-   Example: "Bar Room", "Happy Hour", "Craft Beer" (generic topics, no articles needed)
-   Example: "Coffee Lovers", "Recipe Exchange", "Travel Stories" (generic, stay concise)
-
-6. PRESERVE SOURCE TRACKING - include 'source' field in your output
-   - If you keep a suggestion unchanged, preserve its original source ('popular' or 'seed')
-   - If you merge/modify suggestions from DIFFERENT sources, mark as 'refined'
-   - If you merge/modify suggestions from SAME source, preserve that source
-
-   Examples:
-   - Keep "Cheers!" from popular suggestions → source: "popular"
-   - Merge "Bar Room" (seed) + "Drinking Lounge" (seed) → "Bar Room" with source: "seed"
-   - Merge "Jim Beam" (popular) + "Bourbon Bottles" (seed) → "Jim Beam" with source: "refined"
-   - Restore proper noun "Matrix Fans" (seed) → "The Matrix" with source: "seed"
-
-OUTPUT FORMAT (JSON):
+OUTPUT (JSON):
 {{
   "refined_suggestions": [
-    {{
-      "name": "Chat Name",
-      "key": "chat-name",
-      "description": "Brief description of chat topic",
-      "source": "popular|seed|refined",
-      "reasoning": "Why this suggestion was kept (removed_duplicates: [...] or preserved_distinct_entity or matched_popular_suggestion or restored_proper_noun: 'original → canonical')"
-    }}
-  ],
-  "removed_duplicates": [
-    {{
-      "removed": "Similar Suggestion",
-      "kept_instead": "Final Suggestion",
-      "reason": "Explanation"
-    }}
+    {{"name": "Chat Name", "key": "chat-name", "description": "Brief topic description", "source": "popular|seed|refined", "is_proper_noun": true|false}}
   ]
-}}
-
-Return {min_suggestions}-{max_suggestions} refined suggestions that maximize diversity while removing true duplicates and restoring proper nouns where appropriate."""
+}}"""
 
 
 def refine_suggestions(

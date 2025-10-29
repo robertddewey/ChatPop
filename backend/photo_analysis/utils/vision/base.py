@@ -13,6 +13,7 @@ class ChatSuggestion:
     name: str  # Title Case (e.g., "Curious Cat")
     key: str   # lowercase-with-dashes (e.g., "curious-cat")
     description: str  # Short description
+    is_proper_noun: bool = False  # True for specific named entities (movies, brands, products, places)
 
 
 @dataclass
