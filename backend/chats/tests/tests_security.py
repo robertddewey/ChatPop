@@ -104,7 +104,7 @@ class ChatSessionSecurityTests(TestCase):
 
         # Try to use token from first chat in second chat
         response = self.client.post(
-            f'/api/chats/{other_chat.code}/messages/send/',
+            f'/api/chats/testuser/{other_chat.code}/messages/send/',
             data={
                 'username': 'testuser',
                 'content': 'Hello',
@@ -375,7 +375,7 @@ class ChatSessionSecurityTests(TestCase):
 
         # Try to join without access code
         response = self.client.post(
-            f'/api/chats/{private_chat.code}/join/',
+            f'/api/chats/testuser/{private_chat.code}/join/',
             data={'username': 'hacker'},
             content_type='application/json'
         )
@@ -383,7 +383,7 @@ class ChatSessionSecurityTests(TestCase):
 
         # Try with wrong access code
         response = self.client.post(
-            f'/api/chats/{private_chat.code}/join/',
+            f'/api/chats/testuser/{private_chat.code}/join/',
             data={'username': 'hacker', 'access_code': 'wrong'},
             content_type='application/json'
         )
@@ -391,7 +391,7 @@ class ChatSessionSecurityTests(TestCase):
 
         # Try with correct access code
         response = self.client.post(
-            f'/api/chats/{private_chat.code}/join/',
+            f'/api/chats/testuser/{private_chat.code}/join/',
             data={'username': 'legit_user', 'access_code': 'secret123'},
             content_type='application/json'
         )

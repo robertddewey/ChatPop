@@ -745,7 +745,7 @@ class UserBlockingMessageHistoryFilteringTests(TestCase):
 
         # Alice fetches message history
         self.client.force_authenticate(user=self.alice)
-        response = self.client.get(f'/api/chats/{self.chat.code}/messages/')
+        response = self.client.get(f'/api/chats/Alice/{self.chat.code}/messages/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -770,7 +770,7 @@ class UserBlockingMessageHistoryFilteringTests(TestCase):
 
         # Alice fetches message history (should auto-load from PostgreSQL)
         self.client.force_authenticate(user=self.alice)
-        response = self.client.get(f'/api/chats/{self.chat.code}/messages/')
+        response = self.client.get(f'/api/chats/Alice/{self.chat.code}/messages/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -811,7 +811,7 @@ class UserBlockingMessageHistoryFilteringTests(TestCase):
         UserBlockCache.add_blocked_username(self.alice.id, 'Bob')
 
         # Anonymous user fetches message history (no authentication)
-        response = self.client.get(f'/api/chats/{self.chat.code}/messages/')
+        response = self.client.get(f'/api/chats/Alice/{self.chat.code}/messages/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -833,7 +833,7 @@ class UserBlockingMessageHistoryFilteringTests(TestCase):
 
         # Alice fetches message history
         self.client.force_authenticate(user=self.alice)
-        response = self.client.get(f'/api/chats/{self.chat.code}/messages/')
+        response = self.client.get(f'/api/chats/Alice/{self.chat.code}/messages/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 

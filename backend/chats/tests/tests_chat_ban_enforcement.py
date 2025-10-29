@@ -58,7 +58,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
     def _suggest_username(self, fingerprint):
         """Helper method to get a generated username for a fingerprint"""
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat_room.code}/suggest-username/',
             {'fingerprint': fingerprint},
             content_type='application/json'
         )
@@ -72,7 +72,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
             data['fingerprint'] = fingerprint
 
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             data=data,
             content_type='application/json'
         )
@@ -111,7 +111,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         # Attempt to send message via HTTP API
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
             {
                 'username': test_username,
                 'content': 'This should be blocked',
@@ -146,7 +146,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         # Attempt to send message with different case
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
             {
                 'username': test_username,  # original case
                 'content': 'This should be blocked',
@@ -173,7 +173,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         # Attempt to send message via HTTP API
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
             {
                 'username': username,  # Use generated username
                 'content': 'This should be blocked',
@@ -208,7 +208,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         # Attempt to send message via HTTP API
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
             {
                 'username': 'RegularUser',
                 'content': 'This should be blocked',
@@ -233,7 +233,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         # Send message via HTTP API
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
             {
                 'username': test_username,
                 'content': 'This should work',
@@ -277,7 +277,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         # Host sends message
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
             {
                 'username': 'HostUser',
                 'content': 'Host message',
@@ -306,7 +306,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         # Join second chat
         token2_response = self.client.post(
-            f'/api/chats/{chat_room2.code}/join/',
+            f'/api/chats/HostUser/{chat_room2.code}/join/',
             {'username': test_username},
             content_type='application/json'
         )
@@ -328,7 +328,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         # Attempt to send message in first chat (should fail)
         response1 = self.client.post(
-            f'/api/chats/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
             {
                 'username': test_username,
                 'content': 'Chat 1 message',
@@ -340,7 +340,7 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         # Attempt to send message in second chat (should succeed)
         response2 = self.client.post(
-            f'/api/chats/{chat_room2.code}/messages/send/',
+            f'/api/chats/HostUser/{chat_room2.code}/messages/send/',
             {
                 'username': test_username,
                 'content': 'Chat 2 message',
@@ -581,7 +581,7 @@ class ChatBanCreationTests(TestCase):
         """Helper method to join chat as authenticated user and get session token"""
         self.client.force_login(user)
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {'username': username},
             content_type='application/json'
         )
@@ -598,7 +598,7 @@ class ChatBanCreationTests(TestCase):
 
         # Host bans the regular user
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {
                 'blocked_username': 'RegularUser',
                 'session_token': session_token
@@ -633,7 +633,7 @@ class ChatBanCreationTests(TestCase):
 
         # Regular user tries to ban someone
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {
                 'blocked_username': 'SomeUser',
                 'session_token': session_token
@@ -657,7 +657,7 @@ class ChatBanCreationTests(TestCase):
         self.client.force_login(self.host)
 
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {
                 'blocked_username': 'RegularUser',
                 # Missing session_token
@@ -678,7 +678,7 @@ class ChatBanCreationTests(TestCase):
 
         # Create first ban
         response1 = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {
                 'blocked_username': 'RegularUser',
                 'session_token': session_token
@@ -689,7 +689,7 @@ class ChatBanCreationTests(TestCase):
 
         # Attempt to create duplicate ban
         response2 = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {
                 'blocked_username': 'RegularUser',
                 'session_token': session_token
@@ -717,7 +717,7 @@ class ChatBanCreationTests(TestCase):
         # Regular user joins chat
         self.client.force_login(self.user)
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {'username': 'RegularUser', 'fingerprint': 'test-fingerprint'},
             content_type='application/json'
         )
@@ -732,7 +732,7 @@ class ChatBanCreationTests(TestCase):
         # Get host participation
         self.client.force_login(self.host)
         host_response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {'username': 'HostUser'},
             content_type='application/json'
         )
@@ -795,7 +795,7 @@ class ChatBanCreationTests(TestCase):
         self.client.logout()
 
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {
                 'blocked_username': 'RegularUser',
                 'session_token': 'fake_token'
@@ -844,7 +844,7 @@ class ChatBanIntegrationTests(TestCase):
         # Step 1: User joins chat and sends message successfully
         self.client.force_login(self.user)
         join_response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {'username': 'RegularUser'},
             content_type='application/json'
         )
@@ -853,7 +853,7 @@ class ChatBanIntegrationTests(TestCase):
 
         # User sends first message
         msg_response1 = self.client.post(
-            f'/api/chats/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
             {
                 'username': 'RegularUser',
                 'content': 'Hello everyone!',
@@ -866,7 +866,7 @@ class ChatBanIntegrationTests(TestCase):
         # Step 2: Host joins chat
         self.client.force_login(self.host)
         host_join_response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {'username': 'HostUser'},
             content_type='application/json'
         )
@@ -875,7 +875,7 @@ class ChatBanIntegrationTests(TestCase):
 
         # Step 3: Host bans the user
         ban_response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {
                 'blocked_username': 'RegularUser',
                 'session_token': host_token
@@ -887,7 +887,7 @@ class ChatBanIntegrationTests(TestCase):
         # Step 4: Banned user attempts to send another message
         self.client.force_login(self.user)
         msg_response2 = self.client.post(
-            f'/api/chats/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
             {
                 'username': 'RegularUser',
                 'content': 'This should be blocked',

@@ -47,7 +47,7 @@ class HostFirstJoinTests(TestCase):
         self.client.force_authenticate(user=self.other_user)
 
         # Try to get chat details
-        response = self.client.get(f'/api/chats/{self.chat_room.code}/')
+        response = self.client.get(f'/api/chats/HostUser/{self.chat_room.code}/')
 
         # Should return 404 (chat not found)
         self.assertEqual(response.status_code, 404)
@@ -58,7 +58,7 @@ class HostFirstJoinTests(TestCase):
         self.client.force_authenticate(user=self.other_user)
 
         # Try to join chat
-        response = self.client.post(f'/api/chats/{self.chat_room.code}/join/', {
+        response = self.client.post(f'/api/chats/HostUser/{self.chat_room.code}/join/', {
             'username': 'TestUser',
             'fingerprint': 'test-fingerprint-123'
         })
@@ -71,7 +71,7 @@ class HostFirstJoinTests(TestCase):
         # No authentication (anonymous user)
 
         # Try to get chat details
-        response = self.client.get(f'/api/chats/{self.chat_room.code}/')
+        response = self.client.get(f'/api/chats/HostUser/{self.chat_room.code}/')
 
         # Should return 404 (chat not found)
         self.assertEqual(response.status_code, 404)
@@ -81,7 +81,7 @@ class HostFirstJoinTests(TestCase):
         # No authentication (anonymous user)
 
         # Try to join chat
-        response = self.client.post(f'/api/chats/{self.chat_room.code}/join/', {
+        response = self.client.post(f'/api/chats/HostUser/{self.chat_room.code}/join/', {
             'username': 'AnonymousUser',
             'fingerprint': 'test-fingerprint-456'
         })
@@ -95,7 +95,7 @@ class HostFirstJoinTests(TestCase):
         self.client.force_authenticate(user=self.host_user)
 
         # Try to get chat details
-        response = self.client.get(f'/api/chats/{self.chat_room.code}/')
+        response = self.client.get(f'/api/chats/HostUser/{self.chat_room.code}/')
 
         # Should succeed
         self.assertEqual(response.status_code, 200)
@@ -107,7 +107,7 @@ class HostFirstJoinTests(TestCase):
         self.client.force_authenticate(user=self.host_user)
 
         # Join chat
-        response = self.client.post(f'/api/chats/{self.chat_room.code}/join/', {
+        response = self.client.post(f'/api/chats/HostUser/{self.chat_room.code}/join/', {
             'username': 'HostUser',
             'fingerprint': 'host-fingerprint'
         }, format='json')
@@ -139,7 +139,7 @@ class HostFirstJoinTests(TestCase):
         self.client.force_authenticate(user=self.other_user)
 
         # Try to get chat details
-        response = self.client.get(f'/api/chats/{self.chat_room.code}/')
+        response = self.client.get(f'/api/chats/HostUser/{self.chat_room.code}/')
 
         # Should succeed
         self.assertEqual(response.status_code, 200)
@@ -159,7 +159,7 @@ class HostFirstJoinTests(TestCase):
         self.client.force_authenticate(user=self.other_user)
 
         # Try to join chat
-        response = self.client.post(f'/api/chats/{self.chat_room.code}/join/', {
+        response = self.client.post(f'/api/chats/HostUser/{self.chat_room.code}/join/', {
             'username': 'OtherUser',
             'fingerprint': 'other-fingerprint'
         }, format='json')
@@ -190,7 +190,7 @@ class HostFirstJoinTests(TestCase):
         # No authentication (anonymous user)
 
         # Try to get chat details
-        response = self.client.get(f'/api/chats/{self.chat_room.code}/')
+        response = self.client.get(f'/api/chats/HostUser/{self.chat_room.code}/')
 
         # Should succeed
         self.assertEqual(response.status_code, 200)
@@ -217,7 +217,7 @@ class HostFirstJoinTests(TestCase):
         # No authentication (anonymous user)
 
         # Try to join chat
-        response = self.client.post(f'/api/chats/{self.chat_room.code}/join/', {
+        response = self.client.post(f'/api/chats/HostUser/{self.chat_room.code}/join/', {
             'username': test_username,
             'fingerprint': test_fingerprint
         }, format='json')

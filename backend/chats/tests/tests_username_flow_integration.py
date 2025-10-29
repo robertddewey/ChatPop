@@ -68,7 +68,7 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
 
         # STEP 1: Suggest a username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -82,7 +82,7 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
 
         # STEP 2: Try to join with the EXACT suggested username (original case)
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': suggested_username,  # Original case: "HappyTiger42"
                 'fingerprint': fingerprint
@@ -118,7 +118,7 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
 
         # User 1 generates a username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
             {'fingerprint': fingerprint1},
             format='json'
         )
@@ -127,7 +127,7 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
 
         # User 2 tries to join with User 1's username (should fail)
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': username1,  # User 1's username
                 'fingerprint': fingerprint2  # User 2's fingerprint
@@ -149,7 +149,7 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
 
         # Generate username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -157,7 +157,7 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
 
         # Try to join with lowercase version
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': username.lower(),  # e.g., "happytiger42"
                 'fingerprint': fingerprint
@@ -218,7 +218,7 @@ class UsernameRotationIntegrationTestCase(TestCase):
         generated_usernames = []
         for i in range(3):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -229,7 +229,7 @@ class UsernameRotationIntegrationTestCase(TestCase):
         rotated_sequence = []
         for i in range(15):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -276,7 +276,7 @@ class UsernameRotationIntegrationTestCase(TestCase):
         original_usernames = []
         for i in range(5):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -285,7 +285,7 @@ class UsernameRotationIntegrationTestCase(TestCase):
         # Rotate through usernames 20 times
         for i in range(20):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -313,7 +313,7 @@ class UsernameRotationIntegrationTestCase(TestCase):
         generated_usernames = []
         for i in range(3):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -333,7 +333,7 @@ class UsernameRotationIntegrationTestCase(TestCase):
         rotated_sequence = []
         for i in range(10):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -360,14 +360,14 @@ class UsernameRotationIntegrationTestCase(TestCase):
         # Generate 2 usernames
         for i in range(2):
             self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
 
         # Rotate to get a username
         rotate_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -375,7 +375,7 @@ class UsernameRotationIntegrationTestCase(TestCase):
 
         # Try to join with the rotated username
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': rotated_username,
                 'fingerprint': fingerprint
@@ -436,7 +436,7 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
 
         # Try to join with a manually crafted username (no prior generation)
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': 'HackerName123',  # Not generated via API
                 'fingerprint': fingerprint
@@ -463,7 +463,7 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
 
         # Generate a username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -477,7 +477,7 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
 
         # Join with the username (original capitalization)
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': username,  # e.g., "HappyTiger42"
                 'fingerprint': fingerprint
@@ -504,14 +504,14 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
 
         # First, generate and join
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
         username = suggest_response.data['username']
 
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/HostUser/{self.chat.code}/join/',
             {'username': username, 'fingerprint': fingerprint},
             format='json'
         )
@@ -522,7 +522,7 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
 
         # Try to rejoin with the same username
         rejoin_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/HostUser/{self.chat.code}/join/',
             {'username': username, 'fingerprint': fingerprint},
             format='json'
         )

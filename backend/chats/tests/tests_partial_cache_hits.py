@@ -125,7 +125,7 @@ class PartialCacheHitTests(TestCase):
 
         # Request 50 messages
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 50},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -170,7 +170,7 @@ class PartialCacheHitTests(TestCase):
 
         # Request 50 messages
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 50},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -207,7 +207,7 @@ class PartialCacheHitTests(TestCase):
 
         # Request 50 messages
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 50},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -242,7 +242,7 @@ class PartialCacheHitTests(TestCase):
 
         # Request 50 messages (cache miss)
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 50},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -263,7 +263,7 @@ class PartialCacheHitTests(TestCase):
 
         # Make a second request - should hit cache now
         response2 = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 50},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -299,7 +299,7 @@ class PartialCacheHitTests(TestCase):
 
         # First request: 50 messages (should be hybrid)
         response1 = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 50},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -317,7 +317,7 @@ class PartialCacheHitTests(TestCase):
 
         # Second request: paginate up (50 messages before oldest)
         response2 = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 50, 'before': oldest_timestamp},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -359,7 +359,7 @@ class PartialCacheHitTests(TestCase):
 
         # Request 50 messages (more than exist)
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 50},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -398,7 +398,7 @@ class PartialCacheHitTests(TestCase):
         with override_config(REDIS_CACHE_ENABLED=False):
             start_time = time.time()
             response_db = self.client.get(
-                f'/api/chats/{self.chat_room.code}/messages/',
+                f'/api/chats/HostUser/{self.chat_room.code}/messages/',
                 {'limit': 200},
                 HTTP_X_SESSION_TOKEN='test-session-token'
             )
@@ -413,7 +413,7 @@ class PartialCacheHitTests(TestCase):
         # Measure hybrid query time (150 cache + 50 DB)
         start_time = time.time()
         response_hybrid = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 200},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -427,7 +427,7 @@ class PartialCacheHitTests(TestCase):
         self._cache_messages(all_messages[:50])  # Cache the remaining 50 older messages
         start_time = time.time()
         response_cache = self.client.get(
-            f'/api/chats/{self.chat_room.code}/messages/',
+            f'/api/chats/HostUser/{self.chat_room.code}/messages/',
             {'limit': 200},
             HTTP_X_SESSION_TOKEN='test-session-token'
         )
@@ -478,7 +478,7 @@ class PartialCacheHitTests(TestCase):
         # Request excessive messages (should be capped)
         with override_config(MESSAGE_HISTORY_MAX_COUNT=75):
             response = self.client.get(
-                f'/api/chats/{self.chat_room.code}/messages/',
+                f'/api/chats/HostUser/{self.chat_room.code}/messages/',
                 {'limit': 99999},
                 HTTP_X_SESSION_TOKEN='test-session-token'
             )

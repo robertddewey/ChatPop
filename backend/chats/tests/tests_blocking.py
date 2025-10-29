@@ -454,7 +454,7 @@ class BlockingAPITests(TestCase):
 
         # Request without session_token should fail
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {'participation_id': str(participation.id)},
             format='json'
         )
@@ -470,7 +470,7 @@ class BlockingAPITests(TestCase):
         )
 
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {
                 'participation_id': str(participation.id),
                 'session_token': self.host_session_token
@@ -522,7 +522,7 @@ class BlockingAPITests(TestCase):
         )
 
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/block-user/',
+            f'/api/chats/HostUser/{self.chat_room.code}/block-user/',
             {
                 'participation_id': str(participation.id),
                 'session_token': non_host_token
@@ -552,7 +552,7 @@ class BlockingAPITests(TestCase):
         )
 
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/unblock/',
+            f'/api/chats/HostUser/{self.chat_room.code}/unblock/',
             {'participation_id': str(participation.id)},
             format='json'
         )
@@ -594,7 +594,7 @@ class BlockingAPITests(TestCase):
         )
 
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/blocked-users/'
+            f'/api/chats/HostUser/{self.chat_room.code}/blocked-users/'
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -633,7 +633,7 @@ class JoinEnforcementTests(TestCase):
         # Generate a username
         fingerprint = 'blocked_user_fp'
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat_room.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -649,7 +649,7 @@ class JoinEnforcementTests(TestCase):
 
         # Try to join with blocked username
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {
                 'username': blocked_username,
                 'fingerprint': fingerprint
@@ -664,7 +664,7 @@ class JoinEnforcementTests(TestCase):
         # Generate a username for this fingerprint
         fingerprint = 'blocked_fingerprint_fp'
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat_room.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -680,7 +680,7 @@ class JoinEnforcementTests(TestCase):
 
         # Try to join with blocked fingerprint
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {
                 'username': username,
                 'fingerprint': fingerprint
@@ -708,7 +708,7 @@ class JoinEnforcementTests(TestCase):
         # Try to join as blocked user
         self.client.force_authenticate(user=blocked_user)
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {'username': 'BlockedUser'},
             format='json'
         )
@@ -720,7 +720,7 @@ class JoinEnforcementTests(TestCase):
         # Generate a username for a non-blocked user
         fingerprint = 'good_user_fp'
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat_room.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -729,7 +729,7 @@ class JoinEnforcementTests(TestCase):
 
         # Join without any blocks
         response = self.client.post(
-            f'/api/chats/{self.chat_room.code}/join/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {
                 'username': username,
                 'fingerprint': fingerprint

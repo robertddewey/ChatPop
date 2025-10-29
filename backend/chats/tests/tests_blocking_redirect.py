@@ -46,7 +46,7 @@ class BlockingRedirectTests(TestCase):
     def test_anonymous_user_not_blocked(self):
         """Anonymous user with no blocks should see is_blocked=False"""
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/my-participation/?fingerprint=new_fingerprint'
+            f'/api/chats/HostUser/{self.chat_room.code}/my-participation/?fingerprint=new_fingerprint'
         )
 
         self.assertEqual(response.status_code, 200)
@@ -63,7 +63,7 @@ class BlockingRedirectTests(TestCase):
         )
 
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/my-participation/?fingerprint=blocked_fingerprint'
+            f'/api/chats/HostUser/{self.chat_room.code}/my-participation/?fingerprint=blocked_fingerprint'
         )
 
         self.assertEqual(response.status_code, 200)
@@ -82,7 +82,7 @@ class BlockingRedirectTests(TestCase):
         self.client.force_authenticate(user=user)
 
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/my-participation/?fingerprint=some_fingerprint'
+            f'/api/chats/HostUser/{self.chat_room.code}/my-participation/?fingerprint=some_fingerprint'
         )
 
         self.assertEqual(response.status_code, 200)
@@ -108,7 +108,7 @@ class BlockingRedirectTests(TestCase):
         self.client.force_authenticate(user=user)
 
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/my-participation/?fingerprint=some_fingerprint'
+            f'/api/chats/HostUser/{self.chat_room.code}/my-participation/?fingerprint=some_fingerprint'
         )
 
         self.assertEqual(response.status_code, 200)
@@ -138,7 +138,7 @@ class BlockingRedirectTests(TestCase):
 
         # Use the blocked fingerprint but as a logged-in user
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/my-participation/?fingerprint=blocked_fingerprint'
+            f'/api/chats/HostUser/{self.chat_room.code}/my-participation/?fingerprint=blocked_fingerprint'
         )
 
         self.assertEqual(response.status_code, 200)
@@ -168,7 +168,7 @@ class BlockingRedirectTests(TestCase):
         )
 
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/my-participation/?fingerprint=anon_fingerprint'
+            f'/api/chats/HostUser/{self.chat_room.code}/my-participation/?fingerprint=anon_fingerprint'
         )
 
         self.assertEqual(response.status_code, 200)
@@ -207,7 +207,7 @@ class BlockingRedirectTests(TestCase):
         self.client.force_authenticate(user=user)
 
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/my-participation/?fingerprint=returning_fingerprint'
+            f'/api/chats/HostUser/{self.chat_room.code}/my-participation/?fingerprint=returning_fingerprint'
         )
 
         self.assertEqual(response.status_code, 200)
@@ -228,7 +228,7 @@ class BlockingRedirectTests(TestCase):
         # Won't happen in practice (username is chosen at join time),
         # but tests the blocking logic
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/my-participation/?fingerprint=new_fingerprint'
+            f'/api/chats/HostUser/{self.chat_room.code}/my-participation/?fingerprint=new_fingerprint'
         )
 
         # First-time user doesn't have username yet, so can't be blocked by username
@@ -275,7 +275,7 @@ class BlockingRedirectTests(TestCase):
         self.client.force_authenticate(user=user)
 
         response = self.client.get(
-            f'/api/chats/{self.chat_room.code}/my-participation/?fingerprint=multi_fingerprint'
+            f'/api/chats/HostUser/{self.chat_room.code}/my-participation/?fingerprint=multi_fingerprint'
         )
 
         self.assertEqual(response.status_code, 200)

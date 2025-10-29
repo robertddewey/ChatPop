@@ -162,7 +162,7 @@ class ChatJoinProfanityTests(TestCase):
 
         # Step 1: Generate a valid username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/RegUser99/{self.chat.code}/suggest-username/',
             {
                 'fingerprint': fingerprint
             },
@@ -173,7 +173,7 @@ class ChatJoinProfanityTests(TestCase):
 
         # Step 2: Join with the generated username
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': username,
                 'fingerprint': fingerprint
@@ -185,7 +185,7 @@ class ChatJoinProfanityTests(TestCase):
     def test_join_with_profane_username_rejected(self):
         """Test that joining with profane username is rejected"""
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': 'fuck123',
                 'fingerprint': 'test_fp_789'
@@ -198,7 +198,7 @@ class ChatJoinProfanityTests(TestCase):
     def test_join_with_leet_speak_profanity_rejected(self):
         """Test that leet speak profanity is rejected"""
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': 'f_u_c_k_99',
                 'fingerprint': 'test_fp_101'
@@ -213,7 +213,7 @@ class ChatJoinProfanityTests(TestCase):
 
         # Step 1: Generate a valid username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/RegUser99/{self.chat.code}/suggest-username/',
             {
                 'fingerprint': fingerprint
             },
@@ -224,7 +224,7 @@ class ChatJoinProfanityTests(TestCase):
 
         # Step 2: Join with the generated username (should succeed)
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': username,
                 'fingerprint': fingerprint
@@ -331,7 +331,7 @@ class UsernameValidationProfanityTests(TestCase):
     def test_validate_profane_username_rejected(self):
         """Test that profane username is rejected during validation"""
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/RegUser99/{self.chat.code}/validate-username/',
             {
                 'username': 'fuck123',
                 'fingerprint': 'test-fingerprint'
@@ -346,7 +346,7 @@ class UsernameValidationProfanityTests(TestCase):
     def test_validate_leet_speak_profanity_rejected(self):
         """Test that leet speak profanity is rejected during validation"""
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/RegUser99/{self.chat.code}/validate-username/',
             {
                 'username': 'f_u_c_k_99',
                 'fingerprint': 'test-fingerprint'
@@ -385,7 +385,7 @@ class SuggestUsernameProfanityTests(TestCase):
         # Generate 5 usernames with unique fingerprints (well below rate limit of 10/hour per fingerprint)
         for i in range(5):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/RegUser99/{self.chat.code}/suggest-username/',
                 {
                     'fingerprint': f'test_profanity_fp_{i}'
                 },
@@ -405,7 +405,7 @@ class SuggestUsernameProfanityTests(TestCase):
     def test_suggested_username_endpoint_success(self):
         """Test that suggest-username endpoint returns valid username"""
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/RegUser99/{self.chat.code}/suggest-username/',
             {
                 'fingerprint': 'test_endpoint_success_fp'
             },
@@ -454,7 +454,7 @@ class GeneratedUsernameSecurityTests(TestCase):
 
         # Step 1: Get a generated username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/RegUser99/{self.chat.code}/suggest-username/',
             {
                 'fingerprint': fingerprint
             },
@@ -465,7 +465,7 @@ class GeneratedUsernameSecurityTests(TestCase):
 
         # Step 2: Join with the generated username (should succeed)
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': suggested_username,
                 'fingerprint': fingerprint
@@ -485,7 +485,7 @@ class GeneratedUsernameSecurityTests(TestCase):
         arbitrary_username = 'ArbitraryUser99'
 
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': arbitrary_username,
                 'fingerprint': fingerprint
@@ -506,7 +506,7 @@ class GeneratedUsernameSecurityTests(TestCase):
 
         # Join with reserved username (should succeed)
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': self.registered_user.reserved_username,
                 'fingerprint': 'test_security_fp_3'  # Fingerprint provided but user is authenticated
@@ -536,7 +536,7 @@ class GeneratedUsernameSecurityTests(TestCase):
 
         # Step 2: Try to rejoin with the same username and fingerprint (should succeed)
         rejoin_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': username,
                 'fingerprint': fingerprint
@@ -555,7 +555,7 @@ class GeneratedUsernameSecurityTests(TestCase):
 
         # Step 1: Generate username for fingerprint A
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/RegUser99/{self.chat.code}/suggest-username/',
             {
                 'fingerprint': fingerprint_a
             },
@@ -566,7 +566,7 @@ class GeneratedUsernameSecurityTests(TestCase):
 
         # Step 2: Try to join with username_for_a using fingerprint B (should fail)
         join_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': username_for_a,
                 'fingerprint': fingerprint_b
@@ -599,7 +599,7 @@ class GeneratedUsernameSecurityTests(TestCase):
 
         # Step 2: Rejoin with the same username (should succeed even if not in generated cache)
         rejoin_response = self.client.post(
-            f'/api/chats/{self.chat.code}/join/',
+            f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': username,
                 'fingerprint': fingerprint

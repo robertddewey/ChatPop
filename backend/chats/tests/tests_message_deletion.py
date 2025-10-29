@@ -90,7 +90,7 @@ class MessageDeletionAuthorizationTests(TestCase):
         """Test that chat host can delete any message"""
         self.client.force_authenticate(user=self.host_user)
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.host_session_token}
 
         response = self.client.post(url, data, format='json')
@@ -106,7 +106,7 @@ class MessageDeletionAuthorizationTests(TestCase):
         """Test that non-host participant cannot delete messages"""
         self.client.force_authenticate(user=self.participant_user)
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.participant_session_token}
 
         response = self.client.post(url, data, format='json')
@@ -119,7 +119,7 @@ class MessageDeletionAuthorizationTests(TestCase):
 
     def test_unauthenticated_user_cannot_delete_message(self):
         """Test that unauthenticated user cannot delete messages"""
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': 'fake-token'}
 
         response = self.client.post(url, data, format='json')
@@ -134,7 +134,7 @@ class MessageDeletionAuthorizationTests(TestCase):
         """Test that request without session token is rejected"""
         self.client.force_authenticate(user=self.host_user)
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {}  # No session_token
 
         response = self.client.post(url, data, format='json')
@@ -146,7 +146,7 @@ class MessageDeletionAuthorizationTests(TestCase):
         """Test that invalid session token is rejected"""
         self.client.force_authenticate(user=self.host_user)
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': 'invalid-token-12345'}
 
         response = self.client.post(url, data, format='json')
@@ -178,7 +178,7 @@ class MessageDeletionAuthorizationTests(TestCase):
         self.client.force_authenticate(user=self.other_user)
 
         # Try to delete message from the original chat
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': other_session_token}
 
         response = self.client.post(url, data, format='json')
@@ -231,7 +231,7 @@ class MessageSoftDeletionTests(TestCase):
         """Test that message still exists in database after deletion"""
         message_id = self.message.id
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{message_id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{message_id}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')
@@ -249,7 +249,7 @@ class MessageSoftDeletionTests(TestCase):
         """Test that is_deleted flag is set to True"""
         self.assertFalse(self.message.is_deleted)  # Initially False
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')
@@ -265,7 +265,7 @@ class MessageSoftDeletionTests(TestCase):
         original_username = self.message.username
         original_created_at = self.message.created_at
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')
@@ -281,7 +281,7 @@ class MessageSoftDeletionTests(TestCase):
     def test_already_deleted_message_returns_success(self):
         """Test that deleting already-deleted message returns success"""
         # First deletion
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         response1 = self.client.post(url, data, format='json')
@@ -296,7 +296,7 @@ class MessageSoftDeletionTests(TestCase):
         """Test that deleting messages doesn't reduce message count"""
         initial_count = Message.objects.filter(chat_room=self.chat_room).count()
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         self.client.post(url, data, format='json')
@@ -352,7 +352,7 @@ class MessageCacheInvalidationTests(TestCase):
         """Test that MessageCache.remove_message is called"""
         mock_remove_message.return_value = True
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')
@@ -376,7 +376,7 @@ class MessageCacheInvalidationTests(TestCase):
         self.assertIn(str(self.message.id), message_ids)
 
         # Delete message
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         self.client.post(url, data, format='json')
@@ -405,7 +405,7 @@ class MessageCacheInvalidationTests(TestCase):
         self.assertIn(str(self.message.id), pinned_ids)
 
         # Delete message
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         self.client.post(url, data, format='json')
@@ -439,7 +439,7 @@ class MessageCacheInvalidationTests(TestCase):
         self.assertEqual(len(cached_reactions), 2)
 
         # Delete message
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         self.client.post(url, data, format='json')
@@ -499,7 +499,7 @@ class MessageDeletionWebSocketTests(TestCase):
         mock_channel_layer.group_send = AsyncMock()
         mock_get_channel_layer.return_value = mock_channel_layer
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')
@@ -528,7 +528,7 @@ class MessageDeletionWebSocketTests(TestCase):
         mock_channel_layer.group_send = AsyncMock()
         mock_get_channel_layer.return_value = mock_channel_layer
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{self.message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
         data = {'session_token': self.session_token}
 
         self.client.post(url, data, format='json')
@@ -575,7 +575,7 @@ class MessageDeletionEdgeCasesTests(TestCase):
         """Test that deleting non-existent message returns 404"""
         fake_uuid = 'a' * 8 + '-' + 'b' * 4 + '-' + 'c' * 4 + '-' + 'd' * 4 + '-' + 'e' * 12
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{fake_uuid}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{fake_uuid}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')
@@ -603,7 +603,7 @@ class MessageDeletionEdgeCasesTests(TestCase):
         )
 
         # Try to delete it using TEST123 chat code
-        url = f'/api/chats/{self.chat_room.code}/messages/{other_message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{other_message.id}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')
@@ -628,7 +628,7 @@ class MessageDeletionEdgeCasesTests(TestCase):
             message_type='normal'
         )
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{message.id}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')
@@ -645,7 +645,7 @@ class MessageDeletionEdgeCasesTests(TestCase):
             message_type='normal'
         )
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{message.id}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')
@@ -668,7 +668,7 @@ class MessageDeletionEdgeCasesTests(TestCase):
             message_type='normal'
         )
 
-        url = f'/api/chats/{self.chat_room.code}/messages/{message.id}/delete/'
+        url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{message.id}/delete/'
         data = {'session_token': self.session_token}
 
         response = self.client.post(url, data, format='json')

@@ -310,7 +310,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
     def test_successful_suggestion(self):
         """Test successful username suggestion"""
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
             {'fingerprint': 'test_fp_123'},
             format='json'
         )
@@ -332,7 +332,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
 
         # Make successful requests and track both limits
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -354,7 +354,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         generated_usernames = []
         for i in range(2):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -367,7 +367,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         # 3rd+ attempts should rotate through previously generated usernames (not fail)
         for i in range(10):  # Test multiple rotation calls
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -385,7 +385,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
     def test_fingerprint_extraction_from_body(self):
         """Test that fingerprint is correctly extracted from request body"""
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
             {'fingerprint': 'custom_fingerprint_123'},
             format='json'
         )
@@ -402,7 +402,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         """Test that IP address is used as fallback when fingerprint is missing"""
         # Send request without fingerprint
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
             {},
             format='json',
             REMOTE_ADDR='192.168.1.100'
@@ -437,7 +437,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         generated_usernames = []
         for i in range(3):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -450,7 +450,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         # Continue calling suggest-username - should rotate through previous usernames (unlimited)
         for i in range(20):  # Test 20 rotation calls
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -475,7 +475,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         # Generate 3 usernames for this chat (hit per-chat limit)
         for i in range(3):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -494,7 +494,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
 
         # Should be able to generate in new chat (per-chat limit is separate)
         response = self.client.post(
-            f'/api/chats/{chat2.code}/suggest-username/',
+            f'/api/chats/ReservedUser/{chat2.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -522,7 +522,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         generated_usernames = []
         for i in range(2):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -536,7 +536,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         # STEP 2: Make 10 MORE requests - should rotate, not generate new usernames
         for i in range(10):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -570,7 +570,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         fingerprint = 'case_test_fp'
 
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
@@ -597,7 +597,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         original_usernames = []
         for i in range(3):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -607,7 +607,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         # Rotate through usernames multiple times
         for i in range(10):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -628,7 +628,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
 
         # User 1 generates a username
         response1 = self.client.post(
-            f'/api/chats/{self.chat.code}/suggest-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
             {'fingerprint': fingerprint1},
             format='json'
         )
@@ -642,7 +642,7 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         # User 2 generates usernames - should never get username1 (case-insensitive)
         for i in range(10):
             response2 = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint2},
                 format='json'
             )
@@ -927,7 +927,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         username = 'ChatUser123'
 
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': username},
             format='json'
         )
@@ -951,7 +951,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         )
 
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': 'TakenChatUser'},
             format='json'
         )
@@ -963,7 +963,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
     def test_invalid_username_not_reserved(self):
         """Test that invalid username (profanity) is NOT reserved in Redis"""
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': 'ab'},  # Too short
             format='json'
         )
@@ -981,7 +981,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
 
         # First user validates username - should be available and reserved
         response1 = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': username},
             format='json'
         )
@@ -991,7 +991,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
 
         # Second user validates same username - should be unavailable (reserved in Redis)
         response2 = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': username},
             format='json'
         )
@@ -1005,7 +1005,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         username = 'TTLChatTest'
 
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': username},
             format='json'
         )
@@ -1022,7 +1022,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         """Test that username reservation is case-insensitive"""
         # Reserve username with mixed case
         response1 = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': 'MixedCase'},
             format='json'
         )
@@ -1032,7 +1032,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
 
         # Try different case - should be unavailable
         response2 = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': 'mixedcase'},
             format='json'
         )
@@ -1042,7 +1042,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
 
         # Try another variant
         response3 = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': 'MIXEDCASE'},
             format='json'
         )
@@ -1055,7 +1055,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         """Test that User.reserved_username is checked"""
         # User has reserved_username='HostUser'
         response = self.client.post(
-            f'/api/chats/{self.chat.code}/validate-username/',
+            f'/api/chats/ReservedUser/{self.chat.code}/validate-username/',
             {'username': 'HostUser'},
             format='json'
         )
@@ -1113,7 +1113,7 @@ class DiceRollRotationLimitTestCase(TestCase):
         all_usernames_seen = []
         for click_number in range(1, 21):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -1167,7 +1167,7 @@ class DiceRollRotationLimitTestCase(TestCase):
         chat1_usernames = []
         for i in range(3):
             response = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -1178,7 +1178,7 @@ class DiceRollRotationLimitTestCase(TestCase):
         chat2_usernames = []
         for i in range(3):
             response = self.client.post(
-                f'/api/chats/{chat2.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{chat2.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -1199,14 +1199,14 @@ class DiceRollRotationLimitTestCase(TestCase):
         # Now rotate in each chat - should only see that chat's 3 usernames
         for i in range(10):
             response1 = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
             self.assertIn(response1.data['username'], chat1_usernames)
 
             response2 = self.client.post(
-                f'/api/chats/{chat2.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{chat2.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -1238,14 +1238,14 @@ class DiceRollRotationLimitTestCase(TestCase):
 
         for i in range(5):
             resp1 = self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
             chat1_usernames.append(resp1.data['username'])
 
             resp2 = self.client.post(
-                f'/api/chats/{chat2.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{chat2.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -1255,7 +1255,7 @@ class DiceRollRotationLimitTestCase(TestCase):
         # Click dice in Chat 1 three times
         for i in range(3):
             self.client.post(
-                f'/api/chats/{self.chat.code}/suggest-username/',
+                f'/api/chats/ReservedUser/{self.chat.code}/suggest-username/',
                 {'fingerprint': fingerprint},
                 format='json'
             )
@@ -1264,7 +1264,7 @@ class DiceRollRotationLimitTestCase(TestCase):
         # Get next username from Chat 2 - should be first in rotation (index 0)
         sorted_chat2_usernames = sorted(chat2_usernames)
         response = self.client.post(
-            f'/api/chats/{chat2.code}/suggest-username/',
+            f'/api/chats/ReservedUser/{chat2.code}/suggest-username/',
             {'fingerprint': fingerprint},
             format='json'
         )
