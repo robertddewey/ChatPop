@@ -12,6 +12,13 @@ ENV/
 *.db
 *.sqlite3
 
+# Test reporting
+allure-results/
+allure-report/
+.allure/
+htmlcov/
+.coverage
+
 # Django
 db.sqlite3
 *.log

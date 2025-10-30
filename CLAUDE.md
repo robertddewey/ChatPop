@@ -242,13 +242,12 @@ See [docs/TESTING.md](docs/TESTING.md) for complete test documentation.
 
 Comprehensive documentation is organized in the `docs/` directory:
 
-- **[docs/TESTING.md](docs/TESTING.md)** - Complete test suite documentation
+- **[docs/TESTING.md](docs/TESTING.md)** - Testing framework and Allure reports
 - **[docs/CACHING.md](docs/CACHING.md)** - Redis message and reaction caching architecture
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
 - **[docs/AUDIO.md](docs/AUDIO.md)** - iOS Safari-compatible audio implementation
 - **[docs/THEME_STYLING_GUIDE.md](docs/THEME_STYLING_GUIDE.md)** - Complete ChatTheme database field reference
 - **[docs/MANAGEMENT_TOOLS.md](docs/MANAGEMENT_TOOLS.md)** - Redis cache inspection and debugging tools
-- **[docs/blocking-feature-spec.md](docs/blocking-feature-spec.md)** - User blocking feature specification
 
 ---
 

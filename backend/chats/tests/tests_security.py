@@ -2,11 +2,13 @@
 Security tests for JWT-based chat session authentication
 Tests for vulnerabilities and unauthorized access attempts
 """
+import allure
 import jwt
 from datetime import datetime, timedelta
 from django.test import TestCase, Client
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from rest_framework import status
 from ..models import ChatRoom, ChatParticipation
 from ..utils.security.auth import ChatSessionValidator
@@ -14,11 +16,24 @@ from ..utils.security.auth import ChatSessionValidator
 User = get_user_model()
 
 
+@allure.feature('Chat Security')
+@allure.story('JWT Session Authentication')
 class ChatSessionSecurityTests(TestCase):
-    """Test suite for JWT session security vulnerabilities"""
+    """
+    Test suite for JWT session security vulnerabilities.
+
+    Ensures that:
+    - Session tokens are properly validated
+    - Tokens cannot be reused across chats
+    - Expired tokens are rejected
+    - Invalid tokens are rejected
+    """
 
     def setUp(self):
         """Set up test data"""
+        # Clear Redis cache before each test to prevent rate limit carryover
+        cache.clear()
+
         self.client = Client()
 
         # Create test user
@@ -51,6 +66,17 @@ class ChatSessionSecurityTests(TestCase):
             user_id=str(self.user.id)
         )
 
+    @allure.title("Message send requires valid session token")
+    @allure.description("""
+    Security test to verify that sending messages without a session token is properly blocked.
+
+    Expected behavior:
+    - POST request without session_token should return 403 FORBIDDEN
+    - Response should indicate that a session token is required
+
+    This prevents unauthorized users from sending messages to chat rooms.
+    """)
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_message_send_requires_session_token(self):
         """Test that sending messages without session token is blocked"""
         response = self.client.post(
@@ -62,6 +88,16 @@ class ChatSessionSecurityTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn('session token', response.json().get('detail', '').lower())
 
+    @allure.title("Invalid JWT tokens are rejected")
+    @allure.description("""
+    Verifies that malformed or invalid JWT tokens are rejected by the system.
+
+    Tests against:
+    - Malformed JWT strings
+    - Tokens with invalid signatures
+    - Tokens from untrusted sources
+    """)
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_message_send_with_invalid_token(self):
         """Test that invalid JWT tokens are rejected"""
         response = self.client.post(
@@ -76,6 +112,17 @@ class ChatSessionSecurityTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @allure.title("Expired session tokens are rejected")
+    @allure.description("""
+    Security test to verify that expired JWT tokens cannot be used.
+
+    Creates a token with:
+    - Issued time (iat): 25 hours ago
+    - Expiration time (exp): 1 hour ago
+
+    Expected: 403 FORBIDDEN with 'expired' message
+    """)
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_message_send_with_expired_token(self):
         """Test that expired tokens are rejected"""
         # Create expired token
@@ -101,6 +148,18 @@ class ChatSessionSecurityTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn('expired', response.json().get('detail', '').lower())
 
+    @allure.title("Session tokens are chat-specific and cannot be reused")
+    @allure.description("""
+    Verifies that a session token issued for one chat room cannot be used in another.
+
+    Security scenario:
+    1. User joins Chat Room A and receives token_A
+    2. User tries to use token_A in Chat Room B
+    3. System should reject the token
+
+    This prevents token reuse attacks across different chat rooms.
+    """)
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_cannot_use_token_for_different_chat(self):
         """Test that tokens are chat-specific"""
         # Create another chat room
@@ -420,6 +479,9 @@ class UsernameReservationSecurityTests(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        # Clear Redis cache before each test to prevent rate limit carryover
+        cache.clear()
+
         self.client = Client()
 
         # Create test users with reserved usernames

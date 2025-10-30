@@ -290,6 +290,27 @@ setup_backend() {
     ./venv/bin/python manage.py collectstatic --noinput
     print_success "Static files collected"
 
+    # Optional: Pull Allure Docker image for test report viewing
+    echo ""
+    print_info "Allure Framework is configured for self-documenting tests"
+    echo ""
+    read -p "Download Allure Docker image for local test report viewing? (~600MB) (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Pulling Allure Docker image (frankescobar/allure-docker-service)..."
+        if docker pull frankescobar/allure-docker-service; then
+            print_success "Allure Docker image downloaded"
+            echo ""
+            print_info "Generate and view test reports with:"
+            echo "  ${YELLOW}cd backend${NC}"
+            echo "  ${YELLOW}./run_tests.sh --open${NC}"
+        else
+            print_warning "Failed to pull Allure Docker image (you can pull it later with: docker pull frankescobar/allure-docker-service)"
+        fi
+    else
+        print_info "Skipping Allure Docker image (tests will still work, reports via CI/CD)"
+    fi
+
     # Deactivate virtual environment
     deactivate
 

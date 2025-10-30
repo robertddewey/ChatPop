@@ -107,61 +107,19 @@ MESSAGE_CACHE_TTL_HOURS = 24   # Auto-expire after 24 hours
 ## Development
 
 ### Running Tests
+
 ```bash
-# All tests
-./venv/bin/python manage.py test
+# Quick start - run all tests
+./run_tests.sh
 
-# Specific test modules
-./venv/bin/python manage.py test chats.tests_security
-./venv/bin/python manage.py test chats.tests_validators
-./venv/bin/python manage.py test chats.tests_profanity
-./venv/bin/python manage.py test chats.tests_websocket
+# Generate and view HTML report
+./run_tests.sh --open
+
+# See all options
+./run_tests.sh --help
 ```
 
-#### WebSocket Consumer Tests
-
-**Location:** `chats/tests_websocket.py`
-
-**Purpose:** Validates message serialization for WebSocket broadcast, ensuring UUID fields are converted to strings before msgpack serialization.
-
-**What's Tested:**
-- Message serialization with logged-in users (UUID to string conversion)
-- Message serialization with anonymous users (user_id=None)
-- Reply message serialization (reply_to_id as string)
-- JSON serialization compatibility for all message fields
-
-**Critical Fix:** These tests validate the fix for `consumers.py:176` where `user_id` must be converted to string:
-```python
-'user_id': str(message.user.id) if message.user else None,
-```
-
-Without this conversion, Django Channels' msgpack serialization fails with `TypeError: can not serialize 'UUID' object`, preventing messages from appearing in the WebSocket UI.
-
-**Test Limitations:**
-
-Due to the complexity of testing Django Channels' async WebSocket layer with database connections, these tests have some shortcomings:
-
-1. **No End-to-End WebSocket Tests**: Tests validate serialization logic directly rather than through actual WebSocket connections. True integration tests would require:
-   - WebSocket connection/disconnection lifecycle
-   - Authentication flow with session tokens
-   - Message broadcasting through channel layers
-   - Multi-client broadcast verification
-
-2. **Async Testing Complexity**: Django Channels uses async code with `database_sync_to_async`, which creates database connection challenges in test environments:
-   - The `async_to_sync` wrapper can cause "connection already closed" errors
-   - Multiple async tests may fail due to connection pool exhaustion
-   - Only 1 out of 4 tests passes when using `async_to_sync(consumer.serialize_message_for_broadcast)`
-
-3. **Workaround Used**: Tests replicate the serialization logic inline rather than calling the async method, which validates the UUID conversion but doesn't test the actual consumer implementation path.
-
-**Current Status:**
-- ✅ UUID serialization fix is validated and working in production
-- ✅ Messages broadcast successfully via WebSocket to UI
-- ⚠️ Test infrastructure has limitations with async code
-- ❌ Missing tests for WebSocket authentication, connection handling, and broadcast functionality
-
-**Future Improvements:**
-Consider using Django Channels' `WebsocketCommunicator` with proper async test setup once async database connection issues are resolved. Alternatively, explore Pytest with pytest-asyncio for better async testing support.
+For complete testing documentation, see **[docs/TESTING.md](../docs/TESTING.md)**.
 
 ### Inspecting Redis Cache
 ```bash
@@ -218,7 +176,14 @@ The frontend WebSocket hook (`useChatWebSocket.ts`) automatically reconnects up 
 
 ## See Also
 
-- [CLAUDE.md](../CLAUDE.md) - Full project documentation and development guidelines
+### Documentation
+- **[CLAUDE.md](../CLAUDE.md)** - Full project documentation and development guidelines
+- **[docs/TESTING.md](../docs/TESTING.md)** - Testing framework and Allure reports
+- **[docs/CACHING.md](../docs/CACHING.md)** - Redis message and reaction caching architecture
+- **[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
+- **[docs/MANAGEMENT_TOOLS.md](../docs/MANAGEMENT_TOOLS.md)** - Redis cache inspection tools
+
+### Source Code
 - [chats/redis_cache.py](chats/redis_cache.py) - Redis cache implementation
 - [chats/consumers.py](chats/consumers.py) - WebSocket consumer implementation
 - [chats/views.py](chats/views.py) - REST API views
