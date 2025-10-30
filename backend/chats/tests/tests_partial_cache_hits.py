@@ -35,7 +35,8 @@ class PartialCacheHitTests(TestCase):
         # Create test user and authenticate (email is primary identifier)
         self.user = User.objects.create_user(
             email='test@example.com',
-            password='testpass123'
+            password='testpass123',
+            reserved_username='HostUser'
         )
         self.token = Token.objects.create(user=self.user)
         self.client = APIClient()
@@ -48,11 +49,12 @@ class PartialCacheHitTests(TestCase):
             access_mode='public'
         )
 
-        # Create participation
+        # Create participation (host joins first)
         self.participation = ChatParticipation.objects.create(
             chat_room=self.chat_room,
             user=self.user,
-            username='testuser',
+            username='HostUser',
+            fingerprint='host_fingerprint',
             ip_address='127.0.0.1'
         )
 
@@ -91,7 +93,7 @@ class PartialCacheHitTests(TestCase):
             msg = Message.objects.create(
                 chat_room=self.chat_room,
                 user=self.user,
-                username='testuser',
+                username='HostUser',
                 content=f'Test message {i + 1}',
                 message_type='regular',
                 created_at=base_time + timedelta(minutes=i)

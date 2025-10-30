@@ -1115,10 +1115,10 @@ class ConstanceCacheControlTests(TransactionTestCase):
 
         # Simulate API request using DRF's APIRequestFactory
         factory = APIRequestFactory()
-        request = factory.get(f'/api/chats/TestUser/{self.chat_room.code}/messages/')
+        request = factory.get(f'/api/chats/ConfigTest/{self.chat_room.code}/messages/')
 
         view = MessageListView.as_view()
-        response = view(request, code=self.chat_room.code)
+        response = view(request, username='ConfigTest', code=self.chat_room.code)
 
         # Should read from Redis (may be hybrid if reactions need PostgreSQL fetch)
         self.assertIn(response.data['source'], ['redis', 'hybrid_redis_postgresql'])
@@ -1145,10 +1145,10 @@ class ConstanceCacheControlTests(TransactionTestCase):
 
         # Simulate API request using DRF's APIRequestFactory
         factory = APIRequestFactory()
-        request = factory.get(f'/api/chats/TestUser/{self.chat_room.code}/messages/')
+        request = factory.get(f'/api/chats/ConfigTest/{self.chat_room.code}/messages/')
 
         view = MessageListView.as_view()
-        response = view(request, code=self.chat_room.code)
+        response = view(request, username='ConfigTest', code=self.chat_room.code)
 
         # Should read from PostgreSQL
         self.assertEqual(response.data['source'], 'postgresql')
@@ -1176,10 +1176,10 @@ class ConstanceCacheControlTests(TransactionTestCase):
 
         # Simulate API request using DRF's APIRequestFactory
         factory = APIRequestFactory()
-        request = factory.get(f'/api/chats/TestUser/{self.chat_room.code}/messages/')
+        request = factory.get(f'/api/chats/ConfigTest/{self.chat_room.code}/messages/')
 
         view = MessageListView.as_view()
-        response = view(request, code=self.chat_room.code)
+        response = view(request, username='ConfigTest', code=self.chat_room.code)
 
         # Should fallback to PostgreSQL
         self.assertEqual(response.data['source'], 'postgresql_fallback')
@@ -1209,10 +1209,10 @@ class ConstanceCacheControlTests(TransactionTestCase):
         # Simulate pagination request (with before parameter) using DRF's APIRequestFactory
         factory = APIRequestFactory()
         before_timestamp = timezone.now().timestamp()  # Unix timestamp (float)
-        request = factory.get(f'/api/chats/TestUser/{self.chat_room.code}/messages/?before={before_timestamp}')
+        request = factory.get(f'/api/chats/ConfigTest/{self.chat_room.code}/messages/?before={before_timestamp}')
 
         view = MessageListView.as_view()
-        response = view(request, code=self.chat_room.code)
+        response = view(request, username='ConfigTest', code=self.chat_room.code)
 
         # Pagination now uses Redis cache when available (with reaction caching enabled)
         # May be 'redis', 'hybrid_redis_postgresql', or 'postgresql' depending on cache state
@@ -1331,10 +1331,10 @@ class ConstanceCacheControlTests(TransactionTestCase):
         from chats.views import MessageListView
 
         factory = APIRequestFactory()
-        request = factory.get(f'/api/chats/TestUser/{self.chat_room.code}/messages/')
+        request = factory.get(f'/api/chats/ConfigTest/{self.chat_room.code}/messages/')
 
         view = MessageListView.as_view()
-        response = view(request, code=self.chat_room.code)
+        response = view(request, username='ConfigTest', code=self.chat_room.code)
 
         # May be hybrid if reactions need PostgreSQL fetch
         self.assertIn(response.data['source'], ['redis', 'hybrid_redis_postgresql'])
@@ -1365,10 +1365,10 @@ class ConstanceCacheControlTests(TransactionTestCase):
 
         # Make initial API request (should trigger backfill)
         factory = APIRequestFactory()
-        request = factory.get(f'/api/chats/TestUser/{self.chat_room.code}/messages/')
+        request = factory.get(f'/api/chats/ConfigTest/{self.chat_room.code}/messages/')
 
         view = MessageListView.as_view()
-        response = view(request, code=self.chat_room.code)
+        response = view(request, username='ConfigTest', code=self.chat_room.code)
 
         # First request should be a cache miss (fallback to PostgreSQL)
         self.assertEqual(response.data['source'], 'postgresql_fallback')
@@ -1381,8 +1381,8 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertEqual(cached_messages[4]['content'], 'Backfill test 4')
 
         # Second request should hit the cache (after backfill, may be hybrid if reactions need PostgreSQL fetch)
-        request2 = factory.get(f'/api/chats/TestUser/{self.chat_room.code}/messages/')
-        response2 = view(request2, code=self.chat_room.code)
+        request2 = factory.get(f'/api/chats/ConfigTest/{self.chat_room.code}/messages/')
+        response2 = view(request2, username='ConfigTest', code=self.chat_room.code)
 
         self.assertIn(response2.data['source'], ['redis', 'hybrid_redis_postgresql'])
         self.assertEqual(len(response2.data['messages']), 5)
@@ -1427,10 +1427,10 @@ class ConstanceCacheControlTests(TransactionTestCase):
 
         # Make API request for 50 messages (should be partial hit: 41 from cache + 9 from DB)
         factory = APIRequestFactory()
-        request = factory.get(f'/api/chats/TestUser/{self.chat_room.code}/messages/?limit=50')
+        request = factory.get(f'/api/chats/ConfigTest/{self.chat_room.code}/messages/?limit=50')
 
         view = MessageListView.as_view()
-        response = view(request, code=self.chat_room.code)
+        response = view(request, username='ConfigTest', code=self.chat_room.code)
 
         # Should be a hybrid source (partial cache hit)
         self.assertEqual(response.data['source'], 'hybrid_redis_postgresql')
@@ -1446,8 +1446,8 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertEqual(oldest_cached, expected_oldest, "Oldest 9 messages should be backfilled")
 
         # Make second request - should be FULL cache hit (no DB query)
-        request2 = factory.get(f'/api/chats/TestUser/{self.chat_room.code}/messages/?limit=50')
-        response2 = view(request2, code=self.chat_room.code)
+        request2 = factory.get(f'/api/chats/ConfigTest/{self.chat_room.code}/messages/?limit=50')
+        response2 = view(request2, username='ConfigTest', code=self.chat_room.code)
 
         # Second request should hit cache completely
         self.assertEqual(response2.data['source'], 'redis', "Second request should be full cache hit")

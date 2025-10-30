@@ -8,7 +8,7 @@ from django.test import TestCase, Client
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import status
-from ..models import ChatRoom
+from ..models import ChatRoom, ChatParticipation
 from ..utils.security.auth import ChatSessionValidator
 
 User = get_user_model()
@@ -36,6 +36,14 @@ class ChatSessionSecurityTests(TestCase):
         )
         self.chat_code = self.chat_room.code
 
+        # Host must join first
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.user,
+            username='testuser',
+            fingerprint='host_fingerprint'
+        )
+
         # Valid session token
         self.valid_token = ChatSessionValidator.create_session_token(
             chat_code=self.chat_code,
@@ -46,7 +54,7 @@ class ChatSessionSecurityTests(TestCase):
     def test_message_send_requires_session_token(self):
         """Test that sending messages without session token is blocked"""
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={'username': 'testuser', 'content': 'Hello'},
             content_type='application/json'
         )
@@ -57,7 +65,7 @@ class ChatSessionSecurityTests(TestCase):
     def test_message_send_with_invalid_token(self):
         """Test that invalid JWT tokens are rejected"""
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'testuser',
                 'content': 'Hello',
@@ -81,7 +89,7 @@ class ChatSessionSecurityTests(TestCase):
         expired_token = jwt.encode(expired_payload, settings.SECRET_KEY, algorithm='HS256')
 
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'testuser',
                 'content': 'Hello',
@@ -119,7 +127,7 @@ class ChatSessionSecurityTests(TestCase):
     def test_cannot_use_token_for_different_username(self):
         """Test that tokens are username-specific"""
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'different_user',  # Different username
                 'content': 'Hello',
@@ -143,7 +151,7 @@ class ChatSessionSecurityTests(TestCase):
         forged_token = jwt.encode(forged_payload, 'wrong_secret', algorithm='HS256')
 
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'testuser',
                 'content': 'Hello',
@@ -164,7 +172,7 @@ class ChatSessionSecurityTests(TestCase):
         modified_token = jwt.encode(decoded, 'attacker_secret', algorithm='HS256')
 
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'hacker',
                 'content': 'Hello',
@@ -178,7 +186,7 @@ class ChatSessionSecurityTests(TestCase):
     def test_join_endpoint_issues_valid_token(self):
         """Test that join endpoint properly issues session tokens"""
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/testuser/{self.chat_code}/join/',
             data={'username': 'newuser'},
             content_type='application/json'
         )
@@ -196,7 +204,7 @@ class ChatSessionSecurityTests(TestCase):
     def test_valid_token_allows_message_send(self):
         """Test that valid tokens allow message sending"""
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'testuser',
                 'content': 'Hello World',
@@ -215,7 +223,7 @@ class ChatSessionSecurityTests(TestCase):
 
         # First message should succeed
         response1 = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'testuser',
                 'content': 'Message 1',
@@ -228,7 +236,7 @@ class ChatSessionSecurityTests(TestCase):
         # Second message with same token should also succeed
         # (tokens are reusable within their lifetime - this is by design)
         response2 = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'testuser',
                 'content': 'Message 2',
@@ -244,7 +252,7 @@ class ChatSessionSecurityTests(TestCase):
 
         # Try to join with malicious username
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/testuser/{self.chat_code}/join/',
             data={'username': malicious_username},
             content_type='application/json'
         )
@@ -262,7 +270,7 @@ class ChatSessionSecurityTests(TestCase):
         xss_username = "<script>alert('XSS')</script>"
 
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/testuser/{self.chat_code}/join/',
             data={'username': xss_username},
             content_type='application/json'
         )
@@ -285,7 +293,7 @@ class ChatSessionSecurityTests(TestCase):
         token_no_exp = jwt.encode(payload_no_exp, settings.SECRET_KEY, algorithm='HS256')
 
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'testuser',
                 'content': 'Hello',
@@ -312,7 +320,7 @@ class ChatSessionSecurityTests(TestCase):
         # Each token should work independently
         for i, token in enumerate(tokens):
             response = self.client.post(
-                f'/api/chats/{self.chat_code}/messages/send/',
+                f'/api/chats/testuser/{self.chat_code}/messages/send/',
                 data={
                     'username': f'user{i}',
                     'content': f'Message {i}',
@@ -333,7 +341,7 @@ class ChatSessionSecurityTests(TestCase):
         for data in test_cases:
             data.update({'username': 'testuser', 'content': 'Hello'})
             response = self.client.post(
-                f'/api/chats/{self.chat_code}/messages/send/',
+                f'/api/chats/testuser/{self.chat_code}/messages/send/',
                 data=data,
                 content_type='application/json'
             )
@@ -351,7 +359,7 @@ class ChatSessionSecurityTests(TestCase):
         future_token = jwt.encode(future_payload, settings.SECRET_KEY, algorithm='HS256')
 
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/testuser/{self.chat_code}/messages/send/',
             data={
                 'username': 'testuser',
                 'content': 'Hello',
@@ -371,6 +379,14 @@ class ChatSessionSecurityTests(TestCase):
             host=self.user,
             access_mode='private',
             access_code='secret123'
+        )
+
+        # Host must join first
+        ChatParticipation.objects.create(
+            chat_room=private_chat,
+            user=self.user,
+            username='testuser',
+            fingerprint='host_fingerprint_private'
         )
 
         # Try to join without access code
@@ -418,19 +434,34 @@ class UsernameReservationSecurityTests(TestCase):
             reserved_username='Bobby'
         )
 
-        # Create test chat room
+        # Create separate host user (not user1 or user2, so they can join as participants)
+        self.host_user = User.objects.create_user(
+            email='host@example.com',
+            password='testpass123',
+            reserved_username='HostUser'
+        )
+
+        # Create test chat room with host_user as host
         self.chat_room = ChatRoom.objects.create(
             name='Test Chat',
-            host=self.user1,
+            host=self.host_user,
             access_mode='public'
         )
         self.chat_code = self.chat_room.code
+
+        # Host must join first
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.host_user,
+            username='HostUser',
+            fingerprint='host_fingerprint'
+        )
 
     def test_two_anonymous_users_same_username_blocked(self):
         """Test that two anonymous users with the same username cannot join the same chat"""
         # First anonymous user gets a generated username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat_code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
             data={'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
@@ -439,7 +470,7 @@ class UsernameReservationSecurityTests(TestCase):
 
         # First anonymous user joins with generated username
         response1 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': username, 'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
@@ -447,7 +478,7 @@ class UsernameReservationSecurityTests(TestCase):
 
         # Second anonymous user tries to join with same username but different fingerprint
         response2 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': username, 'fingerprint': 'fingerprint2'},
             content_type='application/json'
         )
@@ -460,7 +491,7 @@ class UsernameReservationSecurityTests(TestCase):
         # user1 tries to join with user2's reserved_username "Bobby"
         self.client.force_login(self.user1)
         response = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': 'Bobby'},  # user2's reserved_username
             content_type='application/json'
         )
@@ -473,7 +504,7 @@ class UsernameReservationSecurityTests(TestCase):
         """Test that anonymous users are locked to their username via fingerprint"""
         # Anonymous user gets a generated username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat_code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
             data={'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
@@ -482,7 +513,7 @@ class UsernameReservationSecurityTests(TestCase):
 
         # Anonymous user joins with generated username
         response1 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': username, 'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
@@ -490,7 +521,7 @@ class UsernameReservationSecurityTests(TestCase):
 
         # Same fingerprint tries to rejoin with different username (generate a different one)
         suggest_response2 = self.client.post(
-            f'/api/chats/{self.chat_code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
             data={'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
@@ -498,7 +529,7 @@ class UsernameReservationSecurityTests(TestCase):
         different_username = suggest_response2.json()['username']
 
         response2 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': different_username, 'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
@@ -511,7 +542,7 @@ class UsernameReservationSecurityTests(TestCase):
         # user1 joins with custom username "SuperAlice" (not their reserved_username)
         self.client.force_login(self.user1)
         response1 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': 'SuperAlice'},
             content_type='application/json'
         )
@@ -519,7 +550,7 @@ class UsernameReservationSecurityTests(TestCase):
 
         # user1 tries to rejoin with different username (even their own reserved_username)
         response2 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': 'Alice'},  # Their own reserved_username
             content_type='application/json'
         )
@@ -529,7 +560,7 @@ class UsernameReservationSecurityTests(TestCase):
 
         # user1 tries to rejoin with a completely different username
         response3 = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': 'MegaAlice'},
             content_type='application/json'
         )
@@ -578,7 +609,7 @@ class UsernameReservationSecurityTests(TestCase):
         # User1 with reserved_username='Alice' joins and sends a message
         self.client.force_login(self.user1)
         join_response = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': 'Alice'},
             content_type='application/json'
         )
@@ -587,7 +618,7 @@ class UsernameReservationSecurityTests(TestCase):
 
         # Send a message
         msg_response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_code}/messages/send/',
             data={'username': 'Alice', 'content': 'Hello from Alice', 'session_token': token},
             content_type='application/json'
         )
@@ -601,7 +632,7 @@ class UsernameReservationSecurityTests(TestCase):
         """Test that anonymous username case is preserved when displayed in messages"""
         # Anonymous user gets a generated username
         suggest_response = self.client.post(
-            f'/api/chats/{self.chat_code}/suggest-username/',
+            f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
             data={'fingerprint': 'fingerprint_case_test'},
             content_type='application/json'
         )
@@ -610,7 +641,7 @@ class UsernameReservationSecurityTests(TestCase):
 
         # Anonymous user joins with generated username
         join_response = self.client.post(
-            f'/api/chats/{self.chat_code}/join/',
+            f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': username, 'fingerprint': 'fingerprint_case_test'},
             content_type='application/json'
         )
@@ -619,7 +650,7 @@ class UsernameReservationSecurityTests(TestCase):
 
         # Send a message
         msg_response = self.client.post(
-            f'/api/chats/{self.chat_code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_code}/messages/send/',
             data={'username': username, 'content': f'Hello from {username}', 'session_token': token},
             content_type='application/json'
         )

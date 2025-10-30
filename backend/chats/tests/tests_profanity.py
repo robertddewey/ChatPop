@@ -147,13 +147,24 @@ class ChatJoinProfanityTests(TestCase):
         # Create a test user to be the host
         self.user = User.objects.create_user(
             email='testhost@example.com',
-            password='TestPass123!'
+            password='TestPass123!',
+            reserved_username='RegUser99'
         )
 
         self.chat = ChatRoom.objects.create(
             name="Test Chat",
             host=self.user,
             access_mode='public'
+        )
+
+        # Host must join first
+        from chats.models import ChatParticipation
+        ChatParticipation.objects.create(
+            chat_room=self.chat,
+            user=self.user,
+            username='RegUser99',
+            fingerprint='host_fingerprint',
+            ip_address='127.0.0.1'
         )
 
     def test_join_with_clean_username(self):
@@ -319,13 +330,24 @@ class UsernameValidationProfanityTests(TestCase):
         # Create a test user to be the host
         self.user = User.objects.create_user(
             email='validationhost@example.com',
-            password='TestPass123!'
+            password='TestPass123!',
+            reserved_username='RegUser99'
         )
 
         self.chat = ChatRoom.objects.create(
             name="Test Chat",
             host=self.user,
             access_mode='public'
+        )
+
+        # Host must join first
+        from chats.models import ChatParticipation
+        ChatParticipation.objects.create(
+            chat_room=self.chat,
+            user=self.user,
+            username='RegUser99',
+            fingerprint='host_fingerprint',
+            ip_address='127.0.0.1'
         )
 
     def test_validate_profane_username_rejected(self):
@@ -371,13 +393,24 @@ class SuggestUsernameProfanityTests(TestCase):
         # Create a test user to be the host
         self.user = User.objects.create_user(
             email='suggesthost@example.com',
-            password='TestPass123!'
+            password='TestPass123!',
+            reserved_username='RegUser99'
         )
 
         self.chat = ChatRoom.objects.create(
             name="Test Chat",
             host=self.user,
             access_mode='public'
+        )
+
+        # Host must join first
+        from chats.models import ChatParticipation
+        ChatParticipation.objects.create(
+            chat_room=self.chat,
+            user=self.user,
+            username='RegUser99',
+            fingerprint='host_fingerprint',
+            ip_address='127.0.0.1'
         )
 
     def test_suggested_usernames_are_clean(self):
@@ -432,7 +465,8 @@ class GeneratedUsernameSecurityTests(TestCase):
         # Create a test user to be the host
         self.host_user = User.objects.create_user(
             email='securityhost@example.com',
-            password='TestPass123!'
+            password='TestPass123!',
+            reserved_username='RegUser99'
         )
 
         self.chat = ChatRoom.objects.create(
@@ -441,11 +475,21 @@ class GeneratedUsernameSecurityTests(TestCase):
             access_mode='public'
         )
 
-        # Create a registered user with a reserved username (max 15 chars)
+        # Host must join first
+        from chats.models import ChatParticipation
+        ChatParticipation.objects.create(
+            chat_room=self.chat,
+            user=self.host_user,
+            username='RegUser99',
+            fingerprint='host_fingerprint',
+            ip_address='127.0.0.1'
+        )
+
+        # Create a registered user with a different reserved username (max 15 chars)
         self.registered_user = User.objects.create_user(
             email='registered@example.com',
             password='TestPass123!',
-            reserved_username='RegUser99'
+            reserved_username='RegUser88'
         )
 
     def test_anonymous_user_with_generated_username_can_join(self):

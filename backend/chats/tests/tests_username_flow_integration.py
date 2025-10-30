@@ -47,6 +47,14 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
             host=self.user,
         )
 
+        # Host must join first to allow anonymous users to join
+        ChatParticipation.objects.create(
+            chat_room=self.chat,
+            user=self.user,
+            username='HostUser',
+            fingerprint='host_fingerprint'
+        )
+
     def tearDown(self):
         """Clear cache after each test"""
         cache.clear()
@@ -188,13 +196,22 @@ class UsernameRotationIntegrationTestCase(TestCase):
 
         self.user = User.objects.create_user(
             email='host@example.com',
-            password='pass123'
+            password='pass123',
+            reserved_username='HostUser'
         )
 
         self.chat = ChatRoom.objects.create(
             code='ROTTEST',
             name='Rotation Test Chat',
             host=self.user,
+        )
+
+        # Host must join first to allow anonymous users to join
+        ChatParticipation.objects.create(
+            chat_room=self.chat,
+            user=self.user,
+            username='HostUser',
+            fingerprint='host_fingerprint'
         )
 
     def tearDown(self):
@@ -413,13 +430,22 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
 
         self.user = User.objects.create_user(
             email='host@example.com',
-            password='pass123'
+            password='pass123',
+            reserved_username='HostUser'
         )
 
         self.chat = ChatRoom.objects.create(
             code='SECTEST',
             name='Security Test Chat',
             host=self.user,
+        )
+
+        # Host must join first to allow anonymous users to join
+        ChatParticipation.objects.create(
+            chat_room=self.chat,
+            user=self.user,
+            username='HostUser',
+            fingerprint='host_fingerprint'
         )
 
     def tearDown(self):

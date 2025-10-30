@@ -55,6 +55,16 @@ class ChatBanEnforcementHTTPTests(TestCase):
             access_mode='public'
         )
 
+        # Host must join first
+        from chats.models import ChatParticipation
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.host,
+            username='HostUser',
+            fingerprint='host_fingerprint',
+            ip_address='127.0.0.1'
+        )
+
     def _suggest_username(self, fingerprint):
         """Helper method to get a generated username for a fingerprint"""
         response = self.client.post(
@@ -301,6 +311,16 @@ class ChatBanEnforcementHTTPTests(TestCase):
             access_mode='public'
         )
 
+        # Host must join second chat first
+        from chats.models import ChatParticipation
+        ChatParticipation.objects.create(
+            chat_room=chat_room2,
+            user=self.host,
+            username='HostUser',
+            fingerprint='host_fingerprint2',
+            ip_address='127.0.0.1'
+        )
+
         # User joins both chats (no fingerprint allows manually-entered username)
         token1 = self._join_chat_and_get_token(test_username)
 
@@ -362,6 +382,7 @@ class ChatBanEnforcementWebSocketTests(TransactionTestCase):
     def setUp(self):
         """Create test users and chat room"""
         from channels.db import database_sync_to_async
+        from chats.models import ChatParticipation
 
         # Create host user
         self.host = User.objects.create_user(
@@ -382,6 +403,15 @@ class ChatBanEnforcementWebSocketTests(TransactionTestCase):
             name='Test Chat',
             host=self.host,
             access_mode='public'
+        )
+
+        # Host must join first
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.host,
+            username='HostUser',
+            fingerprint='host_fingerprint',
+            ip_address='127.0.0.1'
         )
 
     def _create_session_token(self, username, fingerprint=None, user_id=None):
@@ -575,6 +605,16 @@ class ChatBanCreationTests(TestCase):
             name='Test Chat',
             host=self.host,
             access_mode='public'
+        )
+
+        # Host must join first
+        from chats.models import ChatParticipation
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.host,
+            username='HostUser',
+            fingerprint='host_fingerprint',
+            ip_address='127.0.0.1'
         )
 
     def _join_chat_and_get_token(self, user, username):
@@ -837,6 +877,16 @@ class ChatBanIntegrationTests(TestCase):
             name='Test Chat',
             host=self.host,
             access_mode='public'
+        )
+
+        # Host must join first
+        from chats.models import ChatParticipation
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.host,
+            username='HostUser',
+            fingerprint='host_fingerprint',
+            ip_address='127.0.0.1'
         )
 
     def test_complete_ban_workflow(self):

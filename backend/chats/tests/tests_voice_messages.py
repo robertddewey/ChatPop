@@ -70,7 +70,7 @@ class VoiceMessageUploadTests(TestCase):
         from django.core.files.base import ContentFile
         mock_transcode.return_value = ContentFile(b'fake transcoded audio', name='voice.m4a')
 
-        url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
+        url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
         audio_file = self.create_audio_file()
 
         response = self.client.post(url, {
@@ -85,7 +85,7 @@ class VoiceMessageUploadTests(TestCase):
 
     def test_upload_voice_disabled_chat(self):
         """Test upload fails when voice is disabled"""
-        url = reverse('chats:voice-upload', kwargs={'code': self.chat_disabled.code})
+        url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_disabled.code})
         audio_file = self.create_audio_file()
 
         response = self.client.post(url, {
@@ -98,7 +98,7 @@ class VoiceMessageUploadTests(TestCase):
 
     def test_upload_without_session_token(self):
         """Test upload fails without session token"""
-        url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
+        url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
         audio_file = self.create_audio_file()
 
         response = self.client.post(url, {
@@ -110,7 +110,7 @@ class VoiceMessageUploadTests(TestCase):
 
     def test_upload_invalid_session_token(self):
         """Test upload fails with invalid session token"""
-        url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
+        url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
         audio_file = self.create_audio_file()
 
         response = self.client.post(url, {
@@ -122,7 +122,7 @@ class VoiceMessageUploadTests(TestCase):
 
     def test_upload_wrong_chat_session_token(self):
         """Test upload fails with session token from different chat"""
-        url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
+        url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
         audio_file = self.create_audio_file()
 
         response = self.client.post(url, {
@@ -135,7 +135,7 @@ class VoiceMessageUploadTests(TestCase):
 
     def test_upload_no_file(self):
         """Test upload fails without file"""
-        url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
+        url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
 
         response = self.client.post(url, {
             'session_token': self.session_token_enabled
@@ -146,7 +146,7 @@ class VoiceMessageUploadTests(TestCase):
 
     def test_upload_file_too_large(self):
         """Test upload fails when file exceeds size limit"""
-        url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
+        url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
 
         # Create file larger than 10MB
         large_content = b'x' * (11 * 1024 * 1024)  # 11MB
@@ -166,7 +166,7 @@ class VoiceMessageUploadTests(TestCase):
 
     def test_upload_invalid_file_type(self):
         """Test upload fails with non-audio file"""
-        url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
+        url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
 
         text_file = SimpleUploadedFile(
             'test.txt',
@@ -189,7 +189,7 @@ class VoiceMessageUploadTests(TestCase):
         from django.core.files.base import ContentFile
         mock_transcode.return_value = ContentFile(b'fake transcoded audio', name='voice.m4a')
 
-        url = reverse('chats:voice-upload', kwargs={'code': self.chat_enabled.code})
+        url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
 
         audio_formats = [
             ('test.webm', 'audio/webm'),
@@ -393,7 +393,7 @@ class VoiceMessageIntegrationTests(TestCase):
         mock_transcode.return_value = ContentFile(b'fake transcoded audio', name='voice.m4a')
 
         # 1. Upload voice message
-        upload_url = reverse('chats:voice-upload', kwargs={'code': self.chat.code})
+        upload_url = reverse('chats:voice-upload', kwargs={'username': 'testuser', 'code': self.chat.code})
         audio_file = SimpleUploadedFile(
             'test_voice.webm',
             b'fake audio content',
