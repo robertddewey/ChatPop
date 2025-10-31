@@ -101,11 +101,11 @@ class DualSessionsTests(TestCase):
         participation = ChatParticipation.objects.get(chat_room=self.chat_room, user=self.user)
         self.assertEqual(participation.username, "Robert")
 
-    @allure.title("Dual sessions allow same username")
-    @allure.description("Anonymous and logged-in users can use the same username simultaneously")
+    @allure.title("Duplicate usernames blocked across user types")
+    @allure.description("Logged-in users cannot use usernames already taken by anonymous users")
     @allure.severity(allure.severity_level.CRITICAL)
-    def test_dual_sessions_allow_same_username(self):
-        """Anonymous and logged-in users can use the same username simultaneously"""
+    def test_dual_sessions_prevent_duplicate_usernames(self):
+        """Logged-in users cannot use usernames already taken by anonymous users"""
         # 1. Generate username for anonymous user
         anon_fingerprint = "anon-fingerprint-123"
         username = self.generate_username(anon_fingerprint)
@@ -116,29 +116,34 @@ class DualSessionsTests(TestCase):
         response = self.client.post(url, json.dumps(anon_data), content_type="application/json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # 3. Logged-in user joins with same username (case variation)
+        # 3. Logged-in user tries to join with same username (case variation) - should FAIL
         self.client.force_authenticate(user=self.user)
         user_data = {"username": username.upper(), "fingerprint": "user-fingerprint-456"}
         response = self.client.post(url, json.dumps(user_data), content_type="application/json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("already in use", str(response.data))
 
-        # 4. Verify both participations exist
+        # 4. Verify only anonymous participation exists
         anon_participation = ChatParticipation.objects.get(
             chat_room=self.chat_room, fingerprint=anon_fingerprint, user__isnull=True
         )
-        user_participation = ChatParticipation.objects.get(chat_room=self.chat_room, user=self.user)
-
         self.assertEqual(anon_participation.username, username)
-        self.assertEqual(user_participation.username, username.upper())
+
+        # 5. Verify logged-in user did NOT create a participation
+        user_participation_exists = ChatParticipation.objects.filter(
+            chat_room=self.chat_room, user=self.user
+        ).exists()
+        self.assertFalse(user_participation_exists)
 
     @allure.title("MyParticipation prioritizes logged-in user")
-    @allure.description("MyParticipationView returns logged-in participation when both exist")
+    @allure.description("MyParticipationView returns logged-in participation when both exist with same fingerprint")
     @allure.severity(allure.severity_level.CRITICAL)
     def test_my_participation_prioritizes_logged_in_user(self):
-        """MyParticipationView returns logged-in participation when both exist"""
-        # Create both anonymous and user participations
+        """MyParticipationView returns logged-in participation when both exist with same fingerprint"""
+        # Create both anonymous and user participations with DIFFERENT usernames but same fingerprint
+        # (This tests the edge case where someone joined as anonymous, then logged in with different username)
         ChatParticipation.objects.create(
-            chat_room=self.chat_room, fingerprint="fingerprint-123", username="robert", ip_address="127.0.0.1"
+            chat_room=self.chat_room, fingerprint="fingerprint-123", username="GuestUser99", ip_address="127.0.0.1"
         )
         ChatParticipation.objects.create(
             chat_room=self.chat_room,

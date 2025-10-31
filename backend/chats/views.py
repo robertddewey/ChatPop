@@ -285,20 +285,18 @@ class ChatRoomJoinView(APIView):
 
         # SECURITY CHECK 3: Check if username is already taken by another participant
         # (excluding the current user/fingerprint who may be rejoining)
-        # NOTE: Anonymous and registered users CAN coexist with the same username
+        # Usernames must be unique per chat room regardless of authentication status
         if request.user.is_authenticated:
-            # Registered user: only check for other registered users (not anonymous)
+            # Registered user: check for ANY other participant (registered or anonymous)
             username_taken = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 username__iexact=username,
-                user__isnull=False  # Only check registered users
             ).exclude(user=request.user).exists()
         else:
-            # Anonymous user: only check for other anonymous users (not registered)
+            # Anonymous user: check for ANY other participant (registered or anonymous)
             username_taken = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 username__iexact=username,
-                user__isnull=True  # Only check anonymous users
             ).exclude(fingerprint=fingerprint).exists()
 
         if username_taken:
