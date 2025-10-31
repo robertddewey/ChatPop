@@ -5,14 +5,20 @@ from django.test import TestCase
 from django.core.exceptions import ValidationError
 from chats.utils.username.validators import validate_username
 from chats.utils.username.profanity import is_username_allowed, ValidationResult
+import allure
 
 
+@allure.feature('Username Validation')
+@allure.story('Profanity Filtering')
 class UsernameProfanityCheckTests(TestCase):
     """
     Test the profanity checker module directly.
     These tests mirror the built-in tests in username_profanity_check.py
     """
 
+    @allure.title("Clean usernames are allowed")
+    @allure.description("Test that clean usernames pass profanity filter")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_clean_usernames_allowed(self):
         """Test that clean usernames are allowed"""
         clean_usernames = [
@@ -26,6 +32,9 @@ class UsernameProfanityCheckTests(TestCase):
             result = is_username_allowed(username)
             self.assertTrue(result.allowed, f"{username} should be allowed but got: {result.reason}")
 
+    @allure.title("Obvious profanity is blocked")
+    @allure.description("Test that obvious profanity fails profanity filter")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_obvious_profanity_blocked(self):
         """Test that obvious profanity is blocked"""
         profane_usernames = [
@@ -38,6 +47,9 @@ class UsernameProfanityCheckTests(TestCase):
             self.assertFalse(result.allowed, f"{username} should be blocked")
             self.assertIsNotNone(result.reason)
 
+    @allure.title("Leet speak variants are blocked")
+    @allure.description("Test that leet speak profanity variants fail profanity filter")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_leet_speak_variants_blocked(self):
         """Test that leet speak variants are blocked"""
         leet_variants = [
@@ -49,6 +61,9 @@ class UsernameProfanityCheckTests(TestCase):
             result = is_username_allowed(username)
             self.assertFalse(result.allowed, f"{username} should be blocked as leet speak variant")
 
+    @allure.title("Legitimate words with banned substrings are allowed")
+    @allure.description("Test that legitimate words containing banned substrings pass profanity filter")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_legitimate_words_with_banned_substrings_allowed(self):
         """Test that legitimate words containing banned substrings are allowed"""
         legitimate_usernames = [
@@ -61,6 +76,9 @@ class UsernameProfanityCheckTests(TestCase):
             result = is_username_allowed(username)
             self.assertTrue(result.allowed, f"{username} should be allowed but got: {result.reason}")
 
+    @allure.title("ValidationResult has correct structure")
+    @allure.description("Test that ValidationResult has correct structure with allowed/reason fields")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_check_result_structure(self):
         """Test that ValidationResult has correct structure"""
         # Allowed username
@@ -77,11 +95,16 @@ class UsernameProfanityCheckTests(TestCase):
         self.assertIsInstance(result.reason, str)
 
 
+@allure.feature('Username Validation')
+@allure.story('Profanity Filter Integration')
 class ValidatorProfanityIntegrationTests(TestCase):
     """
     Test profanity filtering integration with validate_username()
     """
 
+    @allure.title("Clean username passes validation")
+    @allure.description("Test that clean usernames pass validation with profanity check enabled")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_clean_username_passes_validation(self):
         """Test that clean usernames pass validation with profanity check enabled"""
         clean_usernames = [
@@ -96,6 +119,9 @@ class ValidatorProfanityIntegrationTests(TestCase):
             except ValidationError:
                 self.fail(f"{username} should pass validation")
 
+    @allure.title("Profane username fails validation")
+    @allure.description("Test that profane usernames fail validation with profanity check enabled")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_profane_username_fails_validation(self):
         """Test that profane usernames fail validation with profanity check enabled"""
         profane_usernames = [
@@ -108,6 +134,9 @@ class ValidatorProfanityIntegrationTests(TestCase):
                 validate_username(username, skip_badwords_check=False)
             self.assertIn("not allowed", str(cm.exception).lower())
 
+    @allure.title("Skip badwords check bypasses profanity filter")
+    @allure.description("Test that skip_badwords_check=True bypasses profanity filtering")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_skip_badwords_check_bypasses_profanity_filter(self):
         """Test that skip_badwords_check=True bypasses profanity filtering"""
         # This would normally be blocked, but skip_badwords_check=True should allow it
@@ -119,6 +148,9 @@ class ValidatorProfanityIntegrationTests(TestCase):
             # Should only fail on format validation (length/characters), not profanity
             self.assertNotIn("not allowed", str(e).lower())
 
+    @allure.title("Legitimate words pass validation")
+    @allure.description("Test that legitimate words with banned substrings pass validation")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_legitimate_words_pass_validation(self):
         """Test that legitimate words with banned substrings pass validation"""
         legitimate_usernames = [
@@ -134,6 +166,8 @@ class ValidatorProfanityIntegrationTests(TestCase):
                 self.fail(f"{username} should pass validation")
 
 
+@allure.feature('Chat Operations')
+@allure.story('Profanity Filter on Join')
 class ChatJoinProfanityTests(TestCase):
     """
     Test profanity filtering in the chat join API endpoint
@@ -167,6 +201,9 @@ class ChatJoinProfanityTests(TestCase):
             ip_address='127.0.0.1'
         )
 
+    @allure.title("Join with clean username succeeds")
+    @allure.description("Test joining a chat with a clean username")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_join_with_clean_username(self):
         """Test joining a chat with a clean username"""
         fingerprint = 'test_fp_456'
@@ -193,6 +230,9 @@ class ChatJoinProfanityTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    @allure.title("Join with profane username is rejected")
+    @allure.description("Test that joining with profane username is rejected")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_join_with_profane_username_rejected(self):
         """Test that joining with profane username is rejected"""
         response = self.client.post(
@@ -206,6 +246,9 @@ class ChatJoinProfanityTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('username', response.json())
 
+    @allure.title("Join with leet speak profanity is rejected")
+    @allure.description("Test that leet speak profanity is rejected")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_join_with_leet_speak_profanity_rejected(self):
         """Test that leet speak profanity is rejected"""
         response = self.client.post(
@@ -218,6 +261,9 @@ class ChatJoinProfanityTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    @allure.title("Join with legitimate word containing substring")
+    @allure.description("Test that legitimate words with banned substrings are allowed")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_join_with_legitimate_word_containing_substring(self):
         """Test that legitimate words with banned substrings are allowed"""
         fingerprint = 'test_fp_102'
@@ -245,11 +291,16 @@ class ChatJoinProfanityTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
+@allure.feature('User Authentication')
+@allure.story('Username Check Profanity Filter')
 class CheckUsernameProfanityTests(TestCase):
     """
     Test profanity filtering in check-username endpoint (registration modal)
     """
 
+    @allure.title("Check profane username is rejected")
+    @allure.description("Test that profane username is rejected during check")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_check_profane_username_rejected(self):
         """Test that profane username is rejected during check"""
         response = self.client.get(
@@ -261,6 +312,9 @@ class CheckUsernameProfanityTests(TestCase):
         self.assertFalse(data.get('available'))
         self.assertIn('not allowed', data.get('message').lower())
 
+    @allure.title("Check leet speak profanity is rejected")
+    @allure.description("Test that leet speak profanity is rejected during check")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_check_leet_speak_profanity_rejected(self):
         """Test that leet speak profanity is rejected during check"""
         response = self.client.get(
@@ -272,11 +326,16 @@ class CheckUsernameProfanityTests(TestCase):
         self.assertFalse(data.get('available'))
 
 
+@allure.feature('User Authentication')
+@allure.story('Registration Profanity Filter')
 class UserRegistrationProfanityTests(TestCase):
     """
     Test profanity filtering in user registration
     """
 
+    @allure.title("Register with clean reserved username succeeds")
+    @allure.description("Test registering with a clean reserved username")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_register_with_clean_reserved_username(self):
         """Test registering with a clean reserved username"""
         response = self.client.post(
@@ -290,6 +349,9 @@ class UserRegistrationProfanityTests(TestCase):
         )
         self.assertEqual(response.status_code, 201)
 
+    @allure.title("Register with profane reserved username is rejected")
+    @allure.description("Test that registering with profane reserved username is rejected")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_register_with_profane_reserved_username_rejected(self):
         """Test that registering with profane reserved username is rejected"""
         response = self.client.post(
@@ -304,6 +366,9 @@ class UserRegistrationProfanityTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('reserved_username', response.json())
 
+    @allure.title("Register without reserved username succeeds")
+    @allure.description("Test that registration without reserved username works")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_register_without_reserved_username(self):
         """Test that registration without reserved username works"""
         response = self.client.post(
@@ -317,6 +382,8 @@ class UserRegistrationProfanityTests(TestCase):
         self.assertEqual(response.status_code, 201)
 
 
+@allure.feature('Username Validation')
+@allure.story('Validation Endpoint Profanity Filter')
 class UsernameValidationProfanityTests(TestCase):
     """
     Test profanity filtering in username validation endpoint
@@ -350,6 +417,9 @@ class UsernameValidationProfanityTests(TestCase):
             ip_address='127.0.0.1'
         )
 
+    @allure.title("Validate profane username is rejected")
+    @allure.description("Test that profane username is rejected during validation")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_validate_profane_username_rejected(self):
         """Test that profane username is rejected during validation"""
         response = self.client.post(
@@ -365,6 +435,9 @@ class UsernameValidationProfanityTests(TestCase):
         self.assertFalse(data.get('available'))
         self.assertIn('error', data)
 
+    @allure.title("Validate leet speak profanity is rejected")
+    @allure.description("Test that leet speak profanity is rejected during validation")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_validate_leet_speak_profanity_rejected(self):
         """Test that leet speak profanity is rejected during validation"""
         response = self.client.post(
@@ -380,6 +453,8 @@ class UsernameValidationProfanityTests(TestCase):
         self.assertFalse(data.get('available'))
 
 
+@allure.feature('Username Validation')
+@allure.story('Suggested Username Profanity Filter')
 class SuggestUsernameProfanityTests(TestCase):
     """
     Test that suggested usernames skip profanity filtering
@@ -413,6 +488,9 @@ class SuggestUsernameProfanityTests(TestCase):
             ip_address='127.0.0.1'
         )
 
+    @allure.title("Suggested usernames are clean")
+    @allure.description("Test that suggested usernames are always clean and don't contain profanity")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_suggested_usernames_are_clean(self):
         """Test that suggested usernames are always clean (don't contain profanity)"""
         # Generate 5 usernames with unique fingerprints (well below rate limit of 10/hour per fingerprint)
@@ -435,6 +513,9 @@ class SuggestUsernameProfanityTests(TestCase):
                 f"Suggested username '{username}' failed profanity check: {result.reason}"
             )
 
+    @allure.title("Suggest-username endpoint returns valid username")
+    @allure.description("Test that suggest-username endpoint returns valid username")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_suggested_username_endpoint_success(self):
         """Test that suggest-username endpoint returns valid username"""
         response = self.client.post(
@@ -451,6 +532,8 @@ class SuggestUsernameProfanityTests(TestCase):
         self.assertGreater(len(data['username']), 0)
 
 
+@allure.feature('Chat Security')
+@allure.story('Generated Username Security')
 class GeneratedUsernameSecurityTests(TestCase):
     """
     Test security enforcement: Anonymous users can ONLY use system-generated usernames.
@@ -492,6 +575,9 @@ class GeneratedUsernameSecurityTests(TestCase):
             reserved_username='RegUser88'
         )
 
+    @allure.title("Anonymous user can join with generated username")
+    @allure.description("Test that anonymous users can join with a system-generated username")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_with_generated_username_can_join(self):
         """Test that anonymous users can join with a system-generated username"""
         fingerprint = 'test_security_fp_1'
@@ -521,6 +607,9 @@ class GeneratedUsernameSecurityTests(TestCase):
         self.assertIn('session_token', data)
         self.assertEqual(data['username'], suggested_username)
 
+    @allure.title("Anonymous user with non-generated username is rejected")
+    @allure.description("Test that anonymous users CANNOT join with arbitrary non-generated usernames")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_with_non_generated_username_rejected(self):
         """Test that anonymous users CANNOT join with arbitrary (non-generated) usernames"""
         fingerprint = 'test_security_fp_2'
@@ -543,6 +632,9 @@ class GeneratedUsernameSecurityTests(TestCase):
         error_message = str(data[0]).lower()
         self.assertIn('suggest username', error_message)
 
+    @allure.title("Authenticated user can use reserved username")
+    @allure.description("Test that authenticated users can still use their reserved usernames")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_authenticated_user_can_use_reserved_username(self):
         """Test that authenticated users can still use their reserved usernames"""
         # Log in as the registered user
@@ -562,6 +654,9 @@ class GeneratedUsernameSecurityTests(TestCase):
         self.assertIn('session_token', data)
         self.assertEqual(data['username'], self.registered_user.reserved_username)
 
+    @allure.title("Existing participant can rejoin with same username")
+    @allure.description("Test that existing participants can rejoin with their existing username")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_existing_participant_can_rejoin_with_same_username(self):
         """Test that existing participants can rejoin with their existing username"""
         from chats.models import ChatParticipation
@@ -592,6 +687,9 @@ class GeneratedUsernameSecurityTests(TestCase):
         self.assertIn('session_token', data)
         self.assertEqual(data['username'], username)
 
+    @allure.title("Anonymous user cannot use another fingerprint's username")
+    @allure.description("Test that anonymous users cannot use usernames generated for different fingerprints")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_cannot_use_another_fingerprints_generated_username(self):
         """Test that anonymous users cannot use usernames generated for different fingerprints"""
         fingerprint_a = 'test_security_fp_5a'
@@ -624,6 +722,9 @@ class GeneratedUsernameSecurityTests(TestCase):
         error_message = str(data[0]).lower()
         self.assertIn('suggest username', error_message)
 
+    @allure.title("Security check only applies to new anonymous participations")
+    @allure.description("Test that security check is only applied to NEW anonymous participations, not rejoins")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_security_check_only_applies_to_new_anonymous_participations(self):
         """Test that security check is only applied to NEW anonymous participations, not rejoins"""
         from chats.models import ChatParticipation

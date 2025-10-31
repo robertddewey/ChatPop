@@ -66,12 +66,33 @@ show_help() {
     echo "  -s               Show print statements"
     echo ""
     echo -e "${BLUE}Test files:${NC}"
-    echo "  chats/tests/tests_security.py       (17 tests) - JWT session security"
-    echo "  chats/tests/tests_validators.py     (10 tests) - Username validation"
-    echo "  chats/tests/tests_profanity.py      (26 tests) - Profanity filtering"
-    echo "  chats/tests/tests_rate_limits.py    (12 tests) - Rate limiting"
-    echo "  chats/tests/tests_dual_sessions.py  (16 tests) - Dual session management"
-    echo "  chats/tests/tests_redis_cache.py    (49 tests) - Redis caching"
+
+    # Dynamically list all test files with their test counts
+    if [ -d "chats/tests" ]; then
+        # Find all test files, sort them, and display with test counts
+        for test_file in $(find chats/tests -name "tests_*.py" -type f | sort); do
+            # Count test methods in the file
+            test_count=$(grep -c "def test_" "$test_file" 2>/dev/null || echo "0")
+
+            # Get relative filename
+            filename=$(basename "$test_file")
+
+            # Extract description from file's first docstring (first line after opening """)
+            # Works on both macOS and Linux
+            description=$(awk '/"""/{p=!p; next} p{if(NF){print; exit}}' "$test_file" 2>/dev/null | sed 's/^[[:space:]]*//' || echo "")
+
+            # Format output with proper spacing
+            printf "  %-42s (%2d tests)" "$test_file" "$test_count"
+
+            # Add description if found
+            if [ -n "$description" ]; then
+                echo " - $description"
+            else
+                echo ""
+            fi
+        done
+    fi
+
     echo ""
 }
 

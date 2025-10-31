@@ -23,10 +23,13 @@ from datetime import datetime, timedelta
 from django.utils import timezone
 from constance.test import override_config
 import time
+import allure
 
 User = get_user_model()
 
 
+@allure.feature('Message Caching')
+@allure.story('Partial Cache Hits and Hybrid Queries')
 class PartialCacheHitTests(TestCase):
     """Test partial cache hit detection and hybrid cache/DB queries"""
 
@@ -107,6 +110,9 @@ class PartialCacheHitTests(TestCase):
         for msg in messages:
             MessageCache.add_message(msg)
 
+    @allure.title("Partial cache hit: 30 cached, 50 requested")
+    @allure.description("Test partial cache hit where cache has 30 messages but user requests 50")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(REDIS_CACHE_ENABLED=True)
     def test_partial_cache_hit_30_cached_50_requested(self):
         """
@@ -154,6 +160,9 @@ class PartialCacheHitTests(TestCase):
         self.assertEqual(data['messages'][20]['content'], 'Test message 21')
         self.assertEqual(data['messages'][49]['content'], 'Test message 50')
 
+    @allure.title("Exact cache match: 50 cached, 50 requested")
+    @allure.description("Test exact cache match where cache has exactly the requested number of messages")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(REDIS_CACHE_ENABLED=True)
     def test_exact_cache_match_50_cached_50_requested(self):
         """
@@ -191,6 +200,9 @@ class PartialCacheHitTests(TestCase):
         expected_contents = [f'Test message {i + 1}' for i in range(50)]
         self.assertEqual(message_contents, expected_contents)
 
+    @allure.title("Cache overflow: 100 cached, 50 requested")
+    @allure.description("Test cache overflow where cache has more messages than requested")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(REDIS_CACHE_ENABLED=True)
     def test_cache_overflow_100_cached_50_requested(self):
         """
@@ -228,6 +240,9 @@ class PartialCacheHitTests(TestCase):
         expected_contents = [f'Test message {i + 1}' for i in range(50, 100)]
         self.assertEqual(message_contents, expected_contents)
 
+    @allure.title("Full cache miss with backfill")
+    @allure.description("Test full cache miss where cache is empty and database backfills the cache")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(REDIS_CACHE_ENABLED=True)
     def test_full_cache_miss_backfill(self):
         """
@@ -277,6 +292,9 @@ class PartialCacheHitTests(TestCase):
         self.assertEqual(data2['source'], 'redis')
         self.assertEqual(len(data2['messages']), 50)
 
+    @allure.title("Pagination with partial backfill")
+    @allure.description("Test pagination behavior after a partial cache hit")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(REDIS_CACHE_ENABLED=True)
     def test_pagination_with_partial_backfill(self):
         """
@@ -342,6 +360,9 @@ class PartialCacheHitTests(TestCase):
 
         self.assertLess(second_num, first_num, "Paginated messages should be older")
 
+    @allure.title("Partial cache hit with fewer messages than requested")
+    @allure.description("Test edge case where total messages available is less than requested")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(REDIS_CACHE_ENABLED=True)
     def test_partial_cache_hit_with_empty_database_tail(self):
         """
@@ -384,6 +405,9 @@ class PartialCacheHitTests(TestCase):
         message_ids = [msg['id'] for msg in data['messages']]
         self.assertEqual(len(message_ids), len(set(message_ids)))
 
+    @allure.title("Performance comparison: hybrid vs full DB")
+    @allure.description("Test that hybrid cache/DB approach is faster than full database query")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(REDIS_CACHE_ENABLED=True)
     def test_performance_hybrid_vs_full_db(self):
         """
@@ -460,6 +484,9 @@ class PartialCacheHitTests(TestCase):
         # Verify pure cache is fastest
         self.assertLess(cache_time, hybrid_time, "Pure cache should be faster than hybrid")
 
+    @allure.title("Security: Message limit enforcement with partial cache")
+    @allure.description("Test that MESSAGE_HISTORY_MAX_COUNT is enforced even with partial cache hits")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(REDIS_CACHE_ENABLED=True)
     def test_security_limit_enforcement_with_partial_cache(self):
         """

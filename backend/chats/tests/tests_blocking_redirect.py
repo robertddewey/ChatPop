@@ -4,6 +4,7 @@ Tests for blocking redirect functionality.
 Verifies that blocked users (both anonymous and logged-in) are properly
 detected and redirected when attempting to access a chat page.
 """
+import allure
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -13,6 +14,8 @@ import uuid
 User = get_user_model()
 
 
+@allure.feature('User Blocking')
+@allure.story('Blocking Redirect Detection')
 class BlockingRedirectTests(TestCase):
     """Test blocking detection for chat page access"""
 
@@ -43,6 +46,9 @@ class BlockingRedirectTests(TestCase):
             ip_address='192.168.1.1'
         )
 
+    @allure.title("Anonymous user not blocked")
+    @allure.description("Anonymous user with no blocks should see is_blocked=False")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_anonymous_user_not_blocked(self):
         """Anonymous user with no blocks should see is_blocked=False"""
         response = self.client.get(
@@ -53,6 +59,9 @@ class BlockingRedirectTests(TestCase):
         self.assertFalse(response.data['has_joined'])
         self.assertFalse(response.data['is_blocked'])
 
+    @allure.title("Anonymous user blocked by fingerprint")
+    @allure.description("Anonymous user with blocked fingerprint should see is_blocked=True")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_blocked_by_fingerprint(self):
         """Anonymous user with blocked fingerprint should see is_blocked=True"""
         # Block the fingerprint
@@ -70,6 +79,9 @@ class BlockingRedirectTests(TestCase):
         self.assertFalse(response.data['has_joined'])
         self.assertTrue(response.data['is_blocked'])
 
+    @allure.title("Logged-in user not blocked")
+    @allure.description("Logged-in user with no blocks should see is_blocked=False")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_logged_in_user_not_blocked(self):
         """Logged-in user with no blocks should see is_blocked=False"""
         # Create logged-in user
@@ -89,6 +101,9 @@ class BlockingRedirectTests(TestCase):
         self.assertFalse(response.data['has_joined'])
         self.assertFalse(response.data['is_blocked'])
 
+    @allure.title("Logged-in user blocked by account")
+    @allure.description("Logged-in user with blocked account should see is_blocked=True")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_logged_in_user_blocked_by_account(self):
         """Logged-in user with blocked account should see is_blocked=True"""
         # Create logged-in user
@@ -115,6 +130,12 @@ class BlockingRedirectTests(TestCase):
         self.assertFalse(response.data['has_joined'])
         self.assertTrue(response.data['is_blocked'])
 
+    @allure.title("Logged-in user not blocked by fingerprint")
+    @allure.description("""
+    Logged-in user should NOT be blocked by fingerprint blocks.
+    Only user account blocks apply to logged-in users.
+    """)
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_logged_in_user_fingerprint_blocked_but_account_not(self):
         """
         Logged-in user should NOT be blocked by fingerprint blocks.
@@ -146,6 +167,12 @@ class BlockingRedirectTests(TestCase):
         # Should NOT be blocked - logged-in users bypass fingerprint blocks
         self.assertFalse(response.data['is_blocked'])
 
+    @allure.title("Returning anonymous user blocked")
+    @allure.description("""
+    Returning anonymous user (has participation) who is blocked
+    should see is_blocked=True
+    """)
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_returning_anonymous_user_blocked(self):
         """
         Returning anonymous user (has participation) who is blocked
@@ -176,6 +203,12 @@ class BlockingRedirectTests(TestCase):
         self.assertTrue(response.data['is_blocked'])
         self.assertEqual(response.data['username'], 'BlockedAnon')
 
+    @allure.title("Returning logged-in user blocked")
+    @allure.description("""
+    Returning logged-in user (has participation) who is blocked
+    should see is_blocked=True
+    """)
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_returning_logged_in_user_blocked(self):
         """
         Returning logged-in user (has participation) who is blocked
@@ -215,6 +248,9 @@ class BlockingRedirectTests(TestCase):
         self.assertTrue(response.data['is_blocked'])
         self.assertEqual(response.data['username'], 'ReturningUser')
 
+    @allure.title("Anonymous user blocked by username")
+    @allure.description("Anonymous user blocked by username should see is_blocked=True")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_blocked_by_username(self):
         """Anonymous user blocked by username should see is_blocked=True"""
         # Block by username
@@ -237,6 +273,9 @@ class BlockingRedirectTests(TestCase):
         self.assertFalse(response.data['has_joined'])
         self.assertFalse(response.data['is_blocked'])
 
+    @allure.title("User blocked by multiple identifiers")
+    @allure.description("User blocked by multiple identifiers should see is_blocked=True")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_multiple_blocks_same_user(self):
         """User blocked by multiple identifiers should see is_blocked=True"""
         # Create logged-in user

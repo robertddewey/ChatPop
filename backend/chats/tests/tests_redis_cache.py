@@ -19,8 +19,11 @@ from django.core.cache import cache
 from accounts.models import User
 from chats.models import ChatRoom, Message, ChatParticipation, MessageReaction
 from chats.utils.performance.cache import MessageCache
+import allure
 
 
+@allure.feature('Message Caching')
+@allure.story('Redis Message Cache')
 class RedisMessageCacheTests(TransactionTestCase):
     """Test Redis message caching with database transactions"""
 
@@ -54,6 +57,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         """Clean up after each test"""
         cache.clear()
 
+    @allure.title("Add message to Redis cache")
+    @allure.description("Test that messages are added to Redis cache")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_add_message_to_redis(self):
         """Test that messages are added to Redis cache"""
         # Create message in PostgreSQL
@@ -74,6 +80,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(messages[0]['content'], 'Hello Redis!')
         self.assertEqual(messages[0]['username'], 'TestUser')
 
+    @allure.title("Username is reserved flag correctly cached")
+    @allure.description("Test that username_is_reserved is correctly computed and cached")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_is_reserved_flag(self):
         """Test that username_is_reserved is correctly computed and cached"""
         # Create message with reserved username
@@ -104,6 +113,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         msg2_data = next(m for m in messages if m['content'] == 'Non-reserved username test')
         self.assertFalse(msg2_data['username_is_reserved'])
 
+    @allure.title("Username is reserved check is case-insensitive")
+    @allure.description("Test that username_is_reserved check is case-insensitive")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_is_reserved_case_insensitive(self):
         """Test that username_is_reserved check is case-insensitive"""
         # Create message with different case
@@ -120,6 +132,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         # Should still be marked as reserved (case-insensitive)
         self.assertTrue(messages[0]['username_is_reserved'])
 
+    @allure.title("Anonymous user has no badge")
+    @allure.description("Test that anonymous users never have username_is_reserved=True")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_anonymous_user_no_badge(self):
         """Test that anonymous users never have username_is_reserved=True"""
         # Create message without user (anonymous)
@@ -136,6 +151,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertFalse(messages[0]['username_is_reserved'])
         self.assertIsNone(messages[0]['user_id'])
 
+    @allure.title("Messages returned in chronological order")
+    @allure.description("Test that messages are returned in chronological order (oldest first)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_get_messages_ordering(self):
         """Test that messages are returned in chronological order (oldest first)"""
         # Create multiple messages
@@ -156,6 +174,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(messages[0]['content'], 'Message 0')
         self.assertEqual(messages[4]['content'], 'Message 4')
 
+    @allure.title("Get messages respects limit parameter")
+    @allure.description("Test that get_messages respects the limit parameter")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_get_messages_limit(self):
         """Test that get_messages respects the limit parameter"""
         # Create 10 messages
@@ -172,6 +193,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         messages = MessageCache.get_messages(self.chat_room.code, limit=3)
         self.assertEqual(len(messages), 3)
 
+    @allure.title("Get messages before timestamp pagination")
+    @allure.description("Test pagination with get_messages_before")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_get_messages_before_timestamp(self):
         """Test pagination with get_messages_before"""
         # Create messages with known timestamps
@@ -200,6 +224,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(messages[0]['content'], 'Message 0')
         self.assertEqual(messages[1]['content'], 'Message 1')
 
+    @allure.title("Cache retention respects max count")
+    @allure.description("Test that cache trims to REDIS_CACHE_MAX_COUNT (500 by default)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_retention_max_count(self):
         """Test that cache trims to REDIS_CACHE_MAX_COUNT (500 by default)"""
         from constance import config
@@ -232,6 +259,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         finally:
             config.REDIS_CACHE_MAX_COUNT = original_max
 
+    @allure.title("Add pinned message to cache")
+    @allure.description("Test adding a message to the pinned cache")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_add_pinned_message(self):
         """Test adding a message to the pinned cache"""
         # Create and pin a message
@@ -261,6 +291,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertTrue(pinned[0]['is_pinned'])
         self.assertEqual(pinned[0]['pin_amount_paid'], '5.00')
 
+    @allure.title("Pinned message auto expiry")
+    @allure.description("Test that expired pinned messages are automatically removed")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_pinned_message_auto_expiry(self):
         """Test that expired pinned messages are automatically removed"""
         # Create message pinned in the past (already expired)
@@ -284,6 +317,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         pinned = MessageCache.get_pinned_messages(self.chat_room.code)
         self.assertEqual(len(pinned), 0)
 
+    @allure.title("Remove pinned message from cache")
+    @allure.description("Test removing a message from pinned cache")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_remove_pinned_message(self):
         """Test removing a message from pinned cache"""
         # Create and pin a message
@@ -313,6 +349,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         pinned = MessageCache.get_pinned_messages(self.chat_room.code)
         self.assertEqual(len(pinned), 0)
 
+    @allure.title("Multiple pinned messages ordered correctly")
+    @allure.description("Test that pinned messages are ordered by pinned_until timestamp")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_multiple_pinned_messages_ordering(self):
         """Test that pinned messages are ordered by pinned_until timestamp"""
         # Create multiple pinned messages
@@ -342,6 +381,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(pinned[0]['content'], 'Pin 0')  # Expires first
         self.assertEqual(pinned[2]['content'], 'Pin 2')  # Expires last
 
+    @allure.title("Backroom messages use separate cache")
+    @allure.description("Test that backroom messages use separate Redis key")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_backroom_messages_separate_cache(self):
         """Test that backroom messages use separate Redis key"""
         # Create regular message
@@ -371,6 +413,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertIn('Regular message', message_contents)
         self.assertIn('Backroom message', message_contents)
 
+    @allure.title("Clear all chat cache")
+    @allure.description("Test clearing all cached messages for a chat")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_clear_chat_cache(self):
         """Test clearing all cached messages for a chat"""
         # Create messages in different caches
@@ -404,6 +449,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(len(MessageCache.get_messages(self.chat_room.code)), 0)
         self.assertEqual(len(MessageCache.get_pinned_messages(self.chat_room.code)), 0)
 
+    @allure.title("Message serialization is complete")
+    @allure.description("Test that all message fields are properly serialized")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_message_serialization_completeness(self):
         """Test that all message fields are properly serialized"""
         # Create message with all optional fields
@@ -444,6 +492,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(msg_data['pin_amount_paid'], '10.50')
         self.assertFalse(msg_data['is_deleted'])
 
+    @allure.title("Redis failure graceful degradation")
+    @allure.description("Test that Redis failures don't crash (returns False/empty)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_redis_failure_graceful_degradation(self):
         """Test that Redis failures don't crash (returns False/empty)"""
         # This test verifies error handling in MessageCache methods
@@ -470,6 +521,8 @@ class RedisMessageCacheTests(TransactionTestCase):
             self.fail(f"Redis operations should not raise exceptions: {e}")
 
 
+@allure.feature('Message Caching')
+@allure.story('Redis Performance')
 class RedisPerformanceTests(TransactionTestCase):
     """Performance benchmarks for Redis caching"""
 
@@ -499,6 +552,9 @@ class RedisPerformanceTests(TransactionTestCase):
     def tearDown(self):
         cache.clear()
 
+    @allure.title("Write performance: PostgreSQL only")
+    @allure.description("Benchmark: Write to PostgreSQL only")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_write_performance_postgresql_only(self):
         """Benchmark: Write to PostgreSQL only"""
         start_time = time.time()
@@ -519,6 +575,9 @@ class RedisPerformanceTests(TransactionTestCase):
         # Should complete in reasonable time (not a hard assertion)
         self.assertLess(duration, 10.0)  # 100 messages in under 10 seconds
 
+    @allure.title("Write performance: Dual-write to PostgreSQL + Redis")
+    @allure.description("Benchmark: Dual-write to PostgreSQL + Redis")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_write_performance_dual_write(self):
         """Benchmark: Dual-write to PostgreSQL + Redis"""
         start_time = time.time()
@@ -540,6 +599,9 @@ class RedisPerformanceTests(TransactionTestCase):
         # Should complete in reasonable time
         self.assertLess(duration, 10.0)
 
+    @allure.title("Read performance: Redis cache hit")
+    @allure.description("Benchmark: Read from Redis (cache hit)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_read_performance_redis_cache_hit(self):
         """Benchmark: Read from Redis (cache hit)"""
         # Pre-populate cache with 50 messages
@@ -567,6 +629,9 @@ class RedisPerformanceTests(TransactionTestCase):
         # Redis should be very fast (<5ms per read ideally)
         self.assertLess(avg_per_read, 10.0)  # Under 10ms per read
 
+    @allure.title("Read performance: PostgreSQL fallback")
+    @allure.description("Benchmark: Read from PostgreSQL (cache miss)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_read_performance_postgresql_fallback(self):
         """Benchmark: Read from PostgreSQL (cache miss)"""
         # Create messages in PostgreSQL but NOT in Redis
@@ -596,6 +661,9 @@ class RedisPerformanceTests(TransactionTestCase):
         # PostgreSQL will be slower than Redis
         self.assertLess(duration, 10.0)
 
+    @allure.title("Cache hit rate simulation")
+    @allure.description("Simulate realistic cache hit rate scenario")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_hit_rate_simulation(self):
         """Simulate realistic cache hit rate scenario"""
         # Create 100 messages (simulating active chat)
@@ -630,6 +698,9 @@ class RedisPerformanceTests(TransactionTestCase):
         # Should have very high hit rate (100% in this test)
         self.assertGreaterEqual(hit_rate, 99.0)
 
+    @allure.title("Pinned message performance")
+    @allure.description("Benchmark: Pinned message operations")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_pinned_message_performance(self):
         """Benchmark: Pinned message operations"""
         # Create 10 pinned messages
@@ -666,6 +737,8 @@ class RedisPerformanceTests(TransactionTestCase):
         self.assertLess(read_duration / 100, 0.01)  # Under 10ms per read
 
 
+@allure.feature('Message Caching')
+@allure.story('Redis Reaction Caching')
 class RedisReactionCacheTests(TransactionTestCase):
     """Test Redis reaction caching functionality"""
 
@@ -708,6 +781,9 @@ class RedisReactionCacheTests(TransactionTestCase):
     def tearDown(self):
         cache.clear()
 
+    @allure.title("Set message reactions")
+    @allure.description("Test caching reaction summary for a message")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_set_message_reactions(self):
         """Test caching reaction summary for a message"""
         reactions = [
@@ -740,6 +816,9 @@ class RedisReactionCacheTests(TransactionTestCase):
         self.assertEqual(heart['count'], 3)
         self.assertEqual(laugh['count'], 1)
 
+    @allure.title("Get message reactions: cache miss")
+    @allure.description("Test that cache miss returns empty list")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_get_message_reactions_cache_miss(self):
         """Test that cache miss returns empty list"""
         reactions = MessageCache.get_message_reactions(
@@ -749,6 +828,9 @@ class RedisReactionCacheTests(TransactionTestCase):
 
         self.assertEqual(reactions, [])
 
+    @allure.title("Set empty reactions deletes cache")
+    @allure.description("Test that setting empty reactions removes the cache key")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_set_empty_reactions_deletes_cache(self):
         """Test that setting empty reactions removes the cache key"""
         # First cache some reactions
@@ -780,6 +862,9 @@ class RedisReactionCacheTests(TransactionTestCase):
         )
         self.assertEqual(cached, [])
 
+    @allure.title("Batch get reactions")
+    @allure.description("Test batch fetching reactions for multiple messages")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_batch_get_reactions(self):
         """Test batch fetching reactions for multiple messages"""
         # Cache reactions for message1
@@ -825,6 +910,9 @@ class RedisReactionCacheTests(TransactionTestCase):
         self.assertEqual(msg2_reactions[0]['emoji'], '😂')
         self.assertEqual(msg2_reactions[0]['count'], 3)
 
+    @allure.title("Batch get reactions with cache miss")
+    @allure.description("Test batch fetch with some messages missing from cache")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_batch_get_reactions_with_cache_miss(self):
         """Test batch fetch with some messages missing from cache"""
         # Only cache reactions for message1
@@ -851,6 +939,9 @@ class RedisReactionCacheTests(TransactionTestCase):
         # Message 2 should have empty list (cache miss)
         self.assertEqual(reactions_by_message[str(self.message2.id)], [])
 
+    @allure.title("Batch get reactions with empty list")
+    @allure.description("Test batch fetch with empty message ID list")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_batch_get_reactions_empty_list(self):
         """Test batch fetch with empty message ID list"""
         reactions_by_message = MessageCache.batch_get_reactions(
@@ -860,6 +951,9 @@ class RedisReactionCacheTests(TransactionTestCase):
 
         self.assertEqual(reactions_by_message, {})
 
+    @allure.title("Batch get reactions uses single round-trip")
+    @allure.description("Test that batch fetch uses single Redis round-trip (pipelining)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_batch_get_reactions_single_round_trip(self):
         """Test that batch fetch uses single Redis round-trip (pipelining)"""
         # Create 10 messages with reactions
@@ -896,6 +990,9 @@ class RedisReactionCacheTests(TransactionTestCase):
         print(f"\n📊 Batch get {len(messages)} message reactions: {duration:.2f}ms")
         self.assertLess(duration, 50.0)  # Under 50ms for 10 messages
 
+    @allure.title("Reaction cache TTL")
+    @allure.description("Test that reaction cache has 24-hour TTL")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_reaction_cache_ttl(self):
         """Test that reaction cache has 24-hour TTL"""
         reactions = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
@@ -914,6 +1011,9 @@ class RedisReactionCacheTests(TransactionTestCase):
         self.assertGreater(ttl, 86000)  # Greater than 23.8 hours
         self.assertLess(ttl, 86500)  # Less than 24.1 hours
 
+    @allure.title("Reaction cache update")
+    @allure.description("Test updating cached reactions when new reactions are added")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_reaction_cache_update(self):
         """Test updating cached reactions when new reactions are added"""
         # Initial cache
@@ -945,6 +1045,9 @@ class RedisReactionCacheTests(TransactionTestCase):
         thumbs_up = next(r for r in cached if r['emoji'] == '👍')
         self.assertEqual(thumbs_up['count'], 3)
 
+    @allure.title("Different messages have separate reaction caches")
+    @allure.description("Test that different messages have separate reaction caches")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_different_messages_separate_cache(self):
         """Test that different messages have separate reaction caches"""
         # Cache reactions for message1
@@ -979,6 +1082,9 @@ class RedisReactionCacheTests(TransactionTestCase):
         self.assertEqual(len(cached2), 1)
         self.assertEqual(cached2[0]['emoji'], '❤️')
 
+    @allure.title("Reaction cache handles Redis failures gracefully")
+    @allure.description("Test that Redis failures don't crash (returns False/empty)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_reaction_cache_redis_failure_graceful(self):
         """Test that Redis failures don't crash (returns False/empty)"""
         reactions = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
@@ -1003,6 +1109,8 @@ class RedisReactionCacheTests(TransactionTestCase):
             self.fail(f"Reaction cache operations should not raise exceptions: {e}")
 
 
+@allure.feature('Message Caching')
+@allure.story('Cache Configuration Control')
 class ConstanceCacheControlTests(TransactionTestCase):
     """Test Constance dynamic settings for cache control"""
 
@@ -1043,6 +1151,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
 
         cache.clear()
 
+    @allure.title("Redis cache enabled: writes to cache")
+    @allure.description("Test that messages are written to cache when REDIS_CACHE_ENABLED=True")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_redis_cache_enabled_true_writes_to_cache(self):
         """Test that messages are written to cache when REDIS_CACHE_ENABLED=True"""
         from constance import config
@@ -1067,6 +1178,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]['content'], 'Cache enabled test')
 
+    @allure.title("Redis cache disabled: skips write")
+    @allure.description("Test that messages are NOT written to cache when REDIS_CACHE_ENABLED=False")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_redis_cache_enabled_false_skips_write(self):
         """Test that messages are NOT written to cache when REDIS_CACHE_ENABLED=False"""
         from constance import config
@@ -1095,6 +1209,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertEqual(db_messages.count(), 1)
         self.assertEqual(db_messages.first().content, 'Cache disabled test')
 
+    @allure.title("Redis cache enabled: reads from cache")
+    @allure.description("Test that REDIS_CACHE_ENABLED=True causes reads from Redis")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_redis_cache_enabled_true_reads_from_cache(self):
         """Test that REDIS_CACHE_ENABLED=True causes reads from Redis"""
         from constance import config
@@ -1126,6 +1243,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertEqual(len(response.data['messages']), 1)
         self.assertEqual(response.data['messages'][0]['content'], 'Read from cache test')
 
+    @allure.title("Redis cache disabled: reads from PostgreSQL")
+    @allure.description("Test that REDIS_CACHE_ENABLED=False causes reads from PostgreSQL")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_redis_cache_enabled_false_reads_from_postgresql(self):
         """Test that REDIS_CACHE_ENABLED=False causes reads from PostgreSQL"""
         from constance import config
@@ -1156,6 +1276,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertEqual(len(response.data['messages']), 1)
         self.assertEqual(response.data['messages'][0]['content'], 'Read from PostgreSQL test')
 
+    @allure.title("Cache miss fallback to PostgreSQL")
+    @allure.description("Test that cache miss falls back to PostgreSQL")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_miss_fallback_to_postgresql(self):
         """Test that cache miss falls back to PostgreSQL"""
         from constance import config
@@ -1187,6 +1310,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertEqual(len(response.data['messages']), 1)
         self.assertEqual(response.data['messages'][0]['content'], 'Cache miss test')
 
+    @allure.title("Pagination always uses PostgreSQL")
+    @allure.description("Test that pagination requests always use PostgreSQL (never Redis)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_pagination_always_uses_postgresql(self):
         """Test that pagination requests always use PostgreSQL (never Redis)"""
         from constance import config
@@ -1219,6 +1345,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertIn(response.data['source'], ['postgresql', 'redis', 'hybrid_redis_postgresql'])
         self.assertTrue(response.data['cache_enabled'])
 
+    @allure.title("Cache TTL expiry")
+    @allure.description("Test that messages expire from cache after TTL (24 hours)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_ttl_expiry(self):
         """Test that messages expire from cache after TTL (24 hours)"""
         # Create and cache a message
@@ -1240,6 +1369,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertGreater(ttl, 86000)  # Greater than 23.8 hours
         self.assertLess(ttl, 86500)  # Less than 24.1 hours
 
+    @allure.title("Cache hit performance vs PostgreSQL")
+    @allure.description("Test that Redis cache is significantly faster than PostgreSQL")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_hit_performance_vs_postgresql(self):
         """Test that Redis cache is significantly faster than PostgreSQL"""
         from constance import config
@@ -1287,6 +1419,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         # Redis should be faster than PostgreSQL (or at minimum equal performance)
         self.assertLessEqual(redis_avg, postgresql_avg)
 
+    @allure.title("Toggle cache settings at runtime")
+    @allure.description("Test dynamically changing cache settings at runtime")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_toggle_cache_settings_runtime(self):
         """Test dynamically changing cache settings at runtime"""
         from constance import config
@@ -1340,6 +1475,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertIn(response.data['source'], ['redis', 'hybrid_redis_postgresql'])
         self.assertTrue(response.data['cache_enabled'])
 
+    @allure.title("Cache backfill on miss")
+    @allure.description("Test that cache miss triggers backfill to Redis")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_backfill_on_miss(self):
         """Test that cache miss triggers backfill to Redis"""
         from constance import config
@@ -1387,6 +1525,15 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertIn(response2.data['source'], ['redis', 'hybrid_redis_postgresql'])
         self.assertEqual(len(response2.data['messages']), 5)
 
+    @allure.title("Partial cache hit backfills missing messages")
+    @allure.description("""Test that partial cache hits backfill missing messages to Redis.
+
+This test verifies the bug fix where:
+- Request limit=50, but only 41 messages in cache
+- System fetches 9 older messages from database
+- Those 9 messages should be backfilled to cache
+- Subsequent requests should NOT re-fetch those 9 from database""")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_partial_cache_hit_backfills_missing_messages(self):
         """
         Test that partial cache hits backfill missing messages to Redis.

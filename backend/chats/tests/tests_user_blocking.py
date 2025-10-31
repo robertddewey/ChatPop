@@ -20,10 +20,13 @@ from channels.testing import WebsocketCommunicator
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 import json
+import allure
 
 User = get_user_model()
 
 
+@allure.feature('User Blocking')
+@allure.story('User Blocking API')
 class UserBlockingAPITests(TestCase):
     """Test the user blocking API endpoints"""
 
@@ -67,6 +70,9 @@ class UserBlockingAPITests(TestCase):
             username='Bob'
         )
 
+    @allure.title("Block user successfully")
+    @allure.description("Test successfully blocking a user")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_user_success(self):
         """Test successfully blocking a user"""
         self.client.force_authenticate(user=self.alice)
@@ -92,6 +98,9 @@ class UserBlockingAPITests(TestCase):
         cached_blocks = UserBlockCache.get_blocked_usernames(self.alice.id)
         self.assertIn('Bob', cached_blocks)
 
+    @allure.title("Block user is idempotent")
+    @allure.description("Test blocking same user twice is idempotent")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_block_user_idempotent(self):
         """Test blocking same user twice is idempotent"""
         self.client.force_authenticate(user=self.alice)
@@ -119,6 +128,9 @@ class UserBlockingAPITests(TestCase):
             1
         )
 
+    @allure.title("Cannot block self")
+    @allure.description("Test users cannot block themselves")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_self_rejected(self):
         """Test users cannot block themselves"""
         self.client.force_authenticate(user=self.alice)
@@ -130,6 +142,9 @@ class UserBlockingAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('cannot block yourself', str(response.data).lower())
 
+    @allure.title("Block requires authentication")
+    @allure.description("Test blocking requires authentication")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_requires_authentication(self):
         """Test blocking requires authentication"""
         response = self.client.post('/api/chats/user-blocks/block/', {
@@ -138,6 +153,9 @@ class UserBlockingAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    @allure.title("Unblock user successfully")
+    @allure.description("Test successfully unblocking a user")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_unblock_user_success(self):
         """Test successfully unblocking a user"""
         # Setup: Block Bob first
@@ -169,6 +187,9 @@ class UserBlockingAPITests(TestCase):
         cached_blocks = UserBlockCache.get_blocked_usernames(self.alice.id)
         self.assertNotIn('Bob', cached_blocks)
 
+    @allure.title("Unblock nonexistent block")
+    @allure.description("Test unblocking a user that isn't blocked")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_unblock_nonexistent_block(self):
         """Test unblocking a user that isn't blocked"""
         self.client.force_authenticate(user=self.alice)
@@ -180,6 +201,9 @@ class UserBlockingAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("haven't blocked", str(response.data).lower())
 
+    @allure.title("Get blocked users list")
+    @allure.description("Test retrieving list of blocked users")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_get_blocked_users_list(self):
         """Test retrieving list of blocked users"""
         # Setup: Block multiple users
@@ -197,6 +221,9 @@ class UserBlockingAPITests(TestCase):
         self.assertIn('Bob', usernames)
         self.assertIn('Charlie', usernames)
 
+    @allure.title("Blocked users list isolation")
+    @allure.description("Test users only see their own blocked list")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_blocked_users_list_isolation(self):
         """Test users only see their own blocked list"""
         # Alice blocks Bob
@@ -219,6 +246,9 @@ class UserBlockingAPITests(TestCase):
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['blocked_users'][0]['username'], 'Charlie')
 
+    @allure.title("Block empty username rejected")
+    @allure.description("Test blocking empty/whitespace username is rejected")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_empty_username(self):
         """Test blocking empty/whitespace username is rejected"""
         self.client.force_authenticate(user=self.alice)
@@ -236,6 +266,9 @@ class UserBlockingAPITests(TestCase):
                 f"Failed to reject invalid username: {repr(invalid_username)}"
             )
 
+    @allure.title("Block nonexistent user")
+    @allure.description("Test blocking non-existent username silently succeeds (prevents enumeration and database pollution)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_block_nonexistent_user(self):
         """Test blocking non-existent username silently succeeds (prevents enumeration and database pollution)"""
         self.client.force_authenticate(user=self.alice)
@@ -258,6 +291,9 @@ class UserBlockingAPITests(TestCase):
             ).exists()
         )
 
+    @allure.title("Block SQL injection attempt")
+    @allure.description("Test that SQL injection attempts in username field are prevented")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_sql_injection_attempt(self):
         """Test that SQL injection attempts in username field are prevented"""
         self.client.force_authenticate(user=self.alice)
@@ -292,6 +328,8 @@ class UserBlockingAPITests(TestCase):
             )
 
 
+@allure.feature('User Blocking')
+@allure.story('Redis Cache for User Blocks')
 class UserBlockingRedisCacheTests(TestCase):
     """Test Redis caching for user blocks"""
 
@@ -320,6 +358,9 @@ class UserBlockingRedisCacheTests(TestCase):
             username='Bob'
         )
 
+    @allure.title("Cache add blocked username")
+    @allure.description("Test adding username to Redis cache")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_add_blocked_username(self):
         """Test adding username to Redis cache"""
         UserBlockCache.add_blocked_username(self.alice.id, 'Bob')
@@ -327,6 +368,9 @@ class UserBlockingRedisCacheTests(TestCase):
         cached_blocks = UserBlockCache.get_blocked_usernames(self.alice.id)
         self.assertIn('Bob', cached_blocks)
 
+    @allure.title("Cache remove blocked username")
+    @allure.description("Test removing username from Redis cache")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_remove_blocked_username(self):
         """Test removing username from Redis cache"""
         # Add first
@@ -337,11 +381,17 @@ class UserBlockingRedisCacheTests(TestCase):
         UserBlockCache.remove_blocked_username(self.alice.id, 'Bob')
         self.assertNotIn('Bob', UserBlockCache.get_blocked_usernames(self.alice.id))
 
+    @allure.title("Cache get empty set")
+    @allure.description("Test getting blocked usernames when none exist")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_get_empty_set(self):
         """Test getting blocked usernames when none exist"""
         cached_blocks = UserBlockCache.get_blocked_usernames(self.alice.id)
         self.assertEqual(len(cached_blocks), 0)
 
+    @allure.title("Cache dual-write consistency")
+    @allure.description("Test database and cache stay consistent")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_cache_dual_write_consistency(self):
         """Test database and cache stay consistent"""
         client = APIClient()
@@ -368,6 +418,8 @@ class UserBlockingRedisCacheTests(TestCase):
         self.assertNotIn('Bob', cache_blocks)
 
 
+@allure.feature('User Blocking')
+@allure.story('Cross-Chat Blocking')
 class UserBlockingCrossChatTests(TestCase):
     """Test site-wide blocking across multiple chats"""
 
@@ -409,6 +461,9 @@ class UserBlockingCrossChatTests(TestCase):
                 username='Bob'
             )
 
+    @allure.title("Block applies to all chats")
+    @allure.description("Test blocking a user applies site-wide, not just one chat")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_applies_to_all_chats(self):
         """Test blocking a user applies site-wide, not just one chat"""
         client = APIClient()
@@ -443,6 +498,9 @@ class UserBlockingCrossChatTests(TestCase):
         # both messages should be filtered out
         # (This is tested in WebSocket tests below)
 
+    @allure.title("Unblock applies to all chats")
+    @allure.description("Test unblocking applies site-wide")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_unblock_applies_to_all_chats(self):
         """Test unblocking applies site-wide"""
         client = APIClient()
@@ -457,6 +515,8 @@ class UserBlockingCrossChatTests(TestCase):
         self.assertNotIn('Bob', UserBlockCache.get_blocked_usernames(self.alice.id))
 
 
+@allure.feature('User Blocking')
+@allure.story('WebSocket Message Filtering')
 class UserBlockingWebSocketFilteringTests(TransactionTestCase):
     """Test WebSocket message filtering for blocked users"""
 
@@ -490,6 +550,9 @@ class UserBlockingWebSocketFilteringTests(TransactionTestCase):
             username='Bob'
         )
 
+    @allure.title("Blocked user messages filtered")
+    @allure.description("Test that blocked user's messages don't reach WebSocket")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_blocked_user_messages_filtered(self):
         """Test that blocked user's messages don't reach WebSocket"""
         # Alice blocks Bob
@@ -512,6 +575,9 @@ class UserBlockingWebSocketFilteringTests(TransactionTestCase):
         should_filter = sender_username in blocked_usernames
         self.assertTrue(should_filter, "Message from Bob should be filtered for Alice")
 
+    @allure.title("Unblocked user messages not filtered")
+    @allure.description("Test that unblocked user's messages are not filtered")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_unblocked_user_messages_not_filtered(self):
         """Test that unblocked user's messages are not filtered"""
         # Don't block anyone
@@ -528,6 +594,9 @@ class UserBlockingWebSocketFilteringTests(TransactionTestCase):
         should_filter = sender_username in blocked_usernames
         self.assertFalse(should_filter, "Message from Bob should NOT be filtered")
 
+    @allure.title("Channel layer block update message")
+    @allure.description("Test that block updates are broadcast via channel layer")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_channel_layer_block_update_message(self):
         """Test that block updates are broadcast via channel layer"""
         channel_layer = get_channel_layer()
@@ -548,6 +617,8 @@ class UserBlockingWebSocketFilteringTests(TransactionTestCase):
         # This test verifies the message format is correct
 
 
+@allure.feature('User Blocking')
+@allure.story('Case-Insensitive Username Handling')
 class UserBlockingCaseInsensitivityTests(TestCase):
     """Test case-insensitive username handling"""
 
@@ -559,6 +630,9 @@ class UserBlockingCaseInsensitivityTests(TestCase):
             reserved_username='Alice'
         )
 
+    @allure.title("Block case-insensitive self check")
+    @allure.description("Test self-blocking prevention is case-insensitive")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_case_insensitive_self_check(self):
         """Test self-blocking prevention is case-insensitive"""
         client = APIClient()
@@ -579,6 +653,8 @@ class UserBlockingCaseInsensitivityTests(TestCase):
             )
 
 
+@allure.feature('User Blocking')
+@allure.story('Authorization and Permissions')
 class UserBlockingAuthorizationTests(TestCase):
     """Test authorization and permission checks"""
 
@@ -595,6 +671,9 @@ class UserBlockingAuthorizationTests(TestCase):
             reserved_username='Bob'
         )
 
+    @allure.title("User cannot unblock others' blocks")
+    @allure.description("Test users cannot unblock blocks created by other users")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_user_cannot_unblock_others_blocks(self):
         """Test users cannot unblock blocks created by other users"""
         # Alice blocks Charlie
@@ -620,6 +699,8 @@ class UserBlockingAuthorizationTests(TestCase):
         )
 
 
+@allure.feature('User Blocking')
+@allure.story('Performance and Scalability')
 class UserBlockingPerformanceTests(TestCase):
     """Test performance characteristics"""
 
@@ -646,6 +727,9 @@ class UserBlockingPerformanceTests(TestCase):
                 # user=None for anonymous users
             )
 
+    @allure.title("Large block list performance")
+    @allure.description("Test blocking many users doesn't degrade performance")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_large_block_list(self):
         """Test blocking many users doesn't degrade performance"""
         client = APIClient()
@@ -669,6 +753,8 @@ class UserBlockingPerformanceTests(TestCase):
         self.assertIn('User50', cached_blocks)  # O(1) membership test
 
 
+@allure.feature('User Blocking')
+@allure.story('Message History Filtering')
 class UserBlockingMessageHistoryFilteringTests(TestCase):
     """Test message history API filtering for blocked users"""
 
@@ -737,6 +823,9 @@ class UserBlockingMessageHistoryFilteringTests(TestCase):
             content='Message from Charlie'
         )
 
+    @allure.title("Blocked messages filtered in history")
+    @allure.description("Test that blocked user messages don't appear in message history API")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_blocked_messages_filtered_in_history(self):
         """Test that blocked user messages don't appear in message history API"""
         # Alice blocks Bob
@@ -759,6 +848,9 @@ class UserBlockingMessageHistoryFilteringTests(TestCase):
         self.assertIn('Alice', usernames)
         self.assertIn('Charlie', usernames)
 
+    @allure.title("Blocked messages persist after cache clear")
+    @allure.description("Test that blocked messages remain filtered even after Redis cache is cleared (simulating server restart)")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_blocked_messages_persist_after_cache_clear(self):
         """Test that blocked messages remain filtered even after Redis cache is cleared (simulating server restart)"""
         # Alice blocks Bob (stored in PostgreSQL + Redis)
@@ -786,6 +878,9 @@ class UserBlockingMessageHistoryFilteringTests(TestCase):
         cached_blocks = UserBlockCache.get_blocked_usernames(self.alice.id)
         self.assertIn('Bob', cached_blocks)
 
+    @allure.title("Redis fallback to PostgreSQL")
+    @allure.description("Test that if Redis is empty, system loads block list from PostgreSQL")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_redis_fallback_to_postgresql(self):
         """Test that if Redis is empty, system loads block list from PostgreSQL"""
         # Create block in PostgreSQL only (no Redis)
@@ -804,6 +899,9 @@ class UserBlockingMessageHistoryFilteringTests(TestCase):
         cached_blocks_after = UserBlockCache.get_blocked_usernames(self.alice.id)
         self.assertIn('Bob', cached_blocks_after)
 
+    @allure.title("Anonymous user sees all messages")
+    @allure.description("Test that anonymous users cannot filter messages (they see everything)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_anonymous_user_sees_all_messages(self):
         """Test that anonymous users cannot filter messages (they see everything)"""
         # Alice blocks Bob
@@ -823,6 +921,9 @@ class UserBlockingMessageHistoryFilteringTests(TestCase):
         self.assertIn('Bob', usernames)
         self.assertIn('Charlie', usernames)
 
+    @allure.title("Multiple blocks filtered correctly")
+    @allure.description("Test filtering multiple blocked users from message history")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_multiple_blocks_filtered_correctly(self):
         """Test filtering multiple blocked users from message history"""
         # Alice blocks both Bob and Charlie

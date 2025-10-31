@@ -13,6 +13,7 @@ Test coverage:
 - Block expiration
 """
 
+import allure
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -31,6 +32,8 @@ from ..utils.security.blocking import (
 User = get_user_model()
 
 
+@allure.feature('User Blocking')
+@allure.story('ChatBlock Model')
 class ChatBlockModelTests(TestCase):
     """Tests for the ChatBlock model"""
 
@@ -51,6 +54,9 @@ class ChatBlockModelTests(TestCase):
             username='HostUser'
         )
 
+    @allure.title("Create username block")
+    @allure.description("Test creating a ChatBlock for a username")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_create_username_block(self):
         """Test creating a block for a username"""
         block = ChatBlock.objects.create(
@@ -62,6 +68,9 @@ class ChatBlockModelTests(TestCase):
         self.assertEqual(block.chat_room, self.chat_room)
         self.assertEqual(block.blocked_by, self.host_participation)
 
+    @allure.title("Create fingerprint block")
+    @allure.description("Test creating a ChatBlock for a device fingerprint")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_create_fingerprint_block(self):
         """Test creating a block for a fingerprint"""
         block = ChatBlock.objects.create(
@@ -71,6 +80,9 @@ class ChatBlockModelTests(TestCase):
         )
         self.assertEqual(block.blocked_fingerprint, 'abc123fingerprint')
 
+    @allure.title("Create user account block")
+    @allure.description("Test creating a ChatBlock for a registered user account")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_create_user_account_block(self):
         """Test creating a block for a user account"""
         blocked_user = User.objects.create_user(
@@ -84,6 +96,9 @@ class ChatBlockModelTests(TestCase):
         )
         self.assertEqual(block.blocked_user, blocked_user)
 
+    @allure.title("Unique constraint on username blocks")
+    @allure.description("Test that duplicate username blocks are prevented by database constraint")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_unique_constraint_username(self):
         """Test that duplicate username blocks are prevented"""
         ChatBlock.objects.create(
@@ -99,6 +114,9 @@ class ChatBlockModelTests(TestCase):
                 blocked_username='baduser'
             )
 
+    @allure.title("Block with expiration time")
+    @allure.description("Test creating a timed block with expiration date")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_block_with_expiration(self):
         """Test creating a timed block with expiration"""
         expires_at = timezone.now() + timedelta(hours=24)
@@ -111,6 +129,9 @@ class ChatBlockModelTests(TestCase):
         self.assertIsNotNone(block.expires_at)
         self.assertTrue(block.expires_at > timezone.now())
 
+    @allure.title("Block with reason note")
+    @allure.description("Test creating a block with a reason note for documentation")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_block_with_reason(self):
         """Test creating a block with a reason note"""
         block = ChatBlock.objects.create(
@@ -122,6 +143,8 @@ class ChatBlockModelTests(TestCase):
         self.assertEqual(block.reason, 'Sending spam messages repeatedly')
 
 
+@allure.feature('User Blocking')
+@allure.story('Blocking Utility Functions')
 class BlockingUtilityTests(TestCase):
     """Tests for blocking utility functions"""
 
@@ -142,6 +165,9 @@ class BlockingUtilityTests(TestCase):
             username='HostUser'
         )
 
+    @allure.title("Block participation creates consolidated block")
+    @allure.description("Test that blocking creates a consolidated block with all identifiers (username, fingerprint)")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_participation_creates_blocks(self):
         """Test that blocking creates a consolidated block with all identifiers"""
         # Create a participation with username and fingerprint
@@ -163,6 +189,9 @@ class BlockingUtilityTests(TestCase):
         self.assertEqual(block.blocked_fingerprint, 'abc123')
         self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 1)
 
+    @allure.title("Block participation with user account")
+    @allure.description("Test blocking a registered user creates consolidated block with user account included")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_participation_with_user_account(self):
         """Test blocking a registered user creates consolidated block with user account"""
         blocked_user = User.objects.create_user(
@@ -191,6 +220,9 @@ class BlockingUtilityTests(TestCase):
         self.assertEqual(block.blocked_user, blocked_user)
         self.assertEqual(block.blocked_fingerprint, 'xyz789')  # Stored for tracking
 
+    @allure.title("Prevent self-blocking")
+    @allure.description("Test that users cannot block themselves - security protection")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_participation_prevents_self_block(self):
         """Test that users cannot block themselves"""
         with self.assertRaises(ValueError) as context:
@@ -201,6 +233,9 @@ class BlockingUtilityTests(TestCase):
             )
         self.assertIn('Cannot block yourself', str(context.exception))
 
+    @allure.title("Only host can block users")
+    @allure.description("Test that only the chat room host has permission to block users")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_participation_requires_host(self):
         """Test that only host can block users"""
         non_host = User.objects.create_user(
@@ -225,6 +260,9 @@ class BlockingUtilityTests(TestCase):
             )
         self.assertIn('Only the host can block users', str(context.exception))
 
+    @allure.title("Check if username is blocked")
+    @allure.description("Test checking if a specific username is blocked in a chat room")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_check_if_blocked_by_username(self):
         """Test checking if a username is blocked"""
         ChatBlock.objects.create(
@@ -240,6 +278,9 @@ class BlockingUtilityTests(TestCase):
         self.assertTrue(is_blocked)
         self.assertEqual(message, 'You have been blocked from this chat.')
 
+    @allure.title("Username blocking is case-insensitive")
+    @allure.description("Test that username blocking works regardless of case (prevents bypass attacks)")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_check_if_blocked_case_insensitive(self):
         """Test that username blocking is case-insensitive"""
         ChatBlock.objects.create(
@@ -255,6 +296,9 @@ class BlockingUtilityTests(TestCase):
         )
         self.assertTrue(is_blocked)
 
+    @allure.title("Check if fingerprint is blocked")
+    @allure.description("Test checking if a device fingerprint is blocked in a chat room")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_check_if_blocked_by_fingerprint(self):
         """Test checking if a fingerprint is blocked"""
         ChatBlock.objects.create(
@@ -269,6 +313,9 @@ class BlockingUtilityTests(TestCase):
         )
         self.assertTrue(is_blocked)
 
+    @allure.title("Check if user account is blocked")
+    @allure.description("Test checking if a registered user account is blocked in a chat room")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_check_if_blocked_by_user_account(self):
         """Test checking if a user account is blocked"""
         blocked_user = User.objects.create_user(
@@ -287,6 +334,9 @@ class BlockingUtilityTests(TestCase):
         )
         self.assertTrue(is_blocked)
 
+    @allure.title("IP address blocking is not enforced")
+    @allure.description("Test that IP address blocking is NOT enforced yet - tracking only for future use")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_check_if_blocked_by_ip_address(self):
         """Test that IP address blocking is NOT enforced yet (tracking only)"""
         ChatBlock.objects.create(
@@ -302,6 +352,9 @@ class BlockingUtilityTests(TestCase):
         )
         self.assertFalse(is_blocked)  # Should NOT be blocked (tracking only, not enforced)
 
+    @allure.title("Block participation stores IP address")
+    @allure.description("Test that blocking a user stores their IP address for tracking purposes")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_block_participation_stores_ip_address(self):
         """Test that blocking a user stores their IP address"""
         participation = ChatParticipation.objects.create(
@@ -323,6 +376,9 @@ class BlockingUtilityTests(TestCase):
         self.assertEqual(block.blocked_username, 'userwithip')
         self.assertEqual(block.blocked_fingerprint, 'fp123')
 
+    @allure.title("Non-blocked users pass check")
+    @allure.description("Test that non-blocked users pass the block check successfully")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_check_if_not_blocked(self):
         """Test that non-blocked users pass the check"""
         is_blocked, message = check_if_blocked(
@@ -332,6 +388,9 @@ class BlockingUtilityTests(TestCase):
         self.assertFalse(is_blocked)
         self.assertIsNone(message)
 
+    @allure.title("Expired blocks are ignored")
+    @allure.description("Test that expired blocks are automatically ignored by the system")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_check_if_blocked_expired(self):
         """Test that expired blocks are ignored"""
         expires_at = timezone.now() - timedelta(hours=1)  # Already expired
@@ -348,6 +407,9 @@ class BlockingUtilityTests(TestCase):
         )
         self.assertFalse(is_blocked)
 
+    @allure.title("Unblock participation removes block")
+    @allure.description("Test unblocking removes the consolidated block for a participation")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_unblock_participation(self):
         """Test unblocking removes the consolidated block for a participation"""
         participation = ChatParticipation.objects.create(
@@ -371,6 +433,9 @@ class BlockingUtilityTests(TestCase):
         self.assertEqual(count, 1)  # Should remove 1 consolidated block
         self.assertEqual(ChatBlock.objects.filter(chat_room=self.chat_room).count(), 0)
 
+    @allure.title("Get blocked users list")
+    @allure.description("Test retrieving list of blocked users from a chat room")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_get_blocked_users(self):
         """Test retrieving list of blocked users"""
         # Block two users
@@ -416,6 +481,8 @@ class BlockingUtilityTests(TestCase):
             self.assertGreater(len(user['blocked_identifiers']), 0)
 
 
+@allure.feature('User Blocking')
+@allure.story('Blocking API Endpoints')
 class BlockingAPITests(TestCase):
     """Tests for blocking API endpoints"""
 
@@ -445,6 +512,9 @@ class BlockingAPITests(TestCase):
             user_id=self.host.id
         )
 
+    @allure.title("Block endpoint requires authentication")
+    @allure.description("Test that block endpoint requires a valid session token for authorization")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_user_endpoint_requires_auth(self):
         """Test that block endpoint requires session token"""
         participation = ChatParticipation.objects.create(
@@ -461,6 +531,9 @@ class BlockingAPITests(TestCase):
         # BlockUserView returns 400 Bad Request when session_token is missing
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    @allure.title("Block user via API successfully")
+    @allure.description("Test successfully blocking a user through the block API endpoint")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_user_endpoint_success(self):
         """Test successfully blocking a user via API"""
         participation = ChatParticipation.objects.create(
@@ -494,6 +567,9 @@ class BlockingAPITests(TestCase):
         # ChatBlock table is the source of truth for blocking, not is_active flag
         # This allows MyParticipationView to return is_blocked=true for proper UI display
 
+    @allure.title("Only host can use block endpoint")
+    @allure.description("Test that only the chat room host has permission to use the block API endpoint")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_block_user_endpoint_requires_host(self):
         """Test that only host can use block endpoint"""
         from ..utils.security.auth import ChatSessionValidator
@@ -532,6 +608,9 @@ class BlockingAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @allure.title("Unblock user via API successfully")
+    @allure.description("Test successfully unblocking a user through the unblock API endpoint")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_unblock_user_endpoint_success(self):
         """Test successfully unblocking a user via API"""
         self.client.force_authenticate(user=self.host)
@@ -568,6 +647,9 @@ class BlockingAPITests(TestCase):
         participation.refresh_from_db()
         self.assertTrue(participation.is_active)
 
+    @allure.title("List blocked users via API")
+    @allure.description("Test retrieving list of blocked users through the API endpoint")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_blocked_users_list_endpoint(self):
         """Test listing blocked users via API"""
         self.client.force_authenticate(user=self.host)
@@ -602,6 +684,8 @@ class BlockingAPITests(TestCase):
         self.assertEqual(len(response.data['blocked_users']), 2)
 
 
+@allure.feature('User Blocking')
+@allure.story('Join Enforcement')
 class JoinEnforcementTests(TestCase):
     """Tests for blocking enforcement at join time"""
 
@@ -628,6 +712,9 @@ class JoinEnforcementTests(TestCase):
         """Clear cache after each test"""
         cache.clear()
 
+    @allure.title("Blocked username cannot join chat")
+    @allure.description("Test that a blocked username is prevented from joining the chat room")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_blocked_username_cannot_join(self):
         """Test that a blocked username cannot join the chat"""
         # Generate a username
@@ -659,6 +746,9 @@ class JoinEnforcementTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @allure.title("Blocked fingerprint cannot join chat")
+    @allure.description("Test that a blocked device fingerprint is prevented from joining the chat room")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_blocked_fingerprint_cannot_join(self):
         """Test that a blocked fingerprint cannot join the chat"""
         # Generate a username for this fingerprint
@@ -690,6 +780,9 @@ class JoinEnforcementTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @allure.title("Blocked user account cannot join chat")
+    @allure.description("Test that a blocked registered user account is prevented from joining the chat room")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_blocked_user_account_cannot_join(self):
         """Test that a blocked user account cannot join the chat"""
         blocked_user = User.objects.create_user(
@@ -715,6 +808,9 @@ class JoinEnforcementTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @allure.title("Non-blocked users can join chat")
+    @allure.description("Test that non-blocked users can successfully join the chat room")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_non_blocked_user_can_join(self):
         """Test that non-blocked users can still join"""
         # Generate a username for a non-blocked user

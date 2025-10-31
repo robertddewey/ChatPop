@@ -14,6 +14,7 @@ Security Requirements:
 5. Username matching MUST be case-insensitive
 """
 
+import allure
 from django.test import TestCase, TransactionTestCase, Client
 from django.contrib.auth import get_user_model
 from rest_framework import status
@@ -23,6 +24,8 @@ from chats.models import ChatRoom, ChatBlock, Message
 User = get_user_model()
 
 
+@allure.feature('User Blocking')
+@allure.story('Ban Enforcement - HTTP API')
 class ChatBanEnforcementHTTPTests(TestCase):
     """
     Test ChatBlock enforcement in HTTP API endpoints.
@@ -108,6 +111,9 @@ class ChatBanEnforcementHTTPTests(TestCase):
             blocked_by=host_participation
         )
 
+    @allure.title("Banned username cannot send HTTP message")
+    @allure.description("Test that user banned by username cannot send message via HTTP API")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_banned_username_cannot_send_message_http(self):
         """Test that user banned by username cannot send message via HTTP API"""
         # Use a valid, non-reserved username (no fingerprint = manually entered username)
@@ -143,6 +149,9 @@ class ChatBanEnforcementHTTPTests(TestCase):
             0
         )
 
+    @allure.title("Username ban is case-insensitive (HTTP)")
+    @allure.description("Test that username ban is case-insensitive for HTTP API")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_banned_username_case_insensitive_http(self):
         """Test that username ban is case-insensitive for HTTP API"""
         # Use a valid, non-reserved username (no fingerprint = manually entered username)
@@ -169,6 +178,9 @@ class ChatBanEnforcementHTTPTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn('banned', response.json().get('detail', '').lower())
 
+    @allure.title("Banned fingerprint cannot send HTTP message")
+    @allure.description("Test that user banned by fingerprint cannot send message via HTTP API")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_banned_fingerprint_cannot_send_message_http(self):
         """Test that user banned by fingerprint cannot send message via HTTP API"""
         # Get a generated username for the fingerprint
@@ -196,6 +208,9 @@ class ChatBanEnforcementHTTPTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn('banned', response.json().get('detail', '').lower())
 
+    @allure.title("Banned user ID cannot send HTTP message")
+    @allure.description("Test that user banned by user_id cannot send message via HTTP API")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_banned_user_id_cannot_send_message_http(self):
         """Test that user banned by user_id cannot send message via HTTP API"""
         # Registered user joins chat
@@ -231,6 +246,9 @@ class ChatBanEnforcementHTTPTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn('banned', response.json().get('detail', '').lower())
 
+    @allure.title("Non-banned user can send HTTP message")
+    @allure.description("Test that non-banned users can still send messages via HTTP API")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_non_banned_user_can_send_message_http(self):
         """Test that non-banned users can still send messages via HTTP API"""
         # Use a valid, non-reserved username (no fingerprint = manually entered username)
@@ -265,6 +283,9 @@ class ChatBanEnforcementHTTPTests(TestCase):
             1
         )
 
+    @allure.title("Host can send message after banning user")
+    @allure.description("Test that host can still send messages after banning a user")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_host_can_send_message_after_banning_user(self):
         """Test that host can still send messages after banning a user"""
         # Host joins chat
@@ -299,6 +320,9 @@ class ChatBanEnforcementHTTPTests(TestCase):
         # Should succeed
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
+    @allure.title("Ban only affects specific chat")
+    @allure.description("Test that ChatBlock only affects the specific chat room")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_ban_only_affects_specific_chat(self):
         """Test that ChatBlock only affects the specific chat room"""
         # Use a valid, non-reserved username (no fingerprint = manually entered username)
@@ -371,6 +395,8 @@ class ChatBanEnforcementHTTPTests(TestCase):
         self.assertEqual(response2.status_code, status.HTTP_201_CREATED)
 
 
+@allure.feature('User Blocking')
+@allure.story('Ban Enforcement - WebSocket')
 class ChatBanEnforcementWebSocketTests(TransactionTestCase):
     """
     Test ChatBlock enforcement in WebSocket connections.
@@ -453,6 +479,9 @@ class ChatBanEnforcementWebSocketTests(TransactionTestCase):
 
         await create_ban()
 
+    @allure.title("Banned username cannot connect via WebSocket")
+    @allure.description("Test that user banned by username cannot connect via WebSocket")
+    @allure.severity(allure.severity_level.CRITICAL)
     async def test_banned_username_cannot_connect_websocket(self):
         """Test that user banned by username cannot connect via WebSocket"""
         from channels.testing import WebsocketCommunicator
@@ -477,6 +506,9 @@ class ChatBanEnforcementWebSocketTests(TransactionTestCase):
 
         await communicator.disconnect()
 
+    @allure.title("Banned fingerprint cannot connect via WebSocket")
+    @allure.description("Test that user banned by fingerprint cannot connect via WebSocket")
+    @allure.severity(allure.severity_level.CRITICAL)
     async def test_banned_fingerprint_cannot_connect_websocket(self):
         """Test that user banned by fingerprint cannot connect via WebSocket"""
         from channels.testing import WebsocketCommunicator
@@ -503,6 +535,9 @@ class ChatBanEnforcementWebSocketTests(TransactionTestCase):
 
         await communicator.disconnect()
 
+    @allure.title("Banned user ID cannot connect via WebSocket")
+    @allure.description("Test that user banned by user_id cannot connect via WebSocket")
+    @allure.severity(allure.severity_level.CRITICAL)
     async def test_banned_user_id_cannot_connect_websocket(self):
         """Test that user banned by user_id cannot connect via WebSocket"""
         from channels.testing import WebsocketCommunicator
@@ -527,6 +562,9 @@ class ChatBanEnforcementWebSocketTests(TransactionTestCase):
 
         await communicator.disconnect()
 
+    @allure.title("Banned username is case-insensitive (WebSocket)")
+    @allure.description("Test that username ban is case-insensitive for WebSocket")
+    @allure.severity(allure.severity_level.CRITICAL)
     async def test_banned_username_case_insensitive_websocket(self):
         """Test that username ban is case-insensitive for WebSocket"""
         from channels.testing import WebsocketCommunicator
@@ -551,6 +589,9 @@ class ChatBanEnforcementWebSocketTests(TransactionTestCase):
 
         await communicator.disconnect()
 
+    @allure.title("Non-banned user can connect via WebSocket")
+    @allure.description("Test that non-banned users can connect via WebSocket")
+    @allure.severity(allure.severity_level.NORMAL)
     async def test_non_banned_user_can_connect_websocket(self):
         """Test that non-banned users can connect via WebSocket"""
         from channels.testing import WebsocketCommunicator
@@ -575,6 +616,8 @@ class ChatBanEnforcementWebSocketTests(TransactionTestCase):
         await communicator.disconnect()
 
 
+@allure.feature('User Blocking')
+@allure.story('Ban Creation and Management')
 class ChatBanCreationTests(TestCase):
     """
     Test ChatBlock creation and management.
@@ -628,6 +671,9 @@ class ChatBanCreationTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         return response.json()['session_token']
 
+    @allure.title("Host can ban user by username")
+    @allure.description("Test that host can ban user by username")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_host_can_ban_user_by_username(self):
         """Test that host can ban user by username"""
         # Regular user joins chat first (to create participation record)
@@ -656,6 +702,9 @@ class ChatBanCreationTests(TestCase):
             ).exists()
         )
 
+    @allure.title("Non-host cannot ban users")
+    @allure.description("Test that non-host users cannot ban other users")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_non_host_cannot_ban_users(self):
         """Test that non-host users cannot ban other users"""
         # Create another user to be the target of the ban attempt
@@ -692,6 +741,9 @@ class ChatBanCreationTests(TestCase):
             ).exists()
         )
 
+    @allure.title("Ban requires session token")
+    @allure.description("Test that banning requires a valid session token")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_ban_requires_session_token(self):
         """Test that banning requires a valid session token"""
         self.client.force_login(self.host)
@@ -708,6 +760,9 @@ class ChatBanCreationTests(TestCase):
         # Should fail
         self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN])
 
+    @allure.title("Duplicate ban prevented")
+    @allure.description("Test that duplicate bans are prevented or handled gracefully")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_duplicate_ban_prevented(self):
         """Test that duplicate bans are prevented or handled gracefully"""
         # Regular user joins chat first (to create participation record)
@@ -749,6 +804,9 @@ class ChatBanCreationTests(TestCase):
             1
         )
 
+    @allure.title("Ban consolidates all identifiers")
+    @allure.description("Test that ONE ChatBlock row is created with ALL identifiers")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_ban_consolidates_all_identifiers(self):
         """Test that ONE ChatBlock row is created with ALL identifiers"""
         from chats.models import ChatParticipation
@@ -801,6 +859,9 @@ class ChatBanCreationTests(TestCase):
         self.assertEqual(block.blocked_ip_address, '192.168.1.100')
         self.assertEqual(block.blocked_by, host_participation)
 
+    @allure.title("IP address is tracked in ban")
+    @allure.description("Test that IP address is stored in ChatBlock for tracking")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_ip_address_is_tracked(self):
         """Test that IP address is stored in ChatBlock for tracking"""
         from chats.models import ChatParticipation
@@ -829,6 +890,9 @@ class ChatBanCreationTests(TestCase):
         )
         self.assertEqual(block.blocked_ip_address, '10.0.0.42')
 
+    @allure.title("Ban requires authentication")
+    @allure.description("Test that banning requires authentication")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_ban_requires_authentication(self):
         """Test that banning requires authentication"""
         # Try to ban without authentication
@@ -847,6 +911,8 @@ class ChatBanCreationTests(TestCase):
         self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
 
+@allure.feature('User Blocking')
+@allure.story('Ban Integration Workflow')
 class ChatBanIntegrationTests(TestCase):
     """
     Integration tests for complete ban workflow.
@@ -889,6 +955,9 @@ class ChatBanIntegrationTests(TestCase):
             ip_address='127.0.0.1'
         )
 
+    @allure.title("Complete ban workflow")
+    @allure.description("Test complete ban workflow from join to ban to enforcement")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_complete_ban_workflow(self):
         """Test complete ban workflow from join to ban to enforcement"""
         # Step 1: User joins chat and sends message successfully

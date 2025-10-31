@@ -4,6 +4,7 @@ Tests for host-first join enforcement.
 Users should not be able to access or join a chat until the host has joined first.
 """
 
+import allure
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -12,6 +13,8 @@ from chats.models import ChatRoom, ChatParticipation
 User = get_user_model()
 
 
+@allure.feature('Chat Access Control')
+@allure.story('Host-First Join Enforcement')
 class HostFirstJoinTests(TestCase):
     """Test host-first join enforcement"""
 
@@ -41,6 +44,9 @@ class HostFirstJoinTests(TestCase):
             voice_enabled=True
         )
 
+    @allure.title("Non-host cannot get chat details before host joins")
+    @allure.description("Non-host users should get 404 when trying to get chat details before host joins")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_non_host_cannot_get_chat_details_before_host_joins(self):
         """Non-host users should get 404 when trying to get chat details before host joins"""
         # Authenticate as non-host user
@@ -52,6 +58,9 @@ class HostFirstJoinTests(TestCase):
         # Should return 404 (chat not found)
         self.assertEqual(response.status_code, 404)
 
+    @allure.title("Non-host cannot join before host joins")
+    @allure.description("Non-host users should get 404 when trying to join before host joins")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_non_host_cannot_join_before_host_joins(self):
         """Non-host users should get 404 when trying to join before host joins"""
         # Authenticate as non-host user
@@ -66,6 +75,9 @@ class HostFirstJoinTests(TestCase):
         # Should return 404 (chat not found)
         self.assertEqual(response.status_code, 404)
 
+    @allure.title("Anonymous user cannot get chat details before host joins")
+    @allure.description("Anonymous users should get 404 when trying to get chat details before host joins")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_cannot_get_chat_details_before_host_joins(self):
         """Anonymous users should get 404 when trying to get chat details before host joins"""
         # No authentication (anonymous user)
@@ -76,6 +88,9 @@ class HostFirstJoinTests(TestCase):
         # Should return 404 (chat not found)
         self.assertEqual(response.status_code, 404)
 
+    @allure.title("Anonymous user cannot join before host joins")
+    @allure.description("Anonymous users should get 404 when trying to join before host joins")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_cannot_join_before_host_joins(self):
         """Anonymous users should get 404 when trying to join before host joins"""
         # No authentication (anonymous user)
@@ -89,6 +104,9 @@ class HostFirstJoinTests(TestCase):
         # Should return 404 (chat not found)
         self.assertEqual(response.status_code, 404)
 
+    @allure.title("Host can get chat details before joining")
+    @allure.description("Host should be able to get chat details even before joining")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_host_can_get_chat_details_before_joining(self):
         """Host should be able to get chat details even before joining"""
         # Authenticate as host
@@ -101,6 +119,9 @@ class HostFirstJoinTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['code'], self.chat_room.code)
 
+    @allure.title("Host can join first")
+    @allure.description("Host should be able to join their own chat")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_host_can_join_first(self):
         """Host should be able to join their own chat"""
         # Authenticate as host
@@ -125,6 +146,9 @@ class HostFirstJoinTests(TestCase):
         self.assertIsNotNone(participation)
         self.assertEqual(participation.username, 'HostUser')
 
+    @allure.title("Non-host can get chat details after host joins")
+    @allure.description("Non-host users should be able to get chat details after host joins")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_non_host_can_get_chat_details_after_host_joins(self):
         """Non-host users should be able to get chat details after host joins"""
         # Host joins first
@@ -145,6 +169,9 @@ class HostFirstJoinTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['code'], self.chat_room.code)
 
+    @allure.title("Non-host can join after host joins")
+    @allure.description("Non-host users should be able to join after host joins")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_non_host_can_join_after_host_joins(self):
         """Non-host users should be able to join after host joins"""
         # Host joins first
@@ -177,6 +204,9 @@ class HostFirstJoinTests(TestCase):
         self.assertIsNotNone(participation)
         self.assertEqual(participation.username, 'OtherUser')
 
+    @allure.title("Anonymous user can get chat details after host joins")
+    @allure.description("Anonymous users should be able to get chat details after host joins")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_anonymous_user_can_get_chat_details_after_host_joins(self):
         """Anonymous users should be able to get chat details after host joins"""
         # Host joins first
@@ -196,6 +226,9 @@ class HostFirstJoinTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['code'], self.chat_room.code)
 
+    @allure.title("Anonymous user can join after host joins")
+    @allure.description("Anonymous users should be able to join after host joins")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_can_join_after_host_joins(self):
         """Anonymous users should be able to join after host joins"""
         # Host joins first

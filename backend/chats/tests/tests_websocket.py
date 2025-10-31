@@ -8,6 +8,7 @@ Tests for Django Channels WebSocket consumer functionality including:
 - Both logged-in and anonymous user scenarios
 """
 
+import allure
 from django.test import TransactionTestCase
 from channels.testing import WebsocketCommunicator
 from channels.db import database_sync_to_async
@@ -22,6 +23,8 @@ import json
 import msgpack
 
 
+@allure.feature('WebSocket')
+@allure.story('Message Serialization')
 class WebSocketSerializationTests(TransactionTestCase):
     """Test message serialization for WebSocket broadcast"""
 
@@ -58,6 +61,9 @@ class WebSocketSerializationTests(TransactionTestCase):
         # Close any open connections from async operations
         connection.close()
 
+    @allure.title("Message serialization with logged-in user")
+    @allure.description("Test that message with logged-in user serializes correctly (UUID to string)")
+    @allure.severity(allure.severity_level.CRITICAL)
     @patch('chats.utils.performance.cache.MessageCache._compute_username_is_reserved')
     def test_message_serialization_with_logged_in_user(self, mock_compute_reserved):
         """Test that message with logged-in user serializes correctly (UUID to string)"""
@@ -110,6 +116,9 @@ class WebSocketSerializationTests(TransactionTestCase):
         except TypeError as e:
             self.fail(f"msgpack serialization failed: {e}")
 
+    @allure.title("Message serialization with anonymous user")
+    @allure.description("Test that message with anonymous user serializes correctly (user_id=None)")
+    @allure.severity(allure.severity_level.CRITICAL)
     @patch('chats.utils.performance.cache.MessageCache._compute_username_is_reserved')
     def test_message_serialization_with_anonymous_user(self, mock_compute_reserved):
         """Test that message with anonymous user serializes correctly (user_id=None)"""
@@ -154,6 +163,9 @@ class WebSocketSerializationTests(TransactionTestCase):
         except TypeError as e:
             self.fail(f"msgpack serialization failed: {e}")
 
+    @allure.title("Message serialization with reply")
+    @allure.description("Test that reply_to_id is properly serialized as string")
+    @allure.severity(allure.severity_level.CRITICAL)
     @patch('chats.utils.performance.cache.MessageCache._compute_username_is_reserved')
     def test_message_serialization_with_reply(self, mock_compute_reserved):
         """Test that reply_to_id is properly serialized as string"""
@@ -204,6 +216,9 @@ class WebSocketSerializationTests(TransactionTestCase):
         except TypeError as e:
             self.fail(f"msgpack serialization failed: {e}")
 
+    @allure.title("All serialized fields are JSON serializable")
+    @allure.description("Test that all fields in serialized message are JSON-serializable")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_all_serialized_fields_are_json_serializable(self):
         """Test that all fields in serialized message are JSON-serializable"""
         # Create message with all possible fields

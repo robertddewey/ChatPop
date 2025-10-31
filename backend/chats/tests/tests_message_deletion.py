@@ -9,6 +9,7 @@ Tests cover:
 - Edge cases (already deleted, non-existent message)
 """
 
+import allure
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -22,6 +23,8 @@ import json
 User = get_user_model()
 
 
+@allure.feature('Message Management')
+@allure.story('Message Deletion Authorization')
 class MessageDeletionAuthorizationTests(TestCase):
     """Test authorization rules for message deletion"""
 
@@ -86,6 +89,9 @@ class MessageDeletionAuthorizationTests(TestCase):
 
         self.client = APIClient()
 
+    @allure.title("Host can delete message")
+    @allure.description("Test that chat host can delete any message")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_host_can_delete_message(self):
         """Test that chat host can delete any message"""
         self.client.force_authenticate(user=self.host_user)
@@ -102,6 +108,9 @@ class MessageDeletionAuthorizationTests(TestCase):
         self.message.refresh_from_db()
         self.assertTrue(self.message.is_deleted)
 
+    @allure.title("Participant cannot delete message")
+    @allure.description("Test that non-host participant cannot delete messages")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_participant_cannot_delete_message(self):
         """Test that non-host participant cannot delete messages"""
         self.client.force_authenticate(user=self.participant_user)
@@ -117,6 +126,9 @@ class MessageDeletionAuthorizationTests(TestCase):
         self.message.refresh_from_db()
         self.assertFalse(self.message.is_deleted)
 
+    @allure.title("Unauthenticated user cannot delete message")
+    @allure.description("Test that unauthenticated user cannot delete messages")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_unauthenticated_user_cannot_delete_message(self):
         """Test that unauthenticated user cannot delete messages"""
         url = f'/api/chats/HostUser/{self.chat_room.code}/messages/{self.message.id}/delete/'
@@ -130,6 +142,9 @@ class MessageDeletionAuthorizationTests(TestCase):
         self.message.refresh_from_db()
         self.assertFalse(self.message.is_deleted)
 
+    @allure.title("Missing session token rejected")
+    @allure.description("Test that request without session token is rejected")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_missing_session_token_rejected(self):
         """Test that request without session token is rejected"""
         self.client.force_authenticate(user=self.host_user)
@@ -142,6 +157,9 @@ class MessageDeletionAuthorizationTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn('session token', response.data['detail'].lower())
 
+    @allure.title("Invalid session token rejected")
+    @allure.description("Test that invalid session token is rejected")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_invalid_session_token_rejected(self):
         """Test that invalid session token is rejected"""
         self.client.force_authenticate(user=self.host_user)
@@ -153,6 +171,9 @@ class MessageDeletionAuthorizationTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @allure.title("User from different chat cannot delete")
+    @allure.description("Test that host of different chat cannot delete messages")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_user_from_different_chat_cannot_delete(self):
         """Test that host of different chat cannot delete messages"""
         # Create another chat with other_user as host
@@ -187,6 +208,8 @@ class MessageDeletionAuthorizationTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
+@allure.feature('Message Management')
+@allure.story('Message Soft Deletion')
 class MessageSoftDeletionTests(TestCase):
     """Test that messages are soft-deleted, not physically deleted"""
 
@@ -227,6 +250,9 @@ class MessageSoftDeletionTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.host_user)
 
+    @allure.title("Message not physically deleted")
+    @allure.description("Test that message still exists in database after deletion")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_message_not_physically_deleted(self):
         """Test that message still exists in database after deletion"""
         message_id = self.message.id
@@ -245,6 +271,9 @@ class MessageSoftDeletionTests(TestCase):
         deleted_message = Message.objects.get(id=message_id)
         self.assertTrue(deleted_message.is_deleted)
 
+    @allure.title("is_deleted flag set to true")
+    @allure.description("Test that is_deleted flag is set to True")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_is_deleted_flag_set_to_true(self):
         """Test that is_deleted flag is set to True"""
         self.assertFalse(self.message.is_deleted)  # Initially False
@@ -259,6 +288,9 @@ class MessageSoftDeletionTests(TestCase):
         self.message.refresh_from_db()
         self.assertTrue(self.message.is_deleted)
 
+    @allure.title("Message content preserved after deletion")
+    @allure.description("Test that message content and metadata are preserved")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_message_content_preserved_after_deletion(self):
         """Test that message content and metadata are preserved"""
         original_content = self.message.content
@@ -278,6 +310,9 @@ class MessageSoftDeletionTests(TestCase):
         self.assertEqual(self.message.created_at, original_created_at)
         self.assertTrue(self.message.is_deleted)
 
+    @allure.title("Already deleted message returns success")
+    @allure.description("Test that deleting already-deleted message returns success")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_already_deleted_message_returns_success(self):
         """Test that deleting already-deleted message returns success"""
         # First deletion
@@ -292,6 +327,9 @@ class MessageSoftDeletionTests(TestCase):
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         self.assertTrue(response2.data.get('already_deleted', False))
 
+    @allure.title("Deleted message count preserved")
+    @allure.description("Test that deleting messages doesn't reduce message count")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_deleted_message_count_preserved(self):
         """Test that deleting messages doesn't reduce message count"""
         initial_count = Message.objects.filter(chat_room=self.chat_room).count()
@@ -307,6 +345,8 @@ class MessageSoftDeletionTests(TestCase):
         self.assertEqual(initial_count, final_count)
 
 
+@allure.feature('Message Management')
+@allure.story('Message Cache Invalidation')
 class MessageCacheInvalidationTests(TestCase):
     """Test that Redis cache is properly invalidated on deletion"""
 
@@ -347,6 +387,9 @@ class MessageCacheInvalidationTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.host_user)
 
+    @allure.title("Cache remove called on deletion")
+    @allure.description("Test that MessageCache.remove_message is called")
+    @allure.severity(allure.severity_level.NORMAL)
     @patch('chats.views.MessageCache.remove_message')
     def test_cache_remove_called_on_deletion(self, mock_remove_message):
         """Test that MessageCache.remove_message is called"""
@@ -365,6 +408,9 @@ class MessageCacheInvalidationTests(TestCase):
             str(self.message.id)
         )
 
+    @allure.title("Cache invalidation removes message from messages cache")
+    @allure.description("Test that message is removed from main messages cache")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_cache_invalidation_removes_message_from_messages_cache(self):
         """Test that message is removed from main messages cache"""
         # Add message to cache
@@ -386,6 +432,9 @@ class MessageCacheInvalidationTests(TestCase):
         message_ids_after = [msg['id'] for msg in cached_messages_after]
         self.assertNotIn(str(self.message.id), message_ids_after)
 
+    @allure.title("Cache invalidation removes message from pinned cache")
+    @allure.description("Test that pinned message is removed from pinned cache")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_cache_invalidation_removes_message_from_pinned_cache(self):
         """Test that pinned message is removed from pinned cache"""
         from django.utils import timezone
@@ -415,6 +464,9 @@ class MessageCacheInvalidationTests(TestCase):
         pinned_ids_after = [msg['id'] for msg in pinned_messages_after]
         self.assertNotIn(str(self.message.id), pinned_ids_after)
 
+    @allure.title("Cache invalidation removes reactions cache")
+    @allure.description("Test that message reactions are removed from cache")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_cache_invalidation_removes_reactions_cache(self):
         """Test that message reactions are removed from cache"""
         # Add message to cache
@@ -452,6 +504,8 @@ class MessageCacheInvalidationTests(TestCase):
         self.assertEqual(len(cached_reactions_after), 0)
 
 
+@allure.feature('Message Management')
+@allure.story('Message Deletion WebSocket Broadcasting')
 class MessageDeletionWebSocketTests(TestCase):
     """Test WebSocket broadcasting for message deletion"""
 
@@ -492,6 +546,9 @@ class MessageDeletionWebSocketTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.host_user)
 
+    @allure.title("WebSocket broadcast called on deletion")
+    @allure.description("Test that WebSocket broadcast is sent when message is deleted")
+    @allure.severity(allure.severity_level.CRITICAL)
     @patch('channels.layers.get_channel_layer')
     def test_websocket_broadcast_called_on_deletion(self, mock_get_channel_layer):
         """Test that WebSocket broadcast is sent when message is deleted"""
@@ -521,6 +578,9 @@ class MessageDeletionWebSocketTests(TestCase):
         self.assertEqual(message_data['type'], 'message_deleted')
         self.assertEqual(message_data['message_id'], str(self.message.id))
 
+    @allure.title("WebSocket message includes correct message ID")
+    @allure.description("Test that WebSocket message contains correct message ID")
+    @allure.severity(allure.severity_level.NORMAL)
     @patch('channels.layers.get_channel_layer')
     def test_websocket_message_includes_correct_message_id(self, mock_get_channel_layer):
         """Test that WebSocket message contains correct message ID"""
@@ -539,6 +599,8 @@ class MessageDeletionWebSocketTests(TestCase):
         self.assertEqual(message_data['message_id'], str(self.message.id))
 
 
+@allure.feature('Message Management')
+@allure.story('Message Deletion Edge Cases')
 class MessageDeletionEdgeCasesTests(TestCase):
     """Test edge cases and error handling"""
 
@@ -571,6 +633,9 @@ class MessageDeletionEdgeCasesTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.host_user)
 
+    @allure.title("Delete nonexistent message returns 404")
+    @allure.description("Test that deleting non-existent message returns 404")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_delete_nonexistent_message_returns_404(self):
         """Test that deleting non-existent message returns 404"""
         fake_uuid = 'a' * 8 + '-' + 'b' * 4 + '-' + 'c' * 4 + '-' + 'd' * 4 + '-' + 'e' * 12
@@ -582,6 +647,9 @@ class MessageDeletionEdgeCasesTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    @allure.title("Delete message from wrong chat returns 404")
+    @allure.description("Test that message from different chat returns 404")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_delete_message_from_wrong_chat_returns_404(self):
         """Test that message from different chat returns 404"""
         # Create another chat
@@ -614,6 +682,9 @@ class MessageDeletionEdgeCasesTests(TestCase):
         other_message.refresh_from_db()
         self.assertFalse(other_message.is_deleted)
 
+    @allure.title("Delete from inactive chat returns 404")
+    @allure.description("Test that deleting from inactive chat returns 404")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_delete_from_inactive_chat_returns_404(self):
         """Test that deleting from inactive chat returns 404"""
         # Make chat inactive
@@ -635,6 +706,9 @@ class MessageDeletionEdgeCasesTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    @allure.title("Response includes message ID")
+    @allure.description("Test that successful response includes message ID")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_response_includes_message_id(self):
         """Test that successful response includes message ID"""
         message = Message.objects.create(
@@ -654,6 +728,9 @@ class MessageDeletionEdgeCasesTests(TestCase):
         self.assertEqual(response.data['message_id'], str(message.id))
         self.assertTrue(response.data['success'])
 
+    @allure.title("Deletion succeeds even if cache removal fails")
+    @allure.description("Test that message deletion succeeds even if cache removal fails")
+    @allure.severity(allure.severity_level.NORMAL)
     @patch('chats.views.MessageCache.remove_message')
     def test_deletion_succeeds_even_if_cache_removal_fails(self, mock_remove_message):
         """Test that message deletion succeeds even if cache removal fails"""

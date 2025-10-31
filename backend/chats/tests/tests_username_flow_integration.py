@@ -7,6 +7,7 @@ These tests catch bugs that unit tests miss by testing the FULL user journey:
 CRITICAL: These tests would have caught the case-sensitivity bug in ChatRoomJoinView
 where the security check failed to handle case-preserved usernames from Redis.
 """
+import allure
 from django.test import TestCase
 from django.core.cache import cache
 from django.contrib.auth import get_user_model
@@ -19,6 +20,8 @@ from chats.models import ChatRoom, ChatParticipation
 User = get_user_model()
 
 
+@allure.feature('Username Generation')
+@allure.story('Generation to Join Flow')
 class UsernameGenerationToJoinFlowTestCase(TestCase):
     """
     Test the complete flow from username generation to joining a chat.
@@ -59,6 +62,17 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
         """Clear cache after each test"""
         cache.clear()
 
+    @allure.title("Suggest username then join preserves case")
+    @allure.description("""CRITICAL TEST: This would have caught the case-sensitivity bug.
+
+Tests that a username suggested by the API can be used to join the chat
+with its original capitalization preserved (e.g., "HappyTiger42" not "happytiger42").
+
+Bug it catches: ChatRoomJoinView security check was doing:
+    if username.lower() not in generated_usernames
+But generated_usernames contained "HappyTiger42", so checking for
+"happytiger42" would fail.""")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_suggest_username_then_join_preserves_case(self):
         """
@@ -115,6 +129,9 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
         self.assertEqual(participation.username, suggested_username)
         self.assertNotEqual(participation.username, suggested_username.lower())
 
+    @allure.title("Join rejects username not generated for fingerprint")
+    @allure.description("Test that the security check rejects usernames that weren't generated for this specific fingerprint")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_join_rejects_username_not_generated_for_fingerprint(self):
         """
@@ -147,6 +164,9 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
         self.assertEqual(join_response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('Invalid username', str(join_response.data))
 
+    @allure.title("Case insensitive join with different case")
+    @allure.description("Test that attempting to join with a different case of a generated username still works (case-insensitive matching)")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_case_insensitive_join_attempt_with_different_case(self):
         """
@@ -178,6 +198,8 @@ class UsernameGenerationToJoinFlowTestCase(TestCase):
         self.assertEqual(join_response.status_code, status.HTTP_200_OK)
 
 
+@allure.feature('Username Generation')
+@allure.story('Username Rotation')
 class UsernameRotationIntegrationTestCase(TestCase):
     """
     Test username rotation through the complete API flow.
@@ -218,6 +240,15 @@ class UsernameRotationIntegrationTestCase(TestCase):
         """Clear cache after each test"""
         cache.clear()
 
+    @allure.title("Rotation has no consecutive duplicates")
+    @allure.description("""CRITICAL TEST: Ensure rotation never returns the same username consecutively.
+
+Example of BAD behavior we're testing against:
+    Alice, Alice, Alice, Bob, Alice, Carol, ...
+
+Expected GOOD behavior:
+    Alice, Bob, Carol, Alice, Bob, Carol, ...""")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=3)
     def test_rotation_no_consecutive_duplicates(self):
         """
@@ -281,6 +312,9 @@ class UsernameRotationIntegrationTestCase(TestCase):
                 f"At index {i}, expected {expected} but got {username}"
             )
 
+    @allure.title("Rotation preserves original capitalization")
+    @allure.description("Test that rotation returns usernames with their EXACT original capitalization, not lowercased or title-cased versions")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=5)
     def test_rotation_preserves_original_capitalization(self):
         """
@@ -318,6 +352,9 @@ class UsernameRotationIntegrationTestCase(TestCase):
             # Should NOT be a lowercased version
             self.assertNotEqual(rotated_username, rotated_username.lower())
 
+    @allure.title("Rotation skips unavailable usernames")
+    @allure.description("Test that rotation skips usernames that become unavailable (e.g., taken by another user)")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=3)
     def test_rotation_after_username_becomes_unavailable(self):
         """
@@ -365,6 +402,9 @@ class UsernameRotationIntegrationTestCase(TestCase):
         available_usernames = [u for u in generated_usernames if u != taken_username]
         self.assertEqual(unique_returned, set(available_usernames))
 
+    @allure.title("Rotation then join integration")
+    @allure.description("Test the full flow: generate → rotate → join with rotated username. This ensures rotated usernames can successfully be used to join chats")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=2)
     def test_rotation_then_join_integration(self):
         """
@@ -415,6 +455,8 @@ class UsernameRotationIntegrationTestCase(TestCase):
         self.assertEqual(participation.username, rotated_username)
 
 
+@allure.feature('Username Generation')
+@allure.story('Security Checks')
 class UsernameSecurityChecksIntegrationTestCase(TestCase):
     """
     Test security checks in the join flow that protect against:
@@ -452,6 +494,9 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
         """Clear cache after each test"""
         cache.clear()
 
+    @allure.title("Cannot bypass generation with manual username")
+    @allure.description("Test that anonymous users cannot manually craft usernames to bypass the generation system")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_cannot_bypass_generation_with_manual_username(self):
         """
@@ -474,6 +519,15 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
         self.assertEqual(join_response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('Invalid username', str(join_response.data))
 
+    @allure.title("Case-preserved username passes security check")
+    @allure.description("""CRITICAL BUG FIX TEST: Verify that usernames with original capitalization
+pass the security check in ChatRoomJoinView.
+
+This test directly addresses the bug where the security check was:
+    if username.lower() not in generated_usernames
+
+But generated_usernames contained "HappyTiger42", causing false rejections.""")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_case_preserved_username_passes_security_check(self):
         """
@@ -520,6 +574,9 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
             f"Error: {join_response.data if join_response.status_code != 200 else 'None'}"
         )
 
+    @allure.title("Rejoining user bypasses generation check")
+    @allure.description("Test that users who already joined can rejoin without the 'username must be generated' security check")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_rejoining_user_bypasses_generation_check(self):
         """

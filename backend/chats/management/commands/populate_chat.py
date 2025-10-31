@@ -2,7 +2,7 @@
 Django management command to populate a chat room with test messages
 
 Usage:
-    python manage.py populate_chat <chat_room_code>
+    python manage.py populate_chat <username/chat_code>
 """
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
@@ -25,19 +25,42 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            'chat_code',
+            'chat_path',
             type=str,
-            help='Chat room code (e.g., ABC123XY)'
+            help='Chat room path in format username/code (e.g., robert/bar-room)'
         )
 
     def handle(self, *args, **options):
         """Create a variety of test messages for a chat room"""
-        chat_code = options['chat_code'].upper()
+        chat_path = options['chat_path']
 
+        # Parse username/code format
+        if '/' not in chat_path:
+            raise CommandError(
+                f"Invalid format: '{chat_path}'\n"
+                f"Expected format: username/code (e.g., robert/bar-room)"
+            )
+
+        username, chat_code = chat_path.split('/', 1)
+
+        # Look up the host user
         try:
-            chat_room = ChatRoom.objects.get(code=chat_code, is_active=True)
+            host_user = User.objects.get(reserved_username=username)
+        except User.DoesNotExist:
+            raise CommandError(f"User with username '{username}' not found")
+
+        # Look up the chat room (scoped to host + code)
+        try:
+            chat_room = ChatRoom.objects.get(
+                host=host_user,
+                code=chat_code,
+                is_active=True
+            )
         except ChatRoom.DoesNotExist:
-            raise CommandError(f"Chat room with code '{chat_code}' not found")
+            raise CommandError(
+                f"Chat room '{chat_code}' not found for user '{username}'\n"
+                f"Full path: {username}/{chat_code}"
+            )
 
         host = chat_room.host
 
@@ -48,7 +71,6 @@ class Command(BaseCommand):
             user, created = User.objects.get_or_create(
                 email=email,
                 defaults={
-                    'display_name': f'TestUser{i+1}',
                     'first_name': f'Test{i+1}',
                     'last_name': 'User'
                 }
@@ -58,7 +80,8 @@ class Command(BaseCommand):
                 user.save()
             test_users.append(user)
 
-        self.stdout.write(f"🎯 Creating test messages for chat room: {chat_room.name} ({chat_code})")
+        self.stdout.write(f"🎯 Creating test messages for chat room: {chat_room.name}")
+        self.stdout.write(f"📍 Path: {username}/{chat_code}")
         self.stdout.write(f"👤 Host: {host.email}")
         self.stdout.write(f"👥 Test users: {', '.join([u.email for u in test_users])}")
         self.stdout.write("")
@@ -205,4 +228,4 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"\n✨ Successfully created {len(messages_created)} test messages!"))
         self.stdout.write(f"📊 Chat room now has {chat_room.messages.filter(is_deleted=False).count()} total messages")
-        self.stdout.write(f"\n🔗 Visit: https://localhost:4000/chat/{chat_code}")
+        self.stdout.write(f"\n🔗 Visit: https://localhost:4000/{username}/{chat_code}")

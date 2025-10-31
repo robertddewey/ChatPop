@@ -6,6 +6,7 @@ Covers:
 - generate_username() with rate limiting and Redis tracking
 - API endpoints for username suggestions
 """
+import allure
 from django.test import TestCase, override_settings
 from django.core.cache import cache
 from django.contrib.auth import get_user_model
@@ -21,6 +22,8 @@ from chats.utils.username.generator import generate_username
 User = get_user_model()
 
 
+@allure.feature('Username Generation')
+@allure.story('Global Username Availability')
 class IsUsernameGloballyAvailableTestCase(TestCase):
     """Test the is_username_globally_available() helper function"""
 
@@ -48,12 +51,18 @@ class IsUsernameGloballyAvailableTestCase(TestCase):
             fingerprint='test_fingerprint'
         )
 
+    @allure.title("Available username returns True")
+    @allure.description("Test that an available username returns True")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_available_username(self):
         """Test that an available username returns True"""
         self.assertTrue(is_username_globally_available('AvailableUser'))
         self.assertTrue(is_username_globally_available('NewUser123'))
         self.assertTrue(is_username_globally_available('UniqueUser'))
 
+    @allure.title("Username taken by reserved user")
+    @allure.description("Test that a username reserved by a user returns False")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_taken_by_reserved_user(self):
         """Test that a username reserved by a user returns False"""
         # Exact case match
@@ -64,6 +73,9 @@ class IsUsernameGloballyAvailableTestCase(TestCase):
         self.assertFalse(is_username_globally_available('RESERVEDUSER'))
         self.assertFalse(is_username_globally_available('rEsErVeDuSeR'))
 
+    @allure.title("Username taken by chat participant")
+    @allure.description("Test that a username used in a chat returns False")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_taken_by_chat_participant(self):
         """Test that a username used in a chat returns False"""
         # Exact case match
@@ -74,6 +86,9 @@ class IsUsernameGloballyAvailableTestCase(TestCase):
         self.assertFalse(is_username_globally_available('CHATUSER123'))
         self.assertFalse(is_username_globally_available('ChAtUsEr123'))
 
+    @allure.title("Username check with multiple participations")
+    @allure.description("Test that username taken in any chat returns False")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_check_with_multiple_participations(self):
         """Test that username taken in any chat returns False"""
         # Create another chat with same username
@@ -94,6 +109,9 @@ class IsUsernameGloballyAvailableTestCase(TestCase):
         self.assertFalse(is_username_globally_available('AnotherUser'))
         self.assertFalse(is_username_globally_available('anotheruser'))
 
+    @allure.title("Username check with registered user participation")
+    @allure.description("Test that username from registered user's participation is also checked")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_check_with_registered_user_participation(self):
         """Test that username from registered user's participation is also checked"""
         # Create a participation with a registered user
@@ -115,6 +133,8 @@ class IsUsernameGloballyAvailableTestCase(TestCase):
         self.assertFalse(is_username_globally_available('User2ChatName'))
 
 
+@allure.feature('Username Generation')
+@allure.story('Username Generator Function')
 class GenerateUsernameTestCase(TestCase):
     """Test the generate_username() function with rate limiting"""
 
@@ -127,6 +147,9 @@ class GenerateUsernameTestCase(TestCase):
         """Clear cache after each test"""
         cache.clear()
 
+    @allure.title("Successful username generation")
+    @allure.description("Test successful username generation with remaining attempts")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_successful_generation(self):
         """Test successful username generation with remaining attempts"""
@@ -141,6 +164,9 @@ class GenerateUsernameTestCase(TestCase):
         # Should have 9 attempts remaining (used 1 of 10)
         self.assertEqual(remaining, 9)
 
+    @allure.title("Rate limit tracking")
+    @allure.description("Test that rate limit is properly tracked across multiple calls")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_rate_limit_tracking(self):
         """Test that rate limit is properly tracked across multiple calls"""
@@ -155,6 +181,9 @@ class GenerateUsernameTestCase(TestCase):
         self.assertIsNone(username)
         self.assertEqual(remaining, 0)
 
+    @allure.title("Rate limit per fingerprint")
+    @allure.description("Test that rate limits are isolated per fingerprint")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_rate_limit_per_fingerprint(self):
         """Test that rate limits are isolated per fingerprint"""
@@ -176,6 +205,9 @@ class GenerateUsernameTestCase(TestCase):
         self.assertIsNotNone(username)
         self.assertEqual(remaining, 9)
 
+    @allure.title("Custom max attempts override")
+    @allure.description("Test that max_attempts parameter overrides Constance config")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_custom_max_attempts_override(self):
         """Test that max_attempts parameter overrides Constance config"""
@@ -190,6 +222,9 @@ class GenerateUsernameTestCase(TestCase):
         # Should have 99 attempts remaining (used 1 of 100)
         self.assertEqual(remaining, 99)
 
+    @allure.title("Generated usernames tracking")
+    @allure.description("Test that generated usernames are tracked in Redis for this fingerprint")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_generated_usernames_tracking(self):
         """Test that generated usernames are tracked in Redis for this fingerprint"""
@@ -203,6 +238,9 @@ class GenerateUsernameTestCase(TestCase):
 
         self.assertIn(username1, generated_set)  # Original capitalization, not .lower()
 
+    @allure.title("Chat-specific cache")
+    @allure.description("Test that chat-specific suggestion cache works")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_chat_specific_cache(self):
         """Test that chat-specific suggestion cache works"""
@@ -218,6 +256,9 @@ class GenerateUsernameTestCase(TestCase):
 
         self.assertIn(username1.lower(), recent_suggestions)
 
+    @allure.title("Global uniqueness check")
+    @allure.description("Test that generated usernames avoid globally taken usernames")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_global_uniqueness_check(self):
         """Test that generated usernames avoid globally taken usernames"""
@@ -234,6 +275,9 @@ class GenerateUsernameTestCase(TestCase):
             self.assertIsNotNone(username)
             self.assertNotEqual(username.lower(), 'takenuser1')
 
+    @allure.title("Fallback to guest usernames")
+    @allure.description("Test fallback to Guest usernames when generation struggles")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_fallback_to_guest_usernames(self):
         """Test fallback to Guest usernames when generation struggles"""
@@ -252,6 +296,9 @@ class GenerateUsernameTestCase(TestCase):
                 # May or may not succeed depending on availability, but should not crash
                 self.assertIsInstance(remaining, int)
 
+    @allure.title("Constance config integration")
+    @allure.description("Test that Constance config value is properly used")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=3)
     def test_constance_config_integration(self):
         """Test that Constance config value is properly used"""
@@ -266,6 +313,9 @@ class GenerateUsernameTestCase(TestCase):
         self.assertIsNone(username)
         self.assertEqual(remaining, 0)
 
+    @allure.title("Redis TTL expiration")
+    @allure.description("Test that Redis keys have proper TTL (1 hour)")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_redis_ttl_expiration(self):
         """Test that Redis keys have proper TTL (1 hour)"""
@@ -281,6 +331,8 @@ class GenerateUsernameTestCase(TestCase):
         self.assertIsNotNone(cache.get(generated_key))
 
 
+@allure.feature('Username Generation')
+@allure.story('Chat Suggest Username API')
 class ChatSuggestUsernameAPITestCase(TestCase):
     """Test the /api/chats/{code}/suggest-username/ endpoint"""
 
@@ -306,6 +358,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         """Clear cache after each test"""
         cache.clear()
 
+    @allure.title("Successful username suggestion")
+    @allure.description("Test successful username suggestion")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_successful_suggestion(self):
         """Test successful username suggestion"""
@@ -325,6 +380,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         self.assertGreaterEqual(len(username), 5)
         self.assertLessEqual(len(username), 15)
 
+    @allure.title("Dual rate limits")
+    @allure.description("Test that both chat-specific and global rate limits are enforced")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_dual_rate_limits(self):
         """Test that both chat-specific and global rate limits are enforced"""
@@ -345,6 +403,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         self.assertEqual(response.data['remaining'], 19)
         self.assertEqual(response.data['generation_remaining'], 9)
 
+    @allure.title("Global generation limit hit triggers rotation")
+    @allure.description("Test rotation behavior when global generation limit is exceeded")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=2)
     def test_global_generation_limit_hit(self):
         """Test rotation behavior when global generation limit is exceeded"""
@@ -381,6 +442,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
             # Global generation attempts should remain at 0
             self.assertEqual(response.data['generation_remaining'], 0)
 
+    @allure.title("Fingerprint extraction from body")
+    @allure.description("Test that fingerprint is correctly extracted from request body")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_fingerprint_extraction_from_body(self):
         """Test that fingerprint is correctly extracted from request body"""
@@ -397,6 +461,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         attempts = cache.get(attempts_key)
         self.assertEqual(attempts, 1)
 
+    @allure.title("IP fallback when no fingerprint")
+    @allure.description("Test that IP address is used as fallback when fingerprint is missing")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_ip_fallback_when_no_fingerprint(self):
         """Test that IP address is used as fallback when fingerprint is missing"""
@@ -415,6 +482,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         attempts = cache.get(attempts_key)
         self.assertEqual(attempts, 1)
 
+    @allure.title("Invalid chat code")
+    @allure.description("Test error response for invalid chat code")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_invalid_chat_code(self):
         """Test error response for invalid chat code"""
         response = self.client.post(
@@ -425,6 +495,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    @allure.title("Username rotation after global limit")
+    @allure.description("Test that users can rotate through previously generated usernames after hitting global limit")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(
         MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=3,
         MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT=5
@@ -464,6 +537,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
             # Global generation attempts should remain at 0
             self.assertEqual(response.data['generation_remaining'], 0)
 
+    @allure.title("Per-chat rate limit separate from global")
+    @allure.description("Test that per-chat rate limit (3) is enforced separately from global limit (10)")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(
         MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10,
         MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT=3
@@ -502,6 +578,15 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         self.assertEqual(response.data['remaining'], 2)  # New chat: 2 remaining
         self.assertEqual(response.data['generation_remaining'], 6)  # Global: 6 remaining
 
+    @allure.title("Per-chat rotation after hitting limit")
+    @allure.description("""CRITICAL TEST: This would have caught the per-chat rate limit bug!
+
+Tests that after hitting the per-chat limit, subsequent requests rotate
+through previously generated usernames instead of generating new ones.
+
+Bug it would have caught: The per-chat limit check was happening AFTER
+generate_username() was called, so users could generate unlimited usernames.""")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(
         MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10,
         MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT=2
@@ -564,6 +649,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
             # Global limit should remain at 8 (rotation doesn't consume global limit)
             self.assertEqual(response.data['generation_remaining'], 8)
 
+    @allure.title("Case preservation in generation")
+    @allure.description("Test that generated usernames preserve their original capitalization")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=5)
     def test_case_preservation_in_generation(self):
         """Test that generated usernames preserve their original capitalization"""
@@ -588,6 +676,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
         self.assertIn(username, generated_set)  # Original case
         self.assertNotIn(username.lower(), generated_set)  # Not lowercase
 
+    @allure.title("Case preservation in rotation")
+    @allure.description("Test that username rotation returns usernames with original capitalization")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=3)
     def test_case_preservation_in_rotation(self):
         """Test that username rotation returns usernames with original capitalization"""
@@ -620,6 +711,9 @@ class ChatSuggestUsernameAPITestCase(TestCase):
             # Should NOT return lowercased version
             self.assertNotIn(rotated_username.lower(), [rotated_username])
 
+    @allure.title("Case-insensitive uniqueness")
+    @allure.description("Test that username uniqueness checking is case-insensitive")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=3)
     def test_case_insensitive_uniqueness(self):
         """Test that username uniqueness checking is case-insensitive"""
@@ -653,6 +747,8 @@ class ChatSuggestUsernameAPITestCase(TestCase):
                 self.assertNotEqual(username2.lower(), username1.lower())
 
 
+@allure.feature('Username Generation')
+@allure.story('Accounts Suggest Username API')
 class AccountsSuggestUsernameAPITestCase(TestCase):
     """Test the /api/auth/suggest-username/ endpoint for registration"""
 
@@ -665,6 +761,9 @@ class AccountsSuggestUsernameAPITestCase(TestCase):
         """Clear cache after each test"""
         cache.clear()
 
+    @allure.title("Registration higher limit")
+    @allure.description("Test that registration suggestions get 100 attempts instead of 10")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_registration_higher_limit(self):
         """Test that registration suggestions get 100 attempts instead of 10"""
@@ -683,6 +782,9 @@ class AccountsSuggestUsernameAPITestCase(TestCase):
         # Should have 99 remaining (used 1 of 100)
         self.assertEqual(response.data['remaining_attempts'], 99)
 
+    @allure.title("Successful registration suggestion")
+    @allure.description("Test successful username suggestion for registration")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
     def test_successful_registration_suggestion(self):
         """Test successful username suggestion for registration"""
@@ -699,6 +801,9 @@ class AccountsSuggestUsernameAPITestCase(TestCase):
         self.assertGreaterEqual(len(username), 5)
         self.assertLessEqual(len(username), 15)
 
+    @allure.title("IP fallback for registration")
+    @allure.description("Test IP fallback when fingerprint not provided")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_ip_fallback_for_registration(self):
         """Test IP fallback when fingerprint not provided"""
         response = self.client.post(
@@ -715,6 +820,9 @@ class AccountsSuggestUsernameAPITestCase(TestCase):
         attempts = cache.get(attempts_key)
         self.assertEqual(attempts, 1)
 
+    @allure.title("X-Forwarded-For header support")
+    @allure.description("Test that X-Forwarded-For header is used when available")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_x_forwarded_for_header(self):
         """Test that X-Forwarded-For header is used when available"""
         response = self.client.post(
@@ -731,6 +839,9 @@ class AccountsSuggestUsernameAPITestCase(TestCase):
         attempts = cache.get(attempts_key)
         self.assertEqual(attempts, 1)
 
+    @allure.title("Registration rate limit exhaustion")
+    @allure.description("Test error when registration rate limit (100) is exceeded")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_registration_rate_limit_exhaustion(self):
         """Test error when registration rate limit (100) is exceeded"""
         fingerprint = 'reg_limit_fp'
@@ -750,6 +861,8 @@ class AccountsSuggestUsernameAPITestCase(TestCase):
         self.assertEqual(response.data['remaining_attempts'], 0)
 
 
+@allure.feature('Username Generation')
+@allure.story('Check Username Redis Reservation')
 class CheckUsernameRedisReservationTestCase(TestCase):
     """Test that /api/auth/check-username/ reserves usernames in Redis"""
 
@@ -762,6 +875,9 @@ class CheckUsernameRedisReservationTestCase(TestCase):
         """Clear cache after each test"""
         cache.clear()
 
+    @allure.title("Available username reserved in Redis")
+    @allure.description("Test that available username is reserved in Redis after validation")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_available_username_reserved_in_redis(self):
         """Test that available username is reserved in Redis after validation"""
@@ -779,6 +895,9 @@ class CheckUsernameRedisReservationTestCase(TestCase):
         reservation_key = f"username:reserved:{username.lower()}"
         self.assertTrue(cache.get(reservation_key))
 
+    @allure.title("Unavailable username not reserved")
+    @allure.description("Test that unavailable username is NOT reserved in Redis")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_unavailable_username_not_reserved(self):
         """Test that unavailable username is NOT reserved in Redis"""
@@ -805,6 +924,9 @@ class CheckUsernameRedisReservationTestCase(TestCase):
         # The reservation should be None since we didn't reserve it
         # (it's taken by User.reserved_username, not Redis)
 
+    @allure.title("Invalid username not reserved")
+    @allure.description("Test that invalid username (too short) is NOT reserved in Redis")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_invalid_username_not_reserved(self):
         """Test that invalid username (too short) is NOT reserved in Redis"""
@@ -820,6 +942,9 @@ class CheckUsernameRedisReservationTestCase(TestCase):
         reservation_key = "username:reserved:abc"
         self.assertIsNone(cache.get(reservation_key))
 
+    @allure.title("Race condition prevention")
+    @allure.description("Test that two users checking same username see it as taken after first check")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_race_condition_prevention(self):
         """Test that two users checking same username see it as taken after first check"""
@@ -843,6 +968,9 @@ class CheckUsernameRedisReservationTestCase(TestCase):
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         self.assertFalse(response2.data['available'])
 
+    @allure.title("Constance TTL setting used")
+    @allure.description("Test that Constance USERNAME_VALIDATION_TTL_MINUTES setting is used")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=5)
     def test_constance_ttl_setting_used(self):
         """Test that Constance USERNAME_VALIDATION_TTL_MINUTES setting is used"""
@@ -865,6 +993,9 @@ class CheckUsernameRedisReservationTestCase(TestCase):
         # by checking that cache.set() was called with correct timeout
         # in the view code (5 minutes * 60 = 300 seconds)
 
+    @allure.title("Case insensitive reservation")
+    @allure.description("Test that username reservation is case-insensitive")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_case_insensitive_reservation(self):
         """Test that username reservation is case-insensitive"""
@@ -896,6 +1027,8 @@ class CheckUsernameRedisReservationTestCase(TestCase):
         self.assertFalse(response3.data['available'])
 
 
+@allure.feature('Username Generation')
+@allure.story('Username Validation Redis Reservation')
 class UsernameValidationRedisReservationTestCase(TestCase):
     """Test that /api/chats/{code}/validate-username/ reserves usernames in Redis"""
 
@@ -921,6 +1054,9 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         """Clear cache after each test"""
         cache.clear()
 
+    @allure.title("Available username reserved in Redis")
+    @allure.description("Test that available username is reserved in Redis after validation")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_available_username_reserved_in_redis(self):
         """Test that available username is reserved in Redis after validation"""
@@ -939,6 +1075,9 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         reservation_key = f"username:reserved:{username.lower()}"
         self.assertTrue(cache.get(reservation_key))
 
+    @allure.title("Unavailable username not reserved")
+    @allure.description("Test that unavailable username is NOT reserved in Redis")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_unavailable_username_not_reserved(self):
         """Test that unavailable username is NOT reserved in Redis"""
@@ -959,6 +1098,9 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data['available'])
 
+    @allure.title("Invalid username not reserved")
+    @allure.description("Test that invalid username (profanity) is NOT reserved in Redis")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_invalid_username_not_reserved(self):
         """Test that invalid username (profanity) is NOT reserved in Redis"""
@@ -974,6 +1116,9 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         reservation_key = "username:reserved:ab"
         self.assertIsNone(cache.get(reservation_key))
 
+    @allure.title("Race condition prevention")
+    @allure.description("Test that two users validating same username see it as taken after first validation")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_race_condition_prevention(self):
         """Test that two users validating same username see it as taken after first validation"""
@@ -999,6 +1144,9 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         self.assertFalse(response2.data['available'])
 
+    @allure.title("Constance TTL setting used")
+    @allure.description("Test that Constance USERNAME_VALIDATION_TTL_MINUTES setting is used")
+    @allure.severity(allure.severity_level.NORMAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=5)
     def test_constance_ttl_setting_used(self):
         """Test that Constance USERNAME_VALIDATION_TTL_MINUTES setting is used"""
@@ -1017,6 +1165,9 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         reservation_key = f"username:reserved:{username.lower()}"
         self.assertTrue(cache.get(reservation_key))
 
+    @allure.title("Case insensitive reservation")
+    @allure.description("Test that username reservation is case-insensitive")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_case_insensitive_reservation(self):
         """Test that username reservation is case-insensitive"""
@@ -1050,6 +1201,9 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         self.assertEqual(response3.status_code, status.HTTP_200_OK)
         self.assertFalse(response3.data['available'])
 
+    @allure.title("Reserved username detected")
+    @allure.description("Test that User.reserved_username is checked")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
     def test_reserved_username_detected(self):
         """Test that User.reserved_username is checked"""
@@ -1065,6 +1219,8 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         self.assertTrue(response.data['reserved_by_other'])
 
 
+@allure.feature('Username Generation')
+@allure.story('Dice Roll Rotation Limit')
 class DiceRollRotationLimitTestCase(TestCase):
     """
     CRITICAL TEST: Verify that dice roll never shows more usernames than
@@ -1096,6 +1252,12 @@ class DiceRollRotationLimitTestCase(TestCase):
         """Clear cache after test"""
         cache.clear()
 
+    @allure.title("Dice roll never exceeds per-chat limit")
+    @allure.description("""CRITICAL TEST: Click the dice 20 times, verify only 3 unique usernames ever appear.
+
+This test would FAIL if per-chat tracking was broken and rotation used the global
+username list instead of the per-chat list.""")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(
         MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=20,
         MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT=3
@@ -1146,6 +1308,9 @@ class DiceRollRotationLimitTestCase(TestCase):
                 f"Click #{i} returned unexpected username '{username}' not in the original 3: {unique_usernames}"
             )
 
+    @allure.title("Per-chat limit isolated between chats")
+    @allure.description("Test that per-chat limits are truly per-chat - each chat gets its own pool of 3 usernames")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(
         MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=20,
         MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT=3
@@ -1212,6 +1377,9 @@ class DiceRollRotationLimitTestCase(TestCase):
             )
             self.assertIn(response2.data['username'], chat2_usernames)
 
+    @allure.title("Rotation index per-chat independent")
+    @allure.description("Test that rotation index is per-chat, not global")
+    @allure.severity(allure.severity_level.CRITICAL)
     @override_config(
         MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=20,
         MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT=5

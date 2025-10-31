@@ -1,14 +1,20 @@
 """
 Tests for username validators
 """
+import allure
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 from chats.utils.username.validators import validate_username
 
 
+@allure.feature('Username Validation')
+@allure.story('Username Validators')
 class UsernameValidatorTestCase(TestCase):
     """Test username validation rules"""
 
+    @allure.title("Valid usernames pass validation")
+    @allure.description("Test that valid usernames pass validation")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_valid_usernames(self):
         """Test that valid usernames pass validation"""
         valid_usernames = [
@@ -33,6 +39,9 @@ class UsernameValidatorTestCase(TestCase):
                 result = validate_username(username)
                 self.assertEqual(result, username)
 
+    @allure.title("Minimum length validation")
+    @allure.description("Test that usernames shorter than 5 characters are rejected")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_minimum_length_validation(self):
         """Test that usernames shorter than 5 characters are rejected"""
         short_usernames = [
@@ -49,6 +58,9 @@ class UsernameValidatorTestCase(TestCase):
                     validate_username(username)
                 self.assertIn(expected_msg, str(cm.exception))
 
+    @allure.title("Maximum length validation")
+    @allure.description("Test that usernames longer than 15 characters are rejected")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_maximum_length_validation(self):
         """Test that usernames longer than 15 characters are rejected"""
         long_usernames = [
@@ -64,6 +76,9 @@ class UsernameValidatorTestCase(TestCase):
                     validate_username(username)
                 self.assertIn('at most 15 characters', str(cm.exception))
 
+    @allure.title("Invalid characters rejected")
+    @allure.description("Test that usernames with invalid characters are rejected")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_invalid_characters(self):
         """Test that usernames with invalid characters are rejected"""
         invalid_usernames = [
@@ -104,6 +119,9 @@ class UsernameValidatorTestCase(TestCase):
                     validate_username(username)
                 self.assertIn('letters, numbers, and underscores', str(cm.exception))
 
+    @allure.title("Whitespace handling")
+    @allure.description("Test that leading/trailing whitespace is stripped before validation")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_whitespace_handling(self):
         """Test that leading/trailing whitespace is stripped before validation"""
         # These should pass after stripping
@@ -115,6 +133,9 @@ class UsernameValidatorTestCase(TestCase):
         with self.assertRaises(ValidationError):
             validate_username('user name')
 
+    @allure.title("Empty and None values rejected")
+    @allure.description("Test handling of empty and None values")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_empty_and_none_values(self):
         """Test handling of empty and None values"""
         with self.assertRaises(ValidationError) as cm:
@@ -131,12 +152,18 @@ class UsernameValidatorTestCase(TestCase):
         error = str(cm.exception)
         self.assertTrue('cannot be empty' in error or 'at least 5 characters' in error)
 
+    @allure.title("Case preservation")
+    @allure.description("Test that case is preserved")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_case_preservation(self):
         """Test that case is preserved"""
         mixed_case = 'AlIcE_123'
         result = validate_username(mixed_case)
         self.assertEqual(result, mixed_case)  # Should preserve original case
 
+    @allure.title("Unicode characters rejected")
+    @allure.description("Test that unicode/emoji characters are rejected")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_unicode_rejection(self):
         """Test that unicode/emoji characters are rejected"""
         unicode_usernames = [
@@ -159,6 +186,9 @@ class UsernameValidatorTestCase(TestCase):
                     f"Expected validation error for {username}, got: {error}"
                 )
 
+    @allure.title("Underscore positions")
+    @allure.description("Test that underscores can be at any position")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_underscore_positions(self):
         """Test that underscores can be at any position"""
         valid_with_underscores = [
@@ -174,6 +204,9 @@ class UsernameValidatorTestCase(TestCase):
                 result = validate_username(username)
                 self.assertEqual(result, username)
 
+    @allure.title("Numeric only usernames allowed")
+    @allure.description("Test that purely numeric usernames are allowed")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_numeric_only_usernames(self):
         """Test that purely numeric usernames are allowed"""
         numeric_usernames = [

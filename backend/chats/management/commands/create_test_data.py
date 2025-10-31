@@ -32,9 +32,10 @@ class Command(BaseCommand):
             superuser = User.objects.create_superuser(
                 email='admin@chatpop.app',
                 password='demo123',
-                display_name='Admin'
+                first_name='Admin',
+                reserved_username='admin'
             )
-            self.stdout.write(self.style.SUCCESS(f"✓ Superuser created: {superuser.email}"))
+            self.stdout.write(self.style.SUCCESS(f"✓ Superuser created: {superuser.email} (@{superuser.reserved_username})"))
         else:
             superuser = User.objects.get(email='admin@chatpop.app')
             self.stdout.write(f"✓ Superuser already exists: {superuser.email}")
@@ -44,54 +45,62 @@ class Command(BaseCommand):
         user1, created = User.objects.get_or_create(
             email='jane@chatpop.app',
             defaults={
-                'display_name': 'Jane Doe',
+                'first_name': 'Jane',
+                'last_name': 'Doe',
+                'reserved_username': 'jane',
             }
         )
         if created:
             user1.set_password('demo123')
             user1.save()
-            self.stdout.write(self.style.SUCCESS(f"✓ User created: {user1.email}"))
+            self.stdout.write(self.style.SUCCESS(f"✓ User created: {user1.email} (@{user1.reserved_username})"))
         else:
-            self.stdout.write(f"✓ User already exists: {user1.email}")
+            self.stdout.write(f"✓ User already exists: {user1.email} (@{user1.reserved_username})")
 
         user2, created = User.objects.get_or_create(
             email='john@chatpop.app',
             defaults={
-                'display_name': 'John Smith',
+                'first_name': 'John',
+                'last_name': 'Smith',
+                'reserved_username': 'john',
             }
         )
         if created:
             user2.set_password('demo123')
             user2.save()
-            self.stdout.write(self.style.SUCCESS(f"✓ User created: {user2.email}"))
+            self.stdout.write(self.style.SUCCESS(f"✓ User created: {user2.email} (@{user2.reserved_username})"))
         else:
-            self.stdout.write(f"✓ User already exists: {user2.email}")
+            self.stdout.write(f"✓ User already exists: {user2.email} (@{user2.reserved_username})")
 
         user3, created = User.objects.get_or_create(
             email='alice@chatpop.app',
             defaults={
-                'display_name': 'Alice Wonder',
+                'first_name': 'Alice',
+                'last_name': 'Wonder',
+                'reserved_username': 'alice',
             }
         )
         if created:
             user3.set_password('demo123')
             user3.save()
-            self.stdout.write(self.style.SUCCESS(f"✓ User created: {user3.email}"))
+            self.stdout.write(self.style.SUCCESS(f"✓ User created: {user3.email} (@{user3.reserved_username})"))
         else:
-            self.stdout.write(f"✓ User already exists: {user3.email}")
+            self.stdout.write(f"✓ User already exists: {user3.email} (@{user3.reserved_username})")
 
         user4, created = User.objects.get_or_create(
             email='bob@chatpop.app',
             defaults={
-                'display_name': 'Bob Builder',
+                'first_name': 'Bob',
+                'last_name': 'Builder',
+                'reserved_username': 'bob',
             }
         )
         if created:
             user4.set_password('demo123')
             user4.save()
-            self.stdout.write(self.style.SUCCESS(f"✓ User created: {user4.email}"))
+            self.stdout.write(self.style.SUCCESS(f"✓ User created: {user4.email} (@{user4.reserved_username})"))
         else:
-            self.stdout.write(f"✓ User already exists: {user4.email}")
+            self.stdout.write(f"✓ User already exists: {user4.email} (@{user4.reserved_username})")
 
         # Create subscriptions
         self.stdout.write("\n3. Creating user subscriptions...")

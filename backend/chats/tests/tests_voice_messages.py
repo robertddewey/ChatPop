@@ -2,6 +2,7 @@
 Tests for voice message functionality.
 Tests voice upload, streaming, permissions, and storage.
 """
+import allure
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -16,6 +17,8 @@ from ..models import ChatRoom, Message
 from ..utils.security.auth import ChatSessionValidator
 
 
+@allure.feature('Voice Messages')
+@allure.story('Voice Message Upload')
 class VoiceMessageUploadTests(TestCase):
     """Tests for voice message upload endpoint"""
 
@@ -63,6 +66,9 @@ class VoiceMessageUploadTests(TestCase):
             content_type='audio/webm'
         )
 
+    @allure.title("Upload voice message successfully")
+    @allure.description("Test successful voice message upload")
+    @allure.severity(allure.severity_level.CRITICAL)
     @patch('chats.views.transcode_webm_to_m4a')
     def test_upload_voice_message_success(self, mock_transcode):
         """Test successful voice message upload"""
@@ -83,6 +89,9 @@ class VoiceMessageUploadTests(TestCase):
         self.assertIn('storage_path', response.data)
         self.assertIn('storage_type', response.data)
 
+    @allure.title("Upload fails when voice disabled")
+    @allure.description("Test upload fails when voice is disabled")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_upload_voice_disabled_chat(self):
         """Test upload fails when voice is disabled"""
         url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_disabled.code})
@@ -96,6 +105,9 @@ class VoiceMessageUploadTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn('not enabled', response.data['error'])
 
+    @allure.title("Upload fails without session token")
+    @allure.description("Test upload fails without session token")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_upload_without_session_token(self):
         """Test upload fails without session token"""
         url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
@@ -108,6 +120,9 @@ class VoiceMessageUploadTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertIn('Session token required', response.data['error'])
 
+    @allure.title("Upload fails with invalid session token")
+    @allure.description("Test upload fails with invalid session token")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_upload_invalid_session_token(self):
         """Test upload fails with invalid session token"""
         url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
@@ -120,6 +135,9 @@ class VoiceMessageUploadTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    @allure.title("Upload fails with wrong chat session token")
+    @allure.description("Test upload fails with session token from different chat")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_upload_wrong_chat_session_token(self):
         """Test upload fails with session token from different chat"""
         url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
@@ -133,6 +151,9 @@ class VoiceMessageUploadTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertIn('Invalid session', response.data['error'])
 
+    @allure.title("Upload fails without file")
+    @allure.description("Test upload fails without file")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_upload_no_file(self):
         """Test upload fails without file"""
         url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
@@ -144,6 +165,9 @@ class VoiceMessageUploadTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('No voice message file', response.data['error'])
 
+    @allure.title("Upload fails when file too large")
+    @allure.description("Test upload fails when file exceeds size limit")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_upload_file_too_large(self):
         """Test upload fails when file exceeds size limit"""
         url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
@@ -164,6 +188,9 @@ class VoiceMessageUploadTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('too large', response.data['error'])
 
+    @allure.title("Upload fails with invalid file type")
+    @allure.description("Test upload fails with non-audio file")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_upload_invalid_file_type(self):
         """Test upload fails with non-audio file"""
         url = reverse('chats:voice-upload', kwargs={'username': 'testhost', 'code': self.chat_enabled.code})
@@ -182,6 +209,9 @@ class VoiceMessageUploadTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('Invalid file type', response.data['error'])
 
+    @allure.title("Upload various audio formats")
+    @allure.description("Test upload accepts various audio formats")
+    @allure.severity(allure.severity_level.NORMAL)
     @patch('chats.views.transcode_webm_to_m4a')
     def test_upload_various_audio_formats(self, mock_transcode):
         """Test upload accepts various audio formats"""
@@ -215,6 +245,8 @@ class VoiceMessageUploadTests(TestCase):
                            f"Failed for {content_type}")
 
 
+@allure.feature('Voice Messages')
+@allure.story('Voice Message Streaming')
 class VoiceMessageStreamTests(TestCase):
     """Tests for voice message streaming endpoint"""
 
@@ -239,6 +271,9 @@ class VoiceMessageStreamTests(TestCase):
             username='testuser'
         )
 
+    @allure.title("Stream voice message successfully")
+    @allure.description("Test successful voice message streaming")
+    @allure.severity(allure.severity_level.CRITICAL)
     @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
     @patch('chatpop.utils.media.storage.MediaStorage.get_file')
     def test_stream_voice_message_success(self, mock_get_file, mock_file_exists):
@@ -254,6 +289,9 @@ class VoiceMessageStreamTests(TestCase):
         self.assertEqual(response['Content-Type'], 'audio/webm')
         self.assertIn('Content-Disposition', response)
 
+    @allure.title("Stream fails without session token")
+    @allure.description("Test streaming fails without session token")
+    @allure.severity(allure.severity_level.CRITICAL)
     @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
     def test_stream_without_session_token(self, mock_file_exists):
         """Test streaming fails without session token"""
@@ -264,6 +302,9 @@ class VoiceMessageStreamTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    @allure.title("Stream fails with invalid session token")
+    @allure.description("Test streaming fails with invalid session token")
+    @allure.severity(allure.severity_level.CRITICAL)
     @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
     def test_stream_invalid_session_token(self, mock_file_exists):
         """Test streaming fails with invalid session token"""
@@ -274,6 +315,9 @@ class VoiceMessageStreamTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    @allure.title("Stream fails when file not found")
+    @allure.description("Test streaming fails when file doesn't exist")
+    @allure.severity(allure.severity_level.NORMAL)
     @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
     def test_stream_file_not_found(self, mock_file_exists):
         """Test streaming fails when file doesn't exist"""
@@ -284,6 +328,9 @@ class VoiceMessageStreamTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    @allure.title("Stream correct content types")
+    @allure.description("Test correct content-type for different audio formats")
+    @allure.severity(allure.severity_level.NORMAL)
     @patch('chatpop.utils.media.storage.MediaStorage.file_exists')
     @patch('chatpop.utils.media.storage.MediaStorage.get_file')
     def test_stream_content_types(self, mock_get_file, mock_file_exists):
@@ -308,9 +355,14 @@ class VoiceMessageStreamTests(TestCase):
                            f"Wrong content type for {filename}")
 
 
+@allure.feature('Voice Messages')
+@allure.story('Voice Message Storage')
 class VoiceMessageStorageTests(TestCase):
     """Tests for voice message storage functionality"""
 
+    @allure.title("Storage type detection")
+    @allure.description("Test storage type detection based on AWS config")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_storage_type_detection(self):
         """Test storage type detection based on AWS config"""
         from chatpop.utils.media.storage import MediaStorage
@@ -324,6 +376,9 @@ class VoiceMessageStorageTests(TestCase):
             self.assertFalse(MediaStorage.is_s3_configured())
             self.assertEqual(MediaStorage.get_storage_type(), 'local')
 
+    @allure.title("S3 configured detection")
+    @allure.description("Test S3 detection when AWS credentials present")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_s3_configured_detection(self):
         """Test S3 detection when AWS credentials present"""
         from chatpop.utils.media.storage import MediaStorage
@@ -336,6 +391,9 @@ class VoiceMessageStorageTests(TestCase):
             self.assertTrue(MediaStorage.is_s3_configured())
             self.assertEqual(MediaStorage.get_storage_type(), 's3')
 
+    @allure.title("Save voice message")
+    @allure.description("Test saving voice message to storage")
+    @allure.severity(allure.severity_level.NORMAL)
     @patch('chatpop.utils.media.storage.default_storage.save')
     def test_save_voice_message(self, mock_save):
         """Test saving voice message to storage"""
@@ -350,6 +408,9 @@ class VoiceMessageStorageTests(TestCase):
         self.assertIn('voice_messages', storage_path)
         self.assertIn(storage_type, ['local', 's3'])
 
+    @allure.title("Get voice message URL")
+    @allure.description("Test voice message URL generation")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_get_voice_message_url(self):
         """Test voice message URL generation"""
         from chatpop.utils.media.storage import get_voice_message_url
@@ -360,6 +421,8 @@ class VoiceMessageStorageTests(TestCase):
         self.assertIn('voice_messages/test.webm', url)
 
 
+@allure.feature('Voice Messages')
+@allure.story('Voice Message Integration')
 class VoiceMessageIntegrationTests(TestCase):
     """Integration tests for complete voice message flow"""
 
@@ -385,6 +448,9 @@ class VoiceMessageIntegrationTests(TestCase):
             username='testuser'
         )
 
+    @allure.title("Complete voice message flow")
+    @allure.description("Test complete flow: upload -> get URL -> stream")
+    @allure.severity(allure.severity_level.CRITICAL)
     @patch('chats.views.transcode_webm_to_m4a')
     def test_complete_voice_message_flow(self, mock_transcode):
         """Test complete flow: upload -> get URL -> stream"""

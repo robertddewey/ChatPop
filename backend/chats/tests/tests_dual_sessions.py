@@ -7,6 +7,7 @@ This test suite covers:
 3. Reserved username badge: Correctly identifies when a user is using their reserved_username
 """
 
+import allure
 import json
 
 from accounts.models import User
@@ -17,6 +18,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 
+@allure.feature('Chat Sessions')
+@allure.story('Dual Sessions Architecture')
 class DualSessionsTests(TestCase):
     """Test dual sessions architecture"""
 
@@ -57,6 +60,9 @@ class DualSessionsTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         return response.data['username']
 
+    @allure.title("Anonymous join creates anonymous participation")
+    @allure.description("Anonymous user joins chat with fingerprint")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_anonymous_join_creates_anonymous_participation(self):
         """Anonymous user joins chat with fingerprint"""
         # Generate username first
@@ -77,6 +83,9 @@ class DualSessionsTests(TestCase):
         )
         self.assertEqual(participation.username, username)
 
+    @allure.title("Logged-in join creates user participation")
+    @allure.description("Logged-in user joins chat")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_logged_in_join_creates_user_participation(self):
         """Logged-in user joins chat"""
         self.client.force_authenticate(user=self.user)
@@ -92,6 +101,9 @@ class DualSessionsTests(TestCase):
         participation = ChatParticipation.objects.get(chat_room=self.chat_room, user=self.user)
         self.assertEqual(participation.username, "Robert")
 
+    @allure.title("Dual sessions allow same username")
+    @allure.description("Anonymous and logged-in users can use the same username simultaneously")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_dual_sessions_allow_same_username(self):
         """Anonymous and logged-in users can use the same username simultaneously"""
         # 1. Generate username for anonymous user
@@ -119,6 +131,9 @@ class DualSessionsTests(TestCase):
         self.assertEqual(anon_participation.username, username)
         self.assertEqual(user_participation.username, username.upper())
 
+    @allure.title("MyParticipation prioritizes logged-in user")
+    @allure.description("MyParticipationView returns logged-in participation when both exist")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_my_participation_prioritizes_logged_in_user(self):
         """MyParticipationView returns logged-in participation when both exist"""
         # Create both anonymous and user participations
@@ -142,6 +157,9 @@ class DualSessionsTests(TestCase):
         self.assertTrue(response.data["has_joined"])
         self.assertEqual(response.data["username"], "Robert")  # User participation, not anonymous
 
+    @allure.title("MyParticipation returns anonymous when not logged in")
+    @allure.description("MyParticipationView returns anonymous participation when not logged in")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_my_participation_returns_anonymous_when_not_logged_in(self):
         """MyParticipationView returns anonymous participation when not logged in"""
         # Create anonymous participation
@@ -157,6 +175,9 @@ class DualSessionsTests(TestCase):
         self.assertTrue(response.data["has_joined"])
         self.assertEqual(response.data["username"], "robert")
 
+    @allure.title("MyParticipation no fallback from logged-in to anonymous")
+    @allure.description("Logged-in user doesn't see anonymous participation")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_my_participation_no_fallback_from_logged_in_to_anonymous(self):
         """Logged-in user doesn't see anonymous participation"""
         # Create ONLY anonymous participation
@@ -173,6 +194,8 @@ class DualSessionsTests(TestCase):
         self.assertFalse(response.data["has_joined"])  # No user participation found
 
 
+@allure.feature('User Authentication')
+@allure.story('Reserved Username Badge')
 class ReservedUsernameBadgeTests(TestCase):
     """Test reserved_username badge detection"""
 
@@ -201,6 +224,9 @@ class ReservedUsernameBadgeTests(TestCase):
             ip_address='127.0.0.1'
         )
 
+    @allure.title("Username is reserved when exact match")
+    @allure.description("Badge shown when participation username matches reserved_username exactly")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_is_reserved_when_exact_match(self):
         """Badge shown when participation username matches reserved_username exactly"""
         participation = ChatParticipation.objects.create(
@@ -214,6 +240,9 @@ class ReservedUsernameBadgeTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["username_is_reserved"])
 
+    @allure.title("Username is reserved when case-insensitive match")
+    @allure.description("Badge shown when participation username matches reserved_username (case-insensitive)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_is_reserved_when_case_insensitive_match(self):
         """Badge shown when participation username matches reserved_username (case-insensitive)"""
         participation = ChatParticipation.objects.create(
@@ -227,6 +256,9 @@ class ReservedUsernameBadgeTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["username_is_reserved"])
 
+    @allure.title("Username is not reserved when different")
+    @allure.description("Badge NOT shown when participation username differs from reserved_username")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_is_not_reserved_when_different(self):
         """Badge NOT shown when participation username differs from reserved_username"""
         participation = ChatParticipation.objects.create(
@@ -240,6 +272,9 @@ class ReservedUsernameBadgeTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["username_is_reserved"])
 
+    @allure.title("Username is not reserved for anonymous users")
+    @allure.description("Badge NOT shown for anonymous users (no reserved_username)")
+    @allure.severity(allure.severity_level.NORMAL)
     def test_username_is_not_reserved_for_anonymous_users(self):
         """Badge NOT shown for anonymous users (no reserved_username)"""
         participation = ChatParticipation.objects.create(
@@ -253,6 +288,8 @@ class ReservedUsernameBadgeTests(TestCase):
         self.assertFalse(response.data["username_is_reserved"])
 
 
+@allure.feature('Rate Limiting')
+@allure.story('IP-Based Rate Limiting')
 class IPRateLimitingTests(TestCase):
     """Test IP-based rate limiting for anonymous users"""
 
@@ -288,6 +325,9 @@ class IPRateLimitingTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         return response.data['username']
 
+    @allure.title("Anonymous user can join within limit")
+    @allure.description("Anonymous users can join up to 3 times from same IP")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_can_join_within_limit(self):
         """Anonymous users can join up to 3 times from same IP"""
         url = f"/api/chats/HostUser/{self.chat_room.code}/join/"
@@ -308,6 +348,9 @@ class IPRateLimitingTests(TestCase):
         ).count()
         self.assertEqual(count, 3)
 
+    @allure.title("Anonymous user blocked at limit")
+    @allure.description("Anonymous users blocked when trying to join 4th time from same IP")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_blocked_at_limit(self):
         """Anonymous users blocked when trying to join 4th time from same IP"""
         # Create 3 existing participations with generated usernames
@@ -333,6 +376,9 @@ class IPRateLimitingTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("Max anonymous usernames", str(response.data))
 
+    @allure.title("Returning anonymous user not blocked")
+    @allure.description("Returning anonymous users can rejoin even if IP is at limit")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_returning_anonymous_user_not_blocked(self):
         """Returning anonymous users can rejoin even if IP is at limit"""
         # Create 3 existing participations
@@ -356,6 +402,9 @@ class IPRateLimitingTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    @allure.title("Different IP not affected by limit")
+    @allure.description("IP limit is per-IP (different IPs can each have 3 anonymous users)")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_different_ip_not_affected_by_limit(self):
         """IP limit is per-IP (different IPs can each have 3 anonymous users)"""
         # Create 3 participations from IP 1 with generated usernames
@@ -380,6 +429,9 @@ class IPRateLimitingTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    @allure.title("Logged-in user not affected by IP limit")
+    @allure.description("Logged-in users can join even if IP has 3 anonymous participations")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_logged_in_user_not_affected_by_ip_limit(self):
         """Logged-in users can join even if IP has 3 anonymous participations"""
         # Create 3 anonymous participations from same IP
@@ -405,6 +457,9 @@ class IPRateLimitingTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    @allure.title("IP limit is per-chat")
+    @allure.description("IP limit is per-chat (same IP can join 3 times in each chat)")
+    @allure.severity(allure.severity_level.CRITICAL)
     def test_ip_limit_per_chat(self):
         """IP limit is per-chat (same IP can join 3 times in each chat)"""
         # Create second chat room

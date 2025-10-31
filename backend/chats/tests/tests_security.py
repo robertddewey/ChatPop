@@ -520,7 +520,8 @@ class UsernameReservationSecurityTests(TestCase):
         )
 
     def test_two_anonymous_users_same_username_blocked(self):
-        """Test that two anonymous users with the same username cannot join the same chat"""
+        """Test that username uniqueness is enforced: first user claims username successfully,
+        second user is blocked from using the same username"""
         # First anonymous user gets a generated username
         suggest_response = self.client.post(
             f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
