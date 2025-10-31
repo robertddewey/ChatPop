@@ -142,8 +142,20 @@ if [ "$GENERATE_REPORT" = true ]; then
     # Check if Allure Docker image is available
     if ! docker images frankescobar/allure-docker-service | grep -q frankescobar; then
         echo -e "${YELLOW}⚠${NC} Allure Docker image not found"
-        echo "Pulling frankescobar/allure-docker-service (~600MB)..."
-        docker pull frankescobar/allure-docker-service
+        echo "The Allure report requires frankescobar/allure-docker-service (~600MB)"
+        echo ""
+        read -p "Download the image now? (y/n) " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "Pulling frankescobar/allure-docker-service..."
+            docker pull frankescobar/allure-docker-service
+        else
+            echo -e "${YELLOW}⚠${NC} Skipping report generation (image not available)"
+            echo "Run tests without --report flag or pull the image manually:"
+            echo "  docker pull frankescobar/allure-docker-service"
+            GENERATE_REPORT=false
+            OPEN_REPORT=false
+        fi
     fi
 fi
 
