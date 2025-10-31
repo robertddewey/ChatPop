@@ -3,19 +3,20 @@ Django management command to inspect and debug Redis message cache.
 
 Usage:
     ./venv/bin/python manage.py inspect_redis --list
-    ./venv/bin/python manage.py inspect_redis --chat ZCMLY634
-    ./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --show-messages
-    ./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --compare
+    ./venv/bin/python manage.py inspect_redis --chat robert/my-chat
+    ./venv/bin/python manage.py inspect_redis --chat robert/my-chat --show-messages
+    ./venv/bin/python manage.py inspect_redis --chat robert/my-chat --compare
     ./venv/bin/python manage.py inspect_redis --message <uuid>
-    ./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --clear
-    ./venv/bin/python manage.py inspect_redis --chat ZCMLY634 --monitor
+    ./venv/bin/python manage.py inspect_redis --chat robert/my-chat --clear
+    ./venv/bin/python manage.py inspect_redis --chat robert/my-chat --monitor
 """
 
 import json
 import time
 from datetime import datetime, timedelta
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from accounts.models import User
 from chats.models import ChatRoom, Message
 from chats.utils.performance.cache import MessageCache
 
@@ -32,7 +33,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--chat',
             type=str,
-            help='Chat code to inspect'
+            help='Chat path in format username/code (e.g., robert/my-chat)'
         )
         parser.add_argument(
             '--show-messages',
@@ -81,6 +82,35 @@ class Command(BaseCommand):
             help='Show overall Redis statistics'
         )
 
+    def get_chat_room(self, chat_path):
+        """Parse username/code format and return ChatRoom"""
+        if '/' not in chat_path:
+            raise CommandError(
+                f"Invalid format: '{chat_path}'\n"
+                f"Expected format: username/code (e.g., robert/my-chat)"
+            )
+
+        username, chat_code = chat_path.split('/', 1)
+
+        try:
+            host_user = User.objects.get(reserved_username=username)
+        except User.DoesNotExist:
+            raise CommandError(f"User with username '{username}' not found")
+
+        try:
+            chat_room = ChatRoom.objects.get(
+                host=host_user,
+                code=chat_code,
+                is_active=True
+            )
+        except ChatRoom.DoesNotExist:
+            raise CommandError(
+                f"Chat room '{chat_code}' not found for user '{username}'\n"
+                f"Full path: {username}/{chat_code}"
+            )
+
+        return chat_room
+
     def handle(self, *args, **options):
         if options['list']:
             self.list_caches()
@@ -89,15 +119,16 @@ class Command(BaseCommand):
         elif options['message']:
             self.inspect_message(options['message'])
         elif options['chat']:
-            chat_code = options['chat']
+            chat_path = options['chat']
+            chat_room = self.get_chat_room(chat_path)
             if options['clear']:
-                self.clear_cache(chat_code, options['force'])
+                self.clear_cache(chat_room, options['force'])
             elif options['monitor']:
-                self.monitor_cache(chat_code)
+                self.monitor_cache(chat_room)
             elif options['compare']:
-                self.compare_cache(chat_code)
+                self.compare_cache(chat_room)
             else:
-                self.inspect_chat(chat_code, options['show_messages'], options['show_reactions'], options['limit'])
+                self.inspect_chat(chat_room, options['show_messages'], options['show_reactions'], options['limit'])
         else:
             self.stdout.write(self.style.ERROR('Please specify an action. Use --help for usage.'))
 
@@ -135,17 +166,12 @@ class Command(BaseCommand):
 
         self.stdout.write('')
 
-    def inspect_chat(self, chat_code, show_messages=False, show_reactions=False, limit=10):
+    def inspect_chat(self, chat_room, show_messages=False, show_reactions=False, limit=10):
         """Inspect a specific chat's Redis cache"""
-        try:
-            chat_room = ChatRoom.objects.get(code=chat_code)
-        except ChatRoom.DoesNotExist:
-            self.stdout.write(self.style.ERROR(f'Chat room {chat_code} not found'))
-            return
-
         redis_client = MessageCache._get_redis_client()
+        chat_code = chat_room.code
 
-        self.stdout.write(self.style.SUCCESS(f'\n🔍 Chat: {chat_code} ({chat_room.name})'))
+        self.stdout.write(self.style.SUCCESS(f'\n🔍 Chat: {chat_room.host.reserved_username}/{chat_code} ({chat_room.name})'))
         self.stdout.write('━' * 60)
 
         # Main messages
@@ -240,18 +266,15 @@ class Command(BaseCommand):
                     self.stdout.write(f'Message ID: {message_id}')
                     self.stdout.write(f'  From: {username}')
                     self.stdout.write(f'  Content: "{content_preview}"')
-                    self.stdout.write(f'  Reactions: {", ".join([f"{r["emoji"]} ({r["count"]})" for r in reactions])}')
+                    reactions_str = ", ".join([f"{r['emoji']} ({r['count']})" for r in reactions])
+                    self.stdout.write(f'  Reactions: {reactions_str}')
                     self.stdout.write('')
 
         self.stdout.write('')
 
-    def compare_cache(self, chat_code):
+    def compare_cache(self, chat_room):
         """Compare Redis cache with PostgreSQL"""
-        try:
-            chat_room = ChatRoom.objects.get(code=chat_code)
-        except ChatRoom.DoesNotExist:
-            self.stdout.write(self.style.ERROR(f'Chat room {chat_code} not found'))
-            return
+        chat_code = chat_room.code
 
         # Get PostgreSQL count
         pg_count = Message.objects.filter(chat_room=chat_room, is_deleted=False).count()
@@ -329,14 +352,9 @@ class Command(BaseCommand):
 
         self.stdout.write('')
 
-    def clear_cache(self, chat_code, force=False):
+    def clear_cache(self, chat_room, force=False):
         """Clear Redis cache for a chat"""
-        try:
-            chat_room = ChatRoom.objects.get(code=chat_code)
-        except ChatRoom.DoesNotExist:
-            self.stdout.write(self.style.ERROR(f'Chat room {chat_code} not found'))
-            return
-
+        chat_code = chat_room.code
         redis_client = MessageCache._get_redis_client()
 
         # Count messages
@@ -349,7 +367,7 @@ class Command(BaseCommand):
         counts = {key: redis_client.zcard(key) for key in keys}
 
         if not force:
-            self.stdout.write(self.style.WARNING(f'\n⚠️  About to clear Redis cache for chat {chat_code}:'))
+            self.stdout.write(self.style.WARNING(f'\n⚠️  About to clear Redis cache for chat {chat_room.host.reserved_username}/{chat_code}:'))
             for key, count in counts.items():
                 if count > 0:
                     self.stdout.write(f'  - {key} ({count} messages)')
@@ -369,14 +387,9 @@ class Command(BaseCommand):
 
         self.stdout.write('')
 
-    def monitor_cache(self, chat_code):
+    def monitor_cache(self, chat_room):
         """Monitor cache in real-time"""
-        try:
-            chat_room = ChatRoom.objects.get(code=chat_code)
-        except ChatRoom.DoesNotExist:
-            self.stdout.write(self.style.ERROR(f'Chat room {chat_code} not found'))
-            return
-
+        chat_code = chat_room.code
         redis_client = MessageCache._get_redis_client()
         key = MessageCache.MESSAGES_KEY.format(chat_code=chat_code)
 

@@ -875,7 +875,7 @@ redis-cli ZCARD chat:ABC123:messages
 **Python Management Commands:**
 
 ```bash
-# Inspect Redis cache (see docs/MANAGEMENT_TOOLS.md)
+# Inspect Redis cache
 ./venv/bin/python manage.py inspect_redis --chat ABC123
 ```
 
@@ -915,7 +915,6 @@ MessageCache.set_message_reactions(chat_code, message_id, [])
 
 ## Related Documentation
 
-- **Management Tools:** [docs/MANAGEMENT_TOOLS.md](./MANAGEMENT_TOOLS.md) - Redis cache inspection commands
 - **Testing:** [docs/TESTING.md](./TESTING.md) - Redis cache test suite (57 tests total: 49 cache tests + 8 partial hit tests)
 - **Architecture:** [docs/ARCHITECTURE.md](./ARCHITECTURE.md) - Overall system design
 

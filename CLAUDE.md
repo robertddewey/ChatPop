@@ -247,7 +247,6 @@ Comprehensive documentation is organized in the `docs/` directory:
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
 - **[docs/AUDIO.md](docs/AUDIO.md)** - iOS Safari-compatible audio implementation
 - **[docs/THEME_STYLING_GUIDE.md](docs/THEME_STYLING_GUIDE.md)** - Complete ChatTheme database field reference
-- **[docs/MANAGEMENT_TOOLS.md](docs/MANAGEMENT_TOOLS.md)** - Redis cache inspection and debugging tools
 
 ---
 

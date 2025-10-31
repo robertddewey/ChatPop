@@ -181,7 +181,6 @@ The frontend WebSocket hook (`useChatWebSocket.ts`) automatically reconnects up 
 - **[docs/TESTING.md](../docs/TESTING.md)** - Testing framework and Allure reports
 - **[docs/CACHING.md](../docs/CACHING.md)** - Redis message and reaction caching architecture
 - **[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
-- **[docs/MANAGEMENT_TOOLS.md](../docs/MANAGEMENT_TOOLS.md)** - Redis cache inspection tools
 
 ### Source Code
 - [chats/redis_cache.py](chats/redis_cache.py) - Redis cache implementation

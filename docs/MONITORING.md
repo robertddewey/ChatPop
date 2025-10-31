@@ -320,4 +320,3 @@ def _get_sample_rate(self) -> float:
 
 - [CACHING.md](CACHING.md) - Redis caching architecture
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture overview
-- [MANAGEMENT_TOOLS.md](MANAGEMENT_TOOLS.md) - Other management commands
