@@ -209,37 +209,40 @@ def _combine_suggestions_only(suggestions: List[Dict[str, str]]) -> str:
 
 
 def generate_suggestions_embedding(
-    caption_full: str,
-    caption_visible_text: str,
-    caption_title: str,
-    caption_category: str,
     suggestions: List[Dict[str, str]],
     model: str = "text-embedding-3-small",
+    caption_full: str = None,
+    caption_visible_text: str = None,
+    caption_title: str = None,
+    caption_category: str = None,
 ) -> EmbeddingData:
     """
-    Generate conversational/topic embedding from caption fields + ALL suggestion names/descriptions.
+    Generate conversational/topic embedding from ALL suggestion names/descriptions.
 
-    This is Embedding 2 (PRIMARY for collaborative discovery). It groups photos by
+    This is the PRIMARY embedding for collaborative discovery. It groups photos by
     conversation potential and social context rather than just visual content.
 
     Why: "bar-room", "happy-hour", "brew-talk" all cluster in the same semantic space,
     enabling collaborative discovery where Person B uploading a similar photo sees
     existing rooms like "bar-room (1 user)" as recommendations.
 
+    NOTE: Caption parameters are deprecated and ignored. They are kept for backward
+    compatibility but the embedding is generated ONLY from suggestions.
+
     Args:
-        caption_full: Full semantic caption (required)
-        caption_visible_text: Visible text/labels from image (optional)
-        caption_title: Short title (optional)
-        caption_category: Category classification (optional)
         suggestions: List of suggestion dicts with 'name' and 'description' keys (required)
         model: OpenAI embedding model (default: text-embedding-3-small)
+        caption_full: DEPRECATED - Ignored (kept for backward compatibility)
+        caption_visible_text: DEPRECATED - Ignored (kept for backward compatibility)
+        caption_title: DEPRECATED - Ignored (kept for backward compatibility)
+        caption_category: DEPRECATED - Ignored (kept for backward compatibility)
 
     Returns:
         EmbeddingData object with embedding vector, model info, and token usage
 
     Raises:
         RuntimeError: If OpenAI API key not configured or API call fails
-        ValueError: If caption_full is empty or suggestions list is empty
+        ValueError: If suggestions list is empty
 
     Example:
         >>> suggestions = [
@@ -247,10 +250,6 @@ def generate_suggestions_embedding(
         ...     {"name": "Happy Hour", "key": "happy-hour", "description": "Share bar stories"}
         ... ]
         >>> embedding_data = generate_suggestions_embedding(
-        ...     caption_full="Budweiser beer bottle labeled King of Beers...",
-        ...     caption_visible_text="Budweiser, King of Beers",
-        ...     caption_title="Budweiser Beer Bottle",
-        ...     caption_category="beer bottle",
         ...     suggestions=suggestions
         ... )
         >>> len(embedding_data.embedding)
@@ -259,9 +258,6 @@ def generate_suggestions_embedding(
         'text-embedding-3-small'
     """
     # Validate required fields
-    if not caption_full or not caption_full.strip():
-        raise ValueError("caption_full is required for embedding generation")
-
     if not suggestions or len(suggestions) == 0:
         raise ValueError("suggestions list cannot be empty for suggestions embedding")
 

@@ -79,21 +79,21 @@ class PhotoAnalysis(models.Model):
 
     # === ANALYSIS RESULTS ===
 
-    # Seed suggestions (initial AI output before refinement)
-    # - Stored for audit trail and refinement input
+    # Seed suggestions (initial AI output from Vision API)
+    # - Stored for audit trail and processing input
     # - 10 initial suggestions from GPT-4 Vision
     # - May contain duplicates (e.g., "Bar Room", "Drinking Lounge", "Cheers!")
-    # - Used as input for LLM refinement process
+    # - Input for embedding-based normalization process
     seed_suggestions = models.JSONField(
         null=True,
         blank=True,
-        help_text="Initial 10 AI suggestions before refinement (audit trail)"
+        help_text="Initial 10 AI suggestions from Vision API (audit trail)"
     )
 
-    # Chat name suggestions (refined output for display/embedding)
-    # - 5-7 refined, deduplicated suggestions
-    # - Result of LLM-based refinement if enabled, otherwise same as seed_suggestions
-    # - Removes true duplicates while preserving distinct entities
+    # Chat name suggestions (final output for display)
+    # - 5 deduplicated suggestions after normalization and merging
+    # - Result of: suggestion-level normalization + photo-level popular discovery
+    # - Generic suggestions normalized to existing rooms, proper nouns preserved
     # Format:
     # {
     #   "suggestions": [
@@ -101,7 +101,7 @@ class PhotoAnalysis(models.Model):
     #     {"name": "Coffee Mug", "key": "coffee-mug", "description": "..."},
     #     ...
     #   ],
-    #   "count": 5-7
+    #   "count": 5
     # }
     suggestions = models.JSONField(
         help_text="Refined chat name suggestions (used for display and embeddings)"
@@ -136,114 +136,16 @@ class PhotoAnalysis(models.Model):
         help_text="API token usage for cost tracking"
     )
 
-    # === IMAGE CAPTION (For Embeddings) ===
-
-    # Short title extracted from the image
-    # - Example: "Budweiser", "Coffee Mug", "Veterans Memorial"
-    # - Used for quick reference and display
-    caption_title = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True,
-        help_text="Short title extracted from image"
-    )
-
-    # Category classification of the image
-    # - Example: "beer bottle", "coffee mug", "military memorial"
-    # - Used for grouping and filtering
-    caption_category = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True,
-        help_text="Category classification of the image"
-    )
-
-    # Any visible text found in the image
-    # - Example: "Budweiser, King of Beers", "Starbucks Coffee"
-    # - Extracted using OCR capabilities of vision model
-    caption_visible_text = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Visible text, labels, or brand names in the image"
-    )
-
-    # Full semantic caption optimized for embedding
-    # - Example: "Budweiser beer bottle labeled 'King of Beers' with red and white
-    #   logo on a wooden table. A classic American lager brand."
-    # - This is the text that gets converted to an embedding vector
-    # - One or two concise sentences capturing visual and semantic meaning
-    caption_full = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Full semantic caption used for embedding generation"
-    )
-
-    # When the caption was generated
-    caption_generated_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Timestamp when caption was generated"
-    )
-
-    # === CAPTION API METADATA ===
-
-    # AI model used for caption generation
-    # - Separate from ai_vision_model (which is for suggestions)
-    # - Example: "gpt-4o-mini", "gpt-4o"
-    caption_model = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True,
-        help_text="AI model used for caption generation (e.g., gpt-4o-mini)"
-    )
-
-    # Token usage for caption generation API call
-    # - Format: {"prompt_tokens": 850, "completion_tokens": 45, "total_tokens": 895}
-    # - Separate from token_usage (which is for suggestions)
-    caption_token_usage = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Caption API token usage for cost tracking"
-    )
-
-    # Full raw response from caption generation API
-    # - Useful for debugging and reprocessing
-    # - Separate from raw_response (which is for suggestions)
-    caption_raw_response = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="Complete caption API response for debugging"
-    )
-
     # === SEMANTIC EMBEDDINGS ===
 
-    # Embedding 1: Semantic/Content (broad clustering)
-    # - Generated from: caption_full + caption_visible_text + caption_title + caption_category
-    # - Model: text-embedding-3-small (1536 dimensions)
-    # - Groups by: visual content (beverages, food, nature, vehicles)
-    # - Use: General categorization, future features
-    caption_embedding = VectorField(
-        dimensions=1536,
-        null=True,
-        blank=True,
-        help_text="Semantic/Content embedding for broad categorization (text-embedding-3-small, 1536d)"
-    )
-
-    # When the caption embedding was generated
-    caption_embedding_generated_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Timestamp when caption embedding was generated"
-    )
-
-    # Embedding 2: Conversational/Topic (PRIMARY for collaborative discovery)
-    # - Generated from: caption_full + caption_visible_text + all 10 suggestion names + all 10 descriptions
+    # Conversational/Topic embedding (PRIMARY for collaborative discovery)
+    # - Generated from: All 10 seed suggestion names + descriptions
     # - Model: text-embedding-3-small (1536 dimensions)
     # - Groups by: conversation potential and social context
-    # - Use: Finding existing chat rooms from similar photos
+    # - Use: Finding photos with similar suggestion themes (photo-level K-NN)
     # - Why: "bar-room", "happy-hour", "brew-talk" all cluster in the same semantic space
     # - Enables collaborative discovery (Person A uploads beer → creates "bar-room",
-    #   Person B uploads similar photo → sees "bar-room (1 user)" as recommendation)
+    #   Person B uploads similar photo → sees "bar-room (1 user)" as popular suggestion)
     suggestions_embedding = VectorField(
         dimensions=1536,
         null=True,

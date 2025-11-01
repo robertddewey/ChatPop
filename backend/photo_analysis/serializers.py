@@ -138,16 +138,9 @@ class PhotoAnalysisDetailSerializer(PhotoAnalysisSerializer):
     file_hash = serializers.CharField(read_only=True)
     file_size = serializers.IntegerField(read_only=True)
 
-    # Caption fields (for embeddings)
-    caption_title = serializers.CharField(read_only=True, allow_blank=True)
-    caption_category = serializers.CharField(read_only=True, allow_blank=True)
-    caption_visible_text = serializers.CharField(read_only=True, allow_blank=True)
-    caption_full = serializers.CharField(read_only=True, allow_blank=True)
-    caption_generated_at = serializers.DateTimeField(read_only=True, allow_null=True)
-
-    # Seed suggestions (original 10 AI suggestions before refinement - for debugging)
+    # Seed suggestions (original 10 AI suggestions from Vision API - for debugging)
     seed_suggestions = serializers.SerializerMethodField(
-        help_text="Original 10 AI suggestions before refinement (audit trail for debugging)"
+        help_text="Original 10 AI suggestions from Vision API (audit trail for debugging)"
     )
 
     # Room selection tracking
@@ -161,11 +154,6 @@ class PhotoAnalysisDetailSerializer(PhotoAnalysisSerializer):
             'image_phash',
             'file_hash',
             'file_size',
-            'caption_title',
-            'caption_category',
-            'caption_visible_text',
-            'caption_full',
-            'caption_generated_at',
             'seed_suggestions',
             'selected_suggestion_code',
             'selected_at',
@@ -179,8 +167,8 @@ class PhotoAnalysisDetailSerializer(PhotoAnalysisSerializer):
         """
         Extract and format seed suggestions from database JSON field.
 
-        Seed suggestions are the initial 10 AI-generated suggestions before refinement.
-        Used for debugging and comparing refinement effectiveness.
+        Seed suggestions are the initial 10 AI-generated suggestions from Vision API.
+        Used for debugging and audit trail.
 
         Returns:
             list[dict]: Array of seed suggestion objects with name, key, and description fields.
@@ -253,5 +241,5 @@ class PhotoUploadResponseSerializer(serializers.Serializer):
         help_text="Whether this analysis was cached (true) or freshly generated (false)"
     )
     analysis = PhotoAnalysisDetailSerializer(
-        help_text="Complete photo analysis with AI suggestions, captions, and embeddings"
+        help_text="Complete photo analysis with AI suggestions and embeddings"
     )

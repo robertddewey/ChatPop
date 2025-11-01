@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from pgvector.django import VectorField
 import uuid
 import string
 import random
@@ -141,6 +142,18 @@ class ChatRoom(models.Model):
     )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+
+    # Embedding for suggestion normalization (collaborative discovery)
+    # - Generated from room name only (stable identifier)
+    # - Model: text-embedding-3-small (1536 dimensions)
+    # - Use: K-NN matching during photo upload to normalize generic suggestions
+    # - Only for AI-generated rooms (source='ai')
+    name_embedding = VectorField(
+        dimensions=1536,
+        null=True,
+        blank=True,
+        help_text="Embedding of room name for suggestion normalization (text-embedding-3-small, 1536d)"
+    )
 
     # Host/Creator (REQUIRED - must be registered user)
     host = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='hosted_chats')

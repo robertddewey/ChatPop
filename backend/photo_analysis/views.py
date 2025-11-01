@@ -25,11 +25,9 @@ from .utils.fingerprinting.image_hash import calculate_phash
 from .utils.fingerprinting.file_hash import calculate_md5, get_file_size
 from .utils.vision.openai_vision import get_vision_provider
 from .utils.image_processing import resize_image_if_needed
-from .utils.caption import generate_caption
-from .utils.embedding import generate_embedding, generate_suggestions_embedding
+from .utils.embedding import generate_suggestions_embedding
 from .utils.suggestion_blending import blend_suggestions, get_similar_photo_popular_suggestions
-from .utils.refinement import refine_suggestions
-from .utils.ranking import rank_by_canonical_match
+from .utils.room_matching import normalize_suggestions_to_rooms
 from .utils.performance import PerformanceTracker
 from chatpop.utils.media import MediaStorage
 
@@ -211,71 +209,16 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                     status=status.HTTP_503_SERVICE_UNAVAILABLE
                 )
 
-            # Create separate copies of the image for parallel processing
-            # This is necessary because both API calls need to read the image independently
+            # Analyze image for chat name suggestions
+            logger.info(f"Analyzing image for suggestions with {vision_provider.get_model_name()}")
             resized_image.seek(0)
-            image_bytes = resized_image.read()
-
-            image_for_suggestions = io.BytesIO(image_bytes)
-            image_for_captions = io.BytesIO(image_bytes)
-
-            # Define worker functions for parallel execution
-            def analyze_suggestions():
-                """Worker: Analyze image for chat name suggestions."""
-                logger.info(f"Analyzing image for suggestions with {vision_provider.get_model_name()}")
-                image_for_suggestions.seek(0)
-                return vision_provider.analyze_image(
-                    image_file=image_for_suggestions,
-                    prompt=config.PHOTO_ANALYSIS_PROMPT,
-                    max_suggestions=5,
-                    temperature=config.PHOTO_ANALYSIS_TEMPERATURE
-                )
-
-            def analyze_captions():
-                """Worker: Generate semantic caption for embeddings."""
-                if not config.PHOTO_ANALYSIS_ENABLE_CAPTIONS:
-                    logger.info("Caption generation disabled, skipping")
-                    return None
-
-                logger.info(f"Generating caption with model={config.PHOTO_ANALYSIS_CAPTION_MODEL}")
-                image_for_captions.seek(0)
-                return generate_caption(image_file=image_for_captions)
-
-            # Execute both API calls in parallel using ThreadPoolExecutor
-            logger.info("Starting parallel API execution (suggestions + captions)")
-            analysis_result = None
-            caption_data = None
-
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                # Submit both tasks
-                future_suggestions = executor.submit(analyze_suggestions)
-                future_captions = executor.submit(analyze_captions)
-
-                # Wait for both to complete and collect results
-                for future in as_completed([future_suggestions, future_captions]):
-                    try:
-                        result = future.result()
-
-                        # Identify which task completed
-                        if future == future_suggestions:
-                            analysis_result = result
-                            logger.info("Suggestions analysis completed")
-                        elif future == future_captions:
-                            caption_data = result
-                            logger.info("Caption generation completed")
-
-                    except Exception as e:
-                        # Log error but continue - one task can fail without breaking the other
-                        if future == future_suggestions:
-                            logger.error(f"Suggestions analysis failed: {str(e)}", exc_info=True)
-                            raise  # Suggestions are required, so re-raise
-                        elif future == future_captions:
-                            logger.warning(f"Caption generation failed (non-fatal): {str(e)}", exc_info=True)
-                            caption_data = None  # Captions are optional
-
-            # Verify we got the required suggestions result
-            if analysis_result is None:
-                raise RuntimeError("Vision analysis failed to produce suggestions")
+            analysis_result = vision_provider.analyze_image(
+                image_file=resized_image,
+                prompt=config.PHOTO_ANALYSIS_PROMPT,
+                max_suggestions=10,  # Request 10 seed suggestions
+                temperature=config.PHOTO_ANALYSIS_TEMPERATURE
+            )
+            logger.info("Vision analysis completed")
 
             # Store image file using unified MediaStorage API
             import uuid
@@ -298,181 +241,124 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
             if ttl_hours > 0:
                 expires_at = timezone.now() + timedelta(hours=ttl_hours)
 
-            # Format seed suggestions (initial 10 AI suggestions before refinement)
+            # Format seed suggestions (initial 10 AI suggestions from Vision API)
+            seed_suggestions_list = [
+                {
+                    'name': s.name,
+                    'key': s.key,
+                    'description': s.description,
+                    'is_proper_noun': s.is_proper_noun,
+                    'source': 'seed'
+                }
+                for s in analysis_result.suggestions
+            ]
+
             seed_suggestions_data = {
-                'suggestions': [
-                    {
-                        'name': s.name,
-                        'key': s.key,
-                        'description': s.description,
-                        'is_proper_noun': s.is_proper_noun
-                    }
-                    for s in analysis_result.suggestions
-                ],
-                'count': len(analysis_result.suggestions)
+                'suggestions': seed_suggestions_list,
+                'count': len(seed_suggestions_list)
             }
 
-            # =========================================================================
-            # CRITICAL: Generate suggestions embedding from SEED suggestions (BEFORE refinement)
-            # This enables us to find similar photos and their popular suggestions
-            # BEFORE we run refinement, so refinement can use that context
-            # =========================================================================
-            suggestions_embedding_vector = None
-            similar_photo_popular = None
-
-            if caption_data:
-                try:
-                    logger.info("Generating suggestions embedding from SEED suggestions (for finding similar photos BEFORE refinement)")
-
-                    # Convert Suggestion objects to dictionaries for embedding generation
-                    seed_suggestions_list = [
-                        {
-                            'name': s.name,
-                            'description': s.description
-                        }
-                        for s in analysis_result.suggestions
-                    ]
-
-                    suggestions_embedding_data = generate_suggestions_embedding(
-                        caption_full=caption_data.caption,
-                        caption_visible_text=caption_data.visible_text,
-                        caption_title=caption_data.title,
-                        caption_category=caption_data.category,
-                        suggestions=seed_suggestions_list,  # All 10 seed suggestions
-                        model="text-embedding-3-small"
-                    )
-
-                    # Store the embedding vector for later use
-                    suggestions_embedding_vector = suggestions_embedding_data.embedding
-
-                    logger.info(
-                        f"Suggestions embedding generated from SEED: "
-                        f"dimensions={len(suggestions_embedding_vector)}, "
-                        f"tokens={suggestions_embedding_data.token_usage['total_tokens']}, "
-                        f"model={suggestions_embedding_data.model}"
-                    )
-
-                    # Now find similar photos and extract popular suggestions
-                    # This provides context for refinement to avoid duplicates
-                    try:
-                        logger.info("Finding similar photos to extract popular suggestions for refinement context")
-                        similar_photo_popular = get_similar_photo_popular_suggestions(
-                            embedding_vector=suggestions_embedding_vector,
-                            exclude_photo_id=None  # We haven't created the PhotoAnalysis record yet
-                        )
-                        logger.info(f"Found {len(similar_photo_popular)} popular suggestions from similar photos")
-                        logger.info(f"DEBUG similar_photo_popular: {similar_photo_popular}")
-                    except Exception as e:
-                        logger.warning(f"Failed to extract similar-photo popular suggestions (non-fatal): {str(e)}", exc_info=True)
-                        similar_photo_popular = None
-
-                except Exception as e:
-                    logger.warning(f"Suggestions embedding generation failed (non-fatal): {str(e)}", exc_info=True)
-                    suggestions_embedding_vector = None
-                    similar_photo_popular = None
-            else:
-                logger.info("No caption data available, skipping suggestions embedding generation")
+            logger.info(f"Received {len(seed_suggestions_list)} seed suggestions from Vision API")
 
             # =========================================================================
-            # Unified refinement strategy: Pass popular + seed suggestions to LLM together
-            # This allows the LLM to deduplicate semantic duplicates ACROSS both sets
-            # while preserving distinct entities (e.g., "Twister" vs "Twisters" vs "The Twisters")
+            # NEW WORKFLOW: Suggestion normalization + photo-level popularity
+            # Replaces LLM-based refinement with faster, deterministic approach
             # =========================================================================
-            refined_suggestions_list = None
-            if caption_data:
-                try:
-                    # Prepare combined input for refinement: popular + seed suggestions
-                    combined_suggestions_for_refinement = []
 
-                    # Add popular suggestions first (mark with source='popular' for LLM context)
-                    if similar_photo_popular and len(similar_photo_popular) > 0:
-                        logger.info(f"Adding {len(similar_photo_popular)} popular suggestions to refinement input")
-                        for popular in similar_photo_popular:
-                            combined_suggestions_for_refinement.append({
-                                'name': popular['name'],
-                                'key': popular['key'],
-                                'description': '',  # Popular suggestions don't have descriptions
-                                'source': 'popular',  # Mark source for LLM to understand context
-                                'usage_count': popular.get('usage_count', 1)
-                            })
+            # STEP 1: Normalize generic suggestions to existing rooms (parallel K-NN)
+            # - Proper nouns preserved (e.g., "Budweiser", "The Matrix")
+            # - Generic suggestions matched to existing rooms via embedding similarity
+            logger.info("Step 1: Normalizing generic suggestions to existing rooms")
+            normalized_suggestions = normalize_suggestions_to_rooms(
+                suggestions=seed_suggestions_list
+            )
 
-                    # Add seed suggestions (mark with source='seed')
-                    seed_suggestions_list = [
-                        {
-                            'name': s.name,
-                            'key': s.key,
-                            'description': s.description,
-                            'source': 'seed'  # Mark as fresh AI suggestion
-                        }
-                        for s in analysis_result.suggestions
-                    ]
-                    combined_suggestions_for_refinement.extend(seed_suggestions_list)
-
-                    logger.info(
-                        f"Refining combined suggestions with LLM: "
-                        f"{len(similar_photo_popular or [])} popular + {len(seed_suggestions_list)} seed = "
-                        f"{len(combined_suggestions_for_refinement)} total input"
-                    )
-
-                    # Call refinement with COMBINED popular + seed suggestions
-                    # LLM will deduplicate semantic duplicates while preserving distinct entities
-                    refined_suggestions_list = refine_suggestions(
-                        seed_suggestions=combined_suggestions_for_refinement,
-                        caption_title=caption_data.title,
-                        caption_category=caption_data.category,
-                        caption_full=caption_data.caption,
-                        caption_visible_text=caption_data.visible_text,
-                        similar_photo_popular=None  # Already included in seed_suggestions
-                    )
-
-                    logger.info(
-                        f"Refinement complete: {len(combined_suggestions_for_refinement)} → "
-                        f"{len(refined_suggestions_list)} refined suggestions"
-                    )
-
-                    # Source tracking is now handled by LLM (included in JSON output schema)
-                    # LLM returns 'popular', 'seed', or 'refined' based on suggestion origin
-
-                except Exception as e:
-                    # Refinement is non-fatal - log warning and fall back to seed suggestions
-                    logger.warning(f"Suggestion refinement failed (non-fatal): {str(e)}", exc_info=True)
-                    refined_suggestions_list = None
-            else:
-                logger.info("Skipping suggestion refinement (no caption data available)")
-
-            # =========================================================================
-            # Use refined suggestions directly (no concatenation needed)
-            # If refinement failed, fall back to seed suggestions only
-            # =========================================================================
-            if refined_suggestions_list:
-                # Use refined output directly (already deduplicated by LLM)
-                final_suggestions_list = refined_suggestions_list
-                logger.info(f"Using {len(final_suggestions_list)} refined suggestions (deduplicated by LLM)")
-            else:
-                # Fallback to seed suggestions if refinement failed
-                final_suggestions_list = [
+            # STEP 2: Generate combined suggestions embedding for photo-level similarity
+            # - Used to find photos with similar themes
+            # - Enables discovery of popular suggestions from community
+            logger.info("Step 2: Generating combined suggestions embedding for photo-level K-NN")
+            try:
+                # Convert normalized suggestions to embedding input format
+                embedding_input = [
                     {
-                        'name': s.name,
-                        'key': s.key,
-                        'description': s.description,
-                        'source': 'seed'
+                        'name': s['name'],
+                        'description': s.get('description', '')
                     }
-                    for s in analysis_result.suggestions
+                    for s in normalized_suggestions
                 ]
-                logger.info(f"Refinement failed, using {len(final_suggestions_list)} seed suggestions as fallback")
 
-            # =========================================================================
-            # Apply intelligent ranking: Move canonical match to #1
-            # Ensures that the suggestion matching the photo's title/visible_text
-            # ranks #1, even if other suggestions are more popular globally
-            # =========================================================================
-            if caption_data and final_suggestions_list:
-                final_suggestions_list = rank_by_canonical_match(
-                    suggestions=final_suggestions_list,
-                    caption_title=caption_data.title,
-                    caption_visible_text=caption_data.visible_text
+                suggestions_embedding_data = generate_suggestions_embedding(
+                    suggestions=embedding_input,
+                    model="text-embedding-3-small"
                 )
-                logger.info("Applied intelligent ranking to prioritize canonical matches")
+
+                suggestions_embedding_vector = suggestions_embedding_data.embedding
+
+                logger.info(
+                    f"Suggestions embedding generated: "
+                    f"dimensions={len(suggestions_embedding_vector)}, "
+                    f"tokens={suggestions_embedding_data.token_usage['total_tokens']}"
+                )
+
+            except Exception as e:
+                logger.warning(f"Suggestions embedding generation failed (non-fatal): {str(e)}", exc_info=True)
+                suggestions_embedding_vector = None
+
+            # STEP 3: Find similar photos and extract popular suggestions
+            # - K-NN search on suggestions_embedding
+            # - Extract frequently occurring suggestions from similar photos
+            similar_photo_popular = []
+            if suggestions_embedding_vector is not None:
+                try:
+                    logger.info("Step 3: Finding similar photos to extract popular suggestions")
+                    similar_photo_popular = get_similar_photo_popular_suggestions(
+                        embedding_vector=suggestions_embedding_vector,
+                        exclude_photo_id=None  # We haven't created the PhotoAnalysis record yet
+                    )
+                    logger.info(f"Found {len(similar_photo_popular)} popular suggestions from similar photos")
+                except Exception as e:
+                    logger.warning(f"Failed to extract popular suggestions (non-fatal): {str(e)}", exc_info=True)
+                    similar_photo_popular = []
+
+            # STEP 4: Merge normalized + popular suggestions
+            # - Priority: Popular suggestions first (community trends)
+            # - Then add normalized suggestions
+            # - Simple deduplication by key
+            # - Limit to 5 final suggestions
+            logger.info("Step 4: Merging popular + normalized suggestions")
+
+            # Build final suggestions pool
+            final_suggestions_pool = []
+            seen_keys = set()
+
+            # Add popular suggestions first (prioritize community trends)
+            for popular in similar_photo_popular:
+                if popular['key'] not in seen_keys:
+                    final_suggestions_pool.append({
+                        'name': popular['name'],
+                        'key': popular['key'],
+                        'description': '',  # Popular suggestions don't have descriptions
+                        'source': 'popular',
+                        'is_proper_noun': False
+                    })
+                    seen_keys.add(popular['key'])
+
+            # Add normalized suggestions (fill remaining slots)
+            for suggestion in normalized_suggestions:
+                if suggestion['key'] not in seen_keys:
+                    final_suggestions_pool.append(suggestion)
+                    seen_keys.add(suggestion['key'])
+
+            # Limit to 5 suggestions
+            final_suggestions_list = final_suggestions_pool[:5]
+
+            logger.info(
+                f"Merge complete: {len(similar_photo_popular)} popular + "
+                f"{len(normalized_suggestions)} normalized → {len(final_suggestions_list)} final "
+                f"(popular={sum(1 for s in final_suggestions_list if s.get('source') == 'popular')}, "
+                f"normalized={sum(1 for s in final_suggestions_list if s.get('source') == 'normalized')}, "
+                f"seed={sum(1 for s in final_suggestions_list if s.get('source') == 'seed')})"
+            )
 
             # Format final suggestions for database storage
             suggestions_data = {
@@ -480,92 +366,20 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 'count': len(final_suggestions_list)
             }
 
-            # Prepare caption fields (if caption generation succeeded)
-            caption_fields = {}
-            if caption_data:
-                caption_fields = {
-                    'caption_title': caption_data.title,
-                    'caption_category': caption_data.category,
-                    'caption_visible_text': caption_data.visible_text,
-                    'caption_full': caption_data.caption,
-                    'caption_generated_at': timezone.now(),
-                    'caption_model': caption_data.model,
-                    'caption_token_usage': caption_data.token_usage,
-                    'caption_raw_response': caption_data.raw_response
-                }
-                logger.info(f"Caption fields populated: title='{caption_data.title}', category='{caption_data.category}', model='{caption_data.model}'")
-
-                # Generate Embedding 1: Semantic/Content embedding from caption fields
-                # Check if caption embedding generation is enabled
-                if config.PHOTO_ANALYSIS_ENABLE_CAPTION_EMBEDDING:
-                    try:
-                        logger.info("Generating caption embedding (Embedding 1: Semantic/Content)")
-                        embedding_data = generate_embedding(
-                            caption_full=caption_data.caption,
-                            caption_visible_text=caption_data.visible_text,
-                            caption_title=caption_data.title,
-                            caption_category=caption_data.category,
-                            model="text-embedding-3-small"
-                        )
-
-                        # Add caption embedding fields
-                        caption_fields['caption_embedding'] = embedding_data.embedding
-                        caption_fields['caption_embedding_generated_at'] = timezone.now()
-
-                        logger.info(
-                            f"Caption embedding generated successfully: "
-                            f"dimensions={len(embedding_data.embedding)}, "
-                            f"tokens={embedding_data.token_usage['total_tokens']}, "
-                            f"model={embedding_data.model}"
-                        )
-
-                    except Exception as e:
-                        # Caption embedding generation is non-fatal - log warning and continue
-                        logger.warning(f"Caption embedding generation failed (non-fatal): {str(e)}", exc_info=True)
-                        # caption_embedding and caption_embedding_generated_at will remain null in database
-                else:
-                    logger.info("Caption embedding generation disabled (PHOTO_ANALYSIS_ENABLE_CAPTION_EMBEDDING=False)")
-                    # caption_embedding and caption_embedding_generated_at will remain null
-
-                # Store Embedding 2: Conversational/Topic embedding (PRIMARY for collaborative discovery)
-                # This was already generated earlier (BEFORE refinement) to find similar photos
-                # Now we just add it to caption_fields for database storage
-                if suggestions_embedding_vector is not None:
-                    caption_fields['suggestions_embedding'] = suggestions_embedding_vector
-                    caption_fields['suggestions_embedding_generated_at'] = timezone.now()
-                    logger.info("Storing suggestions embedding (generated earlier before refinement)")
-                else:
-                    logger.warning("Suggestions embedding not available (generation failed earlier)")
-                    # suggestions_embedding and suggestions_embedding_generated_at will remain null in database
-
-            else:
-                logger.info("No caption data available, caption fields will be empty")
-
-            # Enrich refined suggestions with room metadata (metadata-only layer)
-            # This runs after embeddings are generated (if caption data exists)
-            # IMPORTANT: Use refined suggestions (from suggestions_data) NOT seed suggestions
+            # Enrich final suggestions with room metadata (metadata-only layer)
+            # Adds has_room, room_id, room_code, room_url, active_users for existing rooms
             blended = None
-            if caption_fields.get('suggestions_embedding'):
-                try:
-                    logger.info("Enriching refined suggestions with room metadata")
-
-                    # Use refined suggestions (or seed fallback) from suggestions_data
-                    # These are the suggestions after intelligent refinement/deduplication
-                    refined_suggestions_list = suggestions_data.get('suggestions', [])
-
-                    # Enrich refined suggestions with room metadata (metadata-only layer)
-                    blended = blend_suggestions(
-                        refined_suggestions=refined_suggestions_list,
-                        exclude_photo_id=None  # Will exclude after PhotoAnalysis is created
-                    )
-
-                    logger.info(f"Enriched {len(blended)} refined suggestions with room metadata")
-                except Exception as e:
-                    # Metadata enrichment is non-fatal - log warning and continue
-                    logger.warning(f"Metadata enrichment failed (non-fatal): {str(e)}", exc_info=True)
-                    blended = None
-            else:
-                logger.info("Skipping metadata enrichment (no suggestions embedding available)")
+            try:
+                logger.info("Enriching final suggestions with room metadata")
+                blended = blend_suggestions(
+                    refined_suggestions=final_suggestions_list,
+                    exclude_photo_id=None  # Will exclude after PhotoAnalysis is created
+                )
+                logger.info(f"Enriched {len(blended)} suggestions with room metadata")
+            except Exception as e:
+                # Metadata enrichment is non-fatal - log warning and continue
+                logger.warning(f"Metadata enrichment failed (non-fatal): {str(e)}", exc_info=True)
+                blended = None
 
             # Create PhotoAnalysis record
             photo_analysis = PhotoAnalysis.objects.create(
@@ -576,14 +390,15 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 storage_type=storage_type,
                 expires_at=expires_at,
                 seed_suggestions=seed_suggestions_data,  # Store original 10 AI suggestions for audit trail
-                suggestions=suggestions_data,  # Store refined suggestions (or seed if refinement disabled/failed)
+                suggestions=suggestions_data,  # Store final merged suggestions (popular + normalized)
                 raw_response=analysis_result.raw_response,
                 ai_vision_model=analysis_result.model,
                 token_usage=analysis_result.token_usage,
                 user=request.user if request.user.is_authenticated else None,
                 fingerprint=fingerprint,
                 ip_address=ip_address,
-                **caption_fields  # Unpack caption fields (will be empty dict if no caption data)
+                suggestions_embedding=suggestions_embedding_vector,
+                suggestions_embedding_generated_at=timezone.now() if suggestions_embedding_vector is not None else None
             )
 
             # Return analysis result

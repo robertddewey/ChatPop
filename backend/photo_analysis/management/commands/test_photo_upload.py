@@ -55,8 +55,9 @@ class Command(BaseCommand):
         # List available images
         if options['list']:
             self.stdout.write(self.style.SUCCESS('\nAvailable test images:'))
+            image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
             for file in sorted(fixtures_dir.glob('*')):
-                if file.is_file() and file.name != '.keep':
+                if file.is_file() and file.suffix.lower() in image_extensions:
                     size_mb = file.stat().st_size / (1024 * 1024)
                     self.stdout.write(f"  - {file.name} ({size_mb:.2f} MB)")
             self.stdout.write('')
@@ -263,109 +264,30 @@ class Command(BaseCommand):
                     else:
                         self.stdout.write(self.style.WARNING('\nNo similar existing rooms found'))
 
-                    # Caption Data (generated in parallel with suggestions)
-                    caption_title = analysis.get('caption_title', '')
-                    caption_category = analysis.get('caption_category', '')
-                    caption_visible_text = analysis.get('caption_visible_text', '')
-                    caption_full = analysis.get('caption_full', '')
-                    caption_generated_at = analysis.get('caption_generated_at')
-
-                    if caption_title or caption_full:
-                        self.stdout.write(self.style.SUCCESS('\nCaption Data (for embeddings):'))
-                        if caption_title:
-                            self.stdout.write(f'  Title: {self.style.SUCCESS(caption_title)}')
-                        if caption_category:
-                            self.stdout.write(f'  Category: {caption_category}')
-                        if caption_visible_text:
-                            self.stdout.write(f'  Visible Text: "{caption_visible_text}"')
-                        if caption_full:
-                            self.stdout.write(f'  Full Caption: {caption_full}')
-                        if caption_generated_at:
-                            self.stdout.write(f'  Generated At: {caption_generated_at}')
-
-                        # Caption Model and Token Usage (from database)
-                        if db_record:
-                            if db_record.caption_model:
-                                self.stdout.write(f'  Model: {db_record.caption_model} (DB)')
-                            if db_record.caption_token_usage:
-                                self.stdout.write(f'\nCaption Token Usage: (DB)')
-                                self.stdout.write(f'  Prompt: {db_record.caption_token_usage.get("prompt_tokens")}')
-                                self.stdout.write(f'  Completion: {db_record.caption_token_usage.get("completion_tokens")}')
-                                self.stdout.write(f'  Total: {db_record.caption_token_usage.get("total_tokens")}')
-                    else:
-                        self.stdout.write(self.style.WARNING('\nCaption Data: Not generated (disabled or failed)'))
-
-                    # Embedding Data (two types generated from captions) - from database
+                    # Suggestions Embedding (for photo-level K-NN)
                     if db_record:
-                        # Embedding 1: Caption/Semantic (broad clustering)
-                        if db_record.caption_embedding_generated_at:
-                            self.stdout.write(self.style.SUCCESS('\n✓ Embedding 1 (Caption/Semantic): Generated (DB)'))
-                            self.stdout.write(f'  Dimensions: 1536 (text-embedding-3-small)')
-                            self.stdout.write(f'  Generated At: {db_record.caption_embedding_generated_at}')
-                            self.stdout.write(f'  Source: caption fields (title, category, visible_text, full)')
-                            self.stdout.write(f'  Purpose: Broad categorization by visual content')
-                        else:
-                            if caption_title or caption_full:
-                                self.stdout.write(self.style.WARNING('\n✗ Embedding 1 (Caption/Semantic): Not generated (failed or disabled)'))
-                            else:
-                                self.stdout.write(self.style.WARNING('\n✗ Embedding 1 (Caption/Semantic): Not generated (no captions available)'))
-
-                        # Embedding 2: Suggestions/Topic (PRIMARY for collaborative discovery)
                         if db_record.suggestions_embedding_generated_at:
-                            self.stdout.write(self.style.SUCCESS('\n✓ Embedding 2 (Suggestions/Topic - PRIMARY): Generated (DB)'))
+                            self.stdout.write(self.style.SUCCESS('\n✓ Suggestions Embedding: Generated (DB)'))
                             self.stdout.write(f'  Dimensions: 1536 (text-embedding-3-small)')
                             self.stdout.write(f'  Generated At: {db_record.suggestions_embedding_generated_at}')
-                            self.stdout.write(f'  Source: captions + all 10 suggestion names + descriptions')
-                            self.stdout.write(f'  Purpose: Collaborative discovery - finding similar chat rooms')
+                            self.stdout.write(f'  Source: All normalized suggestion names + descriptions')
+                            self.stdout.write(f'  Purpose: Photo-level K-NN - finding similar photos for popular suggestions')
                             self.stdout.write(f'  How: "bar-room", "happy-hour", "brew-talk" cluster together')
                         else:
-                            if caption_title or caption_full:
-                                self.stdout.write(self.style.WARNING('\n✗ Embedding 2 (Suggestions/Topic - PRIMARY): Not generated (failed or disabled)'))
-                            else:
-                                self.stdout.write(self.style.WARNING('\n✗ Embedding 2 (Suggestions/Topic - PRIMARY): Not generated (no captions available)'))
+                            self.stdout.write(self.style.WARNING('\n✗ Suggestions Embedding: Not generated (failed)'))
 
                         # EMBEDDING SIMILARITY ANALYSIS
-                        # Show top 10 most similar photos for each embedding type
+                        # Show top 10 most similar photos by suggestions embedding
                         self.stdout.write(self.style.WARNING(f'\n{"=" * 80}'))
                         self.stdout.write(self.style.WARNING('EMBEDDING SIMILARITY ANALYSIS'))
                         self.stdout.write(self.style.WARNING(f'{"=" * 80}\n'))
 
-                        # Embedding 1: Caption/Semantic Similarity
-                        if db_record.caption_embedding is not None:
-                            self.stdout.write(self.style.SUCCESS('Top 10 Similar Photos (Embedding 1: Caption/Semantic)'))
-                            self.stdout.write('Purpose: Visual content similarity - "what\'s in the image"\n')
-
-                            similar_caption = PhotoAnalysis.objects.annotate(
-                                distance=CosineDistance('caption_embedding', db_record.caption_embedding)
-                            ).filter(
-                                caption_embedding__isnull=False
-                            ).exclude(
-                                id=db_record.id  # Exclude the uploaded photo itself
-                            ).order_by('distance')[:10]
-
-                            if similar_caption.exists():
-                                for i, photo in enumerate(similar_caption, 1):
-                                    self.stdout.write(
-                                        f'  {i}. Distance: {photo.distance:.4f} | '
-                                        f'Title: {self.style.SUCCESS(photo.caption_title or "N/A")} | '
-                                        f'Category: {photo.caption_category or "N/A"}'
-                                    )
-                                    self.stdout.write(f'     ID: {photo.id} | pHash: {photo.image_phash}')
-                                    if photo.caption_full:
-                                        # Truncate long captions
-                                        caption_preview = photo.caption_full[:100] + '...' if len(photo.caption_full) > 100 else photo.caption_full
-                                        self.stdout.write(f'     Caption: {caption_preview}')
-                            else:
-                                self.stdout.write('  No other photos with caption embeddings found in database')
-                        else:
-                            self.stdout.write(self.style.WARNING('Embedding 1 (Caption/Semantic): Not available - cannot show similarity'))
-
-                        # Embedding 2: Suggestions/Topic Similarity (PRIMARY)
+                        # Suggestions/Topic Similarity (photo-level K-NN)
                         if db_record.suggestions_embedding is not None:
                             # Use hardcoded distance cutoff from suggestion_blending module (matches production K-NN query)
                             max_distance = MAX_COSINE_DISTANCE  # 0.4 (from suggestion_blending.py)
 
-                            self.stdout.write(self.style.SUCCESS('\nTop 10 Similar Photos (Embedding 2: Suggestions/Topic - PRIMARY)'))
+                            self.stdout.write(self.style.SUCCESS('\nTop 10 Similar Photos (Suggestions Embedding)'))
                             self.stdout.write(f'Purpose: Conversation similarity - "what people might chat about"')
                             self.stdout.write(f'Distance cutoff: {max_distance} (photos farther than this are NOT used for popular suggestions)\n')
 
@@ -389,15 +311,13 @@ class Command(BaseCommand):
 
                                     self.stdout.write(
                                         f'  {i}. Distance: {photo.distance:.4f} | '
-                                        f'Title: {self.style.SUCCESS(photo.caption_title or "N/A")} | '
-                                        f'Category: {photo.caption_category or "N/A"}'
+                                        f'Top Suggestions: {suggestions_preview}'
                                     )
                                     self.stdout.write(f'     ID: {photo.id} | pHash: {photo.image_phash}')
-                                    self.stdout.write(f'     Top Suggestions: {suggestions_preview}')
                             else:
                                 self.stdout.write('  No other photos with suggestion embeddings found in database')
                         else:
-                            self.stdout.write(self.style.WARNING('\nEmbedding 2 (Suggestions/Topic): Not available - cannot show similarity'))
+                            self.stdout.write(self.style.WARNING('\nSuggestions Embedding: Not available - cannot show similarity'))
 
                 # Rate limit info
                 rate_limit = data.get('rate_limit', {})
