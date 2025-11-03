@@ -4,20 +4,37 @@ import axios from 'axios';
 // This allows the app to work from both localhost and network IP addresses
 const API_BASE_URL = '';
 
+// Helper function to get CSRF token from cookies
+function getCsrfToken(): string | null {
+  const name = 'csrftoken';
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+}
+
 // Create axios instance
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Send cookies with requests
 });
 
-// Add auth token to requests
+// Add auth token and CSRF token to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token');
   if (token) {
     config.headers.Authorization = `Token ${token}`;
   }
+
+  // Add CSRF token for state-changing requests (POST, PUT, PATCH, DELETE)
+  const csrfToken = getCsrfToken();
+  if (csrfToken && config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {
+    config.headers['X-CSRFToken'] = csrfToken;
+  }
+
   return config;
 });
 
@@ -416,8 +433,8 @@ export const messageApi = {
     formData.append('voice_message', audioBlob, 'voice.webm');
     formData.append('session_token', sessionToken || '');
 
-    const response = await axios.post(
-      `${API_BASE_URL}${buildChatUrl(code, roomUsername)}/voice/upload/`,
+    const response = await api.post(
+      `${buildChatUrl(code, roomUsername)}/voice/upload/`,
       formData,
       {
         headers: {

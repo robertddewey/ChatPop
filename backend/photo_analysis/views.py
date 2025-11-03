@@ -25,9 +25,8 @@ from .utils.fingerprinting.image_hash import calculate_phash
 from .utils.fingerprinting.file_hash import calculate_md5, get_file_size
 from .utils.vision.openai_vision import get_vision_provider
 from .utils.image_processing import resize_image_if_needed
-from .utils.embedding import generate_suggestions_embedding
-from .utils.suggestion_blending import blend_suggestions, get_similar_photo_popular_suggestions
-from .utils.room_matching import normalize_suggestions_to_rooms
+from .utils.suggestion_blending import blend_suggestions
+from .utils.suggestion_matching import match_suggestions_to_existing
 from .utils.performance import PerformanceTracker
 from chatpop.utils.media import MediaStorage
 
@@ -144,9 +143,9 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 # Return cached analysis
                 logger.info(f"Returning cached analysis for file_hash={file_hash}")
 
-                # Blend suggestions for cached analysis (existing rooms + popular + AI)
+                # Blend suggestions for cached analysis (add room metadata)
                 blended = None  # Track if blending succeeded
-                if existing_analysis.suggestions_embedding is not None and existing_analysis.suggestions:
+                if existing_analysis.suggestions:
                     try:
                         logger.info("Enriching refined suggestions with room metadata (cached analysis)")
 
@@ -261,104 +260,58 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
             logger.info(f"Received {len(seed_suggestions_list)} seed suggestions from Vision API")
 
             # =========================================================================
-            # NEW WORKFLOW: Suggestion normalization + photo-level popularity
-            # Replaces LLM-based refinement with faster, deterministic approach
+            # SUGGESTION-TO-SUGGESTION MATCHING WORKFLOW
+            # Replaces photo-level similarity with granular suggestion-level matching
             # =========================================================================
 
-            # STEP 1: Normalize generic suggestions to existing rooms (parallel K-NN)
-            # - Proper nouns preserved (e.g., "Budweiser", "The Matrix")
-            # - Generic suggestions matched to existing rooms via embedding similarity
-            logger.info("Step 1: Normalizing generic suggestions to existing rooms")
-            normalized_suggestions = normalize_suggestions_to_rooms(
-                suggestions=seed_suggestions_list
+            # STEP 1: Match seed suggestions to existing Suggestion records
+            # - Proper nouns: preserved without matching (unique entities)
+            # - Generic suggestions: K-NN search in Suggestion table (threshold: 0.15)
+            # - Match found: use existing suggestion, increment usage_count
+            # - No match: create new Suggestion record
+            # This eliminates cross-domain contamination (whiskey photos won't match beer photos)
+            logger.info("\n" + "="*80)
+            logger.info("STEP 1: Matching seed suggestions to existing Suggestion records")
+            logger.info("="*80)
+
+            matched_suggestions = match_suggestions_to_existing(seed_suggestions_list)
+
+            logger.info(f"\nMatching complete: {len(matched_suggestions)} suggestions processed")
+
+            # STEP 2: Sort by proper noun + popularity, take top 5
+            # - Priority 1: Proper nouns (always included first)
+            # - Priority 2: Most popular suggestions (highest usage_count)
+            logger.info("\n" + "="*80)
+            logger.info("STEP 2: Sorting by proper noun priority + popularity")
+            logger.info("="*80)
+
+            proper_nouns = [s for s in matched_suggestions if s.get('is_proper_noun', False)]
+            non_proper_nouns = [s for s in matched_suggestions if not s.get('is_proper_noun', False)]
+
+            # Sort non-proper nouns by usage_count (descending)
+            non_proper_nouns_sorted = sorted(
+                non_proper_nouns,
+                key=lambda s: s.get('usage_count', 0),
+                reverse=True
             )
 
-            # STEP 2: Generate combined suggestions embedding for photo-level similarity
-            # - Used to find photos with similar themes
-            # - Enables discovery of popular suggestions from community
-            logger.info("Step 2: Generating combined suggestions embedding for photo-level K-NN")
-            try:
-                # Convert normalized suggestions to embedding input format
-                embedding_input = [
-                    {
-                        'name': s['name'],
-                        'description': s.get('description', '')
-                    }
-                    for s in normalized_suggestions
-                ]
+            logger.info(f"\nProper nouns: {len(proper_nouns)}")
+            for pn in proper_nouns:
+                logger.info(f"  ✓ '{pn['name']}' (usage: {pn.get('usage_count', 0)}x)")
 
-                suggestions_embedding_data = generate_suggestions_embedding(
-                    suggestions=embedding_input,
-                    model="text-embedding-3-small"
-                )
+            logger.info(f"\nNon-proper nouns (sorted by popularity): {len(non_proper_nouns_sorted)}")
+            for npn in non_proper_nouns_sorted[:5]:  # Show top 5
+                logger.info(f"  → '{npn['name']}' (usage: {npn.get('usage_count', 0)}x, source: {npn.get('source', 'unknown')})")
 
-                suggestions_embedding_vector = suggestions_embedding_data.embedding
-
-                logger.info(
-                    f"Suggestions embedding generated: "
-                    f"dimensions={len(suggestions_embedding_vector)}, "
-                    f"tokens={suggestions_embedding_data.token_usage['total_tokens']}"
-                )
-
-            except Exception as e:
-                logger.warning(f"Suggestions embedding generation failed (non-fatal): {str(e)}", exc_info=True)
-                suggestions_embedding_vector = None
-
-            # STEP 3: Find similar photos and extract popular suggestions
-            # - K-NN search on suggestions_embedding
-            # - Extract frequently occurring suggestions from similar photos
-            similar_photo_popular = []
-            if suggestions_embedding_vector is not None:
-                try:
-                    logger.info("Step 3: Finding similar photos to extract popular suggestions")
-                    similar_photo_popular = get_similar_photo_popular_suggestions(
-                        embedding_vector=suggestions_embedding_vector,
-                        exclude_photo_id=None  # We haven't created the PhotoAnalysis record yet
-                    )
-                    logger.info(f"Found {len(similar_photo_popular)} popular suggestions from similar photos")
-                except Exception as e:
-                    logger.warning(f"Failed to extract popular suggestions (non-fatal): {str(e)}", exc_info=True)
-                    similar_photo_popular = []
-
-            # STEP 4: Merge normalized + popular suggestions
-            # - Priority: Popular suggestions first (community trends)
-            # - Then add normalized suggestions
-            # - Simple deduplication by key
-            # - Limit to 5 final suggestions
-            logger.info("Step 4: Merging popular + normalized suggestions")
-
-            # Build final suggestions pool
-            final_suggestions_pool = []
-            seen_keys = set()
-
-            # Add popular suggestions first (prioritize community trends)
-            for popular in similar_photo_popular:
-                if popular['key'] not in seen_keys:
-                    final_suggestions_pool.append({
-                        'name': popular['name'],
-                        'key': popular['key'],
-                        'description': '',  # Popular suggestions don't have descriptions
-                        'source': 'popular',
-                        'is_proper_noun': False
-                    })
-                    seen_keys.add(popular['key'])
-
-            # Add normalized suggestions (fill remaining slots)
-            for suggestion in normalized_suggestions:
-                if suggestion['key'] not in seen_keys:
-                    final_suggestions_pool.append(suggestion)
-                    seen_keys.add(suggestion['key'])
-
-            # Limit to 5 suggestions
-            final_suggestions_list = final_suggestions_pool[:5]
+            # Combine: proper nouns first, then most popular
+            final_suggestions_list = (proper_nouns + non_proper_nouns_sorted)[:5]
 
             logger.info(
-                f"Merge complete: {len(similar_photo_popular)} popular + "
-                f"{len(normalized_suggestions)} normalized → {len(final_suggestions_list)} final "
-                f"(popular={sum(1 for s in final_suggestions_list if s.get('source') == 'popular')}, "
-                f"normalized={sum(1 for s in final_suggestions_list if s.get('source') == 'normalized')}, "
-                f"seed={sum(1 for s in final_suggestions_list if s.get('source') == 'seed')})"
+                f"\nFinal selection: {len(final_suggestions_list)} suggestions "
+                f"({len([s for s in final_suggestions_list if s.get('is_proper_noun', False)])} proper nouns, "
+                f"{len([s for s in final_suggestions_list if not s.get('is_proper_noun', False)])} generics)"
             )
+            logger.info("="*80 + "\n")
 
             # Format final suggestions for database storage
             suggestions_data = {
@@ -397,8 +350,8 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 user=request.user if request.user.is_authenticated else None,
                 fingerprint=fingerprint,
                 ip_address=ip_address,
-                suggestions_embedding=suggestions_embedding_vector,
-                suggestions_embedding_generated_at=timezone.now() if suggestions_embedding_vector is not None else None
+                suggestions_embedding=None,  # Not using photo-level similarity
+                suggestions_embedding_generated_at=None
             )
 
             # Return analysis result

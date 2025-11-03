@@ -18,8 +18,6 @@ from constance import config
 
 from photo_analysis.models import PhotoAnalysis
 from photo_analysis.utils.fingerprinting.file_hash import calculate_md5
-from photo_analysis.utils.suggestion_blending import MAX_COSINE_DISTANCE
-from pgvector.django import CosineDistance
 
 
 class Command(BaseCommand):
@@ -211,13 +209,32 @@ class Command(BaseCommand):
                         self.stdout.write(f'  Sources: {existing_rooms_count} existing rooms, {popular_count} popular, {ai_count} fresh AI\n')
 
                         for i, suggestion in enumerate(suggestions, 1):
-                            # Determine source styling
+                            # Determine source styling based on new suggestion-matching system
                             source = suggestion.get('source', 'unknown')
+                            usage_count = suggestion.get('usage_count', 0)
+                            is_proper_noun = suggestion.get('is_proper_noun', False)
+
+                            # New system: source can be 'matched', 'created', 'proper_noun', 'seed', 'existing_room', 'popular', 'ai'
                             if source == 'existing_room':
+                                # Old blending system (existing rooms)
                                 source_label = self.style.SUCCESS('[EXISTING ROOM]')
+                            elif is_proper_noun or source == 'proper_noun':
+                                # Proper nouns (brands, titles, unique entities)
+                                source_label = self.style.SUCCESS('[BRAND/PROPER NOUN]')
+                            elif source == 'matched' and usage_count > 1:
+                                # Matched to existing popular suggestion
+                                source_label = self.style.WARNING(f'[POPULAR - {usage_count}x]')
+                            elif source == 'created':
+                                # Newly created suggestion
+                                source_label = '[NEW]'
                             elif source == 'popular':
+                                # Old system popular suggestions
                                 source_label = self.style.WARNING('[POPULAR]')
+                            elif source == 'matched' and usage_count == 1:
+                                # Matched but only used once
+                                source_label = '[MATCHED - 1x]'
                             else:
+                                # Fallback for 'ai', 'seed', or unknown
                                 source_label = '[AI]'
 
                             # Main line: name, key, source
@@ -275,49 +292,6 @@ class Command(BaseCommand):
                             self.stdout.write(f'  How: "bar-room", "happy-hour", "brew-talk" cluster together')
                         else:
                             self.stdout.write(self.style.WARNING('\n✗ Suggestions Embedding: Not generated (failed)'))
-
-                        # EMBEDDING SIMILARITY ANALYSIS
-                        # Show top 10 most similar photos by suggestions embedding
-                        self.stdout.write(self.style.WARNING(f'\n{"=" * 80}'))
-                        self.stdout.write(self.style.WARNING('EMBEDDING SIMILARITY ANALYSIS'))
-                        self.stdout.write(self.style.WARNING(f'{"=" * 80}\n'))
-
-                        # Suggestions/Topic Similarity (photo-level K-NN)
-                        if db_record.suggestions_embedding is not None:
-                            # Use hardcoded distance cutoff from suggestion_blending module (matches production K-NN query)
-                            max_distance = MAX_COSINE_DISTANCE  # 0.4 (from suggestion_blending.py)
-
-                            self.stdout.write(self.style.SUCCESS('\nTop 10 Similar Photos (Suggestions Embedding)'))
-                            self.stdout.write(f'Purpose: Conversation similarity - "what people might chat about"')
-                            self.stdout.write(f'Distance cutoff: {max_distance} (photos farther than this are NOT used for popular suggestions)\n')
-
-                            similar_suggestions = PhotoAnalysis.objects.annotate(
-                                distance=CosineDistance('suggestions_embedding', db_record.suggestions_embedding)
-                            ).filter(
-                                suggestions_embedding__isnull=False,
-                                distance__lt=max_distance  # Only show photos within clustering distance
-                            ).exclude(
-                                id=db_record.id  # Exclude the uploaded photo itself
-                            ).order_by('distance')[:10]
-
-                            if similar_suggestions.exists():
-                                for i, photo in enumerate(similar_suggestions, 1):
-                                    # Get first 3 suggestion names for preview
-                                    suggestion_names = []
-                                    if photo.suggestions and 'suggestions' in photo.suggestions:
-                                        for sug in photo.suggestions['suggestions'][:3]:
-                                            suggestion_names.append(sug.get('name', ''))
-                                    suggestions_preview = ', '.join(suggestion_names) if suggestion_names else 'N/A'
-
-                                    self.stdout.write(
-                                        f'  {i}. Distance: {photo.distance:.4f} | '
-                                        f'Top Suggestions: {suggestions_preview}'
-                                    )
-                                    self.stdout.write(f'     ID: {photo.id} | pHash: {photo.image_phash}')
-                            else:
-                                self.stdout.write('  No other photos with suggestion embeddings found in database')
-                        else:
-                            self.stdout.write(self.style.WARNING('\nSuggestions Embedding: Not available - cannot show similarity'))
 
                 # Rate limit info
                 rate_limit = data.get('rate_limit', {})

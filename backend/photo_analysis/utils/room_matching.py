@@ -68,19 +68,39 @@ def normalize_suggestions_to_rooms(
     generic_suggestions = [s for s in suggestions if not s.get('is_proper_noun', False)]
     proper_noun_suggestions = [s for s in suggestions if s.get('is_proper_noun', False)]
 
+    logger.info(f"\n{'='*80}")
+    logger.info("PROPER NOUN SPLIT")
+    logger.info(f"{'='*80}")
     logger.info(
-        f"Split suggestions: {len(proper_noun_suggestions)} proper nouns (preserved), "
-        f"{len(generic_suggestions)} generics (will normalize)"
+        f"Total suggestions: {len(suggestions)} "
+        f"({len(proper_noun_suggestions)} proper nouns, {len(generic_suggestions)} generics)"
     )
+
+    if proper_noun_suggestions:
+        logger.info("\nProper nouns (PRESERVED - will NOT be normalized):")
+        for s in proper_noun_suggestions:
+            logger.info(f"  ✓ '{s['name']}' - is_proper_noun={s.get('is_proper_noun')}")
+
+    if generic_suggestions:
+        logger.info("\nGenerics (will attempt normalization):")
+        for s in generic_suggestions:
+            logger.info(f"  → '{s['name']}' - is_proper_noun={s.get('is_proper_noun', False)}")
+
+    logger.info(f"{'='*80}\n")
 
     if not generic_suggestions:
         # All proper nouns - nothing to normalize
         return proper_noun_suggestions
 
-    # Batch generate embeddings for generic suggestions
+    # Batch generate embeddings for generic suggestions (name + description)
     with perf_track("Batch embed generic suggestions", metadata=f"{len(generic_suggestions)} suggestions"):
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        input_texts = [s['name'] for s in generic_suggestions]
+
+        # Format: "Name\nDescription" (or just "Name" if no description)
+        input_texts = [
+            f"{s['name']}\n{s['description']}" if s.get('description') else s['name']
+            for s in generic_suggestions
+        ]
 
         response = client.embeddings.create(
             model="text-embedding-3-small",
@@ -141,34 +161,59 @@ def _find_similar_room(
         # - AI rooms are globally unique collaborative discovery rooms (/chat/discover/beer-tasting)
         # - Manual rooms are user-specific (/chat/robert/my-room, /chat/alice/my-room)
         # - We never normalize suggestions to manual rooms (privacy + not globally accessible)
-        match = ChatRoom.objects.filter(
+
+        # Get top 5 candidates to show matching details
+        candidates = ChatRoom.objects.filter(
             name_embedding__isnull=False,
             is_active=True,
             source=ChatRoom.SOURCE_AI  # Only AI-generated collaborative discovery rooms
         ).annotate(
             distance=CosineDistance('name_embedding', embedding_vector)
-        ).filter(
-            distance__lt=threshold
-        ).order_by('distance').first()
+        ).order_by('distance')[:5]
 
-        if match:
+        # Log all candidates with their distances
+        suggestion_name = original_suggestion['name']
+        logger.info(f"\n{'='*80}")
+        logger.info(f"Matching '{suggestion_name}' (threshold: {threshold})")
+        logger.info(f"{'='*80}")
+
+        if not candidates:
+            logger.info("  No existing rooms with embeddings found")
+            logger.info(f"{'='*80}\n")
+            result = original_suggestion.copy()
+            if 'source' not in result:
+                result['source'] = 'seed'
+            return result
+
+        for i, candidate in enumerate(candidates, 1):
+            match_symbol = "✓ MATCHED" if candidate.distance < threshold else "○"
             logger.info(
-                f"✓ Matched '{original_suggestion['name']}' → '{match.name}' "
-                f"(distance: {match.distance:.3f})"
+                f"  {i}. {match_symbol} '{candidate.name}' - distance: {candidate.distance:.4f} "
+                f"(similarity: {(1 - candidate.distance):.1%})"
+            )
+
+        logger.info(f"{'='*80}\n")
+
+        # Use the best match if it's below threshold
+        best_candidate = candidates[0]
+        if best_candidate.distance < threshold:
+            logger.info(
+                f"✓ FINAL: Matched '{suggestion_name}' → '{best_candidate.name}' "
+                f"(distance: {best_candidate.distance:.4f})"
             )
             return {
-                'name': match.name,
-                'key': match.code,
+                'name': best_candidate.name,
+                'key': best_candidate.code,
                 'description': original_suggestion.get('description', ''),
                 'source': 'normalized',
                 'is_proper_noun': False,
-                'matched_room_id': str(match.id),
-                'similarity_score': 1 - match.distance
+                'matched_room_id': str(best_candidate.id),
+                'similarity_score': 1 - best_candidate.distance
             }
         else:
-            logger.debug(
-                f"○ No match for '{original_suggestion['name']}' "
-                f"(threshold: {threshold})"
+            logger.info(
+                f"○ FINAL: No match for '{suggestion_name}' - best distance {best_candidate.distance:.4f} "
+                f"exceeds threshold {threshold}"
             )
             # Keep source as 'seed' if not normalized
             result = original_suggestion.copy()
@@ -187,28 +232,35 @@ def _find_similar_room(
         return result
 
 
-def generate_room_embedding(room_name: str) -> List[float]:
+def generate_room_embedding(room_name: str, room_description: str = "") -> List[float]:
     """
-    Generate embedding for a room name.
+    Generate embedding for a room name and description.
 
     Used when creating new rooms to enable future normalization matching.
+    Embeddings include both name and description for better semantic matching
+    (e.g., "Suds" + "beer" vs "Suds" + "soap" have different embeddings).
 
     Args:
         room_name: Name of the chat room (e.g., "Beer Tasting")
+        room_description: Description of the room (e.g., "Discuss craft beer flavors")
+                          Optional - if empty, only name is embedded
 
     Returns:
         1536-dimensional embedding vector
 
     Example:
-        >>> embedding = generate_room_embedding("Coffee Chat")
+        >>> embedding = generate_room_embedding("Coffee Chat", "Share coffee experiences")
         >>> len(embedding)
         1536
     """
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
+    # Format: "Name\nDescription" (or just "Name" if no description)
+    input_text = f"{room_name}\n{room_description}" if room_description else room_name
+
     response = client.embeddings.create(
         model="text-embedding-3-small",
-        input=[room_name]
+        input=[input_text]
     )
 
     return response.data[0].embedding

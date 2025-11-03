@@ -1350,7 +1350,7 @@ export default function ChatPage() {
       {!hasJoined && chatRoom && !authMode && (
         <JoinChatModal
           chatRoom={chatRoom}
-          currentUserDisplayName={username}
+          currentUserDisplayName={roomUsername}
           hasJoinedBefore={hasJoinedBefore}
           isBlocked={isBlocked}
           isLoggedIn={!!currentUserId}

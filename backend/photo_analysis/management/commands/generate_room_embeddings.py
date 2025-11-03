@@ -119,10 +119,10 @@ class Command(BaseCommand):
 
         for i, room in enumerate(query, start=1):
             try:
-                # Generate embedding
+                # Generate embedding (name + description for better semantic matching)
                 self.stdout.write(f'[{i}/{total_rooms}] Processing: {room.name} ({room.code})', ending='')
 
-                embedding = generate_room_embedding(room.name)
+                embedding = generate_room_embedding(room.name, room.description)
 
                 # Save to database
                 room.name_embedding = embedding

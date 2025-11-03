@@ -8,6 +8,100 @@ from django.utils import timezone
 from pgvector.django import VectorField
 
 
+class Suggestion(models.Model):
+    """
+    Individual chat room suggestion with embedding for granular K-NN matching.
+
+    This replaces photo-to-photo matching with suggestion-to-suggestion matching:
+    - Each suggestion from Vision API is matched against existing suggestions
+    - "Cheers!" matches "Cheers!" (good - relevant to both whiskey and beer)
+    - "Budweiser" doesn't match "Jack Daniel's" (good - different embeddings)
+    - Proper nouns preserved (never matched, always unique)
+    """
+
+    # Primary Key
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+
+    # Suggestion content
+    name = models.CharField(
+        max_length=255,
+        db_index=True,
+        help_text="Display name (e.g., 'Cheers!', 'Happy Hour')"
+    )
+
+    key = models.SlugField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+        help_text="URL-safe identifier (e.g., 'cheers', 'happy-hour')"
+    )
+
+    description = models.TextField(
+        blank=True,
+        help_text="Description from Vision API"
+    )
+
+    # Semantic embedding for K-NN matching
+    # - Generated from: name + description
+    # - Model: text-embedding-3-small (1536 dimensions)
+    # - Use: Matching similar suggestions (not photos)
+    # - NULL for proper nouns (they are never matched via embeddings)
+    embedding = VectorField(
+        dimensions=1536,
+        null=True,
+        blank=True,
+        help_text="Embedding for suggestion-to-suggestion K-NN matching (NULL for proper nouns)"
+    )
+
+    # Popularity tracking
+    usage_count = models.PositiveIntegerField(
+        default=1,
+        db_index=True,
+        help_text="How many photos generated this suggestion"
+    )
+
+    last_used_at = models.DateTimeField(
+        auto_now=True,
+        db_index=True,
+        help_text="Last time this suggestion was used"
+    )
+
+    # Proper noun flag (never matched, always preserved)
+    is_proper_noun = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Proper nouns (brands, titles) are never matched"
+    )
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'suggestion'
+        verbose_name = 'Suggestion'
+        verbose_name_plural = 'Suggestions'
+        ordering = ['-usage_count', '-last_used_at']
+        indexes = [
+            models.Index(fields=['-usage_count', '-last_used_at']),
+            models.Index(fields=['key']),
+            models.Index(fields=['is_proper_noun']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} (used {self.usage_count}x)"
+
+    def increment_usage(self):
+        """Increment usage counter when this suggestion appears again."""
+        self.usage_count += 1
+        self.last_used_at = timezone.now()
+        self.save(update_fields=['usage_count', 'last_used_at', 'updated_at'])
+
+
 class PhotoAnalysis(models.Model):
     """
     Stores photo analysis results from AI vision models.

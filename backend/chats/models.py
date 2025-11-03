@@ -144,7 +144,7 @@ class ChatRoom(models.Model):
     description = models.TextField(blank=True)
 
     # Embedding for suggestion normalization (collaborative discovery)
-    # - Generated from room name only (stable identifier)
+    # - Generated from room name and description for better semantic matching
     # - Model: text-embedding-3-small (1536 dimensions)
     # - Use: K-NN matching during photo upload to normalize generic suggestions
     # - Only for AI-generated rooms (source='ai')
@@ -152,7 +152,7 @@ class ChatRoom(models.Model):
         dimensions=1536,
         null=True,
         blank=True,
-        help_text="Embedding of room name for suggestion normalization (text-embedding-3-small, 1536d)"
+        help_text="Embedding of room name and description for suggestion normalization (text-embedding-3-small, 1536d)"
     )
 
     # Host/Creator (REQUIRED - must be registered user)

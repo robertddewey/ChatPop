@@ -162,10 +162,15 @@ CHANNEL_LAYERS = {
 }
 
 # CORS Settings
-CORS_ALLOWED_ORIGINS = os.getenv(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:4000,http://127.0.0.1:4000,http://10.0.0.135:4000"
-).split(",")
+# Allow all origins in development for LAN/mobile testing
+CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False").lower() == "true"
+
+# If not allowing all origins, use specific allowed origins
+if not CORS_ALLOW_ALL_ORIGINS:
+    CORS_ALLOWED_ORIGINS = os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:4000,http://127.0.0.1:4000"
+    ).split(",")
 
 CORS_ALLOW_CREDENTIALS = True
 
