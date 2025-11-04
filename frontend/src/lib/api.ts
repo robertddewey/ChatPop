@@ -197,6 +197,36 @@ export interface Message {
   reactions?: ReactionSummary[]; // Top 3 reactions for display
 }
 
+export interface PhotoSuggestion {
+  key: string;
+  name: string;
+  description: string;
+  has_room: boolean;
+  active_users: number;
+  source: string; // 'matched' | 'created' | 'proper_noun'
+  usage_count: number;
+  is_proper_noun: boolean;
+}
+
+export interface PhotoAnalysisResponse {
+  cached: boolean;
+  analysis: {
+    id: string;
+    suggestions: PhotoSuggestion[];
+    username: string | null;
+    created_at: string;
+    updated_at: string;
+    expires_at: string;
+    is_expired: boolean;
+    image_phash: string;
+    file_hash: string;
+    file_size: number;
+    seed_suggestions: Array<{ name: string; key: string; description: string }>;
+    selected_suggestion_code: string | null;
+    selected_at: string | null;
+  };
+}
+
 // API Functions
 export const authApi = {
   register: async (data: { email: string; password: string; reserved_username?: string; fingerprint?: string }) => {
@@ -535,18 +565,24 @@ export const messageApi = {
     return response.data;
   },
 
-  // Photo Analysis (Chat Generation)
-  analyzePhoto: async (photo: File): Promise<{
-    suggestions: Array<{
-      name: string;
-      description: string;
-      theme_id: string;
-    }>;
-  }> => {
+  // Photo Analysis (Suggestion Matching)
+  analyzePhoto: async (
+    photo: File,
+    fingerprint?: string,
+    username?: string
+  ): Promise<PhotoAnalysisResponse> => {
     const formData = new FormData();
-    formData.append('photo', photo);
+    formData.append('image', photo); // Backend expects 'image', not 'photo'
 
-    const response = await api.post('/api/chats/analyze-photo/', formData, {
+    if (fingerprint) {
+      formData.append('fingerprint', fingerprint);
+    }
+
+    if (username) {
+      formData.append('username', username);
+    }
+
+    const response = await api.post('/api/photo-analysis/upload/', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
