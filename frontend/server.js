@@ -5,11 +5,50 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const os = require('os');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0';
 const port = 4000;
 const backendUrl = 'https://localhost:9000';
+
+// Detect LAN IP address
+function getLanIpAddress() {
+  const interfaces = os.networkInterfaces();
+
+  // Priority order: en0 (WiFi), en1 (Ethernet), then others
+  const priorityInterfaces = ['en0', 'en1'];
+
+  // First try priority interfaces
+  for (const ifName of priorityInterfaces) {
+    if (interfaces[ifName]) {
+      for (const iface of interfaces[ifName]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          return iface.address;
+        }
+      }
+    }
+  }
+
+  // Fall back to any non-internal IPv4 address (excluding VPN/virtual interfaces)
+  for (const ifName in interfaces) {
+    // Skip VPN and virtual interfaces
+    if (ifName.startsWith('utun') || ifName.startsWith('tun') || ifName.startsWith('bridge') ||
+        ifName.startsWith('veth') || ifName.startsWith('docker') || ifName.startsWith('vmnet')) {
+      continue;
+    }
+
+    for (const iface of interfaces[ifName]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+
+  return 'localhost'; // Fallback
+}
+
+const lanIp = getLanIpAddress();
 
 // IMPORTANT: Proxy is only needed in development
 // In production, use ALB path-based routing instead:
@@ -143,7 +182,7 @@ app.prepare().then(() => {
 
   server.listen(port, () => {
     console.log(`> Ready on https://${hostname}:${port}`);
-    console.log(`> Access via https://localhost:${port} or https://10.0.0.135:${port}`);
+    console.log(`> Access via https://localhost:${port} or https://${lanIp}:${port}`);
     if (ENABLE_PROXY) {
       console.log(`> Proxying /api/, /media/, /ws/ to ${backendUrl}`);
       console.log(`> WebSocket connections are proxied through this server`);

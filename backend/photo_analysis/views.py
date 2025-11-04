@@ -24,8 +24,6 @@ from .serializers import (
 from .utils.rate_limit import (
     photo_analysis_rate_limit,
     get_client_identifier,
-    estimate_request_cost,
-    increment_cost,
 )
 from .utils.fingerprinting.image_hash import calculate_phash
 from .utils.fingerprinting.file_hash import calculate_sha256, get_file_size
@@ -239,13 +237,13 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
             )
             logger.info("Vision analysis completed")
 
-            # Track API cost for circuit breaker
-            estimated_cost = estimate_request_cost(
-                model=config.PHOTO_ANALYSIS_OPENAI_MODEL,
-                detail_mode=config.PHOTO_ANALYSIS_DETAIL_MODE,
-                megapixels=max_megapixels
-            )
-            increment_cost(estimated_cost)
+            # TODO: Track API cost for circuit breaker (not implemented yet)
+            # estimated_cost = estimate_request_cost(
+            #     model=config.PHOTO_ANALYSIS_OPENAI_MODEL,
+            #     detail_mode=config.PHOTO_ANALYSIS_DETAIL_MODE,
+            #     megapixels=max_megapixels
+            # )
+            # increment_cost(estimated_cost)
 
             # Store image file using unified MediaStorage API
             import uuid
