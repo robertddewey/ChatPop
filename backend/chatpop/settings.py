@@ -248,7 +248,7 @@ CONSTANCE_CONFIG = {
 
     # Redis Message Cache Settings (enable when scaling past 1000+ chats)
     'REDIS_CACHE_ENABLED': (
-        False,
+        True,
         'Enable Redis caching for messages (read + write). Recommended for 1000+ chats. 5-10x faster page loads.',
         bool
     ),
@@ -265,7 +265,7 @@ CONSTANCE_CONFIG = {
 
     # Monitoring Settings (developer tools)
     'ENABLE_MONITORING': (
-        False,
+        True,
         'Enable real-time monitoring of cache/database operations. Tracks performance metrics with adaptive sampling. Access via: ./venv/bin/python manage.py monitor_cache',
         bool
     ),
@@ -308,63 +308,46 @@ CONSTANCE_CONFIG = {
 
     # Photo Analysis Settings
     'PHOTO_ANALYSIS_PROMPT': (
-        '''You are a chat room title generator.
-Based on a photo or short description, generate 10 concise chat room title ideas.
+        '''You are a chat room title generator. Generate 5 concise chat room title ideas based on a photo or description.
 
-Your goals:
+Goals:
+- Capture core idea/vibe
+- Keep titles short (1-4 words)
+- For IDENTIFIED proper nouns: Use the EXACT name visible (movie titles, product names, brand names)
+- For GENERATED generic topics: Favor general, reusable topics over one-offs
+- Avoid filler words (like "the", "a", "about", "of") UNLESS part of an official name
+- Include single-word version if subject is well-known (Lego, Cat, Coffee, iPhone, Ocean)
+- Mix literal (e.g., "Gray Cat") and conceptual (e.g., "Morning Vibes") titles
 
-Capture the core idea or vibe of the scene or topic.
+CRITICAL - Proper Noun Rules:
+Use is_proper_noun = true ONLY for specific named entities you IDENTIFY in the photo:
+  ✓ Specific brands visible in image: "Budweiser", "Jack Daniel's", "Coca-Cola"
+  ✓ Specific movies/shows/titles: "Attack of the Clones", "The Matrix (1999)", "Breaking Bad"
+  ✓ Specific products: "iPhone 15 Pro", "PlayStation 5"
+  ✓ Specific places/landmarks: "Eiffel Tower", "Central Park"
+  ✓ Use the EXACT title visible - don't generalize movie titles (e.g., "Attack of the Clones", NOT "Clone Wars")
 
-Keep titles short (1–4 words).
+Use is_proper_noun = false for generic names you GENERATE:
+  ✗ Generic categories: "Craft Beer", "Video Games", "Coffee Shop"
+  ✗ Generic phrases: "The Drink", "The Game", "The View"
+  ✗ Descriptive terms: "Gray Cat", "Morning Light", "Happy Hour"
+  ✗ Conceptual topics: "Morning Vibes", "Chill Space", "Home Life"
 
-Favor general, reusable topics over specific one-offs.
+Rule of thumb: If you're CREATING the name as a general chat topic, it's NOT a proper noun. If you're IDENTIFYING a specific brand/title/place visible in the photo, it IS a proper noun.
 
-Avoid filler words (like "the", "a", "about", "of").
+Format:
+- "name": Title Case
+- "key": lowercase-with-dashes
+- "description": Short phrase, two sentences. Will be used for embeddings.
+- "is_proper_noun": true ONLY for identified named entities, false for ALL generated generic topics
 
-Always include a single-word version if the subject is a well-known brand, object, or universal concept (e.g., Lego, Cat, Coffee, iPhone, Ocean).
-
-Use a mix of literal (e.g., "Gray Cat", "Coffee Beans") and conceptual (e.g., "Morning Vibes", "Chill Space") titles.
-
-Format Rules:
-- "name" field: Title Case (capitalize first letter of each word, e.g., "Curious Cat", "Coffee Time")
-- "key" field: lowercase with dashes instead of spaces (e.g., "curious-cat", "coffee-time")
-- "description" field: Short phrase describing the chat topic
-
-
-Example:
-Description: "A gray long-haired cat sitting on a marble table by a window."
-
-Expected output (10 suggestions):
-
-1. Cat / cat
-2. Gray Cat / gray-cat
-3. Curious Cat / curious-cat
-4. Window Cat / window-cat
-5. Morning Light / morning-light
-6. Cat Life / cat-life
-7. Chill Cat / chill-cat
-8. Feline Friends / feline-friends
-9. Home Vibes / home-vibes
-10. Cozy Space / cozy-space
-
-You must respond in json format with this exact structure:
+Response JSON:
 {
-"suggestions": [
-{
-"name": "Curious Cat",
-"key": "curious-cat",
-"description": "Chat about curious cats"
-},
-{
-"name": "Gray Cat",
-"key": "gray-cat",
-"description": "Discuss gray cats and feline friends"
-},
-...
-]
-}
-
-Make the topics diverse (not all similar), engaging, and directly related to what's visible in the photo. Be creative!''',
+  "suggestions": [
+    {"name": "Craft Beer", "key": "craft-beer", "description": "Chat about craft beer brewing and tasting", "is_proper_noun": false},
+    {"name": "Budweiser", "key": "budweiser", "description": "Discuss Budweiser beer and American lagers", "is_proper_noun": true}
+  ]
+}''',
         'OpenAI Vision API prompt for generating chat suggestions from photos. Edit to tune the quality/style of suggestions. (TIP: Drag the bottom-right corner of the textarea to manually resize for easier editing)',
         str
     ),
@@ -414,60 +397,46 @@ Make the topics diverse (not all similar), engaging, and directly related to wha
         str
     ),
     'PHOTO_ANALYSIS_TEMPERATURE': (
-        0.7,
-        'Temperature for chat suggestion generation (0.0-2.0). Higher = more creative/random, Lower = more deterministic. Default 0.7 for diverse chat name suggestions.',
+        0.3,
+        'Temperature for chat suggestion generation (0.0-2.0). Higher = more creative/random, Lower = more deterministic. Lower temperature (0.3) provides more consistent, focused suggestions.',
         float
     ),
 
-    # Photo Caption Generation Settings (for embeddings/search)
-    'PHOTO_ANALYSIS_ENABLE_CAPTIONS': (
+    # Photo Analysis Security Settings
+    'PHOTO_ANALYSIS_MAX_UPLOADS_PER_IP_PER_HOUR': (
+        20,
+        'Maximum photo uploads per hour per IP address (prevents fingerprint rotation attacks). Enforced even if user rotates fingerprints.',
+        int
+    ),
+    'PHOTO_ANALYSIS_ANOMALY_DETECTION_ENABLED': (
         True,
-        'Enable automatic caption generation for uploaded photos. Captions are used for embedding-based image search and retrieval.',
+        'Enable anomaly detection for photo uploads (suspicious patterns, rapid uploads, fingerprint rotation)',
         bool
     ),
-    'PHOTO_ANALYSIS_CAPTION_PROMPT': (
-        '''You are an expert visual captioner for a multimodal search system.
-Your goal is to produce one or two compact, factual sentences that capture the full meaning of the image for use in a text embedding model.
-
-The first sentence should describe what is visually present.
-The second, if helpful, should add semantic or contextual meaning (e.g., what it represents, its purpose, or its genre).
-
-Include any visible text, titles, brand names, or labels.
-Avoid speculation, humor, or opinions. Do not include camera details.
-
-Return a JSON object with this exact structure:
-{
-  "title": "A short, descriptive title (2-4 words)",
-  "category": "General category of the image (e.g., beverage, food, animal, memorial, product)",
-  "visible_text": "Any visible text, labels, or brand names in the image",
-  "caption": "One or two concise sentences optimized for semantic embeddings"
-}
-
-Example:
-For an image of a Budweiser beer bottle:
-{
-  "title": "Budweiser Beer Bottle",
-  "category": "beer bottle",
-  "visible_text": "Budweiser, King of Beers",
-  "caption": "Budweiser beer bottle labeled 'King of Beers' with red and white logo on a wooden table. A classic American lager brand."
-}''',
-        'Prompt for generating semantic captions from photos. Captions are converted to embeddings for similarity search. Edit to tune caption quality/style.',
-        str
+    'PHOTO_ANALYSIS_MAX_UPLOADS_PER_MINUTE_PER_IP': (
+        5,
+        'Maximum photo uploads per minute per IP (anomaly detection). IPs exceeding this are temporarily blocked.',
+        int
     ),
-    'PHOTO_ANALYSIS_CAPTION_MODEL': (
-        'gpt-4o-mini',
-        'OpenAI model for caption generation (gpt-4o-mini, gpt-4o). Separate from suggestion model for independent tuning.',
-        str
+    'PHOTO_ANALYSIS_MAX_FINGERPRINTS_PER_IP_PER_HOUR': (
+        5,
+        'Maximum unique fingerprints per IP per hour (anomaly detection). IPs exceeding this are flagged as suspicious and temporarily blocked.',
+        int
     ),
-    'PHOTO_ANALYSIS_CAPTION_TEMPERATURE': (
-        0.2,
-        'Temperature for caption generation (0.0-2.0). Lower = more factual/deterministic (recommended for embeddings). Default 0.2.',
+    'PHOTO_ANALYSIS_SUSPICIOUS_IP_BLOCK_MINUTES': (
+        240,
+        'How long to block IPs flagged for suspicious activity (minutes). Default: 4 hours.',
+        int
+    ),
+    'PHOTO_ANALYSIS_MAX_COST_PER_HOUR': (
+        10.0,
+        'Maximum OpenAI API spending per hour (USD). When exceeded, photo analysis returns 503 until next hour. Circuit breaker protection against cost exploitation.',
         float
     ),
-    'PHOTO_ANALYSIS_ENABLE_CAPTION_EMBEDDING': (
-        False,
-        'Generate caption embeddings (Embedding 1: Semantic/Content) for visual similarity search. Currently unused - only suggestions_embedding is used for collaborative discovery. Disable to save 50% on embedding API costs.',
-        bool
+    'PHOTO_ANALYSIS_MAX_COST_PER_DAY': (
+        100.0,
+        'Maximum OpenAI API spending per day (USD). When exceeded, photo analysis returns 503 until next day. Circuit breaker protection against cost exploitation.',
+        float
     ),
 }
 
