@@ -18,6 +18,7 @@ export default function Home() {
   const modalMode = searchParams.get('modal');
   const [isMobile, setIsMobile] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   useEffect(() => {
     // Detect if device is mobile
@@ -33,6 +34,7 @@ export default function Home() {
 
   const closeAnalysisModal = () => {
     setAnalysisResult(null);
+    setIsAnalyzing(false);
   };
 
   const openCreateModal = () => {
@@ -53,6 +55,10 @@ export default function Home() {
           console.log('📸 Photo captured from camera:', file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
 
           try {
+            // Show modal with loading state immediately
+            setIsAnalyzing(true);
+            setAnalysisResult(null);
+
             // Get fingerprint for tracking
             const fingerprint = await getFingerprint();
 
@@ -60,11 +66,13 @@ export default function Home() {
             const result = await messageApi.analyzePhoto(file, fingerprint);
             console.log('✅ Analysis complete:', result);
 
-            // Show result in modal
+            // Update modal with result
             setAnalysisResult(result);
+            setIsAnalyzing(false);
 
           } catch (err: any) {
             console.error('❌ Photo analysis failed:', err.response?.data || err.message);
+            setIsAnalyzing(false);
             // TODO: Show error in modal or toast notification
             alert(`Photo analysis failed: ${err.response?.data?.detail || err.message}`);
           }
@@ -89,6 +97,10 @@ export default function Home() {
           console.log('🖼️ Photo selected from library:', file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
 
           try {
+            // Show modal with loading state immediately
+            setIsAnalyzing(true);
+            setAnalysisResult(null);
+
             // Get fingerprint for tracking
             const fingerprint = await getFingerprint();
 
@@ -96,11 +108,13 @@ export default function Home() {
             const result = await messageApi.analyzePhoto(file, fingerprint);
             console.log('✅ Analysis complete:', result);
 
-            // Show result in modal
+            // Update modal with result
             setAnalysisResult(result);
+            setIsAnalyzing(false);
 
           } catch (err: any) {
             console.error('❌ Photo analysis failed:', err.response?.data || err.message);
+            setIsAnalyzing(false);
             // TODO: Show error in modal or toast notification
             alert(`Photo analysis failed: ${err.response?.data?.detail || err.message}`);
           }
@@ -255,7 +269,13 @@ export default function Home() {
       {authMode === 'login' && <LoginModal onClose={closeModal} />}
       {authMode === 'register' && <RegisterModal onClose={closeModal} />}
       {modalMode === 'create' && <CreateChatModal onClose={closeModal} />}
-      {analysisResult && <PhotoAnalysisModal result={analysisResult} onClose={closeAnalysisModal} />}
+      {(isAnalyzing || analysisResult) && (
+        <PhotoAnalysisModal
+          result={analysisResult}
+          isLoading={isAnalyzing}
+          onClose={closeAnalysisModal}
+        />
+      )}
     </div>
   );
 }
