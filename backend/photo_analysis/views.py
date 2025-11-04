@@ -10,6 +10,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import AllowAny
 from constance import config
 
 from .models import PhotoAnalysis
@@ -20,9 +21,14 @@ from .serializers import (
     PhotoUploadSerializer,
     PhotoUploadResponseSerializer,
 )
-from .utils.rate_limit import photo_analysis_rate_limit, get_client_identifier
+from .utils.rate_limit import (
+    photo_analysis_rate_limit,
+    get_client_identifier,
+    estimate_request_cost,
+    increment_cost,
+)
 from .utils.fingerprinting.image_hash import calculate_phash
-from .utils.fingerprinting.file_hash import calculate_md5, get_file_size
+from .utils.fingerprinting.file_hash import calculate_sha256, get_file_size
 from .utils.vision.openai_vision import get_vision_provider
 from .utils.image_processing import resize_image_if_needed
 from .utils.suggestion_blending import blend_suggestions
@@ -45,6 +51,7 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = PhotoAnalysis.objects.all()
     serializer_class = PhotoAnalysisSerializer
+    permission_classes = [AllowAny]  # Allow anonymous photo uploads (rate limited by fingerprint/IP)
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -124,9 +131,9 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
         tracker = PerformanceTracker()
 
         try:
-            # Calculate file hashes for deduplication
+            # Calculate file hashes for deduplication (SHA-256 for collision resistance)
             image_file.seek(0)
-            file_hash = calculate_md5(image_file)
+            file_hash = calculate_sha256(image_file)
 
             image_file.seek(0)
             image_phash = calculate_phash(image_file)
@@ -140,9 +147,22 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
             ).first()
 
             if existing_analysis:
-                # Return cached analysis
-                logger.info(f"Returning cached analysis for file_hash={file_hash}")
+                # Dual-hash validation: verify both file_hash and phash match
+                # This detects SHA-256 collision attacks (file_hash matches but content differs)
+                if existing_analysis.image_phash != image_phash:
+                    logger.error(
+                        f"🚨 SECURITY WARNING: SHA-256 collision detected! "
+                        f"file_hash={file_hash[:16]}... matches but phash differs "
+                        f"(cached: {existing_analysis.image_phash[:16]}... vs current: {image_phash[:16]}...). "
+                        f"Rejecting cached result and processing as new upload."
+                    )
+                    # Don't use cached result - process as new upload
+                    existing_analysis = None
+                else:
+                    # Both hashes match - safe to return cached analysis
+                    logger.info(f"Returning cached analysis for file_hash={file_hash[:16]}... (phash validated)")
 
+            if existing_analysis:
                 # Blend suggestions for cached analysis (add room metadata)
                 blended = None  # Track if blending succeeded
                 if existing_analysis.suggestions:
@@ -218,6 +238,14 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 temperature=config.PHOTO_ANALYSIS_TEMPERATURE
             )
             logger.info("Vision analysis completed")
+
+            # Track API cost for circuit breaker
+            estimated_cost = estimate_request_cost(
+                model=config.PHOTO_ANALYSIS_OPENAI_MODEL,
+                detail_mode=config.PHOTO_ANALYSIS_DETAIL_MODE,
+                megapixels=max_megapixels
+            )
+            increment_cost(estimated_cost)
 
             # Store image file using unified MediaStorage API
             import uuid

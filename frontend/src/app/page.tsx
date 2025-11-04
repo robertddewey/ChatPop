@@ -6,6 +6,7 @@ import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import RegisterModal from "@/components/RegisterModal";
 import CreateChatModal from "@/components/CreateChatModal";
+import PhotoAnalysisModal from "@/components/PhotoAnalysisModal";
 import { MARKETING } from "@/lib/marketing";
 import { messageApi } from "@/lib/api";
 import { getFingerprint } from "@/lib/usernameStorage";
@@ -16,6 +17,7 @@ export default function Home() {
   const authMode = searchParams.get('auth');
   const modalMode = searchParams.get('modal');
   const [isMobile, setIsMobile] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
 
   useEffect(() => {
     // Detect if device is mobile
@@ -27,6 +29,10 @@ export default function Home() {
 
   const closeModal = () => {
     router.push('/', { scroll: false });
+  };
+
+  const closeAnalysisModal = () => {
+    setAnalysisResult(null);
   };
 
   const openCreateModal = () => {
@@ -45,43 +51,22 @@ export default function Home() {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (file) {
           console.log('📸 Photo captured from camera:', file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
-          console.log('🔄 Analyzing photo with Vision API...');
 
           try {
             // Get fingerprint for tracking
             const fingerprint = await getFingerprint();
-            console.log('🔑 Fingerprint:', fingerprint);
 
             // Analyze photo
             const result = await messageApi.analyzePhoto(file, fingerprint);
+            console.log('✅ Analysis complete:', result);
 
-            // Pretty print results
-            console.log('\n' + '='.repeat(80));
-            console.log('✅ ANALYSIS COMPLETE');
-            console.log('='.repeat(80));
-            console.log(`📊 Cached: ${result.cached ? 'Yes (from cache)' : 'No (fresh analysis)'}`);
-            console.log(`🆔 Analysis ID: ${result.analysis.id}`);
-            console.log(`📝 Suggestions (${result.analysis.suggestions.length}):\n`);
-
-            result.analysis.suggestions.forEach((s, idx) => {
-              const properNounBadge = s.is_proper_noun ? '🏷️ [PROPER NOUN]' : '';
-              console.log(`  ${idx + 1}. ${s.name} (${s.key}) ${properNounBadge}`);
-              console.log(`     📄 ${s.description}`);
-              console.log(`     🔍 Source: ${s.source} | 📈 Usage: ${s.usage_count}x | 🏠 Has Room: ${s.has_room} | 👥 Active Users: ${s.active_users}`);
-              console.log('');
-            });
-
-            console.log('='.repeat(80));
-            console.log('📦 Full response:');
-            console.log(JSON.stringify(result, null, 2));
-            console.log('='.repeat(80) + '\n');
+            // Show result in modal
+            setAnalysisResult(result);
 
           } catch (err: any) {
-            console.error('\n❌ Photo analysis failed:');
-            console.error('Error:', err.response?.data || err.message);
-            if (err.response?.data) {
-              console.error('Details:', JSON.stringify(err.response.data, null, 2));
-            }
+            console.error('❌ Photo analysis failed:', err.response?.data || err.message);
+            // TODO: Show error in modal or toast notification
+            alert(`Photo analysis failed: ${err.response?.data?.detail || err.message}`);
           }
         }
       };
@@ -102,43 +87,22 @@ export default function Home() {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (file) {
           console.log('🖼️ Photo selected from library:', file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
-          console.log('🔄 Analyzing photo with Vision API...');
 
           try {
             // Get fingerprint for tracking
             const fingerprint = await getFingerprint();
-            console.log('🔑 Fingerprint:', fingerprint);
 
             // Analyze photo
             const result = await messageApi.analyzePhoto(file, fingerprint);
+            console.log('✅ Analysis complete:', result);
 
-            // Pretty print results
-            console.log('\n' + '='.repeat(80));
-            console.log('✅ ANALYSIS COMPLETE');
-            console.log('='.repeat(80));
-            console.log(`📊 Cached: ${result.cached ? 'Yes (from cache)' : 'No (fresh analysis)'}`);
-            console.log(`🆔 Analysis ID: ${result.analysis.id}`);
-            console.log(`📝 Suggestions (${result.analysis.suggestions.length}):\n`);
-
-            result.analysis.suggestions.forEach((s, idx) => {
-              const properNounBadge = s.is_proper_noun ? '🏷️ [PROPER NOUN]' : '';
-              console.log(`  ${idx + 1}. ${s.name} (${s.key}) ${properNounBadge}`);
-              console.log(`     📄 ${s.description}`);
-              console.log(`     🔍 Source: ${s.source} | 📈 Usage: ${s.usage_count}x | 🏠 Has Room: ${s.has_room} | 👥 Active Users: ${s.active_users}`);
-              console.log('');
-            });
-
-            console.log('='.repeat(80));
-            console.log('📦 Full response:');
-            console.log(JSON.stringify(result, null, 2));
-            console.log('='.repeat(80) + '\n');
+            // Show result in modal
+            setAnalysisResult(result);
 
           } catch (err: any) {
-            console.error('\n❌ Photo analysis failed:');
-            console.error('Error:', err.response?.data || err.message);
-            if (err.response?.data) {
-              console.error('Details:', JSON.stringify(err.response.data, null, 2));
-            }
+            console.error('❌ Photo analysis failed:', err.response?.data || err.message);
+            // TODO: Show error in modal or toast notification
+            alert(`Photo analysis failed: ${err.response?.data?.detail || err.message}`);
           }
         }
       };
@@ -291,6 +255,7 @@ export default function Home() {
       {authMode === 'login' && <LoginModal onClose={closeModal} />}
       {authMode === 'register' && <RegisterModal onClose={closeModal} />}
       {modalMode === 'create' && <CreateChatModal onClose={closeModal} />}
+      {analysisResult && <PhotoAnalysisModal result={analysisResult} onClose={closeAnalysisModal} />}
     </div>
   );
 }
