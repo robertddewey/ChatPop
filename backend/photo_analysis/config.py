@@ -22,10 +22,10 @@ Usage:
 # Higher = looser matching (allow more variation)
 # Range: 0.0 (identical) to 1.0 (completely different)
 # Examples:
-#   0.15 = 85%+ similarity required (strict - current default)
-#   0.20 = 80%+ similarity required (moderate)
-#   0.25 = 75%+ similarity required (loose)
-SUGGESTION_MATCHING_SIMILARITY_THRESHOLD = 0.3
+#   0.30 = 70%+ similarity required (strict)
+#   0.35 = 65%+ similarity required (moderate)
+#   0.40 = 60%+ similarity required (loose - current default)
+SUGGESTION_MATCHING_SIMILARITY_THRESHOLD = 0.4
 
 # Number of parallel threads for suggestion K-NN searches
 # Higher = faster parallel processing but more CPU/memory usage
@@ -35,6 +35,18 @@ SUGGESTION_MATCHING_MAX_WORKERS = 10
 # This controls how many similar suggestions are examined and displayed in logs
 # Higher = more diagnostic info but slower queries
 SUGGESTION_MATCHING_CANDIDATES_COUNT = 5
+
+# Diversity filter threshold
+# After matching, filter out suggestions that are too similar to each other
+# This prevents returning multiple variations of the same concept
+# Lower = stricter diversity (require more difference)
+# Higher = looser diversity (allow more similarity)
+# Range: 0.0 (must be completely different) to 1.0 (can be identical)
+# Examples:
+#   0.20 = 80%+ different required (very strict)
+#   0.25 = 75%+ different required (strict - current default)
+#   0.30 = 70%+ different required (moderate)
+DIVERSITY_FILTER_THRESHOLD = 0.2
 
 
 # ==============================================================================

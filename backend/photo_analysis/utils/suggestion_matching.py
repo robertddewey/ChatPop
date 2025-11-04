@@ -33,9 +33,193 @@ from ..config import (
     SUGGESTION_MATCHING_SIMILARITY_THRESHOLD,
     SUGGESTION_MATCHING_MAX_WORKERS,
     SUGGESTION_MATCHING_CANDIDATES_COUNT,
+    DIVERSITY_FILTER_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _calculate_cosine_distance(embedding1: List[float], embedding2: List[float]) -> float:
+    """
+    Calculate cosine distance between two embeddings.
+
+    Args:
+        embedding1: First embedding vector
+        embedding2: Second embedding vector
+
+    Returns:
+        Cosine distance (0.0 = identical, 2.0 = opposite)
+    """
+    import numpy as np
+
+    # Convert to numpy arrays
+    a = np.array(embedding1)
+    b = np.array(embedding2)
+
+    # Calculate cosine similarity
+    dot_product = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+
+    if norm_a == 0 or norm_b == 0:
+        return 1.0  # Maximum distance if either vector is zero
+
+    cosine_similarity = dot_product / (norm_a * norm_b)
+
+    # Convert to cosine distance (1 - similarity)
+    cosine_distance = 1 - cosine_similarity
+
+    return cosine_distance
+
+
+def apply_diversity_filter(
+    suggestions: List[Dict[str, Any]],
+    diversity_threshold: float = DIVERSITY_FILTER_THRESHOLD
+) -> List[Dict[str, Any]]:
+    """
+    Filter out suggestions that are too similar to each other.
+
+    This prevents returning multiple variations of the same concept
+    (e.g., "Brew Culture", "Brew Masters", "Craft Beer" all in the same result set).
+
+    Algorithm:
+    1. Sort suggestions by priority (proper nouns first, then by usage_count)
+    2. Iterate through suggestions in order
+    3. For each suggestion, check if it's too similar to any already accepted suggestion
+    4. If too similar (distance < threshold), skip it
+    5. If sufficiently different, add it to the result set
+
+    Args:
+        suggestions: List of matched suggestions with embeddings
+        diversity_threshold: Maximum cosine distance allowed between suggestions
+                           (lower = require more diversity)
+
+    Returns:
+        Filtered list of diverse suggestions
+
+    Example:
+        Input: ["Craft Beer" (usage=3), "Brew Culture" (usage=2), "Summer Sips" (usage=1)]
+        With threshold 0.25:
+        - "Craft Beer" accepted (first)
+        - "Brew Culture" rejected (too similar to "Craft Beer", distance=0.12)
+        - "Summer Sips" accepted (different enough from "Craft Beer", distance=0.65)
+        Output: ["Craft Beer", "Summer Sips"]
+    """
+    if not suggestions:
+        return []
+
+    # We need embeddings to calculate diversity
+    # Get embeddings for all suggestions from the database
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+    # Prepare embeddings map: suggestion_id -> embedding
+    embeddings_map = {}
+
+    for suggestion in suggestions:
+        suggestion_id = suggestion.get('suggestion_id')
+        if not suggestion_id:
+            continue
+
+        # Check if we already have the embedding from matching
+        # For matched suggestions, we may have generated embeddings in the previous step
+        # For proper nouns, we need to generate embeddings now
+        is_proper_noun = suggestion.get('is_proper_noun', False)
+
+        if is_proper_noun:
+            # Generate embedding for proper noun
+            text = f"{suggestion['name']}\n{suggestion.get('description', '')}"
+            response = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=[text]
+            )
+            embeddings_map[suggestion_id] = response.data[0].embedding
+        else:
+            # Try to get embedding from database
+            try:
+                suggestion_obj = Suggestion.objects.get(id=suggestion_id)
+                if suggestion_obj.embedding is not None:
+                    embeddings_map[suggestion_id] = suggestion_obj.embedding
+                else:
+                    # Generate if missing
+                    text = f"{suggestion['name']}\n{suggestion.get('description', '')}"
+                    response = client.embeddings.create(
+                        model="text-embedding-3-small",
+                        input=[text]
+                    )
+                    embeddings_map[suggestion_id] = response.data[0].embedding
+            except Suggestion.DoesNotExist:
+                # Skip if suggestion not found
+                continue
+
+    logger.info(f"\n{'='*80}")
+    logger.info("DIVERSITY FILTER")
+    logger.info(f"{'='*80}")
+    logger.info(f"Input: {len(suggestions)} suggestions")
+    logger.info(f"Diversity threshold: {diversity_threshold} (must be >{diversity_threshold*100:.0f}% different)")
+
+    # Sort by proper noun first, then usage_count (descending)
+    sorted_suggestions = sorted(
+        suggestions,
+        key=lambda s: (not s.get('is_proper_noun', False), -s.get('usage_count', 0))
+    )
+
+    filtered_suggestions = []
+
+    for suggestion in sorted_suggestions:
+        suggestion_id = suggestion.get('suggestion_id')
+        suggestion_name = suggestion['name']
+
+        # If no embedding available, accept by default
+        if suggestion_id not in embeddings_map:
+            logger.info(f"  ✓ '{suggestion_name}' - accepted (no embedding for comparison)")
+            filtered_suggestions.append(suggestion)
+            continue
+
+        # Check similarity against all already-accepted suggestions
+        too_similar = False
+        most_similar_name = None
+        min_distance = float('inf')
+
+        for accepted in filtered_suggestions:
+            accepted_id = accepted.get('suggestion_id')
+
+            # Skip if no embedding for accepted suggestion
+            if accepted_id not in embeddings_map:
+                continue
+
+            # Calculate distance
+            distance = _calculate_cosine_distance(
+                embeddings_map[suggestion_id],
+                embeddings_map[accepted_id]
+            )
+
+            if distance < min_distance:
+                min_distance = distance
+                most_similar_name = accepted['name']
+
+            # Check if too similar
+            if distance < diversity_threshold:
+                too_similar = True
+                logger.info(
+                    f"  ✗ '{suggestion_name}' - rejected (too similar to '{accepted['name']}', "
+                    f"distance: {distance:.4f}, threshold: {diversity_threshold})"
+                )
+                break
+
+        if not too_similar:
+            if filtered_suggestions:
+                logger.info(
+                    f"  ✓ '{suggestion_name}' - accepted (most similar: '{most_similar_name}', "
+                    f"distance: {min_distance:.4f})"
+                )
+            else:
+                logger.info(f"  ✓ '{suggestion_name}' - accepted (first suggestion)")
+            filtered_suggestions.append(suggestion)
+
+    logger.info(f"\nOutput: {len(filtered_suggestions)} diverse suggestions")
+    logger.info(f"{'='*80}\n")
+
+    return filtered_suggestions
 
 
 def match_suggestions_to_existing(
@@ -166,7 +350,10 @@ def match_suggestions_to_existing(
     # Maintain original order from seed_suggestions
     all_results = proper_noun_results + matched_suggestions
 
-    return all_results
+    # Apply diversity filter to remove similar suggestions
+    diverse_results = apply_diversity_filter(all_results)
+
+    return diverse_results
 
 
 def _find_or_create_similar_suggestion(
@@ -239,7 +426,7 @@ def _find_or_create_similar_suggestion(
             return {
                 'name': best_candidate.name,
                 'key': best_candidate.key,
-                'description': seed_suggestion.get('description', ''),
+                'description': best_candidate.description,
                 'source': 'matched',
                 'is_proper_noun': False,
                 'usage_count': best_candidate.usage_count,
@@ -307,7 +494,7 @@ def _create_or_get_suggestion(
             return {
                 'name': existing.name,
                 'key': existing.key,
-                'description': description,
+                'description': existing.description,
                 'source': 'matched',
                 'is_proper_noun': existing.is_proper_noun,
                 'usage_count': existing.usage_count,

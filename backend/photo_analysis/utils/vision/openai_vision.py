@@ -229,7 +229,7 @@ class OpenAIVisionProvider(VisionProvider):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=500,
+                max_tokens=2000,  # Increased to prevent truncation of JSON responses
                 temperature=temperature,  # Configurable temperature from Constance
                 response_format={"type": "json_object"}  # Force JSON output
             )
