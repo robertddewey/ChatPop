@@ -31,6 +31,7 @@ from ..models import Suggestion
 from .performance import perf_track
 from ..config import (
     SUGGESTION_MATCHING_SIMILARITY_THRESHOLD,
+    PROPER_NOUN_MATCHING_THRESHOLD,
     SUGGESTION_MATCHING_MAX_WORKERS,
     SUGGESTION_MATCHING_CANDIDATES_COUNT,
     DIVERSITY_FILTER_THRESHOLD,
@@ -222,6 +223,116 @@ def apply_diversity_filter(
     return filtered_suggestions
 
 
+def _find_or_create_proper_noun(
+    embedding_vector: List[float],
+    seed_suggestion: Dict[str, Any],
+    threshold: float
+) -> Dict[str, Any]:
+    """
+    K-NN search for similar existing proper noun suggestions.
+
+    Uses strict threshold to prevent false matches between items with same name
+    but different content (e.g., "Open Season" book vs movie).
+
+    If match found: Return existing suggestion
+    If no match: Create new suggestion with unique key (append -2, -3, etc. if needed)
+
+    Args:
+        embedding_vector: Embedding of name + description
+        seed_suggestion: Original seed suggestion dict
+        threshold: Cosine distance threshold (strict, e.g., 0.15)
+
+    Returns:
+        Matched or created proper noun suggestion
+    """
+    suggestion_name = seed_suggestion['name']
+    base_key = seed_suggestion['key']
+    prefix = f"[{suggestion_name}]"
+
+    try:
+        # K-NN search in existing proper nouns ONLY
+        candidates = Suggestion.objects.filter(
+            is_proper_noun=True
+        ).annotate(
+            distance=CosineDistance('embedding', embedding_vector)
+        ).order_by('distance')[:SUGGESTION_MATCHING_CANDIDATES_COUNT]
+
+        # Log matching details
+        logger.info(f"{prefix} {'='*70}")
+        logger.info(f"{prefix} Proper Noun Matching (threshold: {threshold})")
+        logger.info(f"{prefix} {'='*70}")
+
+        if not candidates:
+            logger.info(f"{prefix}   No existing proper nouns - creating new")
+            logger.info(f"{prefix} {'='*70}")
+            return _create_or_get_suggestion(
+                name=seed_suggestion['name'],
+                key=base_key,
+                description=seed_suggestion.get('description', ''),
+                is_proper_noun=True,
+                embedding_vector=embedding_vector
+            )
+
+        for i, candidate in enumerate(candidates, 1):
+            match_symbol = "✓ MATCHED" if candidate.distance < threshold else "○"
+            logger.info(
+                f"{prefix}   {i}. {match_symbol} '{candidate.name}' (key: {candidate.key}) - "
+                f"distance: {candidate.distance:.4f} "
+                f"(similarity: {(1 - candidate.distance):.1%}, usage: {candidate.usage_count}x)"
+            )
+
+        logger.info(f"{prefix} {'='*70}")
+
+        # Check best match against strict threshold
+        best_candidate = candidates[0]
+        if best_candidate.distance < threshold:
+            # Match found - increment usage
+            best_candidate.increment_usage()
+
+            logger.info(
+                f"{prefix} ✓ FINAL: Matched → '{best_candidate.name}' (key: {best_candidate.key}) "
+                f"(distance: {best_candidate.distance:.4f}, new usage: {best_candidate.usage_count}x)"
+            )
+
+            return {
+                'name': best_candidate.name,
+                'key': best_candidate.key,
+                'description': seed_suggestion.get('description', best_candidate.description),  # Use NEW description
+                'source': 'matched',
+                'is_proper_noun': True,
+                'usage_count': best_candidate.usage_count,
+                'similarity_score': 1 - best_candidate.distance,
+                'suggestion_id': str(best_candidate.id)
+            }
+        else:
+            # No match - create new with unique key
+            logger.info(
+                f"{prefix} ○ FINAL: No match - best distance {best_candidate.distance:.4f} "
+                f"exceeds threshold {threshold} - creating new with unique key"
+            )
+
+            return _create_or_get_suggestion(
+                name=seed_suggestion['name'],
+                key=base_key,
+                description=seed_suggestion.get('description', ''),
+                is_proper_noun=True,
+                embedding_vector=embedding_vector
+            )
+
+    except Exception as e:
+        logger.warning(
+            f"Failed to match proper noun '{seed_suggestion['name']}': {str(e)}"
+        )
+        # On error, create new
+        return _create_or_get_suggestion(
+            name=seed_suggestion['name'],
+            key=base_key,
+            description=seed_suggestion.get('description', ''),
+            is_proper_noun=True,
+            embedding_vector=embedding_vector
+        )
+
+
 def match_suggestions_to_existing(
     seed_suggestions: List[Dict[str, Any]],
     similarity_threshold: float = SUGGESTION_MATCHING_SIMILARITY_THRESHOLD,
@@ -229,8 +340,9 @@ def match_suggestions_to_existing(
     """
     Match seed suggestions to existing suggestions via embedding similarity.
 
-    Proper nouns are preserved without matching (unique entities like brands, titles).
-    Generic suggestions are matched against the Suggestion table using K-NN.
+    Proper nouns are matched using strict embedding similarity to prevent false matches
+    (e.g., "Open Season" book vs movie should create separate suggestions).
+    Generic suggestions are matched with looser threshold to encourage consolidation.
     If a match is found, the existing suggestion is used and its usage_count is incremented.
     If no match is found, a new Suggestion record is created.
 
@@ -276,32 +388,54 @@ def match_suggestions_to_existing(
     )
 
     if proper_noun_suggestions:
-        logger.info("\nProper nouns (PRESERVED - will NOT be matched):")
+        logger.info("\nProper nouns (will match with STRICT threshold to prevent collisions):")
         for s in proper_noun_suggestions:
             logger.info(f"  ✓ '{s['name']}' - is_proper_noun={s.get('is_proper_noun')}")
 
     if generic_suggestions:
-        logger.info("\nGenerics (will attempt matching):")
+        logger.info("\nGenerics (will match with standard threshold):")
         for s in generic_suggestions:
             logger.info(f"  → '{s['name']}' - is_proper_noun={s.get('is_proper_noun', False)}")
 
     logger.info(f"{'='*80}\n")
 
-    # Process proper nouns (create or get existing)
+    # Process proper nouns with embedding-based matching (strict threshold)
     proper_noun_results = []
-    for proper_noun in proper_noun_suggestions:
-        result = _create_or_get_suggestion(
-            name=proper_noun['name'],
-            key=proper_noun['key'],
-            description=proper_noun.get('description', ''),
-            is_proper_noun=True,
-            embedding_vector=None  # Proper nouns don't need embeddings (never matched)
-        )
-        proper_noun_results.append(result)
+    if proper_noun_suggestions:
+        with perf_track("Batch embed proper nouns", metadata=f"{len(proper_noun_suggestions)} proper nouns"):
+            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+            # Generate embeddings for proper nouns (name + description)
+            input_texts = [
+                f"{s['name']}\n{s['description']}" if s.get('description') else s['name']
+                for s in proper_noun_suggestions
+            ]
+
+            response = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=input_texts
+            )
+
+        # Match each proper noun using strict threshold
+        with perf_track("K-NN proper noun matching", metadata=f"{len(proper_noun_suggestions)} parallel searches"):
+            with ThreadPoolExecutor(max_workers=SUGGESTION_MATCHING_MAX_WORKERS) as executor:
+                futures = {
+                    executor.submit(
+                        _find_or_create_proper_noun,
+                        response.data[i].embedding,
+                        proper_noun_suggestions[i],
+                        PROPER_NOUN_MATCHING_THRESHOLD  # Use strict threshold (e.g., 0.15)
+                    ): i
+                    for i in range(len(proper_noun_suggestions))
+                }
+
+                for future in as_completed(futures):
+                    proper_noun_results.append(future.result())
 
     if not generic_suggestions:
-        # All proper nouns - nothing to match
-        return proper_noun_results
+        # All proper nouns - apply diversity filter and return
+        diverse_results = apply_diversity_filter(proper_noun_results)
+        return diverse_results
 
     # Batch generate embeddings for generic suggestions (name + description)
     with perf_track("Batch embed generic suggestions", metadata=f"{len(generic_suggestions)} suggestions"):
@@ -426,7 +560,7 @@ def _find_or_create_similar_suggestion(
             return {
                 'name': best_candidate.name,
                 'key': best_candidate.key,
-                'description': best_candidate.description,
+                'description': seed_suggestion.get('description', best_candidate.description),  # Use NEW description
                 'source': 'matched',
                 'is_proper_noun': False,
                 'usage_count': best_candidate.usage_count,
@@ -470,36 +604,42 @@ def _create_or_get_suggestion(
     embedding_vector: List[float] = None
 ) -> Dict[str, Any]:
     """
-    Create a new Suggestion record or get existing by key.
+    Create a new Suggestion record with unique key.
+
+    For proper nouns: Handles key collisions by appending numeric suffixes
+    (e.g., "open-season", "open-season-2", "open-season-3")
+
+    For generics: Creates new suggestion (generics already matched by embedding
+    before calling this function, so we only create if truly new)
 
     Args:
-        name: Suggestion name (e.g., "Cheers!")
-        key: URL-safe slug (e.g., "cheers")
+        name: Suggestion name (e.g., "Open Season")
+        key: URL-safe slug base (e.g., "open-season")
         description: Description from Vision API
         is_proper_noun: Whether this is a proper noun (brand, title, etc.)
-        embedding_vector: 1536-dim embedding (optional, not needed for proper nouns)
+        embedding_vector: 1536-dim embedding
 
     Returns:
         Suggestion dict with metadata
     """
     try:
-        # Check if suggestion already exists by key
-        existing = Suggestion.objects.filter(key=key).first()
+        # Handle key collision for proper nouns by appending numeric suffix
+        if is_proper_noun:
+            # Check if base key exists
+            base_key = key
+            unique_key = base_key
+            suffix = 2
 
-        if existing:
-            # Increment usage if it already exists
-            existing.increment_usage()
-            logger.info(f"  ✓ Found existing suggestion '{name}' (key={key}, usage={existing.usage_count}x)")
+            while Suggestion.objects.filter(key=unique_key).exists():
+                unique_key = f"{base_key}-{suffix}"
+                suffix += 1
 
-            return {
-                'name': existing.name,
-                'key': existing.key,
-                'description': existing.description,
-                'source': 'matched',
-                'is_proper_noun': existing.is_proper_noun,
-                'usage_count': existing.usage_count,
-                'suggestion_id': str(existing.id)
-            }
+            if unique_key != base_key:
+                logger.info(
+                    f"  ! Key collision: '{base_key}' exists, using '{unique_key}' instead"
+                )
+
+            key = unique_key
 
         # Create new suggestion
         suggestion = Suggestion.objects.create(

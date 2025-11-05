@@ -335,10 +335,20 @@ Use is_proper_noun = false for generic names you GENERATE:
 
 Rule of thumb: If you're CREATING the name as a general chat topic, it's NOT a proper noun. If you're IDENTIFYING a specific brand/title/place visible in the photo, it IS a proper noun.
 
+CRITICAL - Description Consistency:
+Descriptions are used for similarity matching via embeddings. When writing descriptions:
+- Be CONSISTENT: Use the same canonical phrasing for the same brand/item across different photos
+- Focus on CORE IDENTITY: What defines this brand/title? (product category, genre, creator, key attributes)
+- Be SPECIFIC for proper nouns: Include product category, genre, or defining characteristics
+- Avoid VAGUE wording: Don't use generic phrases like "discuss the brand and its offerings"
+- For brands: Always mention the product category (bourbon, vodka, beer, tech product, etc.)
+- For media titles: Always mention the genre or media type (sci-fi book, action movie, drama series)
+- For products: Always mention the product category and primary use case
+
 Format:
 - "name": Title Case
 - "key": lowercase-with-dashes
-- "description": Short phrase, two sentences. Will be used for embeddings.
+- "description": Two sentences focused on core identity. Be specific and consistent.
 - "is_proper_noun": true ONLY for identified named entities, false for ALL generated generic topics
 
 Response JSON:

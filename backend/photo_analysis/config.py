@@ -17,7 +17,7 @@ Usage:
 # ==============================================================================
 # Controls how similar two suggestions must be to match during photo upload
 
-# Cosine distance threshold for suggestion matching
+# Cosine distance threshold for suggestion matching (GENERIC suggestions only)
 # Lower = stricter matching (require more similarity)
 # Higher = looser matching (allow more variation)
 # Range: 0.0 (identical) to 1.0 (completely different)
@@ -26,6 +26,16 @@ Usage:
 #   0.35 = 65%+ similarity required (moderate)
 #   0.40 = 60%+ similarity required (loose - current default)
 SUGGESTION_MATCHING_SIMILARITY_THRESHOLD = 0.4
+
+# Cosine distance threshold for PROPER NOUN matching
+# Proper nouns need stricter matching to avoid false positives
+# (e.g., "Open Season" book vs "Open Season" movie should NOT match)
+# Lower = stricter (require more similarity to match)
+# Examples:
+#   0.15 = 85%+ similarity required (strict - prevents title collisions)
+#   0.20 = 80%+ similarity required (moderate)
+#   0.25 = 75%+ similarity required (loose)
+PROPER_NOUN_MATCHING_THRESHOLD = 0.15
 
 # Number of parallel threads for suggestion K-NN searches
 # Higher = faster parallel processing but more CPU/memory usage
