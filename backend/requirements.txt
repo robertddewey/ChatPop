@@ -137,3 +137,4 @@ future==1.0.0
 msgpack==1.1.1
 Pygments==2.19.2
 setuptools==80.9.0
+pyacrcloud

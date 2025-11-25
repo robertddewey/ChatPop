@@ -100,7 +100,7 @@ CREATE INDEX idx_suggestion_proper_noun ON suggestion (is_proper_noun);
 
 **Migration:** `0010_add_suggestion_model.py` ✓ Applied
 
-### Updated `photo_analysis` Table
+### Updated `media_analysis` Table
 
 - `suggestions_embedding`: Set to `NULL` (no longer used)
 - `suggestions_embedding_generated_at`: Set to `NULL`
@@ -108,7 +108,7 @@ CREATE INDEX idx_suggestion_proper_noun ON suggestion (is_proper_noun);
 
 ## Code Changes
 
-### 1. New Module: `photo_analysis/utils/suggestion_matching.py`
+### 1. New Module: `media_analysis/utils/suggestion_matching.py`
 
 **Function:** `match_suggestions_to_existing(seed_suggestions, similarity_threshold=0.15)`
 
@@ -121,7 +121,7 @@ CREATE INDEX idx_suggestion_proper_noun ON suggestion (is_proper_noun);
 - Automatic usage_count tracking
 - Detailed logging with match distances
 
-### 2. Updated: `photo_analysis/views.py`
+### 2. Updated: `media_analysis/views.py`
 
 **Changed Section:** Lines 261-314 (STEP 1 and STEP 2 of photo upload workflow)
 
@@ -143,7 +143,7 @@ CREATE INDEX idx_suggestion_proper_noun ON suggestion (is_proper_noun);
 - `get_similar_photo_popular_suggestions()` call
 - Complex merging logic
 
-### 3. Updated: `photo_analysis/models.py`
+### 3. Updated: `media_analysis/models.py`
 
 **Added:** Complete `Suggestion` model (lines 11-99)
 
@@ -231,7 +231,7 @@ CREATE TABLE suggestion_co_occurrence (
 Track which suggestions users actually click on:
 
 ```sql
-ALTER TABLE photo_analysis
+ALTER TABLE media_analysis
 ADD COLUMN selected_suggestion_id UUID REFERENCES suggestion(id);
 ```
 

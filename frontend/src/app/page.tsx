@@ -7,6 +7,7 @@ import LoginModal from "@/components/LoginModal";
 import RegisterModal from "@/components/RegisterModal";
 import CreateChatModal from "@/components/CreateChatModal";
 import PhotoAnalysisModal from "@/components/PhotoAnalysisModal";
+import AudioRecordingModal from "@/components/AudioRecordingModal";
 import { MARKETING } from "@/lib/marketing";
 import { messageApi } from "@/lib/api";
 import { getFingerprint } from "@/lib/usernameStorage";
@@ -19,6 +20,7 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showAudioModal, setShowAudioModal] = useState(false);
 
   useEffect(() => {
     // Detect if device is mobile
@@ -153,7 +155,8 @@ export default function Home() {
           </p>
 
           {/* Main CTA */}
-          <div className="flex items-center justify-center gap-4 flex-wrap">
+          <div className="flex flex-col items-center gap-6">
+            {/* Start a ChatPop Button */}
             <button
               onClick={openCreateModal}
               className="inline-block px-8 py-4 text-lg font-bold bg-white text-gray-900 rounded-full hover:bg-gray-100 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer"
@@ -161,53 +164,80 @@ export default function Home() {
               {MARKETING.hero.cta}
             </button>
 
-            {/* Camera Button */}
-            <div className="relative group">
-              <button
-                onClick={handleCameraClick}
-                disabled={!isMobile}
-                className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
-                  isMobile
-                    ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
-                    : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
-                }`}
-              >
-                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </button>
+            {/* Media Buttons Row */}
+            <div className="flex items-center justify-center gap-4">
+              {/* Camera Button */}
+              <div className="relative group">
+                <button
+                  onClick={handleCameraClick}
+                  disabled={!isMobile}
+                  className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                    isMobile
+                      ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
 
-              {/* Desktop tooltip */}
-              {!isMobile && (
-                <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  Mobile only
-                </div>
-              )}
-            </div>
+                {/* Desktop tooltip */}
+                {!isMobile && (
+                  <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    Mobile only
+                  </div>
+                )}
+              </div>
 
-            {/* Photo Library Button */}
-            <div className="relative group">
-              <button
-                onClick={handleLibraryClick}
-                disabled={!isMobile}
-                className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
-                  isMobile
-                    ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
-                    : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
-                }`}
-              >
-                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </button>
+              {/* Photo Library Button */}
+              <div className="relative group">
+                <button
+                  onClick={handleLibraryClick}
+                  disabled={!isMobile}
+                  className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                    isMobile
+                      ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </button>
 
-              {/* Desktop tooltip */}
-              {!isMobile && (
-                <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  Mobile only
-                </div>
-              )}
+                {/* Desktop tooltip */}
+                {!isMobile && (
+                  <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    Mobile only
+                  </div>
+                )}
+              </div>
+
+              {/* Microphone/Music Button */}
+              <div className="relative group">
+                <button
+                  onClick={() => isMobile && setShowAudioModal(true)}
+                  disabled={!isMobile}
+                  className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                    isMobile
+                      ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                  </svg>
+                </button>
+
+                {/* Desktop tooltip */}
+                {!isMobile && (
+                  <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    Mobile only
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -275,6 +305,9 @@ export default function Home() {
           isLoading={isAnalyzing}
           onClose={closeAnalysisModal}
         />
+      )}
+      {showAudioModal && (
+        <AudioRecordingModal onClose={() => setShowAudioModal(false)} />
       )}
     </div>
   );

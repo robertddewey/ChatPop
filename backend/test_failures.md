@@ -8,7 +8,7 @@
 **Total Tests:** 346
 **Passing:** 335 (96.8%) ⬆️ **+106 from initial run** (229 → 335) 🎉
 **Failures:** 0 (0.0%) ⬇️ ALL FAILURES FIXED! ✅
-**Errors:** 11 (3.2%) - All in **excluded categories** (photo_analysis + WebSocket)
+**Errors:** 11 (3.2%) - All in **excluded categories** (media_analysis + WebSocket)
 
 **🎉 URL Migration Complete! 🎉**
 
@@ -263,15 +263,15 @@ The following test files were successfully updated by the automated migration sc
 **Error:** `TypeError: User() got unexpected keyword arguments: 'username'`
 **Cause:** Tests passing `username` parameter to `User.objects.create_user()`, should be `reserved_username`
 **Type:** Photo analysis feature tests - excluded per user request
-**Action:** No action required (photo_analysis tests excluded)
+**Action:** No action required (media_analysis tests excluded)
 
 **Tests affected:**
 - `test_cannot_create_room_from_similar_room_code`
 - `test_create_new_room_from_ai_suggestion`
-- `test_invalid_photo_analysis_id`
+- `test_invalid_media_analysis_id`
 - `test_join_existing_room_from_ai_suggestion`
 - `test_join_existing_room_from_similar_rooms`
-- `test_missing_photo_analysis_id`
+- `test_missing_media_analysis_id`
 - `test_missing_room_code`
 - `test_reject_invalid_room_code`
 - `test_selection_tracking_overwrites_previous`

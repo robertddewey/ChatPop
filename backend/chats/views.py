@@ -2178,7 +2178,7 @@ class ChatRoomCreateFromPhotoView(APIView):
     """
     Create a chat room from a photo analysis suggestion (AI-generated rooms).
 
-    Security: Only accepts photo_analysis_id and suggestion_index.
+    Security: Only accepts media_analysis_id and suggestion_index.
     All room data (name, description, theme) is pulled from the
     server-side PhotoAnalysis record to prevent client tampering.
 
@@ -2188,8 +2188,8 @@ class ChatRoomCreateFromPhotoView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        from photo_analysis.models import PhotoAnalysis
-        from photo_analysis.utils.similarity import find_similar_rooms
+        from media_analysis.models import PhotoAnalysis
+        from media_analysis.utils.similarity import find_similar_rooms
         from .serializers import ChatRoomCreateFromPhotoSerializer
         from django.contrib.auth import get_user_model
         import logging
@@ -2197,22 +2197,22 @@ class ChatRoomCreateFromPhotoView(APIView):
         User = get_user_model()
         logger = logging.getLogger(__name__)
 
-        # Validate input (photo_analysis_id + room_code)
+        # Validate input (media_analysis_id + room_code)
         serializer = ChatRoomCreateFromPhotoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        photo_analysis_id = serializer.validated_data['photo_analysis_id']
+        media_analysis_id = serializer.validated_data['media_analysis_id']
         room_code = serializer.validated_data['room_code']
 
         try:
             # Fetch PhotoAnalysis record (server-side source of truth)
-            photo_analysis = PhotoAnalysis.objects.get(id=photo_analysis_id)
+            media_analysis = PhotoAnalysis.objects.get(id=media_analysis_id)
 
             # Build allowed room codes set: AI suggestions + similar_rooms
             allowed_codes = {}  # code -> suggestion_data (name, description)
 
             # Add all AI-generated suggestions
-            suggestions = photo_analysis.suggestions.get('suggestions', [])
+            suggestions = media_analysis.suggestions.get('suggestions', [])
             for suggestion in suggestions:
                 key = suggestion['key']
                 allowed_codes[key] = {
@@ -2222,11 +2222,11 @@ class ChatRoomCreateFromPhotoView(APIView):
 
             # Add similar room codes (if embedding exists)
             similar_room_codes = set()
-            if photo_analysis.suggestions_embedding is not None:
+            if media_analysis.suggestions_embedding is not None:
                 try:
                     similar_rooms = find_similar_rooms(
-                        embedding_vector=photo_analysis.suggestions_embedding,
-                        exclude_photo_id=str(photo_analysis.id)
+                        embedding_vector=media_analysis.suggestions_embedding,
+                        exclude_photo_id=str(media_analysis.id)
                     )
                     for room in similar_rooms:
                         similar_room_codes.add(room.room_code)
@@ -2254,9 +2254,9 @@ class ChatRoomCreateFromPhotoView(APIView):
             ).first()
 
             # Track selection REGARDLESS of whether room already exists
-            photo_analysis.selected_suggestion_code = room_code
-            photo_analysis.selected_at = timezone.now()
-            photo_analysis.save(update_fields=['selected_suggestion_code', 'selected_at', 'updated_at'])
+            media_analysis.selected_suggestion_code = room_code
+            media_analysis.selected_at = timezone.now()
+            media_analysis.save(update_fields=['selected_suggestion_code', 'selected_at', 'updated_at'])
 
             if existing_chat:
                 # Room already exists - user is joining existing room

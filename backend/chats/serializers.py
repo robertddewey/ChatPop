@@ -333,18 +333,18 @@ class ChatRoomCreateFromPhotoSerializer(serializers.Serializer):
     """
     Serializer for creating/joining a chat room from photo analysis.
 
-    Security: Only accepts photo_analysis_id and room_code.
+    Security: Only accepts media_analysis_id and room_code.
     The room_code must match one of:
     - The 10 AI-generated suggestions for this photo
     - A similar_room code returned by the backend
     Validation happens in the view to prevent client tampering.
     """
-    photo_analysis_id = serializers.UUIDField(required=True)
+    media_analysis_id = serializers.UUIDField(required=True)
     room_code = serializers.CharField(required=True, max_length=100)
 
-    def validate_photo_analysis_id(self, value):
+    def validate_media_analysis_id(self, value):
         """Verify photo analysis exists"""
-        from photo_analysis.models import PhotoAnalysis
+        from media_analysis.models import PhotoAnalysis
         try:
             PhotoAnalysis.objects.get(id=value)
         except PhotoAnalysis.DoesNotExist:

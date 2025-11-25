@@ -582,7 +582,7 @@ export const messageApi = {
       formData.append('username', username);
     }
 
-    const response = await api.post('/api/photo-analysis/upload/', formData, {
+    const response = await api.post('/api/media-analysis/upload/', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

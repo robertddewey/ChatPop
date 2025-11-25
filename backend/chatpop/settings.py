@@ -55,7 +55,7 @@ INSTALLED_APPS = [
     # Local apps
     "accounts",
     "chats",
-    "photo_analysis",
+    "media_analysis",
 ]
 
 MIDDLEWARE = [
@@ -466,9 +466,14 @@ ENABLE_MONITORING = os.getenv("ENABLE_MONITORING", "False") == "True"
 # OpenAI Settings
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-# Photo Analysis Performance Tracking
+# ACRCloud Settings (Audio Recognition)
+ACRCLOUD_ACCESS_KEY = os.getenv("ACRCLOUD_ACCESS_KEY", "")
+ACRCLOUD_SECRET_KEY = os.getenv("ACRCLOUD_SECRET_KEY", "")
+ACRCLOUD_HOST = os.getenv("ACRCLOUD_HOST", "identify-us-west-2.acrcloud.com")
+
+# Media Analysis Performance Tracking
 # Enable performance tracking for photo analysis pipeline (disabled by default)
-PHOTO_ANALYSIS_PERFORMANCE_TRACKING = os.getenv("PHOTO_ANALYSIS_PERFORMANCE_TRACKING", "False") == "True"
+MEDIA_ANALYSIS_PERFORMANCE_TRACKING = os.getenv("MEDIA_ANALYSIS_PERFORMANCE_TRACKING", "False") == "True"
 
 # Media Storage Settings
 # AWS S3 Configuration (optional - uses local storage if not configured)
@@ -508,7 +513,7 @@ LOGGING = {
         },
     },
     "loggers": {
-        "photo_analysis": {
+        "media_analysis": {
             "handlers": ["console"],
             "level": "INFO",
             "propagate": False,
