@@ -102,6 +102,164 @@ class Suggestion(models.Model):
         self.save(update_fields=['usage_count', 'last_used_at', 'updated_at'])
 
 
+class MusicAnalysis(models.Model):
+    """
+    Stores music recognition results from ACRCloud API.
+    Each recognition event creates a new record.
+    """
+
+    # Primary Key
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+
+    # === ACRCLOUD RESULT DATA ===
+
+    # ACRCloud's internal ID for this track
+    acr_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="ACRCloud's internal track ID"
+    )
+
+    # Song metadata
+    song_title = models.CharField(
+        max_length=500,
+        help_text="Song title from ACRCloud"
+    )
+
+    artist = models.CharField(
+        max_length=500,
+        help_text="Artist name(s) from ACRCloud"
+    )
+
+    album = models.CharField(
+        max_length=500,
+        blank=True,
+        default='',
+        help_text="Album name from ACRCloud"
+    )
+
+    release_date = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        help_text="Release date/year from ACRCloud"
+    )
+
+    duration_ms = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Track duration in milliseconds"
+    )
+
+    # Recognition confidence (0-100)
+    confidence_score = models.PositiveIntegerField(
+        default=0,
+        help_text="ACRCloud confidence score (0-100)"
+    )
+
+    # === EXTERNAL IDS ===
+
+    spotify_track_id = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text="Spotify track ID for linking"
+    )
+
+    youtube_video_id = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="YouTube video ID for linking"
+    )
+
+    # === RAW RESPONSE ===
+
+    raw_response = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Complete ACRCloud API response for debugging"
+    )
+
+    # === SUGGESTIONS (M2M) ===
+
+    suggestions = models.ManyToManyField(
+        Suggestion,
+        blank=True,
+        related_name='music_analyses',
+        help_text="Suggestions generated from this music recognition"
+    )
+
+    # === USAGE TRACKING ===
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='music_analyses',
+        help_text="Authenticated user who recognized the music"
+    )
+
+    fingerprint = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Browser fingerprint for tracking anonymous users"
+    )
+
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="IP address for rate limiting"
+    )
+
+    # === CHAT CREATION TRACKING ===
+
+    selected_suggestion_code = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Chat code user selected (e.g., 'taylor-swift')"
+    )
+
+    selected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When user selected a suggestion"
+    )
+
+    # === TIMESTAMPS ===
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'music_analysis'
+        verbose_name = 'Music Analysis'
+        verbose_name_plural = 'Music Analyses'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['acr_id']),
+            models.Index(fields=['spotify_track_id']),
+            models.Index(fields=['fingerprint', 'ip_address']),
+            models.Index(fields=['artist', 'song_title']),
+        ]
+
+    def __str__(self):
+        return f"{self.song_title} by {self.artist} ({self.confidence_score}%)"
+
+
 class PhotoAnalysis(models.Model):
     """
     Stores photo analysis results from AI vision models.

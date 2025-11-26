@@ -13,7 +13,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny
 from constance import config
 
-from .models import PhotoAnalysis
+from .models import PhotoAnalysis, MusicAnalysis, Suggestion
 from .serializers import (
     PhotoAnalysisSerializer,
     PhotoAnalysisDetailSerializer,
@@ -427,25 +427,80 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+
+def _get_or_create_suggestion(name: str, key: str, description: str = '', is_proper_noun: bool = True) -> Suggestion:
+    """
+    Get or create a Suggestion by key.
+    If it exists, increment usage_count. If not, create it.
+
+    Args:
+        name: Display name (e.g., "Taylor Swift")
+        key: URL-safe slug (e.g., "taylor-swift")
+        description: Optional description
+        is_proper_noun: Whether this is a proper noun (default True for music)
+
+    Returns:
+        Suggestion instance
+    """
+    from django.utils.text import slugify
+
+    # Ensure key is a valid slug
+    if not key:
+        key = slugify(name)
+
+    # Truncate key if too long (max 100 chars)
+    key = key[:100]
+
+    suggestion, created = Suggestion.objects.get_or_create(
+        key=key,
+        defaults={
+            'name': name,
+            'description': description,
+            'is_proper_noun': is_proper_noun,
+            'embedding': None,  # Proper nouns don't need embeddings
+        }
+    )
+
+    if not created:
+        # Increment usage count for existing suggestion
+        suggestion.increment_usage()
+
+    return suggestion
+
+
+class MusicAnalysisViewSet(viewsets.GenericViewSet):
+    """
+    ViewSet for music recognition operations.
+
+    Endpoints:
+    - POST /api/media-analysis/music/recognize/ - Recognize song from audio
+    - GET /api/media-analysis/music/{id}/ - Get existing analysis
+    - GET /api/media-analysis/music/recent/ - List recent analyses for current user
+    """
+
+    queryset = MusicAnalysis.objects.all()
+    permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser, FormParser]
+
     @action(
         detail=False,
         methods=['post'],
-        parser_classes=[MultiPartParser, FormParser],
-        url_path='recognize-audio'
+        url_path='recognize'
     )
     @media_analysis_rate_limit
-    def recognize_audio(self, request):
+    def recognize(self, request):
         """
         Recognize a song from audio recording using ACRCloud API.
+        Creates MusicAnalysis record and Suggestions for artist/song/album.
 
         Request (multipart/form-data):
             - audio: Audio file (required) - WebM, MP3, WAV, etc.
             - fingerprint: Browser fingerprint (optional)
-            - username: Username (optional)
 
         Response:
             {
                 "success": true,
+                "id": "uuid",
                 "song": "Song Title",
                 "artist": "Artist Name",
                 "album": "Album Name",
@@ -455,7 +510,12 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 "external_ids": {
                     "spotify": "track_id",
                     "youtube": "video_id"
-                }
+                },
+                "suggestions": [
+                    {"name": "Taylor Swift", "key": "taylor-swift", "type": "artist"},
+                    {"name": "Shake It Off", "key": "shake-it-off", "type": "song"},
+                    {"name": "1989", "key": "1989-taylor-swift", "type": "album"}
+                ]
             }
         """
         try:
@@ -498,19 +558,90 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Return recognition results (without raw_response for cleaner API)
+            # Get client identifiers for tracking
+            user_id, fingerprint, ip_address = get_client_identifier(request)
+
+            # Extract external IDs
+            external_ids = result.get("external_ids", {})
+            spotify_id = external_ids.get("spotify", "")
+            youtube_id = external_ids.get("youtube", "")
+
+            # Create MusicAnalysis record
+            music_analysis = MusicAnalysis.objects.create(
+                acr_id=result.get("acr_id"),
+                song_title=result["song"],
+                artist=result["artist"],
+                album=result.get("album", ""),
+                release_date=result.get("release_date", ""),
+                duration_ms=result.get("duration_ms"),
+                confidence_score=result.get("score", 0),
+                spotify_track_id=spotify_id,
+                youtube_video_id=youtube_id,
+                raw_response=result.get("raw_response"),
+                user_id=user_id,
+                fingerprint=fingerprint,
+                ip_address=ip_address,
+            )
+
+            # Create/find Suggestions for artist, song, album
+            from django.utils.text import slugify
+            suggestions_list = []
+
+            # Artist suggestion
+            artist_name = result["artist"]
+            if artist_name:
+                artist_key = slugify(artist_name)
+                artist_suggestion = _get_or_create_suggestion(
+                    name=artist_name,
+                    key=artist_key,
+                    description=f"Music by {artist_name}",
+                    is_proper_noun=True
+                )
+                music_analysis.suggestions.add(artist_suggestion)
+                suggestions_list.append({
+                    "name": artist_name,
+                    "key": artist_key,
+                    "type": "artist"
+                })
+
+            # Song suggestion
+            song_title = result["song"]
+            if song_title:
+                # Make song key unique by including artist
+                song_key = slugify(f"{song_title} {artist_name}")[:100]
+                song_suggestion = _get_or_create_suggestion(
+                    name=song_title,
+                    key=song_key,
+                    description=f"'{song_title}' by {artist_name}",
+                    is_proper_noun=True
+                )
+                music_analysis.suggestions.add(song_suggestion)
+                suggestions_list.append({
+                    "name": song_title,
+                    "key": song_key,
+                    "type": "song"
+                })
+
+            # Note: Album is stored in MusicAnalysis record but NOT added to suggestions
+            # ACRCloud returns the album of the specific recording (which may be a compilation,
+            # remaster, or boxed set) rather than the original album. Artist and song are more
+            # reliable and useful for chat suggestions.
+
+            # Build response
             response_data = {
-                "success": result["success"],
+                "success": True,
+                "id": str(music_analysis.id),
                 "song": result["song"],
                 "artist": result["artist"],
                 "album": result.get("album", ""),
                 "release_date": result.get("release_date", ""),
                 "duration_ms": result.get("duration_ms", 0),
                 "score": result.get("score", 0),
-                "external_ids": result.get("external_ids", {})
+                "external_ids": external_ids,
+                "suggestions": suggestions_list
             }
 
-            logger.info(f"Audio recognition successful: {response_data['song']} by {response_data['artist']}")
+            logger.info(f"Audio recognition successful: {response_data['song']} by {response_data['artist']} (id={music_analysis.id})")
             return Response(response_data, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -519,3 +650,79 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "Audio recognition failed", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='recent'
+    )
+    def recent(self, request):
+        """
+        Get recent music analyses for the current user/session.
+        """
+        user_id, fingerprint, ip_address = get_client_identifier(request)
+
+        # Build query based on available identifiers
+        queryset = MusicAnalysis.objects.all()
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        elif fingerprint:
+            queryset = queryset.filter(fingerprint=fingerprint)
+        else:
+            queryset = queryset.filter(ip_address=ip_address)
+
+        # Limit results
+        limit = min(int(request.query_params.get('limit', 10)), 50)
+        queryset = queryset[:limit]
+
+        # Build response
+        results = []
+        for analysis in queryset:
+            results.append({
+                "id": str(analysis.id),
+                "song": analysis.song_title,
+                "artist": analysis.artist,
+                "album": analysis.album,
+                "score": analysis.confidence_score,
+                "created_at": analysis.created_at.isoformat(),
+            })
+
+        return Response(results)
+
+    def retrieve(self, request, pk=None):
+        """
+        Get a specific music analysis by ID.
+        """
+        try:
+            analysis = MusicAnalysis.objects.get(pk=pk)
+
+            # Get linked suggestions
+            suggestions_list = []
+            for suggestion in analysis.suggestions.all():
+                suggestions_list.append({
+                    "name": suggestion.name,
+                    "key": suggestion.key,
+                })
+
+            return Response({
+                "id": str(analysis.id),
+                "song": analysis.song_title,
+                "artist": analysis.artist,
+                "album": analysis.album,
+                "release_date": analysis.release_date,
+                "duration_ms": analysis.duration_ms,
+                "score": analysis.confidence_score,
+                "external_ids": {
+                    "spotify": analysis.spotify_track_id,
+                    "youtube": analysis.youtube_video_id,
+                },
+                "suggestions": suggestions_list,
+                "selected_suggestion_code": analysis.selected_suggestion_code,
+                "created_at": analysis.created_at.isoformat(),
+            })
+        except MusicAnalysis.DoesNotExist:
+            return Response(
+                {"error": "Music analysis not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+

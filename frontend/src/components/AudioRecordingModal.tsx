@@ -128,7 +128,7 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
       formData.append('audio', audioBlob, 'recording.webm');
 
       // Send to backend
-      const response = await api.post('/api/media-analysis/recognize-audio/', formData, {
+      const response = await api.post('/api/media-analysis/music/recognize/', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -177,7 +177,7 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
           <div>
             <h1 className="text-2xl font-bold text-zinc-50 flex items-center gap-2">
               <Music className="w-6 h-6" />
-              {isRecording ? 'Recording Audio...' : isAnalyzing ? 'Identifying Song...' : result ? 'Song Found!' : 'Audio Recognition'}
+              {isRecording ? 'Recording Audio...' : isAnalyzing ? 'Identifying Song...' : result ? 'Song Found!' : 'Start a music chat'}
             </h1>
             <p className="text-sm text-zinc-400 mt-1">
               {isRecording ? '🎤 Listening to audio' : isAnalyzing ? '🔍 Searching music database' : result ? '✨ Recognition complete' : 'Tap record to identify music'}
