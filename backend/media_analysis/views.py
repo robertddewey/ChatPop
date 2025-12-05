@@ -602,9 +602,17 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
             from django.utils.text import slugify
             suggestions_list = []
 
-            # Artist suggestion
-            artist_name = result["artist"]
-            if artist_name:
+            # Artist suggestions - split featured artists into separate suggestions
+            # "Zach Bryan, Kacey Musgraves" -> ["Zach Bryan", "Kacey Musgraves"]
+            # "Daryl Hall & John Oates" -> ["Daryl Hall & John Oates"] (duo name stays together)
+            artist_string = result["artist"]
+            individual_artists = []
+            if artist_string:
+                # Split by comma to separate featured artists
+                individual_artists = [a.strip() for a in artist_string.split(",") if a.strip()]
+
+            # Create suggestion for each individual artist
+            for artist_name in individual_artists:
                 artist_key = slugify(artist_name)
                 artist_suggestion = _get_or_create_suggestion(
                     name=artist_name,
@@ -622,12 +630,13 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
             # Song suggestion
             song_title = result["song"]
             if song_title:
-                # Make song key unique by including artist
-                song_key = slugify(f"{song_title} {artist_name}")[:100]
+                # Use primary artist (first) for song key to keep it unique but consistent
+                primary_artist = individual_artists[0] if individual_artists else ""
+                song_key = slugify(f"{song_title} {primary_artist}")[:100]
                 song_suggestion = _get_or_create_suggestion(
                     name=song_title,
                     key=song_key,
-                    description=f"'{song_title}' by {artist_name}",
+                    description=f"'{song_title}' by {artist_string}",  # Full artist string for description
                     is_proper_noun=True
                 )
                 music_analysis.suggestions.add(song_suggestion)
