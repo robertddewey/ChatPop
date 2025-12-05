@@ -159,6 +159,7 @@ class ACRCloudRecognizer:
 
         result = {
             "success": True,
+            "acr_id": best_match.get("acrid", ""),  # ACRCloud's internal track ID for metadata lookup
             "song": best_match.get("title", "Unknown"),
             "artist": ", ".join([artist.get("name", "") for artist in best_match.get("artists", [])]),
             "album": best_match.get("album", {}).get("name", ""),

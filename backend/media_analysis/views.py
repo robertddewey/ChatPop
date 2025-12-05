@@ -558,6 +558,21 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+            # Fetch extended metadata (genres, album art, streaming links)
+            # This checks cache first, then calls Metadata API if needed
+            acr_id = result.get("acr_id")
+            metadata = None
+            genres = []
+            if acr_id:
+                from .utils.metadata import get_or_fetch_metadata
+                metadata = get_or_fetch_metadata(
+                    acr_id=acr_id,
+                    song_title=result["song"],
+                    artist=result["artist"]
+                )
+                if metadata:
+                    genres = metadata.get("genres", [])
+
             # Get client identifiers for tracking
             user_id, fingerprint, ip_address = get_client_identifier(request)
 
@@ -627,6 +642,24 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
             # remaster, or boxed set) rather than the original album. Artist and song are more
             # reliable and useful for chat suggestions.
 
+            # Genre suggestions (from Metadata API)
+            # Create chat suggestions for each genre (e.g., "Pop Music", "Rock Fans")
+            for genre in genres:
+                if genre:
+                    genre_key = slugify(f"{genre}-music")[:100]
+                    genre_suggestion = _get_or_create_suggestion(
+                        name=f"{genre} Music",
+                        key=genre_key,
+                        description=f"Chat about {genre} music",
+                        is_proper_noun=False  # Genres are generic categories
+                    )
+                    music_analysis.suggestions.add(genre_suggestion)
+                    suggestions_list.append({
+                        "name": f"{genre} Music",
+                        "key": genre_key,
+                        "type": "genre"
+                    })
+
             # Build response
             response_data = {
                 "success": True,
@@ -638,6 +671,7 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
                 "duration_ms": result.get("duration_ms", 0),
                 "score": result.get("score", 0),
                 "external_ids": external_ids,
+                "genres": genres,  # From Metadata API (cached)
                 "suggestions": suggestions_list
             }
 
@@ -650,6 +684,24 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
                 {"error": "Audio recognition failed", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='config'
+    )
+    def get_config(self, request):
+        """
+        Get frontend configuration for music recognition.
+
+        Response:
+            {
+                "recording_duration_seconds": 8
+            }
+        """
+        return Response({
+            "recording_duration_seconds": config.MUSIC_RECOGNITION_DURATION_SECONDS
+        })
 
     @action(
         detail=False,

@@ -448,6 +448,18 @@ Response JSON:
         'Maximum OpenAI API spending per day (USD). When exceeded, photo analysis returns 503 until next day. Circuit breaker protection against cost exploitation.',
         float
     ),
+
+    # Music Recognition Settings
+    'MUSIC_RECOGNITION_DURATION_SECONDS': (
+        8,
+        'Duration in seconds to record audio before auto-submitting for music recognition. Longer = better match rate but slower UX. Recommended: 5-10 seconds.',
+        int
+    ),
+    'MUSIC_RECOGNITION_FETCH_METADATA': (
+        True,
+        'Fetch extended metadata (genres, album art, streaming links) from ACRCloud Metadata API after song identification. Requires ACRCLOUD_BEARER_TOKEN and Premium subscription. Disable to skip metadata fetching.',
+        bool
+    ),
 }
 
 # Custom User Model
@@ -470,6 +482,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ACRCLOUD_ACCESS_KEY = os.getenv("ACRCLOUD_ACCESS_KEY", "")
 ACRCLOUD_SECRET_KEY = os.getenv("ACRCLOUD_SECRET_KEY", "")
 ACRCLOUD_HOST = os.getenv("ACRCLOUD_HOST", "identify-us-west-2.acrcloud.com")
+# Bearer token for ACRCloud Metadata API (separate from identification API)
+# Get from: https://console.acrcloud.com/avr#/account/api-keys
+ACRCLOUD_BEARER_TOKEN = os.getenv("ACRCLOUD_BEARER_TOKEN", "")
 
 # Media Analysis Performance Tracking
 # Enable performance tracking for photo analysis pipeline (disabled by default)
