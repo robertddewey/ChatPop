@@ -110,9 +110,6 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
                           </div>
                         </div>
 
-                        {/* Key */}
-                        <p className="text-sm text-zinc-400 font-mono mb-2">Key: {suggestion.key}</p>
-
                         {/* Description */}
                         <p className="text-sm text-zinc-300 mb-3">{suggestion.description}</p>
 

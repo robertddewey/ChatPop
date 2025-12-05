@@ -102,6 +102,70 @@ class Suggestion(models.Model):
         self.save(update_fields=['usage_count', 'last_used_at', 'updated_at'])
 
 
+class MusicMetadataCache(models.Model):
+    """
+    Caches ACRCloud Metadata API responses by acr_id.
+
+    This avoids repeated API calls for the same song - once we have metadata
+    for a track (including genres, album art, streaming links), we cache it
+    permanently since song metadata rarely changes.
+    """
+
+    # ACRCloud's internal track ID (from identification response)
+    acr_id = models.CharField(
+        max_length=255,
+        primary_key=True,
+        help_text="ACRCloud's internal track ID (primary key for cache lookup)"
+    )
+
+    # Core track info (denormalized for quick access)
+    song_title = models.CharField(
+        max_length=500,
+        help_text="Song title"
+    )
+
+    artist = models.CharField(
+        max_length=500,
+        help_text="Artist name(s)"
+    )
+
+    # Genres (stored as JSON array for flexibility)
+    genres = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of genre strings, e.g., ['Pop', 'Dance']"
+    )
+
+    # Full metadata response (for future use without re-fetching)
+    raw_metadata = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Complete ACRCloud Metadata API response"
+    )
+
+    # Tracking
+    lookup_count = models.PositiveIntegerField(
+        default=1,
+        help_text="Number of times this cache entry was used"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'music_metadata_cache'
+        verbose_name = 'Music Metadata Cache'
+        verbose_name_plural = 'Music Metadata Cache'
+
+    def __str__(self):
+        return f"{self.song_title} by {self.artist} ({self.acr_id[:8]}...)"
+
+    def increment_lookup(self):
+        """Increment lookup counter when cache is hit."""
+        self.lookup_count += 1
+        self.save(update_fields=['lookup_count', 'updated_at'])
+
+
 class MusicAnalysis(models.Model):
     """
     Stores music recognition results from ACRCloud API.

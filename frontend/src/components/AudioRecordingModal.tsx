@@ -1,11 +1,18 @@
 'use client';
 
-import { X, Music, Mic, Square } from 'lucide-react';
+import { X, Music, Mic } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 
+interface MusicSuggestion {
+  name: string;
+  key: string;
+  type: 'artist' | 'song';
+}
+
 interface AudioRecognitionResult {
   success: boolean;
+  id?: string;
   song: string;
   artist: string;
   album?: string;
@@ -16,6 +23,7 @@ interface AudioRecognitionResult {
     spotify?: string;
     youtube?: string;
   };
+  suggestions?: MusicSuggestion[];
   error?: string;
 }
 
@@ -23,36 +31,66 @@ interface AudioRecordingModalProps {
   onClose: () => void;
 }
 
+const DEFAULT_RECORDING_DURATION = 8; // Fallback if config fetch fails
+
 export default function AudioRecordingModal({ onClose }: AudioRecordingModalProps) {
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AudioRecognitionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(DEFAULT_RECORDING_DURATION);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const autoStopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const MAX_RECORDING_TIME = 15; // 15 seconds max
-
-  // Cleanup on unmount
+  // Fetch config and cleanup on unmount
   useEffect(() => {
     document.body.style.overflow = 'hidden';
 
-    return () => {
-      document.body.style.overflow = 'unset';
-      stopRecording();
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
+    // Fetch recording duration from backend config
+    const fetchConfig = async () => {
+      try {
+        const response = await api.get('/api/media-analysis/music/config/');
+        if (response.data?.recording_duration_seconds) {
+          setRecordingDuration(response.data.recording_duration_seconds);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch music config, using default duration:', DEFAULT_RECORDING_DURATION);
       }
     };
+    fetchConfig();
+
+    return () => {
+      document.body.style.overflow = 'unset';
+      cleanupRecording();
+    };
   }, []);
+
+  const cleanupRecording = () => {
+    // Stop media recorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    // Stop all audio tracks
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    // Clear auto-stop timeout
+    if (autoStopTimeoutRef.current) {
+      clearTimeout(autoStopTimeoutRef.current);
+      autoStopTimeoutRef.current = null;
+    }
+    setIsRecording(false);
+  };
 
   const startRecording = async () => {
     try {
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
 
       // Create MediaRecorder
       const mediaRecorder = new MediaRecorder(stream, {
@@ -72,7 +110,10 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
       // Handle recording stop
       mediaRecorder.onstop = async () => {
         // Stop all audio tracks
-        stream.getTracks().forEach(track => track.stop());
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
 
         // Create audio blob
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
@@ -85,37 +126,22 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
       // Start recording
       mediaRecorder.start();
       setIsRecording(true);
-      setRecordingTime(0);
       setError(null);
       setResult(null);
 
-      // Start timer
-      timerIntervalRef.current = setInterval(() => {
-        setRecordingTime((prev) => {
-          const newTime = prev + 1;
-          // Auto-stop at max time
-          if (newTime >= MAX_RECORDING_TIME) {
-            stopRecording();
-          }
-          return newTime;
-        });
-      }, 1000);
+      // Auto-stop after configured duration
+      autoStopTimeoutRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          console.log(`🎵 Auto-stopping recording after ${recordingDuration} seconds`);
+          mediaRecorderRef.current.stop();
+          setIsRecording(false);
+        }
+      }, recordingDuration * 1000);
 
     } catch (err: any) {
       console.error('❌ Microphone access denied:', err);
       setError('Microphone access denied. Please allow microphone access and try again.');
     }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-    setIsRecording(false);
   };
 
   const analyzeAudio = async (audioBlob: Blob) => {
@@ -147,25 +173,12 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
     }
   };
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getConfidenceColor = (score?: number): string => {
-    if (!score) return 'text-gray-400';
-    if (score >= 80) return 'text-green-400';
-    if (score >= 60) return 'text-yellow-400';
-    return 'text-orange-400';
-  };
-
-  const getConfidenceLabel = (score?: number): string => {
-    if (!score) return 'Unknown';
-    if (score >= 90) return 'Very High';
-    if (score >= 80) return 'High';
-    if (score >= 60) return 'Medium';
-    return 'Low';
+  const getSuggestionDescription = (suggestion: MusicSuggestion, result: AudioRecognitionResult): string => {
+    if (suggestion.type === 'artist') {
+      return `Chat about music by ${suggestion.name}`;
+    } else {
+      return `Chat about "${result.song}" by ${result.artist}`;
+    }
   };
 
   return (
@@ -177,10 +190,10 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
           <div>
             <h1 className="text-2xl font-bold text-zinc-50 flex items-center gap-2">
               <Music className="w-6 h-6" />
-              {isRecording ? 'Recording Audio...' : isAnalyzing ? 'Identifying Song...' : result ? 'Song Found!' : 'Start a music chat'}
+              {isRecording ? 'Recording Audio...' : isAnalyzing ? 'Identifying Song...' : result?.success ? 'Song Found!' : 'Start a music chat'}
             </h1>
             <p className="text-sm text-zinc-400 mt-1">
-              {isRecording ? '🎤 Listening to audio' : isAnalyzing ? '🔍 Searching music database' : result ? '✨ Recognition complete' : 'Tap record to identify music'}
+              {isRecording ? '🎤 Listening to audio' : isAnalyzing ? '🔍 Searching music database' : result?.success ? '✨ Recognition complete' : 'Tap record to identify music'}
             </p>
           </div>
           <button
@@ -197,38 +210,23 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
           {/* Recording Controls */}
           {!isAnalyzing && !result && (
             <div className="flex flex-col items-center justify-center space-y-6">
-              {/* Timer Display */}
-              {isRecording && (
-                <div className="text-center">
-                  <div className="text-5xl font-mono font-bold text-cyan-400 mb-2">
-                    {formatTime(recordingTime)}
-                  </div>
-                  <div className="text-sm text-zinc-400">
-                    Max: {formatTime(MAX_RECORDING_TIME)}
-                  </div>
-                </div>
-              )}
-
-              {/* Record/Stop Button */}
+              {/* Record Button */}
               <button
-                onClick={isRecording ? stopRecording : startRecording}
-                className={`w-24 h-24 rounded-full flex items-center justify-center transition-all transform hover:scale-105 shadow-xl ${
+                onClick={startRecording}
+                disabled={isRecording}
+                className={`w-24 h-24 rounded-full flex items-center justify-center transition-all transform shadow-xl ${
                   isRecording
-                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                    : 'bg-cyan-500 hover:bg-cyan-600 text-white'
+                    ? 'bg-red-500 text-white animate-pulse cursor-not-allowed'
+                    : 'bg-cyan-500 hover:bg-cyan-600 hover:scale-105 text-white cursor-pointer'
                 }`}
               >
-                {isRecording ? (
-                  <Square className="w-10 h-10" />
-                ) : (
-                  <Mic className="w-10 h-10" />
-                )}
+                <Mic className="w-10 h-10" />
               </button>
 
               <p className="text-zinc-300 text-center max-w-sm">
                 {isRecording
-                  ? 'Recording... Tap to stop and analyze'
-                  : 'Tap the microphone to start recording music'}
+                  ? 'Listening...'
+                  : 'Tap the microphone to identify music'}
               </p>
 
               {error && (
@@ -252,91 +250,50 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
           {result && result.success && (
             <div className="space-y-4">
               {/* Song Info Card */}
-              <div className="p-6 bg-gradient-to-br from-cyan-500/10 to-purple-500/10 border border-cyan-500/30 rounded-xl">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-cyan-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Music className="w-6 h-6 text-cyan-400" />
+              <div className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-cyan-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Music className="w-5 h-5 text-cyan-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-xl font-bold text-zinc-50 mb-1 truncate">
+                    <h3 className="text-lg font-bold text-zinc-50 truncate">
                       {result.song}
                     </h3>
                     <p className="text-zinc-300 text-sm truncate">{result.artist}</p>
-                    {result.album && (
-                      <p className="text-zinc-400 text-xs mt-1 truncate">Album: {result.album}</p>
-                    )}
-                    {result.release_date && (
-                      <p className="text-zinc-400 text-xs">Released: {result.release_date}</p>
-                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Confidence Score */}
-              {result.score !== undefined && (
-                <div className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-zinc-400 text-sm">Confidence</span>
-                    <span className={`text-sm font-bold ${getConfidenceColor(result.score)}`}>
-                      {getConfidenceLabel(result.score)} ({result.score}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-zinc-700 rounded-full h-2">
-                    <div
-                      className="bg-gradient-to-r from-cyan-400 to-purple-400 h-2 rounded-full transition-all"
-                      style={{ width: `${result.score}%` }}
-                    ></div>
+              {/* Suggestions */}
+              {result.suggestions && result.suggestions.length > 0 && (
+                <div>
+                  <h2 className="text-lg font-bold text-zinc-200 mb-3">
+                    Suggested Chat Rooms ({result.suggestions.length})
+                  </h2>
+                  <div className="space-y-3">
+                    {result.suggestions.map((suggestion, idx) => (
+                      <div
+                        key={suggestion.key}
+                        className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-cyan-400 transition-colors cursor-pointer"
+                      >
+                        {/* Name and Badge */}
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
+                            <h3 className="text-base font-bold text-zinc-50">{suggestion.name}</h3>
+                            <span className="px-2 py-0.5 bg-purple-900/40 border border-purple-700 text-purple-300 text-xs font-semibold rounded uppercase">
+                              {suggestion.type}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Description */}
+                        <p className="text-sm text-zinc-300">{getSuggestionDescription(suggestion, result)}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
-
-              {/* External Links */}
-              {(result.external_ids?.spotify || result.external_ids?.youtube) && (
-                <div className="space-y-2">
-                  <p className="text-zinc-400 text-sm font-medium">Listen on:</p>
-                  <div className="flex gap-2">
-                    {result.external_ids.spotify && (
-                      <a
-                        href={`https://open.spotify.com/track/${result.external_ids.spotify}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 px-4 py-3 bg-green-500/10 border border-green-500/30 rounded-lg hover:bg-green-500/20 transition-colors text-center"
-                      >
-                        <span className="text-green-400 font-medium text-sm">Spotify</span>
-                      </a>
-                    )}
-                    {result.external_ids.youtube && (
-                      <a
-                        href={`https://www.youtube.com/watch?v=${result.external_ids.youtube}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-lg hover:bg-red-500/20 transition-colors text-center"
-                      >
-                        <span className="text-red-400 font-medium text-sm">YouTube</span>
-                      </a>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-2 pt-4">
-                <button
-                  onClick={() => {
-                    setResult(null);
-                    setError(null);
-                  }}
-                  className="flex-1 px-4 py-3 bg-zinc-700 hover:bg-zinc-600 text-zinc-100 rounded-lg font-medium transition-colors"
-                >
-                  Record Again
-                </button>
-                <button
-                  onClick={onClose}
-                  className="flex-1 px-4 py-3 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium transition-colors"
-                >
-                  Done
-                </button>
-              </div>
             </div>
           )}
 
@@ -362,6 +319,16 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
               </button>
             </div>
           )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-zinc-700">
+          <button
+            onClick={onClose}
+            className="w-full px-6 py-3 bg-[#404eed] text-white font-semibold rounded-lg transition-all hover:bg-[#3640d9] cursor-pointer"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
