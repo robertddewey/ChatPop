@@ -30,7 +30,7 @@ from .utils.fingerprinting.file_hash import calculate_sha256, get_file_size
 from .utils.vision.openai_vision import get_vision_provider
 from .utils.image_processing import resize_image_if_needed
 from .utils.suggestion_blending import blend_suggestions
-from .utils.suggestion_matching import match_suggestions_to_existing
+from .utils.suggestion_matching import match_suggestions_to_existing, discover_related_suggestions
 from .utils.performance import PerformanceTracker
 from chatpop.utils.media import MediaStorage
 
@@ -338,6 +338,31 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 f"{len([s for s in final_suggestions_list if not s.get('is_proper_noun', False)])} generics)"
             )
             logger.info("="*80 + "\n")
+
+            # STEP 3: Discover related suggestions via K-NN (if enabled)
+            # This finds existing suggestions semantically similar to the LLM's suggestions
+            discovery_count = config.SUGGESTION_DISCOVERY_EXTRA_COUNT
+            discovery_threshold = config.SUGGESTION_DISCOVERY_THRESHOLD
+
+            discovered_suggestions = []
+            if discovery_count > 0:
+                logger.info("\n" + "="*80)
+                logger.info("STEP 3: Discovering related suggestions via K-NN")
+                logger.info("="*80)
+
+                discovered_suggestions = discover_related_suggestions(
+                    matched_suggestions=final_suggestions_list,
+                    max_count=discovery_count,
+                    threshold=discovery_threshold
+                )
+
+                if discovered_suggestions:
+                    logger.info(f"Added {len(discovered_suggestions)} discovered suggestions")
+                    final_suggestions_list = final_suggestions_list + discovered_suggestions
+                else:
+                    logger.info("No related suggestions discovered")
+
+                logger.info("="*80 + "\n")
 
             # Format final suggestions for database storage
             suggestions_data = {

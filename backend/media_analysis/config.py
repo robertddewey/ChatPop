@@ -25,7 +25,7 @@ Usage:
 #   0.30 = 70%+ similarity required (strict)
 #   0.35 = 65%+ similarity required (moderate)
 #   0.40 = 60%+ similarity required (loose - current default)
-SUGGESTION_MATCHING_SIMILARITY_THRESHOLD = 0.3
+SUGGESTION_MATCHING_SIMILARITY_THRESHOLD = 0.25
 
 # Cosine distance threshold for PROPER NOUN matching
 # Proper nouns need stricter matching to avoid false positives

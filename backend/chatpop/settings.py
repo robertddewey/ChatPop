@@ -460,6 +460,18 @@ Response JSON:
         'Fetch extended metadata (genres, album art, streaming links) from ACRCloud Metadata API after song identification. Requires ACRCLOUD_BEARER_TOKEN and Premium subscription. Disable to skip metadata fetching.',
         bool
     ),
+
+    # Suggestion Discovery Settings (K-NN based discovery of related suggestions)
+    'SUGGESTION_DISCOVERY_EXTRA_COUNT': (
+        0,
+        'Number of additional suggestions to discover via K-NN search after LLM suggestions. Set to 0 to disable discovery. These are existing suggestions semantically similar to the LLM suggestions.',
+        int
+    ),
+    'SUGGESTION_DISCOVERY_THRESHOLD': (
+        0.35,
+        'Maximum cosine distance for discovered suggestions (0.0-1.0). Lower = stricter matching. 0.35 means 65%+ similarity required. Only suggestions within this threshold are included.',
+        float
+    ),
 }
 
 # Custom User Model

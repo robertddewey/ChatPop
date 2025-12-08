@@ -681,3 +681,142 @@ def _create_or_get_suggestion(
             'is_proper_noun': is_proper_noun,
             'usage_count': 0
         }
+
+
+def discover_related_suggestions(
+    matched_suggestions: List[Dict[str, Any]],
+    max_count: int,
+    threshold: float
+) -> List[Dict[str, Any]]:
+    """
+    Discover additional related suggestions via K-NN search.
+
+    For each matched suggestion, performs a K-NN search to find semantically
+    similar suggestions in the database. Results are pooled, deduplicated,
+    and sorted by distance to return the best matches.
+
+    Args:
+        matched_suggestions: List of suggestions from match_suggestions_to_existing()
+        max_count: Maximum number of discovered suggestions to return (0 = disabled)
+        threshold: Maximum cosine distance for discovered suggestions (e.g., 0.35)
+
+    Returns:
+        List of discovered suggestions with source='discovered'
+
+    Example:
+        LLM returns: ["Orange Cat", "Pet Photography", "Cute Animals"]
+        Discovery finds: ["Ginger Cats", "Cat Breeds", "Animal Photos"]
+        These are existing suggestions semantically similar to the LLM's suggestions.
+    """
+    if max_count <= 0:
+        return []
+
+    if not matched_suggestions:
+        return []
+
+    logger.info(f"\n{'='*80}")
+    logger.info("SUGGESTION DISCOVERY - K-NN Related Suggestions")
+    logger.info(f"{'='*80}")
+    logger.info(f"Settings: max_count={max_count}, threshold={threshold}")
+
+    # Collect suggestion IDs to exclude (don't rediscover what we already have)
+    exclude_ids = set()
+    for s in matched_suggestions:
+        if s.get('suggestion_id'):
+            exclude_ids.add(s['suggestion_id'])
+
+    logger.info(f"Excluding {len(exclude_ids)} already-matched suggestions from discovery")
+
+    # Get embeddings for matched suggestions from database
+    suggestion_embeddings = []
+    for s in matched_suggestions:
+        suggestion_id = s.get('suggestion_id')
+        if not suggestion_id:
+            continue
+
+        try:
+            suggestion_obj = Suggestion.objects.get(id=suggestion_id)
+            if suggestion_obj.embedding is not None:
+                suggestion_embeddings.append({
+                    'name': s['name'],
+                    'embedding': suggestion_obj.embedding
+                })
+        except Suggestion.DoesNotExist:
+            continue
+
+    if not suggestion_embeddings:
+        logger.info("No embeddings available for matched suggestions - skipping discovery")
+        logger.info(f"{'='*80}\n")
+        return []
+
+    logger.info(f"Searching for suggestions similar to {len(suggestion_embeddings)} matched suggestions:")
+    for se in suggestion_embeddings:
+        logger.info(f"  → '{se['name']}'")
+
+    # Perform K-NN search for each matched suggestion's embedding
+    # Pool all results and deduplicate
+    discovered_candidates = {}  # key -> (suggestion_obj, distance, source_name)
+
+    for se in suggestion_embeddings:
+        embedding_vector = se['embedding']
+        source_name = se['name']
+
+        # K-NN search excluding already-matched suggestions
+        candidates = Suggestion.objects.filter(
+            embedding__isnull=False
+        ).exclude(
+            id__in=exclude_ids
+        ).annotate(
+            distance=CosineDistance('embedding', embedding_vector)
+        ).filter(
+            distance__lt=threshold
+        ).order_by('distance')[:max_count * 2]  # Get more to allow for deduplication
+
+        for candidate in candidates:
+            candidate_key = candidate.key
+
+            # Keep the closest match if we see a suggestion multiple times
+            if candidate_key not in discovered_candidates:
+                discovered_candidates[candidate_key] = (candidate, candidate.distance, source_name)
+            else:
+                # Keep the one with smaller distance
+                existing_distance = discovered_candidates[candidate_key][1]
+                if candidate.distance < existing_distance:
+                    discovered_candidates[candidate_key] = (candidate, candidate.distance, source_name)
+
+    if not discovered_candidates:
+        logger.info("No related suggestions found within threshold")
+        logger.info(f"{'='*80}\n")
+        return []
+
+    # Sort by distance and take top N
+    sorted_candidates = sorted(
+        discovered_candidates.values(),
+        key=lambda x: x[1]  # Sort by distance
+    )[:max_count]
+
+    # Format results
+    discovered_list = []
+    logger.info(f"\nDiscovered {len(sorted_candidates)} related suggestions:")
+
+    for candidate, distance, source_name in sorted_candidates:
+        logger.info(
+            f"  ✓ '{candidate.name}' (key: {candidate.key}) - "
+            f"distance: {distance:.4f} (similarity: {(1 - distance):.1%}) "
+            f"[similar to '{source_name}']"
+        )
+
+        discovered_list.append({
+            'name': candidate.name,
+            'key': candidate.key,
+            'description': candidate.description,
+            'source': 'discovered',
+            'is_proper_noun': candidate.is_proper_noun,
+            'usage_count': candidate.usage_count,
+            'similarity_score': 1 - distance,
+            'suggestion_id': str(candidate.id),
+            'discovered_via': source_name  # Track which suggestion led to discovery
+        })
+
+    logger.info(f"{'='*80}\n")
+    return discovered_list
