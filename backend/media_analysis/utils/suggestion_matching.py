@@ -251,8 +251,11 @@ def _find_or_create_proper_noun(
 
     try:
         # K-NN search in existing proper nouns ONLY
+        # Exclude suggestions without embeddings (e.g., music suggestions)
+        # as CosineDistance returns None for them, causing comparison errors
         candidates = Suggestion.objects.filter(
-            is_proper_noun=True
+            is_proper_noun=True,
+            embedding__isnull=False
         ).annotate(
             distance=CosineDistance('embedding', embedding_vector)
         ).order_by('distance')[:SUGGESTION_MATCHING_CANDIDATES_COUNT]
