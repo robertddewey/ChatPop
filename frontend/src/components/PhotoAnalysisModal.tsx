@@ -43,7 +43,7 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
       {/* Modal Container */}
-      <div className="w-full max-w-2xl bg-zinc-800 border border-zinc-700 rounded-2xl shadow-xl relative max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="w-full max-w-2xl bg-zinc-800 border border-zinc-700 rounded-2xl shadow-xl relative max-h-[85dvh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-zinc-700">
           <div>

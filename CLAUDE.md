@@ -181,6 +181,20 @@ This architecture ensures that chat-specific behaviors (fixed viewport, no zoom)
 - GitHub repository
 - Feature branch workflow recommended
 
+### Branch Naming Convention
+Use these prefixes for branch names:
+- `fix/` - Bug fixes (e.g., `fix/modal-height-overflow`)
+- `feat/` - New features (e.g., `feat/audio-recognition`)
+- `refactor/` - Code refactoring (e.g., `refactor/theme-system`)
+- `chore/` - Maintenance tasks (e.g., `chore/update-dependencies`)
+
+### Commit Message Convention
+Use these prefixes for commit messages:
+- `fix:` - Bug fixes
+- `feat:` - New features
+- `refactor:` - Code refactoring
+- `chore:` - Maintenance tasks
+
 ### Testing Guidelines
 
 **IMPORTANT:** Follow these testing practices rigorously:
