@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 interface MusicSuggestion {
   name: string;
   key: string;
-  type: 'artist' | 'song';
+  type: 'artist' | 'song' | 'genre';
 }
 
 interface AudioRecognitionResult {
@@ -176,7 +176,10 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
   const getSuggestionDescription = (suggestion: MusicSuggestion, result: AudioRecognitionResult): string => {
     if (suggestion.type === 'artist') {
       return `Chat about music by ${suggestion.name}`;
+    } else if (suggestion.type === 'genre') {
+      return `Chat about ${suggestion.name.toLowerCase()}`;
     } else {
+      // song type
       return `Chat about "${result.song}" by ${result.artist}`;
     }
   };
