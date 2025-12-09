@@ -8,6 +8,7 @@ import RegisterModal from "@/components/RegisterModal";
 import CreateChatModal from "@/components/CreateChatModal";
 import PhotoAnalysisModal from "@/components/PhotoAnalysisModal";
 import AudioRecordingModal from "@/components/AudioRecordingModal";
+import LocationSuggestionsModal from "@/components/LocationSuggestionsModal";
 import { MARKETING } from "@/lib/marketing";
 import { messageApi } from "@/lib/api";
 import { getFingerprint } from "@/lib/usernameStorage";
@@ -21,6 +22,7 @@ export default function Home() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showAudioModal, setShowAudioModal] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
   useEffect(() => {
     // Detect if device is mobile
@@ -238,6 +240,31 @@ export default function Home() {
                   </div>
                 )}
               </div>
+
+              {/* Location Button */}
+              <div className="relative group">
+                <button
+                  onClick={() => isMobile && setShowLocationModal(true)}
+                  disabled={!isMobile}
+                  className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                    isMobile
+                      ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+
+                {/* Desktop tooltip */}
+                {!isMobile && (
+                  <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    Mobile only
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -308,6 +335,9 @@ export default function Home() {
       )}
       {showAudioModal && (
         <AudioRecordingModal onClose={() => setShowAudioModal(false)} />
+      )}
+      {showLocationModal && (
+        <LocationSuggestionsModal onClose={() => setShowLocationModal(false)} />
       )}
     </div>
   );

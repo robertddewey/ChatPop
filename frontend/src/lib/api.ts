@@ -604,3 +604,79 @@ export const messageApi = {
   },
 };
 
+// Location API Types
+export interface LocationSuggestion {
+  name: string;
+  key: string;
+  type: 'city' | 'neighborhood' | 'county' | 'metro' | 'venue' | 'landmark' | 'restaurant' | 'bar' | 'cafe' | 'park';
+  description: string;
+  address?: string;
+  rating?: number;
+}
+
+export interface LocationAnalysisResponse {
+  success: boolean;
+  id: string;
+  cached: boolean;
+  cache_source: 'redis' | 'postgresql' | 'api';
+  location: {
+    city: string | null;
+    neighborhood: string | null;
+    county: string | null;
+    metro_area: string | null;
+    state: string | null;
+    geohash: string;
+  };
+  suggestions: LocationSuggestion[];
+  best_guess: LocationSuggestion | null;
+}
+
+export const locationApi = {
+  // Get location-based chat suggestions from coordinates
+  getSuggestions: async (
+    latitude: number,
+    longitude: number,
+    fingerprint?: string
+  ): Promise<LocationAnalysisResponse> => {
+    const response = await api.post('/api/media-analysis/location/suggest/', {
+      latitude,
+      longitude,
+      fingerprint,
+    });
+    return response.data;
+  },
+
+  // Get a specific location analysis by ID
+  getAnalysis: async (id: string): Promise<LocationAnalysisResponse> => {
+    const response = await api.get(`/api/media-analysis/location/${id}/`);
+    return response.data;
+  },
+
+  // Get recent location analyses for current user
+  getRecent: async (limit: number = 10): Promise<Array<{
+    id: string;
+    city: string;
+    neighborhood: string;
+    geohash: string;
+    created_at: string;
+  }>> => {
+    const response = await api.get('/api/media-analysis/location/recent/', {
+      params: { limit },
+    });
+    return response.data;
+  },
+
+  // Create chat room from location suggestion
+  createChatFromLocation: async (data: {
+    location_analysis_id: string;
+    suggestion_key: string;
+  }): Promise<{
+    created: boolean;
+    chat_room: ChatRoom;
+    message: string;
+  }> => {
+    const response = await api.post('/api/chats/create-from-location/', data);
+    return response.data;
+  },
+};
+

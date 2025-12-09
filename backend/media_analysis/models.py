@@ -564,3 +564,213 @@ class PhotoAnalysis(models.Model):
         """Increment the usage counter when a chat is created from this analysis."""
         self.times_used += 1
         self.save(update_fields=['times_used', 'updated_at'])
+
+
+class LocationSuggestionsCache(models.Model):
+    """
+    Caches Google Places API responses by geohash.
+
+    This implements the PostgreSQL layer of the hybrid cache strategy:
+    - Redis: Hot cache with configurable TTL for frequently accessed locations
+    - PostgreSQL: Persistent cache that survives server restarts
+
+    Geohash precision 6 (~1.2km x 0.6km cells) provides good balance
+    between cache hit rate and location accuracy.
+    """
+
+    # Geohash with settings suffix is the primary key for cache lookup
+    # Format: {geohash}:r{radius}:v{max_venues} (e.g., "dpsdqp:r10000:v10")
+    geohash = models.CharField(
+        max_length=32,
+        primary_key=True,
+        help_text="Geohash + settings suffix (e.g., 'dpsdqp:r10000:v10')"
+    )
+
+    # Decoded center point (for debugging/queries)
+    latitude = models.FloatField(
+        help_text="Center latitude of geohash cell"
+    )
+
+    longitude = models.FloatField(
+        help_text="Center longitude of geohash cell"
+    )
+
+    # Location identifiers from reverse geocoding
+    city_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text="City name from reverse geocoding"
+    )
+
+    neighborhood_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text="Neighborhood name from reverse geocoding"
+    )
+
+    # Full suggestions data (venues + metadata)
+    suggestions_data = models.JSONField(
+        help_text="Complete suggestions response (venues, city, neighborhood)"
+    )
+
+    # Tracking
+    lookup_count = models.PositiveIntegerField(
+        default=1,
+        help_text="Number of times this cache entry was used"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'location_suggestions_cache'
+        verbose_name = 'Location Suggestions Cache'
+        verbose_name_plural = 'Location Suggestions Cache'
+        indexes = [
+            models.Index(fields=['city_name']),
+        ]
+
+    def __str__(self):
+        location = self.city_name or self.geohash
+        if self.neighborhood_name:
+            location = f"{self.neighborhood_name}, {self.city_name}"
+        return f"{location} ({self.geohash})"
+
+    def increment_lookup(self):
+        """Increment lookup counter when cache is hit."""
+        self.lookup_count += 1
+        self.save(update_fields=['lookup_count', 'updated_at'])
+
+
+class LocationAnalysis(models.Model):
+    """
+    Tracks location suggestion requests for analytics.
+
+    Each location lookup creates a new record for tracking:
+    - Which locations are most requested
+    - User engagement with suggestions
+    - Geographic distribution of users
+    """
+
+    # Primary Key
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+
+    # Location data
+    latitude = models.FloatField(
+        help_text="User's latitude coordinate"
+    )
+
+    longitude = models.FloatField(
+        help_text="User's longitude coordinate"
+    )
+
+    geohash = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash of user's location (precision 6)"
+    )
+
+    # Resolved location names
+    city_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text="City name from reverse geocoding"
+    )
+
+    neighborhood_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text="Neighborhood name from reverse geocoding"
+    )
+
+    # Suggestions generated (M2M to Suggestion model)
+    suggestions = models.ManyToManyField(
+        Suggestion,
+        blank=True,
+        related_name='location_analyses',
+        help_text="Suggestions generated from this location"
+    )
+
+    # User tracking
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='location_analyses',
+        help_text="Authenticated user who requested location suggestions"
+    )
+
+    fingerprint = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Browser fingerprint for tracking anonymous users"
+    )
+
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="IP address for rate limiting"
+    )
+
+    # Chat creation tracking
+    selected_suggestion_code = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Chat code user selected (e.g., 'golden-gate-park')"
+    )
+
+    selected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When user selected a suggestion"
+    )
+
+    # Cache hit tracking
+    cache_hit = models.BooleanField(
+        default=False,
+        help_text="Whether this request was served from cache"
+    )
+
+    cache_source = models.CharField(
+        max_length=20,
+        blank=True,
+        default='',
+        choices=[
+            ('redis', 'Redis'),
+            ('postgresql', 'PostgreSQL'),
+            ('api', 'API'),
+        ],
+        help_text="Where the data came from"
+    )
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'location_analysis'
+        verbose_name = 'Location Analysis'
+        verbose_name_plural = 'Location Analyses'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['geohash']),
+            models.Index(fields=['city_name']),
+            models.Index(fields=['fingerprint', 'ip_address']),
+        ]
+
+    def __str__(self):
+        location = self.city_name or f"({self.latitude}, {self.longitude})"
+        return f"Location Analysis: {location}"

@@ -3,12 +3,13 @@ URL Configuration for Media Analysis API.
 """
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import PhotoAnalysisViewSet, MusicAnalysisViewSet
+from .views import PhotoAnalysisViewSet, MusicAnalysisViewSet, LocationAnalysisViewSet
 
 # Create DRF router
 router = DefaultRouter()
 router.register(r'photo', PhotoAnalysisViewSet, basename='photo-analysis')
 router.register(r'music', MusicAnalysisViewSet, basename='music-analysis')
+router.register(r'location', LocationAnalysisViewSet, basename='location-analysis')
 
 app_name = 'media_analysis'
 
@@ -29,3 +30,8 @@ urlpatterns = [
 # POST   /api/media-analysis/music/recognize/        - Recognize song from audio
 # GET    /api/media-analysis/music/recent/           - Recent analyses for user
 # GET    /api/media-analysis/music/{id}/             - Get specific analysis
+#
+# Location Analysis:
+# POST   /api/media-analysis/location/suggest/       - Get location-based suggestions
+# GET    /api/media-analysis/location/recent/        - Recent analyses for user
+# GET    /api/media-analysis/location/{id}/          - Get specific analysis

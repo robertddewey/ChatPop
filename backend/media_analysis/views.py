@@ -13,7 +13,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny
 from constance import config
 
-from .models import PhotoAnalysis, MusicAnalysis, Suggestion
+from .models import PhotoAnalysis, MusicAnalysis, Suggestion, LocationAnalysis, LocationSuggestionsCache
 from .serializers import (
     PhotoAnalysisSerializer,
     PhotoAnalysisDetailSerializer,
@@ -25,6 +25,7 @@ from .utils.rate_limit import (
     media_analysis_rate_limit,
     get_client_identifier,
 )
+from .utils.location import get_or_fetch_location_suggestions, encode_location
 from .utils.fingerprinting.image_hash import calculate_phash
 from .utils.fingerprinting.file_hash import calculate_sha256, get_file_size
 from .utils.vision.openai_vision import get_vision_provider
@@ -809,6 +810,251 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
         except MusicAnalysis.DoesNotExist:
             return Response(
                 {"error": "Music analysis not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class LocationAnalysisViewSet(viewsets.GenericViewSet):
+    """
+    ViewSet for location-based chat suggestions.
+
+    Endpoints:
+    - POST /api/media-analysis/location/suggest/ - Get suggestions for coordinates
+    - GET /api/media-analysis/location/{id}/ - Get existing analysis
+    - GET /api/media-analysis/location/recent/ - List recent analyses for current user
+    """
+
+    queryset = LocationAnalysis.objects.all()
+    permission_classes = [AllowAny]
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='suggest'
+    )
+    @media_analysis_rate_limit
+    def suggest(self, request):
+        """
+        Get location-based chat suggestions from coordinates.
+
+        Request (JSON):
+            {
+                "latitude": 37.7749,
+                "longitude": -122.4194,
+                "fingerprint": "optional-browser-fingerprint"
+            }
+
+        Response:
+            {
+                "success": true,
+                "id": "uuid",
+                "cached": true/false,
+                "cache_source": "redis"|"postgresql"|"api",
+                "location": {
+                    "city": "San Francisco",
+                    "neighborhood": "SoMa",
+                    "geohash": "9q8yym"
+                },
+                "suggestions": [
+                    {
+                        "name": "San Francisco",
+                        "key": "san-francisco",
+                        "type": "city",
+                        "description": "Chat about San Francisco"
+                    },
+                    {
+                        "name": "Blue Bottle Coffee",
+                        "key": "blue-bottle-coffee-sf",
+                        "type": "venue",
+                        "description": "Chat about Blue Bottle Coffee"
+                    }
+                ]
+            }
+        """
+        try:
+            # Validate coordinates
+            latitude = request.data.get('latitude')
+            longitude = request.data.get('longitude')
+
+            if latitude is None or longitude is None:
+                return Response(
+                    {"error": "latitude and longitude are required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                latitude = float(latitude)
+                longitude = float(longitude)
+            except (TypeError, ValueError):
+                return Response(
+                    {"error": "latitude and longitude must be numbers"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate coordinate ranges
+            if not (-90 <= latitude <= 90):
+                return Response(
+                    {"error": "latitude must be between -90 and 90"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if not (-180 <= longitude <= 180):
+                return Response(
+                    {"error": "longitude must be between -180 and 180"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Get client identifiers for tracking
+            user_id, fingerprint, ip_address = get_client_identifier(request)
+
+            # Get location suggestions (checks cache first, then API)
+            result = get_or_fetch_location_suggestions(latitude, longitude)
+
+            if result is None:
+                return Response(
+                    {"error": "Location suggestions unavailable"},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+
+            # Extract location info
+            location_info = result.get('location', {})
+            city = location_info.get('city', '')
+            neighborhood = location_info.get('neighborhood', '')
+            county = location_info.get('county', '')
+            metro_area = location_info.get('metro_area', '')
+            geohash = location_info.get('geohash', encode_location(latitude, longitude))
+
+            # Use suggestions directly from the cache result
+            # The cache already builds a proper tiered list with venues, neighborhood, city, county, metro
+            suggestions_list = result.get('suggestions', [])
+
+            # Ensure Suggestion objects exist in database for linking
+            for suggestion in suggestions_list:
+                _get_or_create_suggestion(
+                    name=suggestion.get('name', ''),
+                    key=suggestion.get('key', ''),
+                    description=suggestion.get('description', ''),
+                    is_proper_noun=True
+                )
+
+            # Create LocationAnalysis record
+            location_analysis = LocationAnalysis.objects.create(
+                latitude=latitude,
+                longitude=longitude,
+                geohash=geohash,
+                city_name=city or '',
+                neighborhood_name=neighborhood or '',
+                user_id=user_id,
+                fingerprint=fingerprint,
+                ip_address=ip_address,
+                cache_hit=result.get('cached', False),
+                cache_source=result.get('cache_source', 'api'),
+            )
+
+            # Link suggestions to the analysis
+            for suggestion in suggestions_list:
+                try:
+                    suggestion_obj = Suggestion.objects.get(key=suggestion['key'])
+                    location_analysis.suggestions.add(suggestion_obj)
+                except Suggestion.DoesNotExist:
+                    pass
+
+            # Build response
+            response_data = {
+                "success": True,
+                "id": str(location_analysis.id),
+                "cached": result.get('cached', False),
+                "cache_source": result.get('cache_source', 'api'),
+                "location": {
+                    "city": city,
+                    "neighborhood": neighborhood,
+                    "county": county,
+                    "metro_area": metro_area,
+                    "geohash": geohash,
+                },
+                "suggestions": suggestions_list
+            }
+
+            logger.info(
+                f"Location analysis complete: {city or 'unknown'}/{neighborhood or 'unknown'} "
+                f"(id={location_analysis.id}, suggestions={len(suggestions_list)}, "
+                f"cached={result.get('cached', False)})"
+            )
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Location analysis failed: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Location analysis failed", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='recent'
+    )
+    def recent(self, request):
+        """
+        Get recent location analyses for the current user/session.
+        """
+        user_id, fingerprint, ip_address = get_client_identifier(request)
+
+        # Build query based on available identifiers
+        queryset = LocationAnalysis.objects.all()
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        elif fingerprint:
+            queryset = queryset.filter(fingerprint=fingerprint)
+        else:
+            queryset = queryset.filter(ip_address=ip_address)
+
+        # Limit results
+        limit = min(int(request.query_params.get('limit', 10)), 50)
+        queryset = queryset.order_by('-created_at')[:limit]
+
+        # Build response
+        results = []
+        for analysis in queryset:
+            results.append({
+                "id": str(analysis.id),
+                "city": analysis.city_name,
+                "neighborhood": analysis.neighborhood_name,
+                "geohash": analysis.geohash,
+                "created_at": analysis.created_at.isoformat(),
+            })
+
+        return Response(results)
+
+    def retrieve(self, request, pk=None):
+        """
+        Get a specific location analysis by ID.
+        """
+        try:
+            analysis = LocationAnalysis.objects.get(pk=pk)
+
+            # Get linked suggestions
+            suggestions_list = []
+            for suggestion in analysis.suggestions.all():
+                suggestions_list.append({
+                    "name": suggestion.name,
+                    "key": suggestion.key,
+                })
+
+            return Response({
+                "id": str(analysis.id),
+                "latitude": analysis.latitude,
+                "longitude": analysis.longitude,
+                "geohash": analysis.geohash,
+                "city": analysis.city_name,
+                "neighborhood": analysis.neighborhood_name,
+                "suggestions": suggestions_list,
+                "selected_suggestion_code": analysis.selected_suggestion_code,
+                "created_at": analysis.created_at.isoformat(),
+            })
+        except LocationAnalysis.DoesNotExist:
+            return Response(
+                {"error": "Location analysis not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
 

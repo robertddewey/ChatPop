@@ -472,6 +472,38 @@ Response JSON:
         'Maximum cosine distance for discovered suggestions (0.0-1.0). Lower = stricter matching. 0.35 means 65%+ similarity required. Only suggestions within this threshold are included.',
         float
     ),
+
+    # Location Suggestions Settings
+    'LOCATION_SUGGESTIONS_ENABLED': (
+        True,
+        'Enable location-based chat suggestions. Requires GOOGLE_PLACES_API_KEY to be configured.',
+        bool
+    ),
+    'LOCATION_SEARCH_RADIUS_METERS': (
+        100,
+        'Search radius in meters for nearby venue discovery (default: 100m for GPS accuracy)',
+        int
+    ),
+    'LOCATION_MAX_VENUES': (
+        10,
+        'Maximum number of nearby venues to fetch from Google Places API per request',
+        int
+    ),
+    'LOCATION_CACHE_TTL_HOURS': (
+        24,
+        'Redis cache TTL for location suggestions in hours (0 = no expiration)',
+        int
+    ),
+    'LOCATION_RATE_LIMIT_ANONYMOUS': (
+        10,
+        'Maximum location suggestion requests per hour for anonymous users',
+        int
+    ),
+    'LOCATION_RATE_LIMIT_AUTHENTICATED': (
+        50,
+        'Maximum location suggestion requests per hour for authenticated users',
+        int
+    ),
 }
 
 # Custom User Model
@@ -497,6 +529,9 @@ ACRCLOUD_HOST = os.getenv("ACRCLOUD_HOST", "identify-us-west-2.acrcloud.com")
 # Bearer token for ACRCloud Metadata API (separate from identification API)
 # Get from: https://console.acrcloud.com/avr#/account/api-keys
 ACRCLOUD_BEARER_TOKEN = os.getenv("ACRCLOUD_BEARER_TOKEN", "")
+
+# Google Places API Settings (Location Suggestions)
+GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 
 # Media Analysis Performance Tracking
 # Enable performance tracking for photo analysis pipeline (disabled by default)
