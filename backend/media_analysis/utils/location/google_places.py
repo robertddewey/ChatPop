@@ -10,24 +10,26 @@ from typing import Dict, Any, List, Optional
 import requests
 from django.conf import settings
 
+from .base import BasePlacesClient
+from .category_mapping import map_google_type
+
 logger = logging.getLogger(__name__)
 
-# Place types to query for venue suggestions (broad mix for maximum appeal)
+# Place types to request from Google Places API
+# These map to our simplified ChatPop categories:
+#   restaurant, bar, cafe, gym, theater, stadium, venue
 PLACE_TYPES = [
-    'tourist_attraction',
-    'museum',
-    'art_gallery',
-    'park',
-    'restaurant',
-    'bar',
-    'cafe',
-    'shopping_mall',
-    'stadium',
-    'movie_theater',
+    'restaurant',       # → restaurant
+    'bar',              # → bar
+    'brewery',          # → bar (normalized)
+    'cafe',             # → cafe
+    'gym',              # → gym
+    'movie_theater',    # → theater
+    'stadium',          # → stadium
 ]
 
 
-class GooglePlacesClient:
+class GooglePlacesClient(BasePlacesClient):
     """
     Google Places API client for fetching nearby places and reverse geocoding.
 
@@ -47,6 +49,11 @@ class GooglePlacesClient:
     def is_available(self) -> bool:
         """Check if the API is configured and available."""
         return bool(self.api_key)
+
+    @property
+    def provider_name(self) -> str:
+        """Return the provider name."""
+        return "google"
 
     def reverse_geocode(self, latitude: float, longitude: float) -> Optional[Dict[str, Any]]:
         """
@@ -220,10 +227,14 @@ class GooglePlacesClient:
 
             places = []
             for place in data.get("places", []):
+                # Get the raw primaryType from Google and map it to our category
+                raw_type = place.get("primaryType", "")
+                chatpop_category = map_google_type(raw_type)
+
                 places.append({
                     "place_id": place.get("id", ""),
                     "name": place.get("displayName", {}).get("text", ""),
-                    "primary_type": place.get("primaryType", ""),
+                    "primary_type": chatpop_category,  # Normalized to ChatPop category
                     "types": place.get("types", []),
                     "address": place.get("formattedAddress", ""),
                     "latitude": place.get("location", {}).get("latitude"),
@@ -241,35 +252,3 @@ class GooglePlacesClient:
         except Exception as e:
             logger.error(f"Unexpected places error: {str(e)}")
             return []
-
-
-def map_google_type_to_category(google_type: str) -> str:
-    """
-    Map Google Places type to ChatPop category.
-
-    Args:
-        google_type: Google Places primaryType (e.g., "tourist_attraction")
-
-    Returns:
-        ChatPop category (e.g., "landmark", "restaurant", "venue")
-    """
-    TYPE_MAPPING = {
-        "tourist_attraction": "landmark",
-        "historical_landmark": "landmark",
-        "monument": "landmark",
-        "museum": "venue",
-        "art_gallery": "venue",
-        "park": "park",
-        "national_park": "park",
-        "botanical_garden": "park",
-        "restaurant": "restaurant",
-        "bar": "bar",
-        "cafe": "cafe",
-        "brewery": "bar",
-        "shopping_mall": "venue",
-        "stadium": "venue",
-        "movie_theater": "venue",
-        "amusement_park": "venue",
-        "zoo": "venue",
-    }
-    return TYPE_MAPPING.get(google_type, "venue")
