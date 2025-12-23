@@ -1,5 +1,14 @@
 # CLAUDE.md
 
+> **⚠️ CRITICAL: Always restart Daphne after ANY backend changes!**
+> This includes Python code, Django templates (HTML), and any other files served by Daphne.
+> Unlike Django's runserver, Daphne does NOT auto-reload on file changes. Run:
+> ```bash
+> lsof -ti:9000 | xargs kill 2>/dev/null; sleep 1 && cd /Users/robertdewey/GitProjects/ChatPop/backend && ./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
+> ```
+
+---
+
 ## Project Overview
 
 **Name:** ChatPop.app
