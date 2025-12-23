@@ -166,13 +166,24 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                     <h2 className="text-lg font-bold text-zinc-200 mb-3">
                       Area Chat Rooms
                     </h2>
-                    <div className="space-y-2">
-                      {areas.map((area) => (
+                    <div className="space-y-3">
+                      {areas.map((area, idx) => (
                         <div
                           key={area.key}
-                          className="p-3 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-cyan-400 transition-colors cursor-pointer"
+                          className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-cyan-400 transition-colors cursor-pointer"
                         >
-                          <h3 className="text-base font-bold text-zinc-50">{area.name}</h3>
+                          {/* Name and Badge */}
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
+                              <h3 className="text-base font-bold text-zinc-50">{area.name}</h3>
+                              <span className="px-2 py-0.5 bg-cyan-900/40 border border-cyan-700 text-cyan-300 text-xs font-semibold rounded uppercase">
+                                {area.type}
+                              </span>
+                            </div>
+                          </div>
+                          {/* Description */}
+                          <p className="text-sm text-zinc-300">Chat with others in {area.name}</p>
                         </div>
                       ))}
                     </div>
@@ -185,13 +196,24 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                     <h2 className="text-lg font-bold text-zinc-200 mb-3">
                       Nearby Places
                     </h2>
-                    <div className="space-y-2">
-                      {venues.map((venue) => (
+                    <div className="space-y-3">
+                      {venues.map((venue, idx) => (
                         <div
                           key={venue.key}
-                          className="p-3 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-cyan-400 transition-colors cursor-pointer"
+                          className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-cyan-400 transition-colors cursor-pointer"
                         >
-                          <h3 className="text-base font-bold text-zinc-50">{venue.name}</h3>
+                          {/* Name and Badge */}
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
+                              <h3 className="text-base font-bold text-zinc-50">{venue.name}</h3>
+                              <span className="px-2 py-0.5 bg-purple-900/40 border border-purple-700 text-purple-300 text-xs font-semibold rounded uppercase">
+                                {venue.type}
+                              </span>
+                            </div>
+                          </div>
+                          {/* Description */}
+                          <p className="text-sm text-zinc-300">Chat with others at {venue.name}</p>
                         </div>
                       ))}
                     </div>
