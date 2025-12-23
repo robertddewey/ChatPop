@@ -11,7 +11,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { chatApi, type ChatRoom } from '@/lib/api';
-import { Copy, Check, BadgeCheck, Moon, Sun, ArrowLeft } from 'lucide-react';
+import { Copy, Check, BadgeCheck, Moon, Sun, ArrowLeft, Image, Mic, Video } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 // Theme color constants for optimistic updates
@@ -513,13 +513,28 @@ export default function ChatSettingsSheet({
                 </div>
               )}
 
-              {/* Media Settings */}
+              {/* Sharing Settings */}
               <div className="space-y-2">
                 <label className={`block text-sm font-medium ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
-                  Media Settings
+                  Sharing Settings
                 </label>
                 <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
-                  <span className={`text-sm ${styles.text}`}>Voice enabled</span>
+                  <div className="flex items-center gap-2">
+                    <Image className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
+                    <span className={`text-sm ${styles.text}`}>Photo Sharing</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={formData.photo_enabled}
+                    onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
+                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
+                  />
+                </label>
+                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
+                  <div className="flex items-center gap-2">
+                    <Mic className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
+                    <span className={`text-sm ${styles.text}`}>Voice Messages</span>
+                  </div>
                   <input
                     type="checkbox"
                     checked={formData.voice_enabled}
@@ -528,20 +543,14 @@ export default function ChatSettingsSheet({
                   />
                 </label>
                 <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
-                  <span className={`text-sm ${styles.text}`}>Video enabled</span>
+                  <div className="flex items-center gap-2">
+                    <Video className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
+                    <span className={`text-sm ${styles.text}`}>Video Messages</span>
+                  </div>
                   <input
                     type="checkbox"
                     checked={formData.video_enabled}
                     onChange={(e) => setFormData({ ...formData, video_enabled: e.target.checked })}
-                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
-                  />
-                </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
-                  <span className={`text-sm ${styles.text}`}>Photo enabled</span>
-                  <input
-                    type="checkbox"
-                    checked={formData.photo_enabled}
-                    onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
                     className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
                   />
                 </label>
