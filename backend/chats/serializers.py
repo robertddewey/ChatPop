@@ -70,6 +70,31 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         )
 
 
+class NearbyDiscoverableChatSerializer(serializers.ModelSerializer):
+    """Serializer for nearby discoverable chats with distance info"""
+    host_username = serializers.SerializerMethodField()
+    participant_count = serializers.SerializerMethodField()
+    distance_miles = serializers.FloatField(read_only=True)
+    url = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = ChatRoom
+        fields = [
+            'id', 'code', 'name', 'url',
+            'access_mode', 'host_username', 'participant_count', 'distance_miles'
+        ]
+
+    def get_host_username(self, obj):
+        """Return host's reserved username or email prefix"""
+        if obj.host.reserved_username:
+            return obj.host.reserved_username
+        return obj.host.email.split('@')[0]
+
+    def get_participant_count(self, obj):
+        """Return count of active participants in the chat"""
+        return obj.participations.filter(is_active=True).count()
+
+
 class ChatRoomCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating a chat room"""
     theme_id = serializers.CharField(write_only=True, required=False, default='dark-mode')

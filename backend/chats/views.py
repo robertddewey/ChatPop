@@ -107,6 +107,119 @@ class ChatConfigView(APIView):
         })
 
 
+class NearbyDiscoverableChatsView(APIView):
+    """
+    Get nearby discoverable chat rooms based on user's location.
+
+    Uses Haversine formula to calculate distances and filters chats where:
+    - distance <= chat's discovery_radius_miles (chat wants to be found at this distance)
+    - distance <= user's selected radius (user is searching this far)
+
+    Returns paginated results ordered by distance (closest first).
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from django.db.models import F, FloatField
+        from django.db.models.functions import Cast, Radians, Sin, Cos, ACos
+        from .serializers import NearbyDiscoverableChatSerializer
+        import math
+
+        # Validate required parameters
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+        radius = request.data.get('radius', 1)  # Default 1 mile
+        offset = request.data.get('offset', 0)
+        limit = request.data.get('limit', 20)
+
+        if latitude is None or longitude is None:
+            return Response(
+                {'error': 'latitude and longitude are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            latitude = float(latitude)
+            longitude = float(longitude)
+            radius = int(radius)
+            offset = int(offset)
+            limit = min(int(limit), 50)  # Cap at 50 per request
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid parameter types'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate radius is in allowed options
+        allowed_radii = config.CHAT_DISCOVERY_RADIUS_OPTIONS
+        if radius not in allowed_radii:
+            return Response(
+                {'error': f'radius must be one of: {allowed_radii}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Constants for Haversine formula
+        EARTH_RADIUS_MILES = 3959
+
+        # Convert user's coordinates to radians
+        user_lat_rad = math.radians(latitude)
+        user_lon_rad = math.radians(longitude)
+
+        # Get all location-discoverable chats
+        # Filter to only active chats with location set
+        queryset = ChatRoom.objects.filter(
+            is_active=True,
+            latitude__isnull=False,
+            longitude__isnull=False,
+            discovery_radius_miles__isnull=False
+        ).select_related('host')
+
+        # Check if host has joined (same as ChatRoomDetailView)
+        queryset = queryset.filter(
+            participations__user=F('host')
+        ).distinct()
+
+        # Calculate distance using Haversine formula in Python
+        # (PostgreSQL annotation would be more efficient for large datasets,
+        # but this is clearer and works for moderate numbers of chats)
+        results = []
+        for chat in queryset:
+            chat_lat_rad = math.radians(float(chat.latitude))
+            chat_lon_rad = math.radians(float(chat.longitude))
+
+            # Haversine formula
+            dlat = chat_lat_rad - user_lat_rad
+            dlon = chat_lon_rad - user_lon_rad
+            a = math.sin(dlat / 2) ** 2 + math.cos(user_lat_rad) * math.cos(chat_lat_rad) * math.sin(dlon / 2) ** 2
+            c = 2 * math.asin(math.sqrt(a))
+            distance_miles = EARTH_RADIUS_MILES * c
+
+            # Two-way check:
+            # 1. User must be within chat's discovery radius
+            # 2. Chat must be within user's selected radius
+            if distance_miles <= chat.discovery_radius_miles and distance_miles <= radius:
+                chat.distance_miles = round(distance_miles, 1)
+                results.append(chat)
+
+        # Sort by distance (closest first)
+        results.sort(key=lambda x: x.distance_miles)
+
+        # Apply pagination
+        total_count = len(results)
+        paginated_results = results[offset:offset + limit]
+
+        # Serialize
+        serializer = NearbyDiscoverableChatSerializer(paginated_results, many=True)
+
+        return Response({
+            'chats': serializer.data,
+            'total_count': total_count,
+            'offset': offset,
+            'limit': limit,
+            'has_more': offset + limit < total_count
+        })
+
+
 class ChatRoomDetailView(APIView):
     """Get chat room details by code (and username for manual rooms)"""
     permission_classes = [permissions.AllowAny]

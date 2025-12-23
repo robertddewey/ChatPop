@@ -642,6 +642,26 @@ export interface LocationAnalysisResponse {
   best_guess: LocationSuggestion | null;
 }
 
+// Nearby Discoverable Chats Types
+export interface NearbyDiscoverableChat {
+  id: string;
+  code: string;
+  name: string;
+  url: string;
+  access_mode: 'public' | 'private';
+  host_username: string;
+  participant_count: number;
+  distance_miles: number;
+}
+
+export interface NearbyDiscoverableChatsResponse {
+  chats: NearbyDiscoverableChat[];
+  total_count: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+}
+
 export const locationApi = {
   // Get location-based chat suggestions from coordinates
   getSuggestions: async (
@@ -687,6 +707,24 @@ export const locationApi = {
     message: string;
   }> => {
     const response = await api.post('/api/chats/create-from-location/', data);
+    return response.data;
+  },
+
+  // Get nearby discoverable chats
+  getNearbyDiscoverableChats: async (params: {
+    latitude: number;
+    longitude: number;
+    radius: number;
+    offset?: number;
+    limit?: number;
+  }): Promise<NearbyDiscoverableChatsResponse> => {
+    const response = await api.post('/api/chats/nearby/', {
+      latitude: params.latitude,
+      longitude: params.longitude,
+      radius: params.radius,
+      offset: params.offset ?? 0,
+      limit: params.limit ?? 20,
+    });
     return response.data;
   },
 };

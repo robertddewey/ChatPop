@@ -1,8 +1,8 @@
 'use client';
 
-import { X, MapPin, Navigation } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { locationApi, LocationSuggestion, LocationAnalysisResponse } from '@/lib/api';
+import { X, MapPin, Navigation, Lock, ChevronDown, Users } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { locationApi, chatApi, LocationSuggestion, LocationAnalysisResponse, NearbyDiscoverableChat } from '@/lib/api';
 
 interface LocationSuggestionsModalProps {
   onClose: () => void;
@@ -13,6 +13,23 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
   const [result, setResult] = useState<LocationAnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [locationPermission, setLocationPermission] = useState<'prompt' | 'granted' | 'denied' | 'unknown'>('unknown');
+
+  // User coordinates for reuse
+  const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Nearby discoverable chats state
+  const [nearbyChats, setNearbyChats] = useState<NearbyDiscoverableChat[]>([]);
+  const [nearbyChatsLoading, setNearbyChatsLoading] = useState(false);
+  const [nearbyChatsError, setNearbyChatsError] = useState<string | null>(null);
+  const [selectedRadius, setSelectedRadius] = useState(1);
+  const [radiusOptions, setRadiusOptions] = useState<number[]>([1, 5, 10, 25, 50]);
+  const [nearbyChatsOffset, setNearbyChatsOffset] = useState(0);
+  const [nearbyChatsHasMore, setNearbyChatsHasMore] = useState(false);
+  const [nearbyChatsTotal, setNearbyChatsTotal] = useState(0);
+
+  // Ref for infinite scroll
+  const nearbyChatsEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Check location permission status on mount
   useEffect(() => {
@@ -38,10 +55,84 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
       setLocationPermission('prompt');
     }
 
+    // Fetch radius options from config
+    chatApi.getConfig().then((config) => {
+      if (config.discovery_radius_options?.length > 0) {
+        setRadiusOptions(config.discovery_radius_options);
+        setSelectedRadius(config.discovery_radius_options[0]); // Default to first (smallest)
+      }
+    }).catch(() => {
+      // Keep defaults if config fails
+    });
+
     return () => {
       document.body.style.overflow = 'unset';
     };
   }, []);
+
+  // Fetch nearby discoverable chats
+  const fetchNearbyChats = useCallback(async (coords: { latitude: number; longitude: number }, radius: number, offset: number = 0, append: boolean = false) => {
+    setNearbyChatsLoading(true);
+    setNearbyChatsError(null);
+
+    try {
+      const response = await locationApi.getNearbyDiscoverableChats({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        radius,
+        offset,
+        limit: 20,
+      });
+
+      if (append) {
+        setNearbyChats(prev => [...prev, ...response.chats]);
+      } else {
+        setNearbyChats(response.chats);
+      }
+      setNearbyChatsOffset(offset + response.chats.length);
+      setNearbyChatsHasMore(response.has_more);
+      setNearbyChatsTotal(response.total_count);
+    } catch (err: any) {
+      console.error('❌ Error fetching nearby chats:', err);
+      setNearbyChatsError(err.response?.data?.error || 'Failed to load nearby chats');
+    } finally {
+      setNearbyChatsLoading(false);
+    }
+  }, []);
+
+  // Handle radius change
+  const handleRadiusChange = (newRadius: number) => {
+    setSelectedRadius(newRadius);
+    if (userCoords) {
+      // Reset and fetch with new radius
+      setNearbyChatsOffset(0);
+      fetchNearbyChats(userCoords, newRadius, 0, false);
+    }
+  };
+
+  // Load more chats (infinite scroll)
+  const loadMoreChats = useCallback(() => {
+    if (nearbyChatsLoading || !nearbyChatsHasMore || !userCoords) return;
+    fetchNearbyChats(userCoords, selectedRadius, nearbyChatsOffset, true);
+  }, [nearbyChatsLoading, nearbyChatsHasMore, userCoords, selectedRadius, nearbyChatsOffset, fetchNearbyChats]);
+
+  // Infinite scroll observer
+  useEffect(() => {
+    if (!nearbyChatsEndRef.current || !result) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && nearbyChatsHasMore && !nearbyChatsLoading) {
+          loadMoreChats();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(nearbyChatsEndRef.current);
+
+    return () => observer.disconnect();
+  }, [nearbyChatsHasMore, nearbyChatsLoading, loadMoreChats, result]);
 
   const requestLocation = async () => {
     setIsLoading(true);
@@ -60,10 +151,16 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
       const { latitude, longitude } = position.coords;
       console.log('📍 Location obtained:', latitude, longitude);
 
+      // Store coordinates for reuse
+      setUserCoords({ latitude, longitude });
+
       // Fetch suggestions from API
       const response = await locationApi.getSuggestions(latitude, longitude);
       console.log('✅ Location suggestions received:', response);
       setResult(response);
+
+      // Also fetch nearby discoverable chats
+      fetchNearbyChats({ latitude, longitude }, selectedRadius, 0, false);
 
     } catch (err: any) {
       console.error('❌ Location error:', err);
@@ -112,7 +209,7 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
         </div>
 
         {/* Content */}
-        <div className="p-6 flex-1 overflow-y-auto">
+        <div ref={scrollContainerRef} className="p-6 flex-1 overflow-y-auto">
           {/* Initial State - Request Location */}
           {!isLoading && !result && (
             <div className="flex flex-col items-center justify-center space-y-6">
@@ -219,6 +316,99 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                     </div>
                   </div>
                 )}
+
+                {/* Nearby Discoverable Chats */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-lg font-bold text-zinc-200">
+                      Nearby Chats
+                    </h2>
+                    {/* Radius Dropdown */}
+                    <div className="relative">
+                      <select
+                        value={selectedRadius}
+                        onChange={(e) => handleRadiusChange(Number(e.target.value))}
+                        className="appearance-none bg-zinc-700 border border-zinc-600 text-zinc-200 text-sm rounded-lg px-3 py-1.5 pr-8 cursor-pointer hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                      >
+                        {radiusOptions.map((r) => (
+                          <option key={r} value={r}>
+                            {r} mi
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Nearby chats list */}
+                  <div className="space-y-3">
+                    {nearbyChats.map((chat, idx) => (
+                      <div
+                        key={chat.id}
+                        className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-green-400 transition-colors cursor-pointer"
+                      >
+                        {/* Top row: Rank, Name, Distance */}
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-xs font-bold text-zinc-400 flex-shrink-0">#{idx + 1}</span>
+                            <h3 className="text-base font-bold text-zinc-50 truncate">{chat.name}</h3>
+                            {chat.access_mode === 'private' && (
+                              <Lock className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                            )}
+                          </div>
+                          <span className="text-sm text-zinc-400 flex-shrink-0 ml-2">
+                            {chat.distance_miles} mi
+                          </span>
+                        </div>
+                        {/* Bottom row: Host and participants */}
+                        <div className="flex items-center gap-3 text-sm text-zinc-400">
+                          <span>@{chat.host_username}</span>
+                          <span className="flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5" />
+                            {chat.participant_count}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Loading indicator for infinite scroll */}
+                    {nearbyChatsLoading && nearbyChats.length > 0 && (
+                      <div className="flex justify-center py-4">
+                        <div className="w-6 h-6 border-2 border-zinc-600 border-t-cyan-400 rounded-full animate-spin"></div>
+                      </div>
+                    )}
+
+                    {/* Initial loading for nearby chats */}
+                    {nearbyChatsLoading && nearbyChats.length === 0 && (
+                      <div className="flex flex-col items-center py-6 space-y-2">
+                        <div className="w-6 h-6 border-2 border-zinc-600 border-t-cyan-400 rounded-full animate-spin"></div>
+                        <p className="text-sm text-zinc-400">Loading nearby chats...</p>
+                      </div>
+                    )}
+
+                    {/* Empty state */}
+                    {!nearbyChatsLoading && nearbyChats.length === 0 && !nearbyChatsError && (
+                      <div className="text-center py-6">
+                        <p className="text-zinc-400 text-sm">
+                          No discoverable chats within {selectedRadius} mile{selectedRadius !== 1 ? 's' : ''}
+                        </p>
+                        <p className="text-zinc-500 text-xs mt-1">
+                          Try increasing the search radius
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Error state */}
+                    {nearbyChatsError && (
+                      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                        <p className="text-red-400 text-sm">{nearbyChatsError}</p>
+                      </div>
+                    )}
+
+                    {/* Infinite scroll trigger */}
+                    <div ref={nearbyChatsEndRef} className="h-1" />
+                  </div>
+                </div>
               </div>
             );
           })()}
