@@ -30,6 +30,10 @@ export default function Home() {
       setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
     };
     checkMobile();
+
+    // Defensive cleanup: ensure body overflow is reset when homepage loads
+    // This handles cases where modals didn't properly unmount during navigation
+    document.body.style.overflow = 'unset';
   }, []);
 
   const closeModal = () => {

@@ -305,6 +305,14 @@ function buildChatUrl(code: string, roomUsername?: string): string {
 }
 
 export const chatApi = {
+  // Get chat configuration options
+  getConfig: async (): Promise<{
+    discovery_radius_options: number[];
+  }> => {
+    const response = await api.get('/api/chats/config/');
+    return response.data;
+  },
+
   createChat: async (data: {
     name: string;
     description?: string;
@@ -313,6 +321,9 @@ export const chatApi = {
     voice_enabled?: boolean;
     video_enabled?: boolean;
     photo_enabled?: boolean;
+    latitude?: number;
+    longitude?: number;
+    discovery_radius_miles?: number;
   }): Promise<ChatRoom> => {
     const response = await api.post('/api/chats/create/', data);
     return response.data;

@@ -92,6 +92,21 @@ class ChatRoomCreateView(generics.CreateAPIView):
         )
 
 
+class ChatConfigView(APIView):
+    """
+    Get chat configuration options for frontend.
+
+    Returns settings needed for chat creation UI, including
+    location-based discovery radius options.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response({
+            'discovery_radius_options': config.CHAT_DISCOVERY_RADIUS_OPTIONS,
+        })
+
+
 class ChatRoomDetailView(APIView):
     """Get chat room details by code (and username for manual rooms)"""
     permission_classes = [permissions.AllowAny]

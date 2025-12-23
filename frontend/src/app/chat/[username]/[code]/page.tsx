@@ -433,10 +433,12 @@ export default function ChatPage() {
 
         setLoading(false);
       } catch (err: any) {
-        // If chat returns 404 (host hasn't joined yet), redirect to homepage
+        // If chat returns 404, do a hard redirect to homepage
+        // Using window.location.href instead of router.replace to ensure full page reload
+        // and clear any chat page styles that might bleed into the homepage
         if (err.response?.status === 404) {
-          console.log('[Chat Load] Chat not found (404) - redirecting to homepage');
-          router.replace('/');
+          console.log('[Chat Load] Chat not found (404) - hard redirect to homepage');
+          window.location.href = '/';
           return;
         }
 

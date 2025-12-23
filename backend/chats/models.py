@@ -171,6 +171,27 @@ class ChatRoom(models.Model):
     theme = models.ForeignKey('ChatTheme', on_delete=models.SET_NULL, null=True, related_name='chat_rooms', help_text="Theme for this chat room")
     theme_locked = models.BooleanField(default=False, help_text="If true, users cannot override the theme")
 
+    # Location-based discovery
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Latitude coordinate for location-based discovery"
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Longitude coordinate for location-based discovery"
+    )
+    discovery_radius_miles = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Maximum distance in miles for this chat to be discoverable"
+    )
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

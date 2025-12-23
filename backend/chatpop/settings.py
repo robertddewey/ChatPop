@@ -555,6 +555,13 @@ Response JSON:
         'Fallback location API provider if primary fails. Options: "google", "tomtom", or empty (no fallback). Leave empty to disable fallback.',
         str
     ),
+
+    # Chat Discovery Settings (location-based chat discoverability)
+    'CHAT_DISCOVERY_RADIUS_OPTIONS': (
+        [1, 5, 10, 25, 50],
+        'Available radius options in miles for location-based chat discovery. Users select from these when creating a discoverable chat.',
+        list
+    ),
 }
 
 # Custom User Model

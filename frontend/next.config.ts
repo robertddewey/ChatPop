@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: [
     'https://10.0.0.119:4000',
     'http://10.0.0.119:4000',
+    '*.ngrok-free.dev',
+    '*.ngrok.io',
   ],
   experimental: {
     serverActions: {

@@ -45,6 +45,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     url = serializers.CharField(read_only=True)
     message_count = serializers.SerializerMethodField()
     theme = ChatThemeSerializer(read_only=True)
+    is_location_discoverable = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatRoom
@@ -52,6 +53,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
             'id', 'code', 'name', 'description', 'host', 'url',
             'access_mode', 'voice_enabled', 'video_enabled', 'photo_enabled',
             'theme', 'theme_locked',
+            'latitude', 'longitude', 'discovery_radius_miles', 'is_location_discoverable',
             'message_count', 'is_active', 'created_at'
         ]
         read_only_fields = ['id', 'code', 'host', 'url', 'created_at']
@@ -59,17 +61,35 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     def get_message_count(self, obj):
         return obj.messages.filter(is_deleted=False).count()
 
+    def get_is_location_discoverable(self, obj):
+        """Check if chat has location-based discovery enabled"""
+        return (
+            obj.latitude is not None and
+            obj.longitude is not None and
+            obj.discovery_radius_miles is not None
+        )
+
 
 class ChatRoomCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating a chat room"""
     theme_id = serializers.CharField(write_only=True, required=False, default='dark-mode')
+    latitude = serializers.DecimalField(
+        max_digits=9, decimal_places=6, required=False, allow_null=True
+    )
+    longitude = serializers.DecimalField(
+        max_digits=9, decimal_places=6, required=False, allow_null=True
+    )
+    discovery_radius_miles = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
 
     class Meta:
         model = ChatRoom
         fields = [
             'name', 'description', 'access_mode', 'access_code',
             'voice_enabled', 'video_enabled', 'photo_enabled',
-            'theme_id', 'theme_locked'
+            'theme_id', 'theme_locked',
+            'latitude', 'longitude', 'discovery_radius_miles'
         ]
 
     def validate_access_code(self, value):
@@ -78,6 +98,32 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
         if access_mode == ChatRoom.ACCESS_PRIVATE and not value:
             raise serializers.ValidationError("Access code is required for private rooms")
         return value
+
+    def validate(self, attrs):
+        """Validate location fields are all-or-nothing"""
+        latitude = attrs.get('latitude')
+        longitude = attrs.get('longitude')
+        discovery_radius_miles = attrs.get('discovery_radius_miles')
+
+        location_fields = [latitude, longitude, discovery_radius_miles]
+        has_any = any(f is not None for f in location_fields)
+        has_all = all(f is not None for f in location_fields)
+
+        if has_any and not has_all:
+            raise serializers.ValidationError({
+                'latitude': 'All location fields (latitude, longitude, discovery_radius_miles) must be provided together'
+            })
+
+        # Validate discovery_radius_miles is in allowed options
+        if discovery_radius_miles is not None:
+            from constance import config
+            allowed_options = config.CHAT_DISCOVERY_RADIUS_OPTIONS
+            if discovery_radius_miles not in allowed_options:
+                raise serializers.ValidationError({
+                    'discovery_radius_miles': f'Must be one of: {allowed_options}'
+                })
+
+        return attrs
 
     def create(self, validated_data):
         from .utils.slug import generate_unique_chat_code
@@ -105,7 +151,16 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
             # Fallback to dark-mode if theme not found
             validated_data['theme'] = ChatTheme.objects.get(theme_id='dark-mode')
 
-        return super().create(validated_data)
+        chat_room = super().create(validated_data)
+
+        # Auto-join host to their own chat
+        ChatParticipation.objects.create(
+            chat_room=chat_room,
+            user=request.user,
+            username=request.user.reserved_username or request.user.email.split('@')[0]
+        )
+
+        return chat_room
 
 
 class ChatRoomUpdateSerializer(serializers.ModelSerializer):

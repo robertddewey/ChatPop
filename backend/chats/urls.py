@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
+    ChatConfigView,
     MessageListView, MessageCreateView, MessagePinView, MessageDeleteView,
     FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
     VoiceUploadView, VoiceStreamView,
@@ -23,6 +24,7 @@ urlpatterns = [
     path('create-from-photo/', ChatRoomCreateFromPhotoView.as_view(), name='chat-create-from-photo'),
 
     # Chat Management
+    path('config/', ChatConfigView.as_view(), name='chat-config'),
     path('create/', ChatRoomCreateView.as_view(), name='chat-create'),
     path('my-chats/', MyChatsView.as_view(), name='my-chats'),
 
