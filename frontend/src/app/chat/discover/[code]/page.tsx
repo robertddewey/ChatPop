@@ -513,18 +513,28 @@ export default function ChatPage() {
   // Listen for back button to show join modal when user navigates back
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      // If user is currently in chat and presses back, show join modal and reset state
+      // If settings sheet is open, close it first
+      if (showSettingsSheet) {
+        setShowSettingsSheet(false);
+        return;
+      }
+
+      // If in a secondary view (backroom), return to main chat first
+      if (activeView !== 'main') {
+        setActiveView('main');
+        return;
+      }
+
+      // If user is in main chat and presses back, show join modal and reset state
       if (hasJoined) {
         setHasJoined(false);
         setMessages([]); // Clear messages to show fresh state
-        setActiveView('main'); // Exit back room view if in there
-        // Note: Settings sheet closes automatically via onClose handler
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined]);
+  }, [hasJoined, activeView, showSettingsSheet]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -1373,7 +1383,13 @@ export default function ChatPage() {
           {chatRoom && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <button
-                onClick={() => {/* TODO: Add navigation */}}
+                onClick={() => {
+                  if (activeView !== 'main') {
+                    setActiveView('main');  // Return to main chat
+                  } else {
+                    router.back();  // Leave the chat
+                  }
+                }}
                 className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
                 aria-label="Back"
               >
@@ -1532,7 +1548,14 @@ export default function ChatPage() {
           toggledIcon={MessageSquare}
           onClick={() => {
             console.log('🖱️ GameRoomTab clicked! Toggling from', activeView, 'to', activeView === 'backroom' ? 'main' : 'backroom');
-            setActiveView(activeView === 'backroom' ? 'main' : 'backroom');
+            if (activeView === 'backroom') {
+              // Going back to main - use history.back() to properly handle browser history
+              window.history.back();
+            } else {
+              // Entering backroom - push history state so back button returns to main
+              window.history.pushState({ view: 'backroom' }, '', window.location.href);
+              setActiveView('backroom');
+            }
           }}
           isToggled={activeView === 'backroom'}
           hasNotification={false}
@@ -1549,7 +1572,10 @@ export default function ChatPage() {
       {hasJoined && (
         <FloatingActionButton
           icon={Settings}
-          onClick={() => setShowSettingsSheet(true)}
+          onClick={() => {
+            window.history.pushState({ view: 'settings' }, '', window.location.href);
+            setShowSettingsSheet(true);
+          }}
           position="right"
           customPosition="right-[2.5%] top-[calc(50%+36px)]"
           ariaLabel="Open Settings"
@@ -1585,7 +1611,13 @@ export default function ChatPage() {
           onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
           themeIsDarkMode={themeIsDarkMode}
           open={showSettingsSheet}
-          onOpenChange={setShowSettingsSheet}
+          onOpenChange={(open) => {
+            if (!open && showSettingsSheet) {
+              window.history.back();
+            } else {
+              setShowSettingsSheet(open);
+            }
+          }}
         >
           {/* Empty trigger - controlled by Settings button */}
           <div />
