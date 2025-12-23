@@ -131,6 +131,7 @@ export default function ChatSettingsSheet({
   const isOpen = open !== undefined ? open : internalIsOpen;
   const setIsOpen = onOpenChange || setInternalIsOpen;
   const [loading, setLoading] = useState(false);
+  const [themeUpdating, setThemeUpdating] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -212,43 +213,48 @@ export default function ChatSettingsSheet({
 
           <div className="mt-6 space-y-6">
           {/* Theme Selection */}
-          <div className="space-y-4">
+          <div className="space-y-4 relative">
             <h3 className={`text-sm font-semibold ${styles.title}`}>
               Change Theme <span className={`text-xs font-normal ${themeIsDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>(will reload the chat)</span> {chatRoom.theme_locked && <span className={`text-xs font-normal ${styles.subtext}`}>(locked by host)</span>}
             </h3>
+
+            {/* Theme updating overlay */}
+            {themeUpdating && (
+              <div className={`absolute inset-0 z-10 flex items-center justify-center rounded-lg ${themeIsDarkMode ? 'bg-zinc-900/80' : 'bg-white/80'}`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-5 h-5 border-2 border-t-transparent rounded-full animate-spin ${themeIsDarkMode ? 'border-cyan-400' : 'border-purple-600'}`} />
+                  <span className={`text-sm font-medium ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`}>
+                    Updating theme...
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-3 gap-3">
               {/* Dark Mode */}
               <button
                 onClick={async () => {
-                  if (chatRoom.theme_locked) return;
+                  if (chatRoom.theme_locked || themeUpdating) return;
 
                   // Store current theme for rollback on error
                   const currentThemeColors = localStorage.getItem('chat_theme_color');
 
                   try {
-                    // Start API call
-                    const apiPromise = chatApi.updateMyTheme(chatRoom.code, 'dark-mode', fingerprint);
+                    setThemeUpdating(true);
 
-                    // Optimistically update localStorage immediately with known colors
+                    // Optimistically update localStorage and meta tags
                     localStorage.setItem('chat_theme_color', JSON.stringify(THEME_COLORS['dark-mode']));
-
-                    // Update theme-color meta tags immediately (iOS Safari requirement)
                     updateThemeColorMetaTags(THEME_COLORS['dark-mode']);
 
-                    // Wait for API OR timeout (whichever comes first)
-                    const result = await Promise.race([
-                      apiPromise.then(() => ({ success: true })),
-                      new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 200))
-                    ]);
+                    // Wait for API to complete (no race condition)
+                    await chatApi.updateMyTheme(chatRoom.code, 'dark-mode', fingerprint, chatRoom.host.reserved_username);
 
-                    // Reload to apply theme (API succeeded or is still processing)
+                    // Reload to apply theme
                     window.location.reload();
                   } catch (err) {
                     // API failed - revert localStorage to prevent mismatch
                     if (currentThemeColors) {
                       localStorage.setItem('chat_theme_color', currentThemeColors);
-                      // Revert meta tags too
                       try {
                         const parsed = JSON.parse(currentThemeColors);
                         updateThemeColorMetaTags(parsed);
@@ -259,10 +265,10 @@ export default function ChatSettingsSheet({
                       localStorage.removeItem('chat_theme_color');
                     }
                     console.error('Failed to update theme:', err);
-                    // Don't reload - keep user in current state
+                    setThemeUpdating(false);
                   }
                 }}
-                disabled={chatRoom.theme_locked || activeThemeId === 'dark-mode'}
+                disabled={chatRoom.theme_locked || activeThemeId === 'dark-mode' || themeUpdating}
                 className={`p-3 rounded-lg transition-all focus:outline-none border-2 bg-zinc-950 ${
                   activeThemeId === 'dark-mode'
                     ? 'border-cyan-400 bg-cyan-400/10'
@@ -285,34 +291,27 @@ export default function ChatSettingsSheet({
               {/* Light Mode */}
               <button
                 onClick={async () => {
-                  if (chatRoom.theme_locked) return;
+                  if (chatRoom.theme_locked || themeUpdating) return;
 
                   // Store current theme for rollback on error
                   const currentThemeColors = localStorage.getItem('chat_theme_color');
 
                   try {
-                    // Start API call
-                    const apiPromise = chatApi.updateMyTheme(chatRoom.code, 'light-mode', fingerprint);
+                    setThemeUpdating(true);
 
-                    // Optimistically update localStorage immediately with known colors
+                    // Optimistically update localStorage and meta tags
                     localStorage.setItem('chat_theme_color', JSON.stringify(THEME_COLORS['light-mode']));
-
-                    // Update theme-color meta tags immediately (iOS Safari requirement)
                     updateThemeColorMetaTags(THEME_COLORS['light-mode']);
 
-                    // Wait for API OR timeout (whichever comes first)
-                    const result = await Promise.race([
-                      apiPromise.then(() => ({ success: true })),
-                      new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 200))
-                    ]);
+                    // Wait for API to complete (no race condition)
+                    await chatApi.updateMyTheme(chatRoom.code, 'light-mode', fingerprint, chatRoom.host.reserved_username);
 
-                    // Reload to apply theme (API succeeded or is still processing)
+                    // Reload to apply theme
                     window.location.reload();
                   } catch (err) {
                     // API failed - revert localStorage to prevent mismatch
                     if (currentThemeColors) {
                       localStorage.setItem('chat_theme_color', currentThemeColors);
-                      // Revert meta tags too
                       try {
                         const parsed = JSON.parse(currentThemeColors);
                         updateThemeColorMetaTags(parsed);
@@ -323,10 +322,10 @@ export default function ChatSettingsSheet({
                       localStorage.removeItem('chat_theme_color');
                     }
                     console.error('Failed to update theme:', err);
-                    // Don't reload - keep user in current state
+                    setThemeUpdating(false);
                   }
                 }}
-                disabled={chatRoom.theme_locked || activeThemeId === 'light-mode'}
+                disabled={chatRoom.theme_locked || activeThemeId === 'light-mode' || themeUpdating}
                 className={`p-3 rounded-lg transition-all focus:outline-none border-2 bg-white ${
                   activeThemeId === 'light-mode'
                     ? 'border-blue-500 bg-blue-500/10'
