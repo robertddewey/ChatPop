@@ -26,6 +26,7 @@ from .geohash_utils import encode_location, get_cache_key, get_geohash_bounds
 from .factory import get_places_client
 from .category_mapping import map_google_type
 from .metro_lookup import get_metro_friendly_name
+from ..rate_limit import increment_location_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,9 @@ def _rerank_suggestions_by_distance(
 def get_or_fetch_location_suggestions(
     latitude: float,
     longitude: float,
+    user_id: Optional[int] = None,
+    fingerprint: Optional[str] = None,
+    ip_address: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Get location suggestions from cache or fetch from Places API.
@@ -123,9 +127,16 @@ def get_or_fetch_location_suggestions(
 
     All results are re-ranked by distance from user's actual location.
 
+    Rate limiting:
+    - Only counts API calls (cache hits don't increment rate limit)
+    - Pass user_id/fingerprint/ip_address to enable rate limit tracking
+
     Args:
         latitude: User's latitude coordinate
         longitude: User's longitude coordinate
+        user_id: Authenticated user ID (for rate limiting)
+        fingerprint: Browser fingerprint (for rate limiting)
+        ip_address: Client IP address (for rate limiting)
 
     Returns:
         Dictionary with location info and suggestions, or None on error
@@ -214,6 +225,11 @@ def get_or_fetch_location_suggestions(
 
     # Step 3: Fetch from Places API (uses factory for provider selection)
     logger.info(f"Cache MISS for geohash={geohash} - fetching from API")
+
+    # Increment rate limit counter only on API calls (not cache hits)
+    if ip_address:
+        new_count = increment_location_rate_limit(user_id, fingerprint, ip_address)
+        logger.info(f"Location API call - rate limit incremented to {new_count}")
 
     client = get_places_client()
     if not client:

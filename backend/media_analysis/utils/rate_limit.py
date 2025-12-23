@@ -270,3 +270,131 @@ def get_remaining_uploads(
     remaining = max(0, max_limit - current_count)
 
     return remaining, current_count, max_limit
+
+
+# ============================================================================
+# Location-specific rate limiting
+# ============================================================================
+
+def get_location_rate_limit_key(user_id: Optional[int], fingerprint: Optional[str], ip_address: str) -> str:
+    """
+    Generate Redis key for location rate limiting.
+    Uses a separate namespace from photo analysis.
+    """
+    if user_id:
+        return f"location:rate_limit:user:{user_id}"
+    elif fingerprint:
+        return f"location:rate_limit:fp:{fingerprint}"
+    else:
+        return f"location:rate_limit:ip:{ip_address}"
+
+
+def check_location_rate_limit(
+    user_id: Optional[int],
+    fingerprint: Optional[str],
+    ip_address: str
+) -> Tuple[bool, int, int]:
+    """
+    Check if the client has exceeded the location rate limit.
+
+    Uses LOCATION_RATE_LIMIT_* settings instead of PHOTO_ANALYSIS_* settings.
+
+    Returns:
+        Tuple of (allowed, current_count, max_limit)
+    """
+    # Determine rate limit based on authentication
+    if user_id:
+        max_limit = config.LOCATION_RATE_LIMIT_AUTHENTICATED
+    else:
+        max_limit = config.LOCATION_RATE_LIMIT_ANONYMOUS
+
+    # Generate cache key
+    cache_key = get_location_rate_limit_key(user_id, fingerprint, ip_address)
+
+    # Get current count from Redis
+    current_count = cache.get(cache_key, 0)
+
+    # Check if limit exceeded
+    allowed = current_count < max_limit
+
+    return allowed, current_count, max_limit
+
+
+def increment_location_rate_limit(
+    user_id: Optional[int],
+    fingerprint: Optional[str],
+    ip_address: str
+) -> int:
+    """
+    Increment the location rate limit counter for this client.
+
+    Returns:
+        New count value after increment
+    """
+    cache_key = get_location_rate_limit_key(user_id, fingerprint, ip_address)
+
+    # Get current count
+    current_count = cache.get(cache_key, 0)
+
+    # Increment
+    new_count = current_count + 1
+
+    # Set with 1-hour expiration (3600 seconds)
+    if current_count == 0:
+        cache.set(cache_key, new_count, timeout=3600)
+    else:
+        cache.set(cache_key, new_count, timeout=cache.ttl(cache_key))
+
+    return new_count
+
+
+def location_rate_limit_check(view_func):
+    """
+    Decorator to check location rate limiting WITHOUT incrementing the counter.
+
+    The counter should only be incremented when an actual API call is made,
+    not on cache hits. Use increment_location_rate_limit() in the cache layer
+    when making an API call.
+
+    Usage:
+        @location_rate_limit_check
+        def suggest(self, request, *args, **kwargs):
+            # View logic here - rate limit only checked, not incremented
+            pass
+    """
+    @wraps(view_func)
+    def wrapper(self, request: Request, *args, **kwargs):
+        # Get client identifiers
+        user_id, fingerprint, ip_address = get_client_identifier(request)
+
+        # Skip rate limiting for localhost requests
+        if ip_address in ['127.0.0.1', '::1', 'localhost']:
+            return view_func(self, request, *args, **kwargs)
+
+        # Check rate limit (but don't increment)
+        allowed, current_count, max_limit = check_location_rate_limit(
+            user_id, fingerprint, ip_address
+        )
+
+        if not allowed:
+            cache_key = get_location_rate_limit_key(user_id, fingerprint, ip_address)
+            retry_after = cache.ttl(cache_key) or 3600
+
+            return JsonResponse({
+                "error": "Rate limit exceeded",
+                "detail": "You have exceeded the maximum number of location requests per hour. Please try again later.",
+                "current": current_count,
+                "limit": max_limit,
+                "retry_after_seconds": retry_after
+            }, status=429)
+
+        # Call the original view (counter NOT incremented here)
+        response = view_func(self, request, *args, **kwargs)
+
+        # Add rate limit headers to response
+        response['X-RateLimit-Limit'] = str(max_limit)
+        response['X-RateLimit-Remaining'] = str(max(0, max_limit - current_count))
+
+        return response
+
+    return wrapper

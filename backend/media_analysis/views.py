@@ -23,6 +23,7 @@ from .serializers import (
 )
 from .utils.rate_limit import (
     media_analysis_rate_limit,
+    location_rate_limit_check,
     get_client_identifier,
 )
 from .utils.location import get_or_fetch_location_suggestions, encode_location
@@ -832,7 +833,7 @@ class LocationAnalysisViewSet(viewsets.GenericViewSet):
         methods=['post'],
         url_path='suggest'
     )
-    @media_analysis_rate_limit
+    @location_rate_limit_check
     def suggest(self, request):
         """
         Get location-based chat suggestions from coordinates.
@@ -907,7 +908,13 @@ class LocationAnalysisViewSet(viewsets.GenericViewSet):
             user_id, fingerprint, ip_address = get_client_identifier(request)
 
             # Get location suggestions (checks cache first, then API)
-            result = get_or_fetch_location_suggestions(latitude, longitude)
+            # Pass client identifiers for rate limiting (only counts API calls, not cache hits)
+            result = get_or_fetch_location_suggestions(
+                latitude, longitude,
+                user_id=user_id,
+                fingerprint=fingerprint,
+                ip_address=ip_address,
+            )
 
             if result is None:
                 return Response(
