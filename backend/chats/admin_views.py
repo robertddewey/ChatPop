@@ -1,5 +1,5 @@
 """
-Custom admin views for ChatPop monitoring dashboard.
+Custom admin views for ChatPop monitoring dashboards.
 """
 
 from django.contrib.admin.views.decorators import staff_member_required
@@ -11,19 +11,19 @@ import time
 
 
 @staff_member_required
-def monitoring_dashboard(request):
+def chat_cache_dashboard(request):
     """
-    Web-based monitoring dashboard for cache and database operations.
+    Web-based monitoring dashboard for chat cache and database operations.
     Displays real-time metrics and recent events.
     """
     context = {
-        'title': 'Cache & Database Monitor',
+        'title': 'Chat Cache Monitor',
     }
-    return render(request, 'admin/monitoring_dashboard.html', context)
+    return render(request, 'admin/chat_cache_dashboard.html', context)
 
 
 @staff_member_required
-def monitoring_api(request):
+def chat_cache_api(request):
     """
     JSON API endpoint for monitoring data.
     Used by the dashboard for real-time updates via AJAX.

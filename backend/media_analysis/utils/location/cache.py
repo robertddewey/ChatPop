@@ -8,22 +8,105 @@ Uses a two-tier cache strategy:
 Cache flow:
 1. Check Redis by geohash
 2. If miss, check PostgreSQL
-3. If miss, call Google Places API
+3. If miss, call Places API (centered on geohash center)
 4. Cache result in both Redis and PostgreSQL
+5. Re-rank venues by distance from user's actual location
+6. Return top N venues
 """
 
 import json
 import logging
+import math
 from typing import Dict, Any, Optional, List
 from django.core.cache import cache
 from django.utils.text import slugify
 from constance import config
 
-from .geohash_utils import encode_location, get_cache_key
-from .google_places import GooglePlacesClient, map_google_type_to_category
+from .geohash_utils import encode_location, get_cache_key, get_geohash_bounds
+from .factory import get_places_client
+from .category_mapping import map_google_type
 from .metro_lookup import get_metro_friendly_name
 
 logger = logging.getLogger(__name__)
+
+
+def _haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Calculate the great-circle distance between two points on Earth.
+
+    Args:
+        lat1, lon1: First point coordinates
+        lat2, lon2: Second point coordinates
+
+    Returns:
+        Distance in meters
+    """
+    R = 6371000  # Earth's radius in meters
+
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+
+    a = (math.sin(delta_phi / 2) ** 2 +
+         math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return R * c
+
+
+def _rerank_suggestions_by_distance(
+    suggestions: List[Dict[str, Any]],
+    user_lat: float,
+    user_lng: float,
+    max_venues: int,
+) -> List[Dict[str, Any]]:
+    """
+    Re-rank venue suggestions by distance from user's actual location.
+
+    Non-venue suggestions (neighborhood, city, metro) are preserved at the end.
+
+    Args:
+        suggestions: List of suggestion dicts (venues must have lat/lng)
+        user_lat: User's actual latitude
+        user_lng: User's actual longitude
+        max_venues: Maximum number of venues to return
+
+    Returns:
+        Re-ranked suggestions with closest venues first, then location types
+    """
+    venue_types = {'restaurant', 'bar', 'cafe', 'gym', 'theater', 'stadium', 'venue'}
+    location_types = {'neighborhood', 'city', 'metro', 'county'}
+
+    venues = []
+    locations = []
+
+    for suggestion in suggestions:
+        stype = suggestion.get('type', '')
+        if stype in location_types:
+            locations.append(suggestion)
+        elif stype in venue_types:
+            # Calculate distance if coordinates available
+            lat = suggestion.get('latitude')
+            lng = suggestion.get('longitude')
+            if lat is not None and lng is not None:
+                distance = _haversine_distance(user_lat, user_lng, lat, lng)
+                suggestion['distance_meters'] = round(distance, 1)
+            else:
+                suggestion['distance_meters'] = float('inf')
+            venues.append(suggestion)
+        else:
+            # Unknown type, treat as venue
+            venues.append(suggestion)
+
+    # Sort venues by distance
+    venues.sort(key=lambda v: v.get('distance_meters', float('inf')))
+
+    # Take top max_venues
+    top_venues = venues[:max_venues]
+
+    # Combine: venues first, then locations
+    return top_venues + locations
 
 
 def get_or_fetch_location_suggestions(
@@ -31,12 +114,14 @@ def get_or_fetch_location_suggestions(
     longitude: float,
 ) -> Optional[Dict[str, Any]]:
     """
-    Get location suggestions from cache or fetch from Google Places API.
+    Get location suggestions from cache or fetch from Places API.
 
     Cache hierarchy (hybrid approach):
     1. Redis hot cache (24h TTL) - fastest
     2. PostgreSQL persistent cache - survives restarts
-    3. Google Places API - fresh fetch
+    3. Places API - fresh fetch (centered on geohash center)
+
+    All results are re-ranked by distance from user's actual location.
 
     Args:
         latitude: User's latitude coordinate
@@ -58,13 +143,14 @@ def get_or_fetch_location_suggestions(
     # Generate geohash for cache lookup
     geohash = encode_location(latitude, longitude)
 
-    # Get current settings for cache key
+    # Get current settings
     radius = config.LOCATION_SEARCH_RADIUS_METERS
-    max_venues = config.LOCATION_MAX_VENUES
+    max_venues_return = config.LOCATION_MAX_VENUES  # How many to return to user
+    max_venues_cache = config.LOCATION_CACHE_MAX_VENUES  # How many to store in cache
 
-    # Cache key includes settings so changing them creates new cache entries
-    redis_key = get_cache_key(geohash, radius, max_venues)
-    cache_key_suffix = f":r{radius}:v{max_venues}"
+    # Cache key uses cache max (what we store), not return max
+    redis_key = get_cache_key(geohash, radius, max_venues_cache)
+    cache_key_suffix = f":r{radius}:v{max_venues_cache}"
     pg_cache_key = f"{geohash}{cache_key_suffix}"
 
     # Step 1: Check Redis hot cache
@@ -73,6 +159,18 @@ def get_or_fetch_location_suggestions(
         logger.info(f"Redis cache HIT for key={redis_key}")
         try:
             result = json.loads(cached) if isinstance(cached, str) else cached
+            result = result.copy()  # Don't mutate cached data
+
+            # Re-rank suggestions by distance from user's actual location
+            if result.get('suggestions'):
+                result['suggestions'] = _rerank_suggestions_by_distance(
+                    result['suggestions'],
+                    latitude,
+                    longitude,
+                    max_venues_return,
+                )
+                result['best_guess'] = result['suggestions'][0] if result['suggestions'] else None
+
             result['cached'] = True
             result['cache_source'] = 'redis'
             return result
@@ -91,11 +189,22 @@ def get_or_fetch_location_suggestions(
             logger.info(f"PostgreSQL cache HIT for key={pg_cache_key}")
             pg_cached.increment_lookup()
 
-            # Warm Redis cache
+            # Warm Redis cache (with full data, not re-ranked)
             ttl_seconds = config.LOCATION_CACHE_TTL_HOURS * 3600
             cache.set(redis_key, json.dumps(pg_cached.suggestions_data), timeout=ttl_seconds)
 
             result = pg_cached.suggestions_data.copy()
+
+            # Re-rank suggestions by distance from user's actual location
+            if result.get('suggestions'):
+                result['suggestions'] = _rerank_suggestions_by_distance(
+                    result['suggestions'],
+                    latitude,
+                    longitude,
+                    max_venues_return,
+                )
+                result['best_guess'] = result['suggestions'][0] if result['suggestions'] else None
+
             result['cached'] = True
             result['cache_source'] = 'postgresql'
             return result
@@ -103,15 +212,24 @@ def get_or_fetch_location_suggestions(
     except Exception as e:
         logger.warning(f"PostgreSQL cache lookup failed: {str(e)}")
 
-    # Step 3: Fetch from Google Places API
+    # Step 3: Fetch from Places API (uses factory for provider selection)
     logger.info(f"Cache MISS for geohash={geohash} - fetching from API")
 
-    client = GooglePlacesClient()
-    if not client.is_available():
-        logger.error("Google Places API key not configured")
+    client = get_places_client()
+    if not client:
+        logger.error("No places API provider available")
         return None
 
-    # Fetch city/neighborhood/county/state via reverse geocoding
+    # Get geohash center coordinates for API search
+    # This ensures consistent coverage for all users in the same geohash cell
+    bounds = get_geohash_bounds(geohash)
+    center_lat = bounds['center_lat']
+    center_lng = bounds['center_lng']
+
+    logger.info(f"Using geohash center ({center_lat}, {center_lng}) for API search "
+                f"(user at {latitude}, {longitude})")
+
+    # Fetch city/neighborhood/county/state via reverse geocoding (use user's location for accuracy)
     geocode_result = client.reverse_geocode(latitude, longitude)
     city = geocode_result.get('city') if geocode_result else None
     neighborhood = geocode_result.get('neighborhood') if geocode_result else None
@@ -125,18 +243,45 @@ def get_or_fetch_location_suggestions(
         if metro_area:
             logger.info(f"Metro area lookup: {county}, {state} -> {metro_area}")
 
-    # Fetch nearby venues
+    # Fetch nearby venues from geohash CENTER (not user's location)
+    # This provides consistent coverage for the entire geohash cell
     venues = client.nearby_search(
-        latitude=latitude,
-        longitude=longitude,
-        radius_meters=config.LOCATION_SEARCH_RADIUS_METERS,
-        max_results=config.LOCATION_MAX_VENUES,
+        latitude=center_lat,
+        longitude=center_lng,
+        radius_meters=radius,
+        max_results=max_venues_cache,  # Fetch more for caching
     )
 
-    # Build tiered suggestions list
-    suggestions = _build_tiered_suggestions(city, neighborhood, metro_area, venues)
+    # Build tiered suggestions list (includes lat/lng for each venue)
+    all_suggestions = _build_tiered_suggestions(city, neighborhood, metro_area, venues)
 
-    # Build result
+    # Build cache result (stores all venues)
+    cache_result = {
+        'location': {
+            'city': city,
+            'neighborhood': neighborhood,
+            'county': county,
+            'metro_area': metro_area,
+            'state': state,
+            'geohash': geohash,
+            'center_latitude': center_lat,
+            'center_longitude': center_lng,
+        },
+        'suggestions': all_suggestions,
+    }
+
+    # Step 4: Cache the full result
+    _cache_result(geohash, center_lat, center_lng, city, neighborhood, cache_result)
+
+    # Re-rank for this specific user before returning
+    reranked_suggestions = _rerank_suggestions_by_distance(
+        all_suggestions,
+        latitude,
+        longitude,
+        max_venues_return,
+    )
+
+    # Build user-specific result
     result = {
         'location': {
             'city': city,
@@ -148,14 +293,11 @@ def get_or_fetch_location_suggestions(
             'latitude': latitude,
             'longitude': longitude,
         },
-        'suggestions': suggestions,
-        'best_guess': suggestions[0] if suggestions else None,
+        'suggestions': reranked_suggestions,
+        'best_guess': reranked_suggestions[0] if reranked_suggestions else None,
         'cached': False,
         'cache_source': 'api',
     }
-
-    # Step 4: Cache the result
-    _cache_result(geohash, latitude, longitude, city, neighborhood, result)
 
     return result
 
@@ -171,24 +313,24 @@ def _cache_result(
     """
     Cache location suggestions in both Redis and PostgreSQL.
 
-    Cache keys include current settings (radius, max_venues) so changing
+    Cache keys include current settings (radius, cache_max_venues) so changing
     settings automatically creates new cache entries.
 
     Args:
         geohash: Geohash key for cache lookup
-        latitude: Original latitude
-        longitude: Original longitude
+        latitude: Geohash center latitude
+        longitude: Geohash center longitude
         city: City name from geocoding
         neighborhood: Neighborhood name from geocoding
-        result: Full result dictionary to cache
+        result: Full result dictionary to cache (with all venues)
     """
     # Get current settings for cache key
     radius = config.LOCATION_SEARCH_RADIUS_METERS
-    max_venues = config.LOCATION_MAX_VENUES
+    max_venues_cache = config.LOCATION_CACHE_MAX_VENUES  # Use cache max, not return max
 
     # Build settings-aware cache keys
-    redis_key = get_cache_key(geohash, radius, max_venues)
-    cache_key_suffix = f":r{radius}:v{max_venues}"
+    redis_key = get_cache_key(geohash, radius, max_venues_cache)
+    cache_key_suffix = f":r{radius}:v{max_venues_cache}"
     pg_cache_key = f"{geohash}{cache_key_suffix}"
 
     # Cache in Redis (hot cache)
@@ -294,26 +436,26 @@ def _build_tiered_suggestions(
     Build a tiered list of location suggestions.
 
     Order:
-    1. Closest venue (best guess - "You might be at...")
-    2. Other nearby venues (alternatives)
-    3. Neighborhood (if available)
-    4. City/Township (if available)
-    5. Metro area (if available, e.g., "Metro Detroit")
+    1. Venues (will be re-ranked by distance from user's location)
+    2. Neighborhood (if available)
+    3. City/Township (if available)
+    4. Metro area (if available, e.g., "Metro Detroit")
 
     Args:
         city: City name from geocoding
         neighborhood: Neighborhood name from geocoding
         metro_area: Metro area friendly name (e.g., "Metro Detroit")
-        venues: List of nearby venues from Places API (already sorted by distance)
+        venues: List of nearby venues from Places API
 
     Returns:
-        List of suggestion dictionaries with name, key, type, description, etc.
+        List of suggestion dictionaries with name, key, type, lat/lng, etc.
     """
     suggestions = []
 
-    # Add venues first (already sorted by distance from API)
+    # Add venues with their coordinates for later re-ranking
     for venue in venues:
-        venue_type = map_google_type_to_category(venue.get('primary_type', ''))
+        # primary_type is already mapped to ChatPop category by the provider client
+        venue_type = venue.get('primary_type', 'venue')
         name = _sanitize_venue_name(venue.get('name', ''))
 
         if not name:
@@ -331,6 +473,8 @@ def _build_tiered_suggestions(
             'key': key,
             'type': venue_type,
             'place_id': place_id,
+            'latitude': venue.get('latitude'),
+            'longitude': venue.get('longitude'),
         })
 
     # Add neighborhood after venues

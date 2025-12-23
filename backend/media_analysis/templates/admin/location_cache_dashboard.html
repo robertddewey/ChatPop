@@ -1,0 +1,2557 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- Leaflet Heat Plugin CSS (none needed, but keeping comment for reference) -->
+<style>
+    .monitoring-container {
+        max-width: 1600px;
+        margin: 20px auto;
+        padding: 20px;
+    }
+
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+
+    .metric-card {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+    }
+
+    .metric-card h3 {
+        margin: 0 0 10px 0;
+        font-size: 13px;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .metric-value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+
+    .metric-label {
+        font-size: 11px;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .status-enabled {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-disabled {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .main-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    @media (max-width: 1200px) {
+        .main-content {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .map-section {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .map-header {
+        padding: 15px 20px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .map-header h2 {
+        margin: 0;
+        font-size: 16px;
+    }
+
+    #map {
+        height: 500px;
+        width: 100%;
+    }
+
+    .entries-section {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        max-height: 600px;
+        overflow-y: auto;
+    }
+
+    .entries-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .entries-header h2 {
+        margin: 0;
+        font-size: 16px;
+    }
+
+    .search-box {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 15px;
+    }
+
+    .search-box input {
+        flex: 1;
+        padding: 8px 12px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .search-box input:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+    }
+
+    .search-box button {
+        padding: 8px 16px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .search-box button:hover {
+        background: #f8f9fa;
+    }
+
+    .search-box button.search-btn {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+
+    .search-box button.search-btn:hover {
+        background: #0056b3;
+    }
+
+    .pagination-controls {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .pagination-controls button {
+        padding: 6px 12px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        font-size: 13px;
+    }
+
+    .pagination-controls button:hover:not(:disabled) {
+        background: #f8f9fa;
+    }
+
+    .pagination-controls button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .pagination-info {
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    .search-active {
+        font-size: 12px;
+        color: #007bff;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .search-active .clear-search {
+        background: none;
+        border: none;
+        color: #dc3545;
+        cursor: pointer;
+        font-size: 12px;
+        padding: 0;
+        text-decoration: underline;
+    }
+
+    .entry-card {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .entry-card:hover {
+        border-color: #007bff;
+        background: #e7f1ff;
+    }
+
+    .entry-card.selected {
+        border-color: #007bff;
+        background: #e7f1ff;
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+
+    .entry-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 8px;
+    }
+
+    .entry-location {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .entry-geohash {
+        font-family: monospace;
+        font-size: 11px;
+        color: #6c757d;
+        background: #e9ecef;
+        padding: 2px 6px;
+        border-radius: 3px;
+    }
+
+    .entry-meta {
+        font-size: 12px;
+        color: #6c757d;
+        margin-bottom: 8px;
+    }
+
+    .entry-suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .suggestion-tag {
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        background: #e9ecef;
+        color: #495057;
+    }
+
+    .suggestion-tag.area {
+        background: #cfe2ff;
+        color: #084298;
+    }
+
+    .suggestion-tag.venue {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .delete-btn {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+        margin-left: 8px;
+    }
+
+    .delete-btn:hover {
+        background: #c82333;
+    }
+
+    .settings-info {
+        font-size: 12px;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+
+    .refresh-controls {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .refresh-controls button {
+        padding: 6px 12px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+    }
+
+    .refresh-controls button:hover {
+        background: #f8f9fa;
+    }
+
+    .refresh-controls button.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+
+    .refresh-controls select {
+        padding: 6px 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: white;
+    }
+
+    .last-update {
+        color: #6c757d;
+        font-size: 12px;
+    }
+
+    .live-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        background: #d4edda;
+        color: #155724;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .live-indicator.paused {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .live-indicator .pulse {
+        width: 8px;
+        height: 8px;
+        background: #28a745;
+        border-radius: 50%;
+        animation: pulse 1.5s infinite;
+    }
+
+    .live-indicator.paused .pulse {
+        background: #dc3545;
+        animation: none;
+    }
+
+    @keyframes pulse {
+        0% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(1.2); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+
+    .map-controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .map-controls label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .map-controls input[type="checkbox"] {
+        cursor: pointer;
+    }
+
+    /* Detail panel */
+    .detail-panel {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        margin-top: 20px;
+        display: none;
+    }
+
+    .detail-panel.visible {
+        display: block;
+    }
+
+    .detail-panel h3 {
+        margin: 0 0 15px 0;
+        font-size: 16px;
+    }
+
+    .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+
+    .detail-section h4 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #6c757d;
+    }
+
+    .detail-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .detail-list li {
+        padding: 6px 0;
+        border-bottom: 1px solid #e9ecef;
+        font-size: 13px;
+    }
+
+    .detail-list li:last-child {
+        border-bottom: none;
+    }
+
+    /* Analytics Section Styles */
+    .analytics-section {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-top: 30px;
+        overflow: hidden;
+    }
+
+    .analytics-header {
+        padding: 15px 20px;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: white;
+    }
+
+    .analytics-header h2 {
+        margin: 0;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .analytics-content {
+        display: none;
+    }
+
+    .analytics-content.visible {
+        display: block;
+    }
+
+    .analytics-map-container {
+        position: relative;
+        width: 100%;          /* Fill container width first */
+        aspect-ratio: 1 / 1;  /* Then calculate height to make it square */
+        max-height: 80vh;     /* Don't exceed viewport */
+        background: #1a1a2e;
+    }
+
+    #analyticsMap {
+        height: 100%;
+        width: 100%;
+    }
+
+    /* Dark mode filter for analytics map - inverts OSM tiles while preserving readability */
+    #analyticsMap .leaflet-tile-pane {
+        filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+    }
+
+    #analyticsCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;  /* Let map interactions pass through */
+        z-index: 400;  /* Below Leaflet controls (z-index 1000) */
+    }
+
+    .playback-controls {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 15px 20px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .playback-btn {
+        padding: 8px 16px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .playback-btn:hover {
+        background: #e9ecef;
+    }
+
+    .playback-btn.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+
+    .playback-btn.live {
+        background: #28a745;
+        color: white;
+        border-color: #28a745;
+    }
+
+    .playback-btn.live.active {
+        animation: livePulse 2s infinite;
+    }
+
+    @keyframes livePulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4); }
+        50% { box-shadow: 0 0 0 8px rgba(40, 167, 69, 0); }
+    }
+
+    .speed-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .speed-control label {
+        font-size: 12px;
+        color: #6c757d;
+    }
+
+    .speed-control select {
+        padding: 6px 10px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: white;
+    }
+
+    .time-display {
+        flex: 1;
+        text-align: center;
+    }
+
+    .time-display .current-time {
+        font-size: 18px;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .time-display .time-range {
+        font-size: 11px;
+        color: #6c757d;
+    }
+
+    .timeline-container {
+        padding: 0 20px 15px;
+        background: #f8f9fa;
+    }
+
+    .timeline-slider {
+        width: 100%;
+        height: 6px;
+        -webkit-appearance: none;
+        background: #dee2e6;
+        border-radius: 3px;
+        outline: none;
+    }
+
+    .timeline-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        background: #007bff;
+        border-radius: 50%;
+        cursor: pointer;
+    }
+
+    .analytics-stats {
+        display: flex;
+        gap: 20px;
+        padding: 10px 20px;
+        background: #f8f9fa;
+        border-top: 1px solid #dee2e6;
+        font-size: 12px;
+        color: #6c757d;
+    }
+
+    .analytics-stats .stat {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .analytics-stats .stat-value {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    /* Point details popup */
+    .point-popup {
+        position: absolute;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 1001;
+        max-width: 350px;
+        display: none;
+    }
+
+    .point-popup.visible {
+        display: block;
+    }
+
+    .point-popup h4 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .point-popup .close-btn {
+        background: none;
+        border: none;
+        font-size: 18px;
+        cursor: pointer;
+        color: #6c757d;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .point-popup .point-detail {
+        margin-bottom: 8px;
+        font-size: 12px;
+    }
+
+    .point-popup .point-detail label {
+        color: #6c757d;
+        display: block;
+        margin-bottom: 2px;
+    }
+
+    .point-popup .point-detail value {
+        color: #2c3e50;
+        font-weight: 500;
+    }
+
+    .point-popup .rooms-list {
+        max-height: 120px;
+        overflow-y: auto;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .point-popup .room-item {
+        font-size: 11px;
+        padding: 4px 0;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .toggle-analytics-btn {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        background: rgba(255,255,255,0.2);
+        color: white;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .toggle-analytics-btn:hover {
+        background: rgba(255,255,255,0.3);
+    }
+
+    /* Create Cache Point Mode Styles */
+    .create-point-btn {
+        padding: 6px 12px;
+        border: 1px solid #28a745;
+        border-radius: 4px;
+        background: white;
+        color: #28a745;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .create-point-btn:hover {
+        background: #28a745;
+        color: white;
+    }
+
+    .create-point-btn.active {
+        background: #28a745;
+        color: white;
+        box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.3);
+    }
+
+    .create-point-btn.active::before {
+        content: '✓ ';
+    }
+
+    .cancel-mode-btn {
+        padding: 6px 12px;
+        border: 1px solid #dc3545;
+        border-radius: 4px;
+        background: white;
+        color: #dc3545;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .cancel-mode-btn:hover {
+        background: #dc3545;
+        color: white;
+    }
+
+    /* Preview Popup */
+    .preview-popup {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        z-index: 1001;
+        min-width: 300px;
+        max-width: 320px;
+        display: none;
+    }
+
+    .preview-popup.visible {
+        display: block;
+    }
+
+    .preview-popup h4 {
+        margin: 0 0 12px 0;
+        font-size: 14px;
+        color: #2c3e50;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .preview-popup .close-btn {
+        background: none;
+        border: none;
+        font-size: 18px;
+        cursor: pointer;
+        color: #6c757d;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .preview-popup .close-btn:hover {
+        color: #dc3545;
+    }
+
+    .preview-detail {
+        margin-bottom: 10px;
+        font-size: 13px;
+    }
+
+    .preview-detail label {
+        color: #6c757d;
+        display: block;
+        margin-bottom: 2px;
+        font-size: 11px;
+        text-transform: uppercase;
+    }
+
+    .preview-detail .value {
+        color: #2c3e50;
+        font-weight: 500;
+        font-family: monospace;
+    }
+
+    .preview-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 15px;
+        padding-top: 12px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .preview-actions button {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .fetch-btn {
+        background: #28a745;
+        color: white;
+        border: 1px solid #28a745;
+    }
+
+    .fetch-btn:hover {
+        background: #218838;
+    }
+
+    .fetch-btn:disabled {
+        background: #6c757d;
+        border-color: #6c757d;
+        cursor: not-allowed;
+    }
+
+    .cancel-btn {
+        background: white;
+        color: #6c757d;
+        border: 1px solid #dee2e6;
+    }
+
+    .cancel-btn:hover {
+        background: #f8f9fa;
+    }
+
+    .already-cached-warning {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        border-radius: 4px;
+        padding: 8px 10px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: #856404;
+    }
+
+    .loading-spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid #ffffff;
+        border-radius: 50%;
+        border-top-color: transparent;
+        animation: spin 0.8s linear infinite;
+        margin-right: 6px;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* Preview geohash boundary on map */
+    .leaflet-preview-bounds {
+        stroke: #28a745;
+        stroke-width: 3;
+        stroke-dasharray: 8, 4;
+        fill: #28a745;
+        fill-opacity: 0.1;
+    }
+
+    /* Distance measurement readout */
+    .distance-readout {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: monospace;
+        z-index: 1000;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        display: none;
+        min-width: 200px;
+    }
+
+    .distance-readout.visible {
+        display: block;
+    }
+
+    .distance-readout .label {
+        color: #6c757d;
+        font-size: 10px;
+        text-transform: uppercase;
+        margin-bottom: 2px;
+    }
+
+    .distance-readout .value {
+        color: #2c3e50;
+        font-weight: bold;
+        font-size: 14px;
+    }
+
+    .distance-readout .coords {
+        color: #6c757d;
+        font-size: 11px;
+        margin-top: 4px;
+    }
+
+    .distance-readout .hint {
+        color: #999;
+        font-size: 10px;
+        margin-top: 6px;
+        font-style: italic;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="monitoring-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <div>
+            <h1>Location Cache Monitor</h1>
+            <div class="settings-info">
+                <span id="settingsInfo">Loading settings...</span>
+            </div>
+        </div>
+        <div class="refresh-controls">
+            <div class="live-indicator" id="liveIndicator">
+                <span class="pulse"></span>
+                <span id="liveText">LIVE</span>
+            </div>
+            <select id="refreshInterval">
+                <option value="0">Manual</option>
+                <option value="2000">2 seconds</option>
+                <option value="5000" selected>5 seconds</option>
+                <option value="10000">10 seconds</option>
+                <option value="30000">30 seconds</option>
+            </select>
+            <button id="toggleAutoRefresh" class="active" onclick="toggleAutoRefresh()">Auto-Refresh ON</button>
+            <button id="refreshBtn" onclick="loadData()">Refresh Now</button>
+            <span class="last-update">Last updated: <span id="lastUpdate">-</span></span>
+        </div>
+    </div>
+
+    <!-- Metrics Grid -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <h3>Status</h3>
+            <div id="statusBadge">
+                <span class="status-badge status-disabled">Loading...</span>
+            </div>
+        </div>
+        <div class="metric-card">
+            <h3>Hit Rate</h3>
+            <div class="metric-value" id="hitRate">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>Redis Hits</h3>
+            <div class="metric-value" id="redisHits">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>PostgreSQL Hits</h3>
+            <div class="metric-value" id="pgHits">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>API Fetches</h3>
+            <div class="metric-value" id="apiFetches">-</div>
+        </div>
+        <div class="metric-card">
+            <h3>Cache Entries</h3>
+            <div class="metric-value" id="cacheEntries">-</div>
+        </div>
+    </div>
+
+    <!-- Main Content: Map and Entries -->
+    <div class="main-content">
+        <!-- Map Section -->
+        <div class="map-section">
+            <div class="map-header">
+                <h2>Cache Coverage Map</h2>
+                <div class="map-controls">
+                    <button id="createPointBtn" class="create-point-btn" onclick="toggleCreatePointMode()">
+                        Create Cache Point
+                    </button>
+                    <button id="cancelModeBtn" class="cancel-mode-btn" onclick="toggleCreatePointMode()" style="display: none;">
+                        Cancel
+                    </button>
+                    <label>
+                        <input type="checkbox" id="showMarkers" checked onchange="updateLayerVisibility()">
+                        Markers
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showHeatmap" checked onchange="updateLayerVisibility()">
+                        Heatmap
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showSearchRadius" onchange="updateLayerVisibility()">
+                        Search Radius
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showGeohashBounds" onchange="updateLayerVisibility()">
+                        Geohash Bounds
+                    </label>
+                </div>
+            </div>
+            <div id="map" style="position: relative;">
+                <!-- Distance Measurement Readout -->
+                <div id="distanceReadout" class="distance-readout">
+                    <div class="label">Distance from center</div>
+                    <div class="value" id="distanceValue">-</div>
+                    <div class="coords" id="distanceCoords">-</div>
+                    <div class="hint">Click marker to set reference • ESC to clear</div>
+                </div>
+                <!-- Preview Popup (positioned within map container) -->
+                <div id="previewPopup" class="preview-popup">
+                    <h4>
+                        <span>Preview Cache Point</span>
+                        <button class="close-btn" onclick="closePreviewPopup()">&times;</button>
+                    </h4>
+                    <div class="preview-detail">
+                        <label>Click Location <span style="color: #007bff;">(blue dot)</span></label>
+                        <span class="value" id="previewCoords">-</span>
+                    </div>
+                    <div class="preview-detail">
+                        <label>Search Center <span style="color: #dc3545;">(red dot)</span></label>
+                        <span class="value" id="previewCenter">-</span>
+                    </div>
+                    <div class="preview-detail">
+                        <label>Geohash <span style="color: #28a745;">(green rect)</span></label>
+                        <span class="value" id="previewGeohash">-</span>
+                    </div>
+                    <div class="preview-detail">
+                        <label>Search Radius <span style="color: #dc3545;">(red circle)</span></label>
+                        <span class="value" id="previewRadius">-</span>
+                    </div>
+                    <div class="preview-detail">
+                        <label>Max Venues</label>
+                        <span class="value" id="previewMaxVenues">-</span>
+                    </div>
+                    <div id="alreadyCachedWarning" class="already-cached-warning" style="display: none;">
+                        This location is already cached. Fetching will refresh the existing entry.
+                    </div>
+                    <div class="preview-actions">
+                        <button class="cancel-btn" onclick="closePreviewPopup()">Cancel</button>
+                        <button id="fetchBtn" class="fetch-btn" onclick="fetchAndCache()">
+                            Fetch & Cache
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Entries List -->
+        <div class="entries-section">
+            <div class="entries-header">
+                <h2>Cache Entries</h2>
+                <span id="entryCount">0 entries</span>
+            </div>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search by city, neighborhood, metro area, or geohash..." onkeypress="handleSearchKeypress(event)">
+                <button class="search-btn" onclick="performSearch()">Search</button>
+            </div>
+            <div id="searchActive" class="search-active" style="display: none;">
+                <span>Searching: "<span id="searchTerm"></span>"</span>
+                <button class="clear-search" onclick="clearSearch()">Clear</button>
+            </div>
+            <div id="entriesList">
+                <p style="text-align: center; color: #6c757d; padding: 30px;">Loading cache entries...</p>
+            </div>
+            <div id="paginationControls" class="pagination-controls" style="display: none;">
+                <button id="prevPageBtn" onclick="goToPage('prev')" disabled>&laquo; Previous</button>
+                <span class="pagination-info">
+                    Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
+                    (<span id="totalCount">0</span> total)
+                </span>
+                <button id="nextPageBtn" onclick="goToPage('next')" disabled>Next &raquo;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Panel -->
+    <div id="detailPanel" class="detail-panel">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <h3 id="detailTitle">Location Details</h3>
+            <button class="delete-btn" id="deleteBtn" onclick="deleteSelectedEntry()">Delete Entry</button>
+        </div>
+        <div class="detail-grid">
+            <div class="detail-section">
+                <h4>Area Chat Rooms</h4>
+                <ul class="detail-list" id="areasList"></ul>
+            </div>
+            <div class="detail-section">
+                <h4>Nearby Places</h4>
+                <ul class="detail-list" id="venuesList"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analytics Section - Lightning Strike Map -->
+    <div class="analytics-section">
+        <div class="analytics-header">
+            <h2>
+                <span>&#x26A1;</span>
+                Location Analytics - Last Hour
+            </h2>
+            <button class="toggle-analytics-btn" onclick="toggleAnalytics()">
+                <span id="analyticsToggleText">Show</span>
+            </button>
+        </div>
+        <div id="analyticsContent" class="analytics-content">
+            <!-- Map Container with Canvas Overlay -->
+            <div class="analytics-map-container">
+                <div id="analyticsMap"></div>
+                <canvas id="analyticsCanvas"></canvas>
+                <!-- Point Details Popup -->
+                <div id="pointPopup" class="point-popup">
+                    <h4>
+                        <span id="popupTitle">Point Details</span>
+                        <button class="close-btn" onclick="closePointPopup()">&times;</button>
+                    </h4>
+                    <div id="popupContent">
+                        <!-- Dynamic content inserted here -->
+                    </div>
+                </div>
+            </div>
+            <!-- Stats Bar -->
+            <div class="analytics-stats">
+                <div class="stat">
+                    <span>Points (Last Hour):</span>
+                    <span class="stat-value" id="visiblePointsCount">0</span>
+                </div>
+                <div class="stat" id="sampledIndicator" style="display: none;">
+                    <span style="color: #dc3545;">&#x26A0; Sampled</span>
+                </div>
+                <div class="stat">
+                    <span class="live-indicator">
+                        <span class="pulse"></span>
+                        LIVE
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Leaflet Heat Plugin for Heatmap -->
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+<script>
+    // Initialize map centered on US
+    const map = L.map('map').setView([39.8283, -98.5795], 4);
+
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // Store markers, heatmap layer, and entry data
+    let markers = [];
+    let markersLayer = L.layerGroup().addTo(map);
+    let heatLayer = null;
+    let searchRadiusLayer = L.layerGroup();  // Circles showing API search radius
+    let geohashBoundsLayer = L.layerGroup();  // Rectangles showing geohash boundaries
+    let entriesData = [];
+    let selectedGeohash = null;
+    let isFirstLoad = true;  // Track if this is the initial load
+
+    // Auto-refresh state
+    let autoRefreshEnabled = true;
+    let autoRefreshInterval = 5000;
+    let autoRefreshTimer = null;
+
+    // Pagination and search state
+    let currentPage = 1;
+    let totalPages = 1;
+    let totalCount = 0;
+    let searchQuery = '';
+
+    // Custom marker icon
+    const cacheIcon = L.divIcon({
+        className: 'cache-marker',
+        html: '<div style="background: #007bff; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+    });
+
+    const selectedIcon = L.divIcon({
+        className: 'cache-marker-selected',
+        html: '<div style="background: #dc3545; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+    });
+
+    function loadData() {
+        // Build URL with pagination and search params
+        const params = new URLSearchParams({
+            page: currentPage,
+            page_size: 10
+        });
+        if (searchQuery) {
+            params.append('search', searchQuery);
+        }
+
+        fetch(`/admin/monitor/location-cache/api/?${params}`)
+            .then(response => response.json())
+            .then(data => {
+                updateMetrics(data.metrics, data.settings);
+                updateEntries(data.entries);
+                updateMap(data.entries);
+                updatePagination(data.pagination);
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+            })
+            .catch(error => {
+                console.error('Error fetching data:', error);
+            });
+    }
+
+    function updateMetrics(metrics, settings) {
+        // Update status
+        const statusBadge = document.getElementById('statusBadge');
+        statusBadge.innerHTML = settings.enabled
+            ? '<span class="status-badge status-enabled">Enabled</span>'
+            : '<span class="status-badge status-disabled">Disabled</span>';
+
+        // Update metrics
+        document.getElementById('hitRate').textContent = `${metrics.hit_rate}%`;
+        document.getElementById('redisHits').textContent = metrics.redis_hits;
+        document.getElementById('pgHits').textContent = metrics.pg_hits;
+        document.getElementById('apiFetches').textContent = metrics.api_fetches;
+        document.getElementById('cacheEntries').textContent = metrics.total_cache_entries;
+
+        // Update settings info
+        document.getElementById('settingsInfo').textContent =
+            `Precision: ${settings.geohash_precision} | Radius: ${settings.radius_meters}m | Max Venues: ${settings.max_venues} | Cache TTL: ${settings.cache_ttl_hours}h`;
+    }
+
+    function updateEntries(entries) {
+        entriesData = entries;
+        const container = document.getElementById('entriesList');
+        document.getElementById('entryCount').textContent = `${entries.length} entries`;
+
+        if (entries.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #6c757d; padding: 30px;">No cache entries found</p>';
+            return;
+        }
+
+        container.innerHTML = entries.map(entry => {
+            const location = entry.neighborhood
+                ? `${entry.neighborhood}, ${entry.city}`
+                : entry.city || entry.base_geohash;
+
+            const areaTags = entry.areas.slice(0, 3).map(a =>
+                `<span class="suggestion-tag area">${a.name}</span>`
+            ).join('');
+
+            const venueTags = entry.venues.slice(0, 3).map(v =>
+                `<span class="suggestion-tag venue">${v.name}</span>`
+            ).join('');
+
+            const isSelected = entry.geohash === selectedGeohash;
+
+            return `
+                <div class="entry-card ${isSelected ? 'selected' : ''}"
+                     data-geohash="${entry.geohash}"
+                     onclick="selectEntry('${entry.geohash}')">
+                    <div class="entry-header">
+                        <span class="entry-location">${location}</span>
+                        <span class="entry-geohash">${entry.base_geohash}</span>
+                    </div>
+                    <div class="entry-meta">
+                        Lookups: ${entry.lookup_count} | ${entry.total_suggestions} suggestions | Updated: ${entry.updated_at}
+                    </div>
+                    <div class="entry-suggestions">
+                        ${areaTags}${venueTags}
+                        ${entry.total_suggestions > 6 ? `<span class="suggestion-tag">+${entry.total_suggestions - 6} more</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function updateMap(entries) {
+        // Clear existing markers from layer group
+        markersLayer.clearLayers();
+        markers = [];
+
+        // Clear search radius and geohash bounds layers
+        searchRadiusLayer.clearLayers();
+        geohashBoundsLayer.clearLayers();
+
+        // Remove existing heat layer if present
+        if (heatLayer) {
+            map.removeLayer(heatLayer);
+            heatLayer = null;
+        }
+
+        if (entries.length === 0) return;
+
+        // Prepare heatmap data points
+        const heatData = [];
+
+        // Find max lookup_count for normalizing heatmap intensity
+        const maxLookups = Math.max(...entries.map(e => e.lookup_count || 1), 1);
+
+        // Add markers for each entry
+        const bounds = [];
+        entries.forEach(entry => {
+            const marker = L.marker([entry.latitude, entry.longitude], {
+                icon: entry.geohash === selectedGeohash ? selectedIcon : cacheIcon
+            });
+
+            marker.bindPopup(`
+                <strong>${entry.city || entry.base_geohash}</strong><br>
+                ${entry.neighborhood ? entry.neighborhood + '<br>' : ''}
+                Geohash: ${entry.base_geohash}<br>
+                Lookups: ${entry.lookup_count}<br>
+                Suggestions: ${entry.total_suggestions}<br>
+                Search Radius: ${entry.search_radius || 'N/A'}m<br>
+                Source: ${entry.source || 'unknown'}
+            `);
+
+            marker.on('click', () => {
+                selectEntry(entry.geohash);
+                // Also set distance reference when clicking marker (unless in create mode)
+                if (!createPointMode) {
+                    const label = `${entry.city || entry.base_geohash} center`;
+                    setDistanceReference(entry.latitude, entry.longitude, label);
+                }
+            });
+            markersLayer.addLayer(marker);
+            markers.push(marker);
+            bounds.push([entry.latitude, entry.longitude]);
+
+            // Add to heatmap data with weighted intensity (lookup_count + 1 for presence)
+            // Normalize against max lookups so intensity scales properly
+            const intensity = Math.max(0.3, Math.min(1, (entry.lookup_count + 1) / Math.max(maxLookups, 5)));
+            heatData.push([entry.latitude, entry.longitude, intensity]);
+
+            // Add search radius circle (API search area)
+            if (entry.search_radius) {
+                const circle = L.circle([entry.latitude, entry.longitude], {
+                    radius: entry.search_radius,
+                    color: '#17a2b8',
+                    fillColor: '#17a2b8',
+                    fillOpacity: 0.1,
+                    weight: 1,
+                    dashArray: '5, 5'
+                });
+                searchRadiusLayer.addLayer(circle);
+            }
+
+            // Add geohash boundary rectangle
+            if (entry.bounds) {
+                const rectangle = L.rectangle([
+                    [entry.bounds.min_lat, entry.bounds.min_lng],
+                    [entry.bounds.max_lat, entry.bounds.max_lng]
+                ], {
+                    color: '#ffc107',
+                    fillColor: '#ffc107',
+                    fillOpacity: 0.15,
+                    weight: 2
+                });
+                geohashBoundsLayer.addLayer(rectangle);
+            }
+        });
+
+        // Create heatmap layer
+        if (heatData.length > 0) {
+            heatLayer = L.heatLayer(heatData, {
+                radius: 35,
+                blur: 25,
+                maxZoom: 12,
+                max: 1.0,
+                gradient: {
+                    0.0: '#00f',
+                    0.25: '#0ff',
+                    0.5: '#0f0',
+                    0.75: '#ff0',
+                    1.0: '#f00'
+                }
+            });
+
+            // Add heatmap if checkbox is checked
+            if (document.getElementById('showHeatmap').checked) {
+                heatLayer.addTo(map);
+            }
+        }
+
+        // Update marker visibility based on checkbox
+        updateLayerVisibility();
+
+        // Fit map to bounds only on first load (don't reset position on auto-refresh)
+        if (bounds.length > 0 && isFirstLoad) {
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 });
+            isFirstLoad = false;
+        }
+    }
+
+    function updateLayerVisibility() {
+        const showMarkers = document.getElementById('showMarkers').checked;
+        const showHeatmap = document.getElementById('showHeatmap').checked;
+        const showSearchRadius = document.getElementById('showSearchRadius').checked;
+        const showGeohashBounds = document.getElementById('showGeohashBounds').checked;
+
+        if (showMarkers) {
+            if (!map.hasLayer(markersLayer)) {
+                markersLayer.addTo(map);
+            }
+        } else {
+            if (map.hasLayer(markersLayer)) {
+                map.removeLayer(markersLayer);
+            }
+        }
+
+        if (showHeatmap && heatLayer) {
+            if (!map.hasLayer(heatLayer)) {
+                heatLayer.addTo(map);
+            }
+        } else if (heatLayer) {
+            if (map.hasLayer(heatLayer)) {
+                map.removeLayer(heatLayer);
+            }
+        }
+
+        if (showSearchRadius) {
+            if (!map.hasLayer(searchRadiusLayer)) {
+                searchRadiusLayer.addTo(map);
+            }
+        } else {
+            if (map.hasLayer(searchRadiusLayer)) {
+                map.removeLayer(searchRadiusLayer);
+            }
+        }
+
+        if (showGeohashBounds) {
+            if (!map.hasLayer(geohashBoundsLayer)) {
+                geohashBoundsLayer.addTo(map);
+            }
+        } else {
+            if (map.hasLayer(geohashBoundsLayer)) {
+                map.removeLayer(geohashBoundsLayer);
+            }
+        }
+    }
+
+    function selectEntry(geohash) {
+        selectedGeohash = geohash;
+        const entry = entriesData.find(e => e.geohash === geohash);
+
+        if (!entry) return;
+
+        // Update entry cards
+        document.querySelectorAll('.entry-card').forEach(card => {
+            card.classList.toggle('selected', card.dataset.geohash === geohash);
+        });
+
+        // Update markers in layer group
+        const allMarkers = [];
+        markersLayer.eachLayer(marker => allMarkers.push(marker));
+        entriesData.forEach((e, i) => {
+            if (allMarkers[i]) {
+                allMarkers[i].setIcon(e.geohash === geohash ? selectedIcon : cacheIcon);
+            }
+        });
+
+        // Center map on selected entry
+        // Zoom to ~1000m radius (zoom 15), but don't zoom out if already closer
+        const currentZoom = map.getZoom();
+        const targetZoom = 15; // ~1000m radius view
+        const newZoom = Math.max(currentZoom, targetZoom);
+        map.setView([entry.latitude, entry.longitude], newZoom);
+
+        // Show detail panel
+        const panel = document.getElementById('detailPanel');
+        panel.classList.add('visible');
+
+        // Update detail title
+        const location = entry.neighborhood
+            ? `${entry.neighborhood}, ${entry.city}`
+            : entry.city || entry.base_geohash;
+        document.getElementById('detailTitle').textContent = location;
+
+        // Update areas list
+        const areasList = document.getElementById('areasList');
+        if (entry.areas.length > 0) {
+            areasList.innerHTML = entry.areas.map(a =>
+                `<li><strong>${a.name}</strong> <span style="color: #6c757d;">(${a.type})</span></li>`
+            ).join('');
+        } else {
+            areasList.innerHTML = '<li style="color: #6c757d;">No area suggestions</li>';
+        }
+
+        // Update venues list
+        const venuesList = document.getElementById('venuesList');
+        if (entry.venues.length > 0) {
+            venuesList.innerHTML = entry.venues.map(v =>
+                `<li><strong>${v.name}</strong> <span style="color: #6c757d;">(${v.type})</span></li>`
+            ).join('');
+        } else {
+            venuesList.innerHTML = '<li style="color: #6c757d;">No venue suggestions</li>';
+        }
+    }
+
+    function deleteSelectedEntry() {
+        if (!selectedGeohash) return;
+
+        if (!confirm(`Are you sure you want to delete the cache entry for ${selectedGeohash}?`)) {
+            return;
+        }
+
+        fetch('/admin/monitor/location-cache/delete/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ geohash: selectedGeohash })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Cache entry deleted successfully');
+                selectedGeohash = null;
+                document.getElementById('detailPanel').classList.remove('visible');
+                loadData();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting entry:', error);
+            alert('Error deleting cache entry');
+        });
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // Auto-refresh functions
+    function toggleAutoRefresh() {
+        autoRefreshEnabled = !autoRefreshEnabled;
+        updateAutoRefreshUI();
+        if (autoRefreshEnabled) {
+            startAutoRefresh();
+        } else {
+            stopAutoRefresh();
+        }
+    }
+
+    function updateAutoRefreshUI() {
+        const button = document.getElementById('toggleAutoRefresh');
+        const indicator = document.getElementById('liveIndicator');
+        const liveText = document.getElementById('liveText');
+
+        if (autoRefreshEnabled && autoRefreshInterval > 0) {
+            button.textContent = 'Auto-Refresh ON';
+            button.classList.add('active');
+            indicator.classList.remove('paused');
+            liveText.textContent = 'LIVE';
+        } else {
+            button.textContent = 'Auto-Refresh OFF';
+            button.classList.remove('active');
+            indicator.classList.add('paused');
+            liveText.textContent = 'PAUSED';
+        }
+    }
+
+    function startAutoRefresh() {
+        stopAutoRefresh(); // Clear any existing timer
+        if (autoRefreshEnabled && autoRefreshInterval > 0) {
+            autoRefreshTimer = setInterval(loadData, autoRefreshInterval);
+        }
+        updateAutoRefreshUI();
+    }
+
+    function stopAutoRefresh() {
+        if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+        }
+    }
+
+    // Event listeners for refresh controls
+    document.getElementById('refreshInterval').addEventListener('change', function(e) {
+        autoRefreshInterval = parseInt(e.target.value);
+        if (autoRefreshInterval === 0) {
+            autoRefreshEnabled = false;
+        } else if (!autoRefreshEnabled) {
+            autoRefreshEnabled = true;
+        }
+        startAutoRefresh();
+    });
+
+    // Search and pagination functions
+    function updatePagination(pagination) {
+        currentPage = pagination.page;
+        totalPages = pagination.total_pages;
+        totalCount = pagination.total_count;
+
+        // Update UI
+        document.getElementById('currentPage').textContent = currentPage;
+        document.getElementById('totalPages').textContent = totalPages;
+        document.getElementById('totalCount').textContent = totalCount;
+
+        // Update button states
+        document.getElementById('prevPageBtn').disabled = !pagination.has_previous;
+        document.getElementById('nextPageBtn').disabled = !pagination.has_next;
+
+        // Show pagination controls if there's data
+        document.getElementById('paginationControls').style.display = totalCount > 0 ? 'flex' : 'none';
+
+        // Update search indicator
+        if (searchQuery) {
+            document.getElementById('searchActive').style.display = 'flex';
+            document.getElementById('searchTerm').textContent = searchQuery;
+        } else {
+            document.getElementById('searchActive').style.display = 'none';
+        }
+    }
+
+    function goToPage(direction) {
+        if (direction === 'prev' && currentPage > 1) {
+            currentPage--;
+        } else if (direction === 'next' && currentPage < totalPages) {
+            currentPage++;
+        }
+        loadData();
+    }
+
+    function performSearch() {
+        const input = document.getElementById('searchInput').value.trim();
+        searchQuery = input;
+        currentPage = 1;  // Reset to first page on new search
+        loadData();
+    }
+
+    function clearSearch() {
+        searchQuery = '';
+        currentPage = 1;
+        document.getElementById('searchInput').value = '';
+        loadData();
+    }
+
+    function handleSearchKeypress(event) {
+        if (event.key === 'Enter') {
+            performSearch();
+        }
+    }
+
+    // Initial load and start auto-refresh
+    loadData();
+    startAutoRefresh();
+
+    // ========================================
+    // ANALYTICS / LIGHTNING STRIKE MAP (LOD - Level of Detail)
+    // Zoom-aware: clusters at low zoom, individual points at high zoom
+    // ========================================
+
+    // Analytics state
+    let analyticsMap = null;
+    let analyticsCanvas = null;
+    let analyticsCtx = null;
+    let analyticsInitialized = false;
+    let analyticsVisible = false;
+
+    // All clusters/points from the LOD endpoint
+    let allClusters = [];
+    let currentPrecision = 3;  // Current geohash precision from server
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+
+    // Selected cluster/point for popup
+    let selectedCluster = null;
+
+    // Live refresh
+    let analyticsRefreshTimer = null;
+
+    // Debounce for zoom/pan events
+    let lodFetchTimeout = null;
+
+    function toggleAnalytics() {
+        const content = document.getElementById('analyticsContent');
+        const toggleText = document.getElementById('analyticsToggleText');
+        analyticsVisible = !analyticsVisible;
+
+        if (analyticsVisible) {
+            content.classList.add('visible');
+            toggleText.textContent = 'Hide';
+            if (!analyticsInitialized) {
+                initializeAnalytics();
+            } else {
+                // Invalidate size when showing again (container may have changed)
+                setTimeout(() => {
+                    analyticsMap.invalidateSize();
+                    resizeCanvas();
+                }, 100);
+            }
+        } else {
+            content.classList.remove('visible');
+            toggleText.textContent = 'Show';
+            stopAnalyticsRefresh();
+        }
+    }
+
+    function initializeAnalytics() {
+        // Initialize map
+        analyticsMap = L.map('analyticsMap', {
+            zoomControl: true,
+        }).setView([39.8283, -98.5795], 4);
+
+        // Add OpenStreetMap tiles (CSS filter in styles makes it dark with visible labels)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            maxZoom: 19
+        }).addTo(analyticsMap);
+
+        // Initialize canvas
+        analyticsCanvas = document.getElementById('analyticsCanvas');
+        analyticsCtx = analyticsCanvas.getContext('2d');
+        resizeCanvas();
+
+        // Handle canvas resizing
+        const resizeObserver = new ResizeObserver(resizeCanvas);
+        resizeObserver.observe(analyticsCanvas.parentElement);
+
+        // Handle map move to update canvas rendering
+        analyticsMap.on('move', renderClusters);
+        analyticsMap.on('zoomanim', function(e) {
+            renderClustersAtZoom(e.center, e.zoom);
+        });
+
+        // Refetch data when zoom/pan completes (LOD changes with zoom)
+        analyticsMap.on('zoomend', debouncedFetchLOD);
+        analyticsMap.on('moveend', debouncedFetchLOD);
+
+        // Handle clicks for cluster/point selection
+        analyticsMap.on('click', handleMapClick);
+
+        analyticsInitialized = true;
+
+        // Invalidate size after a short delay to ensure container is fully rendered
+        setTimeout(() => {
+            analyticsMap.invalidateSize();
+            resizeCanvas();
+        }, 100);
+
+        // Load initial data and start auto-refresh
+        fetchLODData();
+        startAnalyticsRefresh();
+    }
+
+    function debouncedFetchLOD() {
+        // Debounce to avoid excessive API calls during rapid zoom/pan
+        if (lodFetchTimeout) {
+            clearTimeout(lodFetchTimeout);
+        }
+        lodFetchTimeout = setTimeout(fetchLODData, 200);
+    }
+
+    function resizeCanvas() {
+        if (!analyticsCanvas) return;
+        const container = analyticsCanvas.parentElement;
+        analyticsCanvas.width = container.clientWidth;
+        analyticsCanvas.height = container.clientHeight;
+        renderClusters();
+    }
+
+    async function fetchLODData() {
+        if (!analyticsMap) return;
+
+        try {
+            const zoom = analyticsMap.getZoom();
+            const bounds = analyticsMap.getBounds();
+
+            // Build query params
+            const params = new URLSearchParams({
+                zoom: zoom,
+                north: bounds.getNorth(),
+                south: bounds.getSouth(),
+                east: bounds.getEast(),
+                west: bounds.getWest(),
+                hours: 1
+            });
+
+            const response = await fetch(`/admin/monitor/location-cache/analytics/lod/?${params}`);
+            const data = await response.json();
+
+            if (data.success) {
+                allClusters = data.clusters || [];
+                currentPrecision = data.precision;
+
+                // Show cluster count indicator
+                const isClustered = currentPrecision < 7;
+                document.getElementById('sampledIndicator').style.display =
+                    isClustered ? 'block' : 'none';
+                if (isClustered) {
+                    document.getElementById('sampledIndicator').innerHTML =
+                        `<span style="color: #17a2b8;">&#x1F50D; Precision: ${currentPrecision} (${data.cluster_count} clusters from ${data.total_points} points)</span>`;
+                }
+
+                // Render
+                renderClusters();
+            }
+
+        } catch (error) {
+            console.error('Error fetching LOD data:', error);
+        }
+    }
+
+    function renderClusters() {
+        if (!analyticsCtx || !analyticsMap) return;
+
+        const ctx = analyticsCtx;
+        const canvas = analyticsCanvas;
+        const now = Date.now();
+
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Find max count for scaling cluster sizes
+        const maxCount = Math.max(...allClusters.map(c => c.count), 1);
+
+        // Render each cluster/point with yellow color fading based on age
+        allClusters.forEach(cluster => {
+            const latLng = L.latLng(cluster.latitude, cluster.longitude);
+            const screenPoint = analyticsMap.latLngToContainerPoint(latLng);
+
+            // Skip if outside canvas
+            if (screenPoint.x < -10 || screenPoint.x > canvas.width + 10 ||
+                screenPoint.y < -10 || screenPoint.y > canvas.height + 10) {
+                return;
+            }
+
+            // Calculate age-based opacity (newest = brightest, oldest = most faded)
+            const newestTime = new Date(cluster.newest_timestamp).getTime();
+            const ageMs = now - newestTime;
+            const ageRatio = Math.min(1, ageMs / ONE_HOUR_MS);  // 0 = brand new, 1 = 1 hour old
+            const opacity = 1 - (ageRatio * 0.85);  // Fade from 1.0 to 0.15
+
+            // Size based on count (for clusters) - bigger = more points
+            const isCluster = cluster.is_cluster;
+            const isSelected = selectedCluster && selectedCluster.geohash === cluster.geohash;
+            const countRatio = Math.log(cluster.count + 1) / Math.log(maxCount + 1);  // Log scale
+            const baseRadius = isCluster ? 8 + (countRatio * 15) : 5;  // 8-23 for clusters, 5 for individual
+            const radius = isSelected ? baseRadius + 3 : baseRadius;
+            const glowRadius = radius * 2.5;
+
+            // Glow gradient - bright yellow for individual, orange-yellow for clusters
+            const gradient = ctx.createRadialGradient(
+                screenPoint.x, screenPoint.y, 0,
+                screenPoint.x, screenPoint.y, glowRadius
+            );
+
+            // Color varies by cluster size: yellow (single) -> orange (large cluster)
+            const hue = isCluster ? Math.max(30, 55 - countRatio * 25) : 55;  // 55=yellow, 30=orange
+            const baseColor = isCluster
+                ? `hsl(${hue}, 100%, 50%)`
+                : 'rgb(255, 230, 50)';  // Bright yellow
+
+            gradient.addColorStop(0, `hsla(${hue}, 100%, 60%, ${opacity})`);
+            gradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, ${opacity * 0.3})`);
+            gradient.addColorStop(1, `hsla(${hue}, 100%, 50%, 0)`);
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(screenPoint.x, screenPoint.y, glowRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Core point/cluster
+            ctx.fillStyle = isSelected
+                ? `rgba(255, 255, 255, ${opacity})`
+                : `hsla(${hue}, 100%, 55%, ${opacity})`;
+            ctx.beginPath();
+            ctx.arc(screenPoint.x, screenPoint.y, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // White border for selected or larger clusters
+            if (isSelected || (isCluster && cluster.count > 5)) {
+                ctx.strokeStyle = `rgba(255, 255, 255, ${opacity * 0.7})`;
+                ctx.lineWidth = isSelected ? 2 : 1;
+                ctx.stroke();
+            }
+
+            // Draw count label for large clusters
+            if (isCluster && cluster.count > 3 && radius > 10) {
+                ctx.font = `bold ${Math.min(12, radius - 2)}px Arial`;
+                ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(cluster.count > 999 ? '999+' : cluster.count, screenPoint.x, screenPoint.y);
+            }
+        });
+
+        // Update visible count - show total points represented
+        const totalPoints = allClusters.reduce((sum, c) => sum + c.count, 0);
+        document.getElementById('visiblePointsCount').textContent = totalPoints;
+    }
+
+    function renderClustersAtZoom(center, zoom) {
+        // Render clusters during zoom animation (simplified version)
+        if (!analyticsCtx || !analyticsMap) return;
+
+        const ctx = analyticsCtx;
+        const canvas = analyticsCanvas;
+        const now = Date.now();
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const size = analyticsMap.getSize();
+        const halfWidth = size.x / 2;
+        const halfHeight = size.y / 2;
+        const maxCount = Math.max(...allClusters.map(c => c.count), 1);
+
+        allClusters.forEach(cluster => {
+            const latLng = L.latLng(cluster.latitude, cluster.longitude);
+            const projectedPoint = analyticsMap.project(latLng, zoom);
+            const centerProjected = analyticsMap.project(center, zoom);
+
+            const screenX = halfWidth + (projectedPoint.x - centerProjected.x);
+            const screenY = halfHeight + (projectedPoint.y - centerProjected.y);
+
+            if (screenX < -10 || screenX > canvas.width + 10 ||
+                screenY < -10 || screenY > canvas.height + 10) {
+                return;
+            }
+
+            const newestTime = new Date(cluster.newest_timestamp).getTime();
+            const ageMs = now - newestTime;
+            const ageRatio = Math.min(1, ageMs / ONE_HOUR_MS);
+            const opacity = 1 - (ageRatio * 0.85);
+
+            const isCluster = cluster.is_cluster;
+            const countRatio = Math.log(cluster.count + 1) / Math.log(maxCount + 1);
+            const radius = isCluster ? 8 + (countRatio * 15) : 5;
+            const glowRadius = radius * 2.5;
+
+            const hue = isCluster ? Math.max(30, 55 - countRatio * 25) : 55;
+
+            const gradient = ctx.createRadialGradient(
+                screenX, screenY, 0,
+                screenX, screenY, glowRadius
+            );
+
+            gradient.addColorStop(0, `hsla(${hue}, 100%, 60%, ${opacity})`);
+            gradient.addColorStop(0.5, `hsla(${hue}, 100%, 50%, ${opacity * 0.3})`);
+            gradient.addColorStop(1, `hsla(${hue}, 100%, 50%, 0)`);
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, glowRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = `hsla(${hue}, 100%, 55%, ${opacity})`;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+
+    function handleMapClick(event) {
+        const containerPoint = event.containerPoint;
+        const clickX = containerPoint.x;
+        const clickY = containerPoint.y;
+
+        let closestCluster = null;
+        let closestDist = 25;  // Slightly larger hit area for clusters
+
+        const maxCount = Math.max(...allClusters.map(c => c.count), 1);
+
+        allClusters.forEach(cluster => {
+            const latLng = L.latLng(cluster.latitude, cluster.longitude);
+            const screenPoint = analyticsMap.latLngToContainerPoint(latLng);
+
+            // Calculate cluster radius for hit testing
+            const countRatio = Math.log(cluster.count + 1) / Math.log(maxCount + 1);
+            const radius = cluster.is_cluster ? 8 + (countRatio * 15) : 5;
+
+            const dx = clickX - screenPoint.x;
+            const dy = clickY - screenPoint.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // Check if click is within the cluster's visual radius
+            if (dist < Math.max(closestDist, radius + 5)) {
+                closestDist = dist;
+                closestCluster = cluster;
+            }
+        });
+
+        if (closestCluster) {
+            if (closestCluster.is_cluster) {
+                // Zoom in to expand the cluster
+                const currentZoom = analyticsMap.getZoom();
+                const newZoom = Math.min(currentZoom + 3, 18); // Zoom in by 3 levels, max 18
+                analyticsMap.setView([closestCluster.latitude, closestCluster.longitude], newZoom);
+                closePointPopup();
+            } else {
+                // Individual point - show details with suggestions
+                selectAndShowCluster(closestCluster, clickX, clickY);
+            }
+        } else {
+            closePointPopup();
+        }
+    }
+
+    function selectAndShowCluster(cluster, x, y) {
+        selectedCluster = cluster;
+        renderClusters();
+
+        const popup = document.getElementById('pointPopup');
+        const container = analyticsCanvas.parentElement;
+
+        let popupX = x + 10;
+        let popupY = y + 10;
+
+        if (popupX + 350 > container.clientWidth) {
+            popupX = x - 360;
+        }
+        if (popupY + 200 > container.clientHeight) {
+            popupY = y - 210;
+        }
+
+        popup.style.left = `${Math.max(10, popupX)}px`;
+        popup.style.top = `${Math.max(10, popupY)}px`;
+
+        const isCluster = cluster.is_cluster;
+        document.getElementById('popupTitle').textContent =
+            isCluster
+                ? `Cluster: ${cluster.city_name || cluster.geohash} (${cluster.count} points)`
+                : cluster.city_name || cluster.geohash || 'Unknown Location';
+
+        // Calculate age for display
+        const newestMs = Date.now() - new Date(cluster.newest_timestamp).getTime();
+        const newestMinutes = Math.floor(newestMs / 60000);
+        const newestDisplay = newestMinutes < 60 ? `${newestMinutes} min ago` : `${Math.floor(newestMinutes / 60)}h ${newestMinutes % 60}m ago`;
+
+        const oldestMs = Date.now() - new Date(cluster.oldest_timestamp).getTime();
+        const oldestMinutes = Math.floor(oldestMs / 60000);
+        const oldestDisplay = oldestMinutes < 60 ? `${oldestMinutes} min ago` : `${Math.floor(oldestMinutes / 60)}h ${oldestMinutes % 60}m ago`;
+
+        if (isCluster) {
+            // Cluster popup content
+            document.getElementById('popupContent').innerHTML = `
+                <div class="point-detail">
+                    <label>Points in Cluster</label>
+                    <value>${cluster.count}</value>
+                </div>
+                <div class="point-detail">
+                    <label>Location</label>
+                    <value>${cluster.city_name || 'Unknown'}</value>
+                </div>
+                <div class="point-detail">
+                    <label>Geohash</label>
+                    <value>${cluster.geohash}</value>
+                </div>
+                <div class="point-detail">
+                    <label>Newest Point</label>
+                    <value>${newestDisplay}</value>
+                </div>
+                <div class="point-detail">
+                    <label>Oldest Point</label>
+                    <value>${oldestDisplay}</value>
+                </div>
+                <div class="point-detail">
+                    <label>Center</label>
+                    <value>${cluster.latitude.toFixed(4)}, ${cluster.longitude.toFixed(4)}</value>
+                </div>
+                <p style="text-align: center; color: #17a2b8; padding: 10px; font-size: 11px;">
+                    Zoom in to see individual points
+                </p>
+            `;
+        } else {
+            // Individual point popup content - show loading then fetch suggestions
+            document.getElementById('popupContent').innerHTML = `
+                <div class="point-detail">
+                    <label>Time</label>
+                    <value>${new Date(cluster.newest_timestamp).toLocaleString()} (${newestDisplay})</value>
+                </div>
+                <div class="point-detail">
+                    <label>Location</label>
+                    <value>${cluster.city_name || 'Unknown'}</value>
+                </div>
+                <div class="point-detail">
+                    <label>Coordinates</label>
+                    <value>${cluster.latitude.toFixed(6)}, ${cluster.longitude.toFixed(6)}</value>
+                </div>
+                <div class="point-detail">
+                    <label>Suggestions</label>
+                    <div id="suggestionsList" style="margin-top: 5px;">
+                        <span style="color: #6c757d;">Loading...</span>
+                    </div>
+                </div>
+            `;
+
+            // Fetch suggestions for this point
+            fetchSuggestionsForPoint(cluster.latitude, cluster.longitude);
+        }
+
+        popup.classList.add('visible');
+    }
+
+    function closePointPopup() {
+        selectedCluster = null;
+        document.getElementById('pointPopup').classList.remove('visible');
+        renderClusters();
+    }
+
+    async function fetchSuggestionsForPoint(lat, lng) {
+        const listEl = document.getElementById('suggestionsList');
+        if (!listEl) return;
+
+        try {
+            // Fetch suggestions for this location
+            const response = await fetch(`/admin/monitor/location-cache/suggestions/?latitude=${lat}&longitude=${lng}`);
+            const data = await response.json();
+
+            if (!data.success) {
+                listEl.innerHTML = `<span style="color: #dc3545;">${data.error || 'No suggestions available'}</span>`;
+                return;
+            }
+
+            if (data.suggestions && data.suggestions.length > 0) {
+                // Build suggestions list HTML
+                const venueTypes = ['restaurant', 'bar', 'cafe', 'gym', 'theater', 'stadium', 'venue'];
+                const venues = data.suggestions.filter(s => venueTypes.includes(s.type));
+                const locations = data.suggestions.filter(s => !venueTypes.includes(s.type));
+
+                let html = '<ul style="margin: 0; padding-left: 15px; font-size: 12px;">';
+
+                // Show venues first (already ranked by distance)
+                venues.forEach((s, i) => {
+                    const dist = s.distance_meters ? ` <span style="color: #6c757d;">(${Math.round(s.distance_meters)}m)</span>` : '';
+                    html += `<li style="margin-bottom: 3px;">${s.name}${dist} <span style="color: #17a2b8;">(${s.type})</span></li>`;
+                });
+
+                // Then location types
+                locations.forEach(s => {
+                    html += `<li style="margin-bottom: 3px; color: #28a745;">${s.name} <span style="color: #6c757d;">(${s.type})</span></li>`;
+                });
+
+                html += '</ul>';
+
+                if (data.cached) {
+                    html += `<div style="font-size: 10px; color: #6c757d; margin-top: 5px;">Source: ${data.cache_source}</div>`;
+                }
+
+                listEl.innerHTML = html;
+            } else {
+                listEl.innerHTML = '<span style="color: #dc3545;">No suggestions available</span>';
+            }
+        } catch (error) {
+            console.error('Error fetching suggestions:', error);
+            listEl.innerHTML = '<span style="color: #dc3545;">Error loading suggestions</span>';
+        }
+    }
+
+    function getAnalyticsRefreshInterval() {
+        // Sync with the cache map's refresh interval
+        return autoRefreshInterval > 0 ? autoRefreshInterval : 5000;
+    }
+
+    function startAnalyticsRefresh() {
+        stopAnalyticsRefresh();
+        const interval = getAnalyticsRefreshInterval();
+        analyticsRefreshTimer = setInterval(() => {
+            if (analyticsVisible) {
+                fetchLODData();
+            }
+        }, interval);
+    }
+
+    function stopAnalyticsRefresh() {
+        if (analyticsRefreshTimer) {
+            clearInterval(analyticsRefreshTimer);
+            analyticsRefreshTimer = null;
+        }
+    }
+
+    // Sync analytics refresh when cache map interval changes
+    document.getElementById('refreshInterval').addEventListener('change', function() {
+        if (analyticsVisible) {
+            startAnalyticsRefresh();
+        }
+    });
+
+    // ========================================
+    // CREATE CACHE POINT MODE
+    // ========================================
+
+    // State for create point mode
+    let createPointMode = false;
+    let previewBoundsLayer = null;
+    let previewRadiusLayer = null;
+    let previewMarker = null;
+    let previewData = null;
+
+    function toggleCreatePointMode() {
+        createPointMode = !createPointMode;
+        const createBtn = document.getElementById('createPointBtn');
+        const cancelBtn = document.getElementById('cancelModeBtn');
+
+        if (createPointMode) {
+            createBtn.classList.add('active');
+            createBtn.style.display = 'none';
+            cancelBtn.style.display = 'inline-block';
+            // Change cursor to crosshair
+            document.getElementById('map').style.cursor = 'crosshair';
+        } else {
+            createBtn.classList.remove('active');
+            createBtn.style.display = 'inline-block';
+            cancelBtn.style.display = 'none';
+            document.getElementById('map').style.cursor = '';
+            closePreviewPopup();
+        }
+    }
+
+    // Click outside the map section cancels create point mode
+    document.addEventListener('click', function(e) {
+        if (!createPointMode) return;
+
+        const mapSection = document.querySelector('.map-section');
+        const previewPopup = document.getElementById('previewPopup');
+
+        // Check if click is outside the map section
+        if (!mapSection.contains(e.target) && !previewPopup.contains(e.target)) {
+            toggleCreatePointMode();
+        }
+    });
+
+    // Handle map clicks for create point mode
+    map.on('click', function(e) {
+        if (!createPointMode) return;
+
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+
+        // Fetch preview data from backend
+        fetchPreviewData(lat, lng, e.containerPoint);
+    });
+
+    async function fetchPreviewData(lat, lng, containerPoint) {
+        try {
+            const response = await fetch(`/admin/monitor/location-cache/preview/?lat=${lat}&lng=${lng}`);
+            const data = await response.json();
+
+            if (!data.success) {
+                alert('Error: ' + data.error);
+                return;
+            }
+
+            previewData = data;
+
+            // Clear any existing preview layers
+            clearPreviewLayers();
+
+            // Get geohash center from bounds
+            const centerLat = data.bounds.center_lat;
+            const centerLng = data.bounds.center_lng;
+
+            // Draw search radius circle at GEOHASH CENTER (where the actual search happens)
+            previewRadiusLayer = L.circle([centerLat, centerLng], {
+                radius: data.settings.radius_meters,
+                color: '#dc3545',
+                fillColor: '#dc3545',
+                fillOpacity: 0.1,
+                weight: 2,
+                dashArray: '5, 5'
+            }).addTo(map);
+
+            // Draw geohash boundary rectangle on map
+            if (data.bounds) {
+                previewBoundsLayer = L.rectangle([
+                    [data.bounds.min_lat, data.bounds.min_lng],
+                    [data.bounds.max_lat, data.bounds.max_lng]
+                ], {
+                    color: '#28a745',
+                    fillColor: '#28a745',
+                    fillOpacity: 0.15,
+                    weight: 3,
+                    dashArray: '8, 4'
+                }).addTo(map);
+            }
+
+            // Add marker at geohash center (where search originates)
+            previewMarker = L.marker([centerLat, centerLng], {
+                icon: L.divIcon({
+                    className: 'preview-marker',
+                    html: '<div style="background: #dc3545; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"></div>',
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
+                })
+            }).addTo(map);
+
+            // Add smaller marker at user's click location
+            const clickMarker = L.marker([lat, lng], {
+                icon: L.divIcon({
+                    className: 'click-marker',
+                    html: '<div style="background: #007bff; width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
+                    iconSize: [14, 14],
+                    iconAnchor: [7, 7]
+                })
+            }).addTo(map);
+            // Store click marker for cleanup
+            if (!window.clickMarkers) window.clickMarkers = [];
+            window.clickMarkers.push(clickMarker);
+
+            // Update popup content
+            document.getElementById('previewCoords').textContent =
+                `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            document.getElementById('previewCenter').textContent =
+                `${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}`;
+            document.getElementById('previewGeohash').textContent =
+                `${data.geohash} (precision ${data.settings.precision})`;
+            document.getElementById('previewRadius').textContent =
+                `${data.settings.radius_meters}m`;
+            document.getElementById('previewMaxVenues').textContent =
+                `${data.settings.max_venues}`;
+
+            // Show/hide already cached warning
+            const warningEl = document.getElementById('alreadyCachedWarning');
+            if (data.already_cached) {
+                warningEl.style.display = 'block';
+                warningEl.innerHTML = `
+                    This location is already cached (${data.existing_entry.lookup_count} lookups).
+                    <br>Last updated: ${new Date(data.existing_entry.updated_at).toLocaleString()}
+                    <br>Fetching will refresh the existing entry.
+                `;
+            } else {
+                warningEl.style.display = 'none';
+            }
+
+            // Show popup (fixed position in top-left via CSS)
+            const popup = document.getElementById('previewPopup');
+            popup.classList.add('visible');
+
+            // Reset fetch button state
+            const fetchBtn = document.getElementById('fetchBtn');
+            fetchBtn.disabled = false;
+            fetchBtn.innerHTML = 'Fetch & Cache';
+
+        } catch (error) {
+            console.error('Error fetching preview:', error);
+            alert('Error fetching preview data');
+        }
+    }
+
+    function clearPreviewLayers() {
+        if (previewBoundsLayer) {
+            map.removeLayer(previewBoundsLayer);
+            previewBoundsLayer = null;
+        }
+        if (previewRadiusLayer) {
+            map.removeLayer(previewRadiusLayer);
+            previewRadiusLayer = null;
+        }
+        if (previewMarker) {
+            map.removeLayer(previewMarker);
+            previewMarker = null;
+        }
+        // Clear click markers
+        if (window.clickMarkers) {
+            window.clickMarkers.forEach(m => map.removeLayer(m));
+            window.clickMarkers = [];
+        }
+    }
+
+    function closePreviewPopup() {
+        document.getElementById('previewPopup').classList.remove('visible');
+        clearPreviewLayers();
+        previewData = null;
+    }
+
+    async function fetchAndCache() {
+        if (!previewData) return;
+
+        const fetchBtn = document.getElementById('fetchBtn');
+        fetchBtn.disabled = true;
+        fetchBtn.innerHTML = '<span class="loading-spinner"></span>Fetching...';
+
+        try {
+            const response = await fetch('/admin/monitor/location-cache/create/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    latitude: previewData.latitude,
+                    longitude: previewData.longitude
+                })
+            });
+
+            const data = await response.json();
+
+            if (!data.success) {
+                alert('Error: ' + data.error);
+                fetchBtn.disabled = false;
+                fetchBtn.innerHTML = 'Fetch & Cache';
+                return;
+            }
+
+            // Success! Show result
+            fetchBtn.innerHTML = 'Done!';
+            fetchBtn.style.background = '#17a2b8';
+
+            // Show success message with details
+            const location = data.location;
+            const locationName = location.neighborhood
+                ? `${location.neighborhood}, ${location.city}`
+                : location.city || 'Unknown location';
+
+            alert(`Cache entry created!\n\nLocation: ${locationName}\nCache source: ${data.cache_source}\nSuggestions: ${data.suggestions_count}`);
+
+            // Refresh the cache entries list
+            loadData();
+
+            // Close popup and exit mode after short delay
+            setTimeout(() => {
+                closePreviewPopup();
+                // Optionally exit create mode after successful creation
+                // toggleCreatePointMode();
+            }, 500);
+
+        } catch (error) {
+            console.error('Error creating cache entry:', error);
+            alert('Error creating cache entry');
+            fetchBtn.disabled = false;
+            fetchBtn.innerHTML = 'Fetch & Cache';
+        }
+    }
+
+    // ESC key to exit create point mode or clear distance measurement
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            if (document.getElementById('previewPopup').classList.contains('visible')) {
+                closePreviewPopup();
+            } else if (createPointMode) {
+                toggleCreatePointMode();
+            } else if (distanceReferencePoint) {
+                clearDistanceMeasurement();
+            }
+        }
+    });
+
+    // ========================================
+    // DISTANCE MEASUREMENT TOOL
+    // ========================================
+
+    let distanceReferencePoint = null;
+
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371000; // Earth's radius in meters
+        const phi1 = lat1 * Math.PI / 180;
+        const phi2 = lat2 * Math.PI / 180;
+        const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+        const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                  Math.cos(phi1) * Math.cos(phi2) *
+                  Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c;
+    }
+
+    function setDistanceReference(lat, lng, label) {
+        distanceReferencePoint = { lat, lng, label };
+        document.getElementById('distanceReadout').classList.add('visible');
+        document.getElementById('distanceValue').textContent = 'Move mouse...';
+        document.getElementById('distanceCoords').textContent = `Reference: ${label || `${lat.toFixed(6)}, ${lng.toFixed(6)}`}`;
+    }
+
+    function clearDistanceMeasurement() {
+        distanceReferencePoint = null;
+        document.getElementById('distanceReadout').classList.remove('visible');
+    }
+
+    function updateDistanceReadout(e) {
+        if (!distanceReferencePoint) return;
+
+        const mouseLat = e.latlng.lat;
+        const mouseLng = e.latlng.lng;
+        const distance = haversineDistance(
+            distanceReferencePoint.lat,
+            distanceReferencePoint.lng,
+            mouseLat,
+            mouseLng
+        );
+
+        document.getElementById('distanceValue').textContent = `${distance.toFixed(1)}m`;
+        document.getElementById('distanceCoords').innerHTML =
+            `Reference: ${distanceReferencePoint.label || 'Selected point'}<br>` +
+            `Mouse: ${mouseLat.toFixed(6)}, ${mouseLng.toFixed(6)}`;
+    }
+
+    // Listen for mouse movement on the map
+    map.on('mousemove', updateDistanceReadout);
+
+    // Update marker click handlers to set distance reference
+    function addDistanceClickToMarker(marker, lat, lng, label) {
+        marker.on('click', function(e) {
+            // Don't interfere with create point mode
+            if (createPointMode) return;
+
+            e.originalEvent.stopPropagation();
+            setDistanceReference(lat, lng, label);
+        });
+    }
+</script>
+{% endblock %}

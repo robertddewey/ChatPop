@@ -162,20 +162,23 @@ TOMTOM_CATEGORY_MAPPING = {
     # Bars (9379 = Bar or Pub)
     "9379": "bar",
 
-    # Brewery (7372)
-    "7372": "bar",
+    # Note: 7372 is actually School in TomTom, not Brewery
+    # Breweries don't have a dedicated category - they fall under restaurant/bar/cafe
 
     # Ice Cream (9377)
     "9377": "cafe",
 
-    # Bakery (7317, 9382)
-    "7317": "cafe",
-    "9382": "cafe",
+    # Bakery (9361018 - under Shop category in TomTom)
+    # Note: 7317 is Museum in TomTom, NOT Bakery (was incorrectly mapped)
+    "9361018": "cafe",
 
     # Gym/Sports Center (7320)
     "7320": "gym",
 
-    # Cinema/Theater (7342)
+    # Theater - Performing Arts (7318: concert halls, music centers, playhouses)
+    "7318": "theater",
+
+    # Cinema - Movie Theater (7342)
     "7342": "theater",
 
     # Stadium (7374)

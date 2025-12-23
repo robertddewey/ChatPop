@@ -21,11 +21,31 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from chats import admin_views
+from media_analysis import admin_views as media_admin_views
 
 urlpatterns = [
-    # Admin monitoring dashboard (must come BEFORE admin/ to avoid catch-all)
-    path("admin/monitoring/", admin_views.monitoring_dashboard, name="monitoring_dashboard"),
-    path("admin/monitoring/api/", admin_views.monitoring_api, name="monitoring_api"),
+    # Admin monitoring dashboards (must come BEFORE admin/ to avoid catch-all)
+    # Chat cache monitor (renamed from /admin/monitoring/)
+    path("admin/monitor/chat-cache/", admin_views.chat_cache_dashboard, name="chat_cache_dashboard"),
+    path("admin/monitor/chat-cache/api/", admin_views.chat_cache_api, name="chat_cache_api"),
+
+    # Location cache monitor
+    path("admin/monitor/location-cache/", media_admin_views.location_cache_dashboard, name="location_cache_dashboard"),
+    path("admin/monitor/location-cache/api/", media_admin_views.location_cache_api, name="location_cache_api"),
+    path("admin/monitor/location-cache/delete/", media_admin_views.location_cache_delete, name="location_cache_delete"),
+    path("admin/monitor/location-cache/preview/", media_admin_views.location_cache_preview, name="location_cache_preview"),
+    path("admin/monitor/location-cache/create/", media_admin_views.location_cache_create, name="location_cache_create"),
+    path("admin/monitor/location-cache/suggestions/", media_admin_views.location_suggestions_fetch, name="location_suggestions_fetch"),
+
+    # Location analytics (lightning strike map)
+    path("admin/monitor/location-cache/analytics/timeslice/", media_admin_views.location_analytics_timeslice, name="location_analytics_timeslice"),
+    path("admin/monitor/location-cache/analytics/time-range/", media_admin_views.location_analytics_time_range, name="location_analytics_time_range"),
+    path("admin/monitor/location-cache/analytics/point/<uuid:point_id>/", media_admin_views.location_analytics_point_details, name="location_analytics_point_details"),
+    path("admin/monitor/location-cache/analytics/lod/", media_admin_views.location_analytics_lod, name="location_analytics_lod"),
+
+    # Legacy redirect (backwards compatibility)
+    path("admin/monitoring/", admin_views.chat_cache_dashboard, name="monitoring_dashboard"),
+    path("admin/monitoring/api/", admin_views.chat_cache_api, name="monitoring_api"),
 
     path("admin/", admin.site.urls),
 

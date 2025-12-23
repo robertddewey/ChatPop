@@ -29,15 +29,16 @@ DESIRED_CATEGORIES = {'restaurant', 'bar', 'cafe', 'gym', 'theater', 'stadium'}
 #
 # Focus: Conversation-friendly places where people gather and socialize
 TOMTOM_CATEGORY_IDS = [
-    # Food & Drink
-    7315,   # Restaurant
-    9376,   # Coffee Shop
-    9379,   # Bar or Pub
-    7372,   # Brewery
+    # Food & Drink (breweries fall under restaurant/bar/cafe - no separate category)
+    7315,      # Restaurant
+    9376,      # Coffee Shop
+    9379,      # Bar or Pub
+    9361018,   # Bakery (under Shop category - for places like Crumbl)
     # Sports & Entertainment
-    7320,   # Gym / Sports Center
-    7374,   # Stadium
-    7342,   # Cinema / Theater
+    7320,      # Gym / Sports Center
+    7374,      # Stadium
+    7318,      # Theater (Performing Arts: concert halls, music centers, playhouses)
+    7342,      # Cinema (Movie theaters, drive-ins)
 ]
 
 
@@ -231,9 +232,9 @@ class TomTomClient(BasePlacesClient):
                     "user_ratings_total": None,
                 })
 
-                # Stop once we have enough results
-                if len(places) >= max_results:
-                    break
+            # Limit results if requested (but typically we want all for caching)
+            if max_results and len(places) > max_results:
+                places = places[:max_results]
 
             logger.info(
                 f"TomTom found {len(places)} nearby places at ({latitude}, {longitude}) "

@@ -9,7 +9,6 @@ interface LocationSuggestionsModalProps {
 }
 
 export default function LocationSuggestionsModal({ onClose }: LocationSuggestionsModalProps) {
-  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<LocationAnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +44,7 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
   }, []);
 
   const requestLocation = async () => {
-    setIsRequestingLocation(true);
+    setIsLoading(true);
     setError(null);
 
     try {
@@ -61,12 +60,15 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
       const { latitude, longitude } = position.coords;
       console.log('📍 Location obtained:', latitude, longitude);
 
-      // Now fetch suggestions
-      await fetchSuggestions(latitude, longitude);
+      // Fetch suggestions from API
+      const response = await locationApi.getSuggestions(latitude, longitude);
+      console.log('✅ Location suggestions received:', response);
+      setResult(response);
 
     } catch (err: any) {
-      console.error('❌ Location access denied:', err);
+      console.error('❌ Location error:', err);
 
+      // Handle geolocation errors
       if (err.code === 1) {
         setError('Location access denied. Please allow location access in your browser settings and try again.');
         setLocationPermission('denied');
@@ -75,25 +77,10 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
       } else if (err.code === 3) {
         setError('Location request timed out. Please try again.');
       } else {
-        setError('Failed to get your location. Please try again.');
+        // Handle API errors
+        const errorMessage = err.response?.data?.error || err.response?.data?.detail || 'Failed to get nearby chats. Please try again.';
+        setError(errorMessage);
       }
-    } finally {
-      setIsRequestingLocation(false);
-    }
-  };
-
-  const fetchSuggestions = async (latitude: number, longitude: number) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await locationApi.getSuggestions(latitude, longitude);
-      console.log('✅ Location suggestions received:', response);
-      setResult(response);
-    } catch (err: any) {
-      console.error('❌ Location suggestions failed:', err.response?.data || err.message);
-      const errorMessage = err.response?.data?.error || err.response?.data?.detail || 'Failed to get suggestions';
-      setError(errorMessage);
       setResult(null);
     } finally {
       setIsLoading(false);
@@ -109,10 +96,10 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
           <div>
             <h1 className="text-2xl font-bold text-zinc-50 flex items-center gap-2">
               <MapPin className="w-6 h-6" />
-              {isRequestingLocation ? 'Getting Location...' : isLoading ? 'Finding Places...' : result?.success ? 'Nearby Places' : 'Start a local chat'}
+              {isLoading ? 'Finding chats...' : result?.success ? 'Nearby Places' : 'Start a local chat'}
             </h1>
             <p className="text-sm text-zinc-400 mt-1">
-              {isRequestingLocation ? '📍 Requesting your location' : isLoading ? '🔍 Searching nearby venues' : result?.success ? `📍 ${result.location.city || 'Your area'}` : 'Tap to find chats near you'}
+              {isLoading ? 'Getting nearby chats' : result?.success ? `📍 ${result.location.city || 'Your area'}` : 'Tap to find chats near you'}
             </p>
           </div>
           <button
@@ -127,7 +114,7 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
         {/* Content */}
         <div className="p-6 flex-1 overflow-y-auto">
           {/* Initial State - Request Location */}
-          {!isRequestingLocation && !isLoading && !result && (
+          {!isLoading && !result && (
             <div className="flex flex-col items-center justify-center space-y-6">
               {/* Location Button */}
               <button
@@ -156,21 +143,11 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
             </div>
           )}
 
-          {/* Requesting Location State */}
-          {isRequestingLocation && (
-            <div className="flex flex-col items-center justify-center py-12 space-y-4">
-              <div className="w-16 h-16 border-4 border-zinc-600 border-t-cyan-400 rounded-full animate-spin"></div>
-              <p className="text-zinc-300 text-lg font-medium">Getting your location...</p>
-              <p className="text-zinc-500 text-sm">Please allow location access if prompted</p>
-            </div>
-          )}
-
-          {/* Loading Suggestions State */}
+          {/* Loading State */}
           {isLoading && (
             <div className="flex flex-col items-center justify-center py-12 space-y-4">
               <div className="w-16 h-16 border-4 border-zinc-600 border-t-cyan-400 rounded-full animate-spin"></div>
-              <p className="text-zinc-300 text-lg font-medium">Finding nearby places...</p>
-              <p className="text-zinc-500 text-sm">Searching for chat suggestions</p>
+              <p className="text-zinc-300 text-lg font-medium">Getting nearby chats...</p>
             </div>
           )}
 
@@ -225,7 +202,7 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
           })()}
 
           {/* Error State after trying */}
-          {!isRequestingLocation && !isLoading && error && !result && (
+          {!isLoading && error && !result && (
             <div className="space-y-4">
               <button
                 onClick={() => {

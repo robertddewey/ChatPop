@@ -31,6 +31,9 @@ STATE_ABBREVIATIONS = {
     "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC",
 }
 
+# Reverse mapping: abbreviation to full state name
+ABBREVIATION_TO_STATE = {v.lower(): k for k, v in STATE_ABBREVIATIONS.items()}
+
 
 @lru_cache(maxsize=1)
 def _load_county_to_metro() -> Dict[str, Dict[str, str]]:
@@ -73,13 +76,22 @@ def normalize_state(state_name: str) -> str:
     """
     Normalize state name for consistent lookups.
 
+    Handles both full state names and 2-letter abbreviations,
+    converting abbreviations to full names for JSON lookup compatibility.
+
     Args:
         state_name: State name (e.g., "Michigan" or "MI")
 
     Returns:
-        Lowercase state name (e.g., "michigan")
+        Lowercase full state name (e.g., "michigan")
     """
-    return state_name.strip().lower()
+    normalized = state_name.strip().lower()
+
+    # If it's a 2-letter abbreviation, convert to full state name
+    if len(normalized) == 2 and normalized in ABBREVIATION_TO_STATE:
+        return ABBREVIATION_TO_STATE[normalized]
+
+    return normalized
 
 
 def lookup_metro_area(county: str, state: str) -> Optional[Tuple[str, str]]:

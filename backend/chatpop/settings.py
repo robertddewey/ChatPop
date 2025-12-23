@@ -32,6 +32,11 @@ DEBUG = os.getenv("DEBUG", "True") == "True"
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,10.0.0.135,testserver").split(",")
 
+# Add ngrok domain to ALLOWED_HOSTS if configured
+NGROK_DOMAIN = os.getenv("NGROK_DOMAIN", "")
+if NGROK_DOMAIN and NGROK_DOMAIN not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(NGROK_DOMAIN)
+
 
 # Application definition
 
@@ -172,7 +177,27 @@ if not CORS_ALLOW_ALL_ORIGINS:
         "http://localhost:4000,http://127.0.0.1:4000"
     ).split(",")
 
+    # Add ngrok domain if configured (for external testing)
+    NGROK_DOMAIN = os.getenv("NGROK_DOMAIN", "")
+    if NGROK_DOMAIN:
+        ngrok_origin = f"https://{NGROK_DOMAIN}"
+        if ngrok_origin not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append(ngrok_origin)
+
 CORS_ALLOW_CREDENTIALS = True
+
+# CSRF Trusted Origins (required for POST requests from external domains)
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    "CSRF_TRUSTED_ORIGINS",
+    "https://localhost:4000,https://127.0.0.1:4000"
+).split(",")
+
+# Add ngrok domain to CSRF trusted origins if configured
+NGROK_DOMAIN = os.getenv("NGROK_DOMAIN", "")
+if NGROK_DOMAIN:
+    ngrok_origin = f"https://{NGROK_DOMAIN}"
+    if ngrok_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(ngrok_origin)
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -480,13 +505,20 @@ Response JSON:
         bool
     ),
     'LOCATION_SEARCH_RADIUS_METERS': (
-        100,
-        'Search radius in meters for nearby venue discovery (default: 100m for GPS accuracy)',
+        200,
+        'Search radius in meters for nearby venue discovery. Should align with geohash precision '
+        '(precision 7 = ~150m cells, so 200m radius covers the cell plus slight overlap).',
         int
     ),
     'LOCATION_MAX_VENUES': (
         10,
-        'Maximum number of nearby venues to fetch from Google Places API per request',
+        'Maximum number of nearby venues to RETURN to the user (after re-ranking by distance)',
+        int
+    ),
+    'LOCATION_CACHE_MAX_VENUES': (
+        100,
+        'Maximum number of venues to STORE in cache. We fetch up to this many from the API, '
+        'then re-rank by distance and return LOCATION_MAX_VENUES to the user.',
         int
     ),
     'LOCATION_CACHE_TTL_HOURS': (
@@ -503,6 +535,25 @@ Response JSON:
         50,
         'Maximum location suggestion requests per hour for authenticated users',
         int
+    ),
+    'LOCATION_GEOHASH_PRECISION': (
+        7,
+        'Geohash precision for cache keys (4=~39km, 5=~5km, 6=~1.2km, 7=~150m). '
+        'Precision 7 is optimal for dense urban areas like NYC while still providing good '
+        'cache hit rates. WARNING: Changing invalidates existing cache entries (expire at TTL).',
+        int
+    ),
+
+    # Location API Provider Settings
+    'PLACES_PROVIDER': (
+        'google',
+        'Primary location API provider for venue discovery. Options: "google" (Google Places API) or "tomtom" (TomTom Search API). Requires corresponding API key.',
+        str
+    ),
+    'PLACES_PROVIDER_FALLBACK': (
+        '',
+        'Fallback location API provider if primary fails. Options: "google", "tomtom", or empty (no fallback). Leave empty to disable fallback.',
+        str
     ),
 }
 
@@ -532,6 +583,9 @@ ACRCLOUD_BEARER_TOKEN = os.getenv("ACRCLOUD_BEARER_TOKEN", "")
 
 # Google Places API Settings (Location Suggestions)
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
+
+# TomTom API Settings (Alternative Location Provider)
+TOMTOM_API_KEY = os.getenv("TOMTOM_API_KEY", "")
 
 # Media Analysis Performance Tracking
 # Enable performance tracking for photo analysis pipeline (disabled by default)

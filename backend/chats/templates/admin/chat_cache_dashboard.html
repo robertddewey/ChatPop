@@ -183,7 +183,7 @@
 {% block content %}
 <div class="monitoring-container">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
-        <h1>Cache & Database Monitor</h1>
+        <h1>Chat Cache Monitor</h1>
         <div class="refresh-controls">
             <label for="chatCodeFilter">Chat Code:</label>
             <input type="text" id="chatCodeFilter" placeholder="All chats" style="width: 120px;">
@@ -301,7 +301,7 @@
             ...(chatCode && { chat_code: chatCode })
         });
 
-        fetch(`/admin/monitoring/api/?${params}`)
+        fetch(`/admin/monitor/chat-cache/api/?${params}`)
             .then(response => response.json())
             .then(data => {
                 // Update monitoring status
