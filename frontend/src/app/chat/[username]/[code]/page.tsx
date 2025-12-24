@@ -219,8 +219,8 @@ export default function ChatPage() {
       shouldAutoScrollRef.current = true;
       return [...prev, message];
     });
-    // Play receive sound only for messages from others (not your own)
-    if (message.username !== username) {
+    // Play receive sound only when someone replies to YOUR message (not their own)
+    if (message.reply_to_message?.username === username && message.username !== username) {
       playReceiveMessageSound();
     }
   }, [username]);
