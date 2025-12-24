@@ -143,11 +143,11 @@ class Command(BaseCommand):
 
         found_any = False
         for chat in chats:
+            room_id = str(chat.id)
             # Check each key type
             keys = [
-                (MessageCache.MESSAGES_KEY.format(chat_code=chat.code), 'messages'),
-                (MessageCache.PINNED_KEY.format(chat_code=chat.code), 'pinned'),
-                (MessageCache.BACKROOM_KEY.format(chat_code=chat.code), 'backroom'),
+                (MessageCache.MESSAGES_KEY.format(room_id=room_id), 'messages'),
+                (MessageCache.PINNED_ORDER_KEY.format(room_id=room_id), 'pinned'),
             ]
 
             for key, key_type in keys:
@@ -169,13 +169,13 @@ class Command(BaseCommand):
     def inspect_chat(self, chat_room, show_messages=False, show_reactions=False, limit=10):
         """Inspect a specific chat's Redis cache"""
         redis_client = MessageCache._get_redis_client()
-        chat_code = chat_room.code
+        room_id = str(chat_room.id)
 
-        self.stdout.write(self.style.SUCCESS(f'\n🔍 Chat: {chat_room.host.reserved_username}/{chat_code} ({chat_room.name})'))
+        self.stdout.write(self.style.SUCCESS(f'\n🔍 Chat: {chat_room.host.reserved_username}/{chat_room.code} ({chat_room.name})'))
         self.stdout.write('━' * 60)
 
         # Main messages
-        main_key = MessageCache.MESSAGES_KEY.format(chat_code=chat_code)
+        main_key = MessageCache.MESSAGES_KEY.format(room_id=room_id)
         main_count = redis_client.zcard(main_key)
         self.stdout.write(f'\n📨 Main Messages ({main_count} cached)')
         self.stdout.write(f'  Key: {main_key}')
@@ -197,7 +197,7 @@ class Command(BaseCommand):
                 self.stdout.write(f'  Newest: {newest_data["created_at"]}')
 
         # Pinned messages
-        pinned_key = MessageCache.PINNED_KEY.format(chat_code=chat_code)
+        pinned_key = MessageCache.PINNED_ORDER_KEY.format(room_id=room_id)
         pinned_count = redis_client.zcard(pinned_key)
         self.stdout.write(f'\n📌 Pinned Messages ({pinned_count} cached)')
         self.stdout.write(f'  Key: {pinned_key}')
@@ -208,7 +208,7 @@ class Command(BaseCommand):
 
         # Reaction caches
         self.stdout.write(f'\n😀 Reaction Caches')
-        reaction_pattern = f"chat:{chat_code}:reactions:*"
+        reaction_pattern = f"room:{room_id}:reactions:*"
         reaction_keys = redis_client.keys(reaction_pattern)
         self.stdout.write(f'  Pattern: {reaction_pattern}')
         self.stdout.write(f'  Count: {len(reaction_keys)} messages with cached reactions')
@@ -221,7 +221,7 @@ class Command(BaseCommand):
         # Show messages if requested
         if show_messages and main_count > 0:
             self.stdout.write(f'\n📨 Last {limit} Messages in Redis:\n')
-            messages = MessageCache.get_messages(chat_code, limit=limit)
+            messages = MessageCache.get_messages(room_id, limit=limit)
 
             for msg in messages[-limit:]:  # Show most recent
                 timestamp = datetime.fromisoformat(msg['created_at']).strftime('%Y-%m-%d %H:%M:%S')
@@ -247,11 +247,11 @@ class Command(BaseCommand):
             self.stdout.write(f'\n😀 Reaction Cache Details (showing up to {limit}):\n')
 
             for reaction_key in reaction_keys[:limit]:
-                # Extract message_id from key: chat:{code}:reactions:{msg_id}
+                # Extract message_id from key: room:{room_id}:reactions:{msg_id}
                 message_id = reaction_key.decode('utf-8').split(':')[-1] if isinstance(reaction_key, bytes) else reaction_key.split(':')[-1]
 
                 # Get reactions for this message
-                reactions = MessageCache.get_message_reactions(chat_code, message_id)
+                reactions = MessageCache.get_message_reactions(room_id, message_id)
 
                 if reactions:
                     # Get message details for context
@@ -274,13 +274,13 @@ class Command(BaseCommand):
 
     def compare_cache(self, chat_room):
         """Compare Redis cache with PostgreSQL"""
-        chat_code = chat_room.code
+        room_id = str(chat_room.id)
 
         # Get PostgreSQL count
         pg_count = Message.objects.filter(chat_room=chat_room, is_deleted=False).count()
 
         # Get Redis count
-        redis_messages = MessageCache.get_messages(chat_code, limit=1000)  # Get all
+        redis_messages = MessageCache.get_messages(room_id, limit=1000)  # Get all
         redis_count = len(redis_messages)
 
         self.stdout.write(self.style.SUCCESS(f'\n🔄 PostgreSQL vs Redis Comparison:\n'))
@@ -339,12 +339,13 @@ class Command(BaseCommand):
         self.stdout.write(f'  Created: {message.created_at}')
 
         # Check Redis
-        redis_messages = MessageCache.get_messages(message.chat_room.code, limit=500)
+        room_id = str(message.chat_room.id)
+        redis_messages = MessageCache.get_messages(room_id, limit=500)
         redis_msg = next((msg for msg in redis_messages if msg['id'] == str(message_id)), None)
 
         self.stdout.write('\nRedis:')
         if redis_msg:
-            self.stdout.write(f'  ✓ Found in chat:{message.chat_room.code}:messages')
+            self.stdout.write(f'  ✓ Found in room:{room_id}:messages')
             self.stdout.write('  Serialized data:')
             self.stdout.write('    ' + json.dumps(redis_msg, indent=4).replace('\n', '\n    '))
         else:
@@ -354,20 +355,19 @@ class Command(BaseCommand):
 
     def clear_cache(self, chat_room, force=False):
         """Clear Redis cache for a chat"""
-        chat_code = chat_room.code
+        room_id = str(chat_room.id)
         redis_client = MessageCache._get_redis_client()
 
         # Count messages
         keys = [
-            MessageCache.MESSAGES_KEY.format(chat_code=chat_code),
-            MessageCache.PINNED_KEY.format(chat_code=chat_code),
-            MessageCache.BACKROOM_KEY.format(chat_code=chat_code),
+            MessageCache.MESSAGES_KEY.format(room_id=room_id),
+            MessageCache.PINNED_ORDER_KEY.format(room_id=room_id),
         ]
 
         counts = {key: redis_client.zcard(key) for key in keys}
 
         if not force:
-            self.stdout.write(self.style.WARNING(f'\n⚠️  About to clear Redis cache for chat {chat_room.host.reserved_username}/{chat_code}:'))
+            self.stdout.write(self.style.WARNING(f'\n⚠️  About to clear Redis cache for chat {chat_room.host.reserved_username}/{chat_room.code}:'))
             for key, count in counts.items():
                 if count > 0:
                     self.stdout.write(f'  - {key} ({count} messages)')
@@ -378,7 +378,7 @@ class Command(BaseCommand):
                 return
 
         # Clear cache
-        MessageCache.clear_chat_cache(chat_code)
+        MessageCache.clear_room_cache(room_id)
 
         self.stdout.write(self.style.SUCCESS(f'\n✓ Cleared {len([c for c in counts.values() if c > 0])} keys:'))
         for key, count in counts.items():
@@ -389,9 +389,9 @@ class Command(BaseCommand):
 
     def monitor_cache(self, chat_room):
         """Monitor cache in real-time"""
-        chat_code = chat_room.code
+        room_id = str(chat_room.id)
         redis_client = MessageCache._get_redis_client()
-        key = MessageCache.MESSAGES_KEY.format(chat_code=chat_code)
+        key = MessageCache.MESSAGES_KEY.format(room_id=room_id)
 
         self.stdout.write(self.style.SUCCESS(f'\n🔴 Monitoring {key} (Press Ctrl+C to stop)\n'))
 
@@ -428,17 +428,16 @@ class Command(BaseCommand):
         # Count all keys
         total_message_keys = 0
         total_pinned_keys = 0
-        total_backroom_keys = 0
         total_messages = 0
         total_reaction_keys = 0
 
         chats = ChatRoom.objects.filter(is_active=True)
 
         for chat in chats:
-            msg_count = redis_client.zcard(MessageCache.MESSAGES_KEY.format(chat_code=chat.code))
-            pin_count = redis_client.zcard(MessageCache.PINNED_KEY.format(chat_code=chat.code))
-            back_count = redis_client.zcard(MessageCache.BACKROOM_KEY.format(chat_code=chat.code))
-            reaction_pattern = f"chat:{chat.code}:reactions:*"
+            room_id = str(chat.id)
+            msg_count = redis_client.zcard(MessageCache.MESSAGES_KEY.format(room_id=room_id))
+            pin_count = redis_client.zcard(MessageCache.PINNED_ORDER_KEY.format(room_id=room_id))
+            reaction_pattern = f"room:{room_id}:reactions:*"
             reaction_keys = redis_client.keys(reaction_pattern)
 
             if msg_count > 0:
@@ -446,17 +445,12 @@ class Command(BaseCommand):
                 total_messages += msg_count
             if pin_count > 0:
                 total_pinned_keys += 1
-            if back_count > 0:
-                total_backroom_keys += 1
             total_reaction_keys += len(reaction_keys)
 
         self.stdout.write(f'Total chats cached:     {total_message_keys}')
         self.stdout.write(f'Total messages cached:  {total_messages}')
         self.stdout.write(f'Pinned message caches:  {total_pinned_keys}')
-        self.stdout.write(f'Backroom caches:        {total_backroom_keys}')
         self.stdout.write(f'Reaction caches:        {total_reaction_keys}')
-        self.stdout.write(f'\nMax messages per cache: {MessageCache.MAX_MESSAGES}')
-        self.stdout.write(f'Default TTL:            {MessageCache.TTL_HOURS} hours')
         self.stdout.write('')
 
     def _format_ttl(self, ttl_seconds):

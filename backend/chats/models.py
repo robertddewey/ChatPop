@@ -302,12 +302,23 @@ class Message(models.Model):
     def __str__(self):
         return f"{self.username}: {self.content[:50]}"
 
-    def pin_message(self, amount_paid, duration_minutes=60):
-        """Pin a message for a duration"""
+    def pin_message(self, amount_paid_cents):
+        """
+        Pin a message. Duration comes from Constance config.PIN_DURATION_MINUTES.
+
+        Args:
+            amount_paid_cents: Amount paid in cents to pin this message.
+                              This determines priority in the sticky section.
+        """
+        from constance import config
+        from decimal import Decimal
+
+        duration_minutes = config.PIN_DURATION_MINUTES
         self.is_pinned = True
         self.pinned_at = timezone.now()
         self.pinned_until = self.pinned_at + timezone.timedelta(minutes=duration_minutes)
-        self.pin_amount_paid = amount_paid
+        # Store as Decimal for consistency with existing field
+        self.pin_amount_paid = Decimal(amount_paid_cents) / 100
         self.save()
 
     def unpin_message(self):

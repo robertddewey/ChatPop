@@ -67,11 +67,11 @@ class PartialCacheHitTests(TestCase):
         self.participation.save()
 
         # Clear Redis cache before each test
-        MessageCache.clear_chat_cache(self.chat_room.code)
+        MessageCache.clear_room_cache(self.chat_room.id)
 
     def tearDown(self):
         """Clean up after each test"""
-        MessageCache.clear_chat_cache(self.chat_room.code)
+        MessageCache.clear_room_cache(self.chat_room.id)
 
     def _create_messages(self, count: int, base_time=None) -> list:
         """

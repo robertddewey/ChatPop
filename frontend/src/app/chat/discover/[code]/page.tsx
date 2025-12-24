@@ -893,15 +893,48 @@ export default function ChatPage() {
   const [aboveViewportMessageIds, setAboveViewportMessageIds] = useState<Set<string>>(new Set());
 
   // Message action handlers (wrapped in useCallback to prevent re-renders)
-  const handlePinSelf = useCallback((messageId: string) => {
-    console.log('Pin self message:', messageId);
-    // TODO: Implement pin self logic with payment
-  }, []);
 
-  const handlePinOther = useCallback((messageId: string) => {
-    console.log('Pin other message:', messageId);
-    // TODO: Implement pin other logic (host only)
-  }, []);
+  // Get pin requirements for a message (current pin value, minimum required, etc.)
+  const getPinRequirements = useCallback(async (messageId: string): Promise<{
+    current_pin_cents: number;
+    minimum_cents: number;
+    required_cents: number;
+    duration_minutes: number;
+  }> => {
+    return await messageApi.getPinRequirements(code, messageId);
+  }, [code]);
+
+  // Pin a message (or outbid existing pin)
+  const handlePin = useCallback(async (messageId: string, amountCents: number): Promise<boolean> => {
+    try {
+      const result = await messageApi.pinMessage(code, messageId, amountCents);
+      console.log('Pin result:', result);
+      // Reload messages to get updated pin status
+      await loadMessages();
+      return true;
+    } catch (error: any) {
+      console.error('Pin failed:', error);
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || 'Failed to pin message';
+      alert(errorMsg);
+      return false;
+    }
+  }, [code]);
+
+  // Add to an existing pin (increase value without resetting timer)
+  const handleAddToPin = useCallback(async (messageId: string, amountCents: number): Promise<boolean> => {
+    try {
+      const result = await messageApi.addToPin(code, messageId, amountCents);
+      console.log('Add to pin result:', result);
+      // Reload messages to get updated pin amount
+      await loadMessages();
+      return true;
+    } catch (error: any) {
+      console.error('Add to pin failed:', error);
+      const errorMsg = error.response?.data?.error || error.response?.data?.detail || 'Failed to add to pin';
+      alert(errorMsg);
+      return false;
+    }
+  }, [code]);
 
   const handleReply = useCallback((message: Message) => {
     console.log('Replying to message:', message);
@@ -1444,8 +1477,9 @@ export default function ChatPage() {
             handleScroll={handleScroll}
             scrollToMessage={scrollToMessage}
             handleReply={handleReply}
-            handlePinSelf={handlePinSelf}
-            handlePinOther={handlePinOther}
+            handlePin={handlePin}
+            handleAddToPin={handleAddToPin}
+            getPinRequirements={getPinRequirements}
             handleBlockUser={handleBlockUser}
             handleTipUser={handleTipUser}
             handleDeleteMessage={handleDeleteMessage}

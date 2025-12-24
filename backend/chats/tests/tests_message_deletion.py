@@ -404,7 +404,7 @@ class MessageCacheInvalidationTests(TestCase):
 
         # Verify cache removal was called with correct parameters
         mock_remove_message.assert_called_once_with(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message.id)
         )
 
@@ -417,7 +417,7 @@ class MessageCacheInvalidationTests(TestCase):
         MessageCache.add_message(self.message)
 
         # Verify it's in cache
-        cached_messages = MessageCache.get_messages(self.chat_room.code, limit=50)
+        cached_messages = MessageCache.get_messages(self.chat_room.id, limit=50)
         message_ids = [msg['id'] for msg in cached_messages]
         self.assertIn(str(self.message.id), message_ids)
 
@@ -428,7 +428,7 @@ class MessageCacheInvalidationTests(TestCase):
         self.client.post(url, data, format='json')
 
         # Verify it's removed from cache
-        cached_messages_after = MessageCache.get_messages(self.chat_room.code, limit=50)
+        cached_messages_after = MessageCache.get_messages(self.chat_room.id, limit=50)
         message_ids_after = [msg['id'] for msg in cached_messages_after]
         self.assertNotIn(str(self.message.id), message_ids_after)
 
@@ -449,7 +449,7 @@ class MessageCacheInvalidationTests(TestCase):
         MessageCache.add_pinned_message(self.message)
 
         # Verify it's in pinned cache
-        pinned_messages = MessageCache.get_pinned_messages(self.chat_room.code)
+        pinned_messages = MessageCache.get_pinned_messages(self.chat_room.id)
         pinned_ids = [msg['id'] for msg in pinned_messages]
         self.assertIn(str(self.message.id), pinned_ids)
 
@@ -460,7 +460,7 @@ class MessageCacheInvalidationTests(TestCase):
         self.client.post(url, data, format='json')
 
         # Verify it's removed from pinned cache
-        pinned_messages_after = MessageCache.get_pinned_messages(self.chat_room.code)
+        pinned_messages_after = MessageCache.get_pinned_messages(self.chat_room.id)
         pinned_ids_after = [msg['id'] for msg in pinned_messages_after]
         self.assertNotIn(str(self.message.id), pinned_ids_after)
 
@@ -478,14 +478,14 @@ class MessageCacheInvalidationTests(TestCase):
             {'emoji': '❤️', 'count': 3}
         ]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message.id),
             reactions
         )
 
         # Verify reactions are in cache
         cached_reactions = MessageCache.get_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message.id)
         )
         self.assertEqual(len(cached_reactions), 2)
@@ -498,7 +498,7 @@ class MessageCacheInvalidationTests(TestCase):
 
         # Verify reactions cache is cleared
         cached_reactions_after = MessageCache.get_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message.id)
         )
         self.assertEqual(len(cached_reactions_after), 0)

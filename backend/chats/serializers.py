@@ -353,9 +353,30 @@ class MessageCreateSerializer(serializers.ModelSerializer):
 
 
 class MessagePinSerializer(serializers.Serializer):
-    """Serializer for pinning a message"""
-    duration_minutes = serializers.IntegerField(min_value=1, max_value=1440, default=60)
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.50)
+    """
+    Serializer for pinning a message.
+
+    Note: duration is now controlled by Constance config.PIN_DURATION_MINUTES,
+    not user-specified. Amount must exceed current highest pin value for the chat.
+    """
+    amount_cents = serializers.IntegerField(
+        min_value=1,
+        help_text='Amount in cents to pay for pinning the message'
+    )
+
+    def validate_amount_cents(self, value):
+        """Validate that amount meets minimum requirement."""
+        from constance import config
+
+        # Get minimum from Constance
+        min_cents = config.PIN_MINIMUM_CENTS
+
+        if value < min_cents:
+            raise serializers.ValidationError(
+                f'Amount must be at least {min_cents} cents (${min_cents/100:.2f})'
+            )
+
+        return value
 
 
 class TransactionSerializer(serializers.ModelSerializer):

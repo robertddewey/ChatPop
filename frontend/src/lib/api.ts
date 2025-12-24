@@ -459,10 +459,43 @@ export const messageApi = {
     return response.data;
   },
 
-  pinMessage: async (code: string, messageId: string, amount: number, duration_minutes: number = 60, roomUsername?: string) => {
+  // Get pin requirements for a message (current pin value, minimum required, etc.)
+  getPinRequirements: async (code: string, messageId: string, roomUsername?: string): Promise<{
+    current_pin_cents: number;
+    minimum_cents: number;
+    required_cents: number;
+    duration_minutes: number;
+  }> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/pin/`);
+    return response.data;
+  },
+
+  // Pin a message (or outbid existing pin)
+  pinMessage: async (code: string, messageId: string, amountCents: number, roomUsername?: string): Promise<{
+    success: boolean;
+    message: string;
+    pinned_until: string;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/pin/`, {
-      amount,
-      duration_minutes,
+      amount_cents: amountCents,
+      session_token: sessionToken,
+    });
+    return response.data;
+  },
+
+  // Add to an existing pin (increase value without resetting timer)
+  addToPin: async (code: string, messageId: string, amountCents: number, roomUsername?: string): Promise<{
+    success: boolean;
+    message: string;
+    new_total_cents: number;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/add-to-pin/`, {
+      amount_cents: amountCents,
+      session_token: sessionToken,
     });
     return response.data;
   },

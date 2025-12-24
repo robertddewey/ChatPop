@@ -523,10 +523,10 @@ class MessageListView(APIView):
             # Try Redis cache first for ALL requests (initial load AND pagination)
             if before_timestamp:
                 # Pagination request - try cache first with before_timestamp
-                messages = MessageCache.get_messages_before(code, before_timestamp=float(before_timestamp), limit=limit)
+                messages = MessageCache.get_messages_before(chat_room.id, before_timestamp=float(before_timestamp), limit=limit)
             else:
                 # Initial load - get most recent messages
-                messages = MessageCache.get_messages(code, limit=limit)
+                messages = MessageCache.get_messages(chat_room.id, limit=limit)
 
             print(f"DEBUG: cache_enabled={cache_enabled}, messages from cache: {len(messages) if messages else 0}")
 
@@ -564,7 +564,7 @@ class MessageListView(APIView):
 
                 # Fetch reactions for all messages (batch operation for performance)
                 message_ids = [msg['id'] for msg in messages]
-                reactions_by_message = MessageCache.batch_get_reactions(code, message_ids)
+                reactions_by_message = MessageCache.batch_get_reactions(chat_room.id, message_ids)
 
                 # Attach reactions to each message
                 for msg in messages:
@@ -601,7 +601,7 @@ class MessageListView(APIView):
                 ]
 
         # Fetch pinned messages from Redis (pinned messages are ephemeral)
-        pinned_messages = MessageCache.get_pinned_messages(code)
+        pinned_messages = MessageCache.get_pinned_messages(chat_room.id)
 
         return Response({
             'messages': messages,
@@ -642,7 +642,7 @@ class MessageListView(APIView):
 
         # Batch fetch reactions from cache for all messages (SOLVES N+1 PROBLEM)
         message_ids = [str(msg.id) for msg in messages]
-        reactions_by_message = MessageCache.batch_get_reactions(chat_room.code, message_ids)
+        reactions_by_message = MessageCache.batch_get_reactions(chat_room.id, message_ids)
 
         # Serialize (with username_is_reserved computation)
         serialized = []
@@ -687,7 +687,7 @@ class MessageListView(APIView):
 
                 # Cache the computed reactions for next time
                 if top_reactions:
-                    MessageCache.set_message_reactions(chat_room.code, msg_id_str, top_reactions)
+                    MessageCache.set_message_reactions(chat_room.id, msg_id_str, top_reactions)
 
             serialized.append({
                 'id': str(msg.id),
@@ -842,27 +842,125 @@ class MessageCreateView(generics.CreateAPIView):
 
 
 class MessagePinView(APIView):
-    """Pin a message (requires payment)"""
+    """
+    Pin a message (requires payment).
+
+    To take the sticky spot, you must pay more than the current highest pin.
+    Duration is fixed by Constance config.PIN_DURATION_MINUTES.
+    """
     permission_classes = [permissions.AllowAny]
 
+    def get(self, request, code, message_id, username=None):
+        """Get current pin requirements for a chat."""
+        from constance import config
+
+        chat_room = get_chat_room_by_url(code, username)
+
+        # Get current highest pin value from cache
+        current_pin_cents = MessageCache.get_current_pin_value_cents(chat_room.id)
+        min_cents = config.PIN_MINIMUM_CENTS
+
+        # Required amount is the greater of minimum or current+1 cent
+        required_cents = max(min_cents, int(current_pin_cents) + 1) if current_pin_cents > 0 else min_cents
+
+        return Response({
+            'current_pin_cents': int(current_pin_cents) if current_pin_cents else 0,
+            'minimum_cents': min_cents,
+            'required_cents': required_cents,
+            'duration_minutes': config.PIN_DURATION_MINUTES,
+        })
+
     def post(self, request, code, message_id, username=None):
+        """Pin a message by paying to take the sticky spot."""
+        from constance import config
+
         chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
 
         serializer = MessagePinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        amount = serializer.validated_data['amount']
-        duration = serializer.validated_data['duration_minutes']
+        amount_cents = serializer.validated_data['amount_cents']
+
+        # Get current highest pin value
+        current_pin_cents = MessageCache.get_current_pin_value_cents(chat_room.id)
+
+        # Validate: must pay more than current pin to take the spot
+        if current_pin_cents and amount_cents <= current_pin_cents:
+            return Response({
+                'error': 'Must pay more than current pin to take the sticky spot',
+                'current_pin_cents': int(current_pin_cents),
+                'required_cents': int(current_pin_cents) + 1,
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         # TODO: Process payment with Stripe here
         # For now, just pin the message
 
-        message.pin_message(amount_paid=amount, duration_minutes=duration)
+        # Pin the message (uses Constance duration)
+        message.pin_message(amount_paid_cents=amount_cents)
+
+        # Update both caches: main messages list and pinned messages
+        MessageCache.update_message(message)
+        MessageCache.add_pinned_message(message)
+
+        # Get updated top pinned message to return
+        top_pinned = MessageCache.get_top_pinned_message(chat_room.id)
 
         return Response({
+            'success': True,
             'message': MessageSerializer(message).data,
-            'status': 'Message pinned successfully'
+            'is_top_pin': top_pinned and top_pinned.get('id') == str(message.id),
+            'amount_cents': amount_cents,
+            'duration_minutes': config.PIN_DURATION_MINUTES,
+        })
+
+
+class AddToPinView(APIView):
+    """
+    Add to an existing pinned message's value.
+
+    This increases the pin amount but does NOT reset the duration.
+    Use this to defend your sticky position without restarting the timer.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code, message_id, username=None):
+        """Add value to an existing pinned message."""
+        from constance import config
+        from decimal import Decimal
+
+        chat_room = get_chat_room_by_url(code, username)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
+
+        # Validate message is currently pinned
+        if not message.is_pinned:
+            return Response({
+                'error': 'Message is not currently pinned'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = MessagePinSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        add_cents = serializer.validated_data['amount_cents']
+
+        # TODO: Process payment with Stripe here
+
+        # Add to the existing pin amount (convert to Decimal for consistency)
+        current_amount = message.pin_amount_paid or Decimal('0')
+        new_amount = current_amount + (Decimal(add_cents) / 100)
+        message.pin_amount_paid = new_amount
+        message.save(update_fields=['pin_amount_paid'])
+
+        # Update both caches: main messages list and pinned messages
+        MessageCache.update_message(message)
+        MessageCache.add_pinned_message(message)
+
+        return Response({
+            'success': True,
+            'message': MessageSerializer(message).data,
+            'previous_cents': int(current_amount * 100),
+            'added_cents': add_cents,
+            'new_total_cents': int(new_amount * 100),
         })
 
 
@@ -1532,7 +1630,7 @@ class MessageReactionToggleView(APIView):
         top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
 
         # Update cache with new reaction summary
-        MessageCache.set_message_reactions(chat_room.code, str(message_id), top_reactions)
+        MessageCache.set_message_reactions(chat_room.id, str(message_id), top_reactions)
 
         # Broadcast reaction update via WebSocket
         channel_layer = get_channel_layer()
@@ -2131,7 +2229,7 @@ class MessageDeleteView(APIView):
         logger.info(f"[MESSAGE_DELETE] Message {message_id} marked as deleted in database")
 
         # Remove from Redis cache
-        MessageCache.remove_message(chat_room.code, str(message_id))
+        MessageCache.remove_message(chat_room.id, str(message_id))
         logger.info(f"[MESSAGE_DELETE] Message {message_id} removed from cache")
 
         # Broadcast deletion event via WebSocket

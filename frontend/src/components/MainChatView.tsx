@@ -116,6 +116,11 @@ function getTextColor(classString: string | undefined): string | undefined {
     if (cleanClass === 'text-white') {
       return '#ffffff';
     }
+
+    // Handle text-black (no shade)
+    if (cleanClass === 'text-black') {
+      return '#000000';
+    }
   }
 
   return undefined;
@@ -137,8 +142,17 @@ interface MainChatViewProps {
   handleScroll: () => void;
   scrollToMessage: (messageId: string) => void;
   handleReply: (message: Message) => void;
-  handlePinSelf: (messageId: string) => void;
-  handlePinOther: (messageId: string) => void;
+  handlePin: (messageId: string, amountCents: number) => Promise<boolean>;
+  handleAddToPin: (messageId: string, amountCents: number) => Promise<boolean>;
+  getPinRequirements: (messageId: string) => Promise<{
+    current_pin_cents: number;
+    minimum_cents: number;
+    required_cents: number;
+    duration_minutes: number;
+  }>;
+  // Legacy (deprecated)
+  handlePinSelf?: (messageId: string) => void;
+  handlePinOther?: (messageId: string) => void;
   handleBlockUser: (username: string) => void;
   handleTipUser: (username: string) => void;
   handleDeleteMessage: (messageId: string) => void;
@@ -163,6 +177,9 @@ export default function MainChatView({
   handleScroll,
   scrollToMessage,
   handleReply,
+  handlePin,
+  handleAddToPin,
+  getPinRequirements,
   handlePinSelf,
   handlePinOther,
   handleBlockUser,
@@ -193,8 +210,9 @@ export default function MainChatView({
               isHost={chatRoom?.host.id === currentUserId}
               themeIsDarkMode={themeIsDarkMode}
               onReply={handleReply}
-              onPinSelf={handlePinSelf}
-              onPinOther={handlePinOther}
+              onPin={handlePin}
+              onAddToPin={handleAddToPin}
+              getPinRequirements={getPinRequirements}
               onBlock={handleBlockUser}
               onTip={handleTipUser}
               onDelete={handleDeleteMessage}
@@ -253,8 +271,9 @@ export default function MainChatView({
               isHost={chatRoom?.host.id === currentUserId}
               themeIsDarkMode={themeIsDarkMode}
               onReply={handleReply}
-              onPinSelf={handlePinSelf}
-              onPinOther={handlePinOther}
+              onPin={handlePin}
+              onAddToPin={handleAddToPin}
+              getPinRequirements={getPinRequirements}
               onBlock={handleBlockUser}
               onTip={handleTipUser}
               onDelete={handleDeleteMessage}
@@ -485,8 +504,9 @@ export default function MainChatView({
                   isHost={chatRoom?.host.id === currentUserId}
                   themeIsDarkMode={themeIsDarkMode}
                   onReply={handleReply}
-                  onPinSelf={handlePinSelf}
-                  onPinOther={handlePinOther}
+                  onPin={handlePin}
+                  onAddToPin={handleAddToPin}
+                  getPinRequirements={getPinRequirements}
                   onBlock={handleBlockUser}
                   onTip={handleTipUser}
                   onDelete={handleDeleteMessage}

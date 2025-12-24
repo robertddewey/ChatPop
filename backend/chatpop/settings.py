@@ -239,7 +239,7 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/1",
+        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/0",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_KWARGS": {"max_connections": 50},
@@ -561,6 +561,18 @@ Response JSON:
         [1, 5, 10, 25, 50],
         'Available radius options in miles for location-based chat discovery. Users select from these when creating a discoverable chat.',
         list
+    ),
+
+    # Message Pinning Settings
+    'PIN_DURATION_MINUTES': (
+        120,
+        'Fixed duration in minutes that a pinned message stays in the sticky section. Default: 120 (2 hours).',
+        int
+    ),
+    'PIN_MINIMUM_CENTS': (
+        25,
+        'Minimum amount in cents required to pin a message (base price when no pins exist). Default: 25 (25 cents).',
+        int
     ),
 }
 

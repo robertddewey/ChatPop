@@ -75,7 +75,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertTrue(result)
 
         # Verify message is in Redis
-        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=10)
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]['content'], 'Hello Redis!')
         self.assertEqual(messages[0]['username'], 'TestUser')
@@ -94,7 +94,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         )
 
         MessageCache.add_message(message)
-        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=10)
 
         self.assertTrue(messages[0]['username_is_reserved'])
 
@@ -107,7 +107,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         )
 
         MessageCache.add_message(message2)
-        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=10)
 
         # Find the second message (newest first)
         msg2_data = next(m for m in messages if m['content'] == 'Non-reserved username test')
@@ -127,7 +127,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         )
 
         MessageCache.add_message(message)
-        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=10)
 
         # Should still be marked as reserved (case-insensitive)
         self.assertTrue(messages[0]['username_is_reserved'])
@@ -146,7 +146,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         )
 
         MessageCache.add_message(message)
-        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=10)
 
         self.assertFalse(messages[0]['username_is_reserved'])
         self.assertIsNone(messages[0]['user_id'])
@@ -167,7 +167,7 @@ class RedisMessageCacheTests(TransactionTestCase):
             MessageCache.add_message(message)
             time.sleep(0.01)  # Small delay to ensure different timestamps
 
-        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=10)
 
         # Should be oldest first (chronological order for chat display)
         self.assertEqual(len(messages), 5)
@@ -190,7 +190,7 @@ class RedisMessageCacheTests(TransactionTestCase):
             MessageCache.add_message(message)
 
         # Fetch only 3
-        messages = MessageCache.get_messages(self.chat_room.code, limit=3)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=3)
         self.assertEqual(len(messages), 3)
 
     @allure.title("Get messages before timestamp pagination")
@@ -214,7 +214,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         # Get messages before the 3rd message timestamp
         before_ts = timestamps[2]
         messages = MessageCache.get_messages_before(
-            self.chat_room.code,
+            self.chat_room.id,
             before_timestamp=before_ts,
             limit=10
         )
@@ -249,7 +249,7 @@ class RedisMessageCacheTests(TransactionTestCase):
                 MessageCache.add_message(message)
 
             # Should only keep last 10
-            messages = MessageCache.get_messages(self.chat_room.code, limit=20)
+            messages = MessageCache.get_messages(self.chat_room.id, limit=20)
             self.assertEqual(len(messages), 10)
 
             # Should have newest messages (5-14) in chronological order
@@ -285,7 +285,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertTrue(result)
 
         # Verify in pinned cache
-        pinned = MessageCache.get_pinned_messages(self.chat_room.code)
+        pinned = MessageCache.get_pinned_messages(self.chat_room.id)
         self.assertEqual(len(pinned), 1)
         self.assertEqual(pinned[0]['content'], 'Important message')
         self.assertTrue(pinned[0]['is_pinned'])
@@ -314,7 +314,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         MessageCache.add_pinned_message(message)
 
         # get_pinned_messages should auto-remove expired pins
-        pinned = MessageCache.get_pinned_messages(self.chat_room.code)
+        pinned = MessageCache.get_pinned_messages(self.chat_room.id)
         self.assertEqual(len(pinned), 0)
 
     @allure.title("Remove pinned message from cache")
@@ -338,15 +338,15 @@ class RedisMessageCacheTests(TransactionTestCase):
         MessageCache.add_pinned_message(message)
 
         # Verify it's there
-        pinned = MessageCache.get_pinned_messages(self.chat_room.code)
+        pinned = MessageCache.get_pinned_messages(self.chat_room.id)
         self.assertEqual(len(pinned), 1)
 
         # Remove it
-        result = MessageCache.remove_pinned_message(self.chat_room.code, str(message.id))
+        result = MessageCache.remove_pinned_message(self.chat_room.id, str(message.id))
         self.assertTrue(result)
 
         # Verify it's gone
-        pinned = MessageCache.get_pinned_messages(self.chat_room.code)
+        pinned = MessageCache.get_pinned_messages(self.chat_room.id)
         self.assertEqual(len(pinned), 0)
 
     @allure.title("Multiple pinned messages ordered correctly")
@@ -374,7 +374,7 @@ class RedisMessageCacheTests(TransactionTestCase):
 
             MessageCache.add_pinned_message(message)
 
-        pinned = MessageCache.get_pinned_messages(self.chat_room.code)
+        pinned = MessageCache.get_pinned_messages(self.chat_room.id)
 
         # Should be ordered by pinned_until (ascending)
         self.assertEqual(len(pinned), 3)
@@ -405,7 +405,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         MessageCache.add_message(backroom_msg)
 
         # All messages should be in cache
-        messages = MessageCache.get_messages(self.chat_room.code)
+        messages = MessageCache.get_messages(self.chat_room.id)
         self.assertEqual(len(messages), 2)
 
         # Verify both messages are cached
@@ -439,15 +439,15 @@ class RedisMessageCacheTests(TransactionTestCase):
         MessageCache.add_pinned_message(pinned_msg)
 
         # Verify messages exist
-        self.assertEqual(len(MessageCache.get_messages(self.chat_room.code)), 1)
-        self.assertEqual(len(MessageCache.get_pinned_messages(self.chat_room.code)), 1)
+        self.assertEqual(len(MessageCache.get_messages(self.chat_room.id)), 1)
+        self.assertEqual(len(MessageCache.get_pinned_messages(self.chat_room.id)), 1)
 
         # Clear cache
-        MessageCache.clear_chat_cache(self.chat_room.code)
+        MessageCache.clear_room_cache(self.chat_room.id)
 
         # Verify all caches are empty
-        self.assertEqual(len(MessageCache.get_messages(self.chat_room.code)), 0)
-        self.assertEqual(len(MessageCache.get_pinned_messages(self.chat_room.code)), 0)
+        self.assertEqual(len(MessageCache.get_messages(self.chat_room.id)), 0)
+        self.assertEqual(len(MessageCache.get_pinned_messages(self.chat_room.id)), 0)
 
     @allure.title("Message serialization is complete")
     @allure.description("Test that all message fields are properly serialized")
@@ -475,7 +475,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         )
 
         MessageCache.add_message(message)
-        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=10)
 
         # Find the reply message
         msg_data = next(m for m in messages if m['content'] == 'Reply message')
@@ -512,9 +512,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         # Even if Redis has issues, these should not raise exceptions
         try:
             MessageCache.add_message(message)
-            MessageCache.get_messages(self.chat_room.code)
-            MessageCache.get_pinned_messages(self.chat_room.code)
-            MessageCache.clear_chat_cache(self.chat_room.code)
+            MessageCache.get_messages(self.chat_room.id)
+            MessageCache.get_pinned_messages(self.chat_room.id)
+            MessageCache.clear_room_cache(self.chat_room.id)
             # If we get here without exceptions, test passes
             self.assertTrue(True)
         except Exception as e:
@@ -618,7 +618,7 @@ class RedisPerformanceTests(TransactionTestCase):
         start_time = time.time()
 
         for _ in range(100):
-            messages = MessageCache.get_messages(self.chat_room.code, limit=50)
+            messages = MessageCache.get_messages(self.chat_room.id, limit=50)
             self.assertEqual(len(messages), 50)
 
         duration = time.time() - start_time
@@ -683,7 +683,7 @@ class RedisPerformanceTests(TransactionTestCase):
         start_time = time.time()
 
         for _ in range(1000):
-            messages = MessageCache.get_messages(self.chat_room.code, limit=50)
+            messages = MessageCache.get_messages(self.chat_room.id, limit=50)
             if len(messages) > 0:
                 cache_hits += 1
             else:
@@ -726,7 +726,7 @@ class RedisPerformanceTests(TransactionTestCase):
         # Benchmark reading pinned messages
         start_time = time.time()
         for _ in range(100):
-            pinned = MessageCache.get_pinned_messages(self.chat_room.code)
+            pinned = MessageCache.get_pinned_messages(self.chat_room.id)
             self.assertEqual(len(pinned), 10)
         read_duration = time.time() - start_time
 
@@ -793,7 +793,7 @@ class RedisReactionCacheTests(TransactionTestCase):
         ]
 
         result = MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id),
             reactions
         )
@@ -802,7 +802,7 @@ class RedisReactionCacheTests(TransactionTestCase):
 
         # Verify cached reactions
         cached = MessageCache.get_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id)
         )
 
@@ -822,7 +822,7 @@ class RedisReactionCacheTests(TransactionTestCase):
     def test_get_message_reactions_cache_miss(self):
         """Test that cache miss returns empty list"""
         reactions = MessageCache.get_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id)
         )
 
@@ -836,28 +836,28 @@ class RedisReactionCacheTests(TransactionTestCase):
         # First cache some reactions
         reactions = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id),
             reactions
         )
 
         # Verify cached
         cached = MessageCache.get_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id)
         )
         self.assertEqual(len(cached), 1)
 
         # Set empty reactions
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id),
             []
         )
 
         # Verify cache deleted
         cached = MessageCache.get_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id)
         )
         self.assertEqual(cached, [])
@@ -873,7 +873,7 @@ class RedisReactionCacheTests(TransactionTestCase):
             {"emoji": "❤️", "count": 2, "users": ["charlie"]}
         ]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id),
             reactions1
         )
@@ -883,7 +883,7 @@ class RedisReactionCacheTests(TransactionTestCase):
             {"emoji": "😂", "count": 3, "users": ["dave"]},
         ]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message2.id),
             reactions2
         )
@@ -891,7 +891,7 @@ class RedisReactionCacheTests(TransactionTestCase):
         # Batch fetch
         message_ids = [str(self.message1.id), str(self.message2.id)]
         reactions_by_message = MessageCache.batch_get_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             message_ids
         )
 
@@ -918,7 +918,7 @@ class RedisReactionCacheTests(TransactionTestCase):
         # Only cache reactions for message1
         reactions1 = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id),
             reactions1
         )
@@ -926,7 +926,7 @@ class RedisReactionCacheTests(TransactionTestCase):
         # Batch fetch (message2 not cached)
         message_ids = [str(self.message1.id), str(self.message2.id)]
         reactions_by_message = MessageCache.batch_get_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             message_ids
         )
 
@@ -945,7 +945,7 @@ class RedisReactionCacheTests(TransactionTestCase):
     def test_batch_get_reactions_empty_list(self):
         """Test batch fetch with empty message ID list"""
         reactions_by_message = MessageCache.batch_get_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             []
         )
 
@@ -978,7 +978,7 @@ class RedisReactionCacheTests(TransactionTestCase):
         start_time = time.time()
         message_ids = [str(msg.id) for msg in messages]
         reactions_by_message = MessageCache.batch_get_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             message_ids
         )
         duration = (time.time() - start_time) * 1000  # ms
@@ -997,14 +997,14 @@ class RedisReactionCacheTests(TransactionTestCase):
         """Test that reaction cache has 24-hour TTL"""
         reactions = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id),
             reactions
         )
 
         # Check TTL is set (should be 24 hours = 86400 seconds)
         redis_client = MessageCache._get_redis_client()
-        key = f"chat:{self.chat_room.code}:reactions:{self.message1.id}"
+        key = f"room:{self.chat_room.id}:reactions:{self.message1.id}"
         ttl = redis_client.ttl(key)
 
         # TTL should be set and close to 24 hours
@@ -1019,7 +1019,7 @@ class RedisReactionCacheTests(TransactionTestCase):
         # Initial cache
         initial_reactions = [{"emoji": "👍", "count": 2, "users": ["alice", "bob"]}]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id),
             initial_reactions
         )
@@ -1030,14 +1030,14 @@ class RedisReactionCacheTests(TransactionTestCase):
             {"emoji": "❤️", "count": 1, "users": ["dave"]}
         ]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id),
             updated_reactions
         )
 
         # Verify updated
         cached = MessageCache.get_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id)
         )
 
@@ -1053,7 +1053,7 @@ class RedisReactionCacheTests(TransactionTestCase):
         # Cache reactions for message1
         reactions1 = [{"emoji": "👍", "count": 5, "users": ["alice"]}]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id),
             reactions1
         )
@@ -1061,18 +1061,18 @@ class RedisReactionCacheTests(TransactionTestCase):
         # Cache reactions for message2
         reactions2 = [{"emoji": "❤️", "count": 3, "users": ["bob"]}]
         MessageCache.set_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message2.id),
             reactions2
         )
 
         # Verify separate caches
         cached1 = MessageCache.get_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message1.id)
         )
         cached2 = MessageCache.get_message_reactions(
-            self.chat_room.code,
+            self.chat_room.id,
             str(self.message2.id)
         )
 
@@ -1174,7 +1174,7 @@ class ConstanceCacheControlTests(TransactionTestCase):
             MessageCache.add_message(message)
 
         # Verify message is in Redis
-        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=10)
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]['content'], 'Cache enabled test')
 
@@ -1201,7 +1201,7 @@ class ConstanceCacheControlTests(TransactionTestCase):
             MessageCache.add_message(message)
 
         # Verify message is NOT in Redis
-        messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        messages = MessageCache.get_messages(self.chat_room.id, limit=10)
         self.assertEqual(len(messages), 0)
 
         # But message should exist in PostgreSQL
@@ -1361,7 +1361,7 @@ class ConstanceCacheControlTests(TransactionTestCase):
 
         # Check TTL is set on the Redis key
         redis_client = MessageCache._get_redis_client()
-        key = f"chat:{self.chat_room.code}:messages"
+        key = f"room:{self.chat_room.id}:messages"
         ttl = redis_client.ttl(key)
 
         # TTL should be set to 24 hours (86400 seconds)
@@ -1392,7 +1392,7 @@ class ConstanceCacheControlTests(TransactionTestCase):
         config.REDIS_CACHE_ENABLED = True
         start_time = time.time()
         for _ in range(100):
-            cached_messages = MessageCache.get_messages(self.chat_room.code, limit=50)
+            cached_messages = MessageCache.get_messages(self.chat_room.id, limit=50)
             self.assertEqual(len(cached_messages), 50)
         redis_duration = time.time() - start_time
         redis_avg = (redis_duration / 100) * 1000  # ms per read
@@ -1440,7 +1440,7 @@ class ConstanceCacheControlTests(TransactionTestCase):
             MessageCache.add_message(message1)
 
         # Verify not in cache
-        messages = MessageCache.get_messages(self.chat_room.code)
+        messages = MessageCache.get_messages(self.chat_room.id)
         self.assertEqual(len(messages), 0)
 
         # Enable cache
@@ -1457,7 +1457,7 @@ class ConstanceCacheControlTests(TransactionTestCase):
             MessageCache.add_message(message2)
 
         # Verify in cache
-        messages = MessageCache.get_messages(self.chat_room.code)
+        messages = MessageCache.get_messages(self.chat_room.id)
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]['content'], 'After enable')
 
@@ -1498,7 +1498,7 @@ class ConstanceCacheControlTests(TransactionTestCase):
         # Don't call MessageCache.add_message() - simulate cache miss
 
         # Verify cache is empty
-        cached_messages = MessageCache.get_messages(self.chat_room.code)
+        cached_messages = MessageCache.get_messages(self.chat_room.id)
         self.assertEqual(len(cached_messages), 0)
 
         # Make initial API request (should trigger backfill)
@@ -1513,7 +1513,7 @@ class ConstanceCacheControlTests(TransactionTestCase):
         self.assertEqual(len(response.data['messages']), 5)
 
         # Verify messages were backfilled to cache
-        cached_messages = MessageCache.get_messages(self.chat_room.code, limit=10)
+        cached_messages = MessageCache.get_messages(self.chat_room.id, limit=10)
         self.assertEqual(len(cached_messages), 5)
         self.assertEqual(cached_messages[0]['content'], 'Backfill test 0')
         self.assertEqual(cached_messages[4]['content'], 'Backfill test 4')
@@ -1569,7 +1569,7 @@ This test verifies the bug fix where:
             MessageCache.add_message(msg)
 
         # Verify exactly 41 messages in cache
-        cached_before = MessageCache.get_messages(self.chat_room.code, limit=100)
+        cached_before = MessageCache.get_messages(self.chat_room.id, limit=100)
         self.assertEqual(len(cached_before), 41, "Should have exactly 41 messages in cache")
 
         # Make API request for 50 messages (should be partial hit: 41 from cache + 9 from DB)
@@ -1584,7 +1584,7 @@ This test verifies the bug fix where:
         self.assertEqual(len(response.data['messages']), 50)
 
         # Verify the 9 missing messages were backfilled to cache
-        cached_after = MessageCache.get_messages(self.chat_room.code, limit=100)
+        cached_after = MessageCache.get_messages(self.chat_room.id, limit=100)
         self.assertEqual(len(cached_after), 50, "All 50 messages should now be in cache after backfill")
 
         # Verify the oldest messages are now cached (messages 0-8)

@@ -3,9 +3,16 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
-import { Pin, DollarSign, Ban, X, BadgeCheck, Reply, Trash2 } from 'lucide-react';
+import { Pin, DollarSign, Ban, X, BadgeCheck, Reply, Trash2, Plus, Minus } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import { isDarkTheme } from '@/lib/themes';
+
+interface PinRequirements {
+  current_pin_cents: number;
+  minimum_cents: number;
+  required_cents: number;
+  duration_minutes: number;
+}
 
 interface MessageActionsModalProps {
   message: Message;
@@ -14,12 +21,16 @@ interface MessageActionsModalProps {
   themeIsDarkMode?: boolean;
   children: React.ReactNode;
   onReply?: (message: Message) => void;
-  onPinSelf?: (messageId: string) => void;
-  onPinOther?: (messageId: string) => void;
+  onPin?: (messageId: string, amountCents: number) => Promise<boolean>;
+  onAddToPin?: (messageId: string, amountCents: number) => Promise<boolean>;
+  getPinRequirements?: (messageId: string) => Promise<PinRequirements>;
   onBlock?: (username: string) => void;
   onTip?: (username: string) => void;
   onReact?: (messageId: string, emoji: string) => void;
   onDelete?: (messageId: string) => void;
+  // Legacy props (deprecated, will be removed)
+  onPinSelf?: (messageId: string) => void;
+  onPinOther?: (messageId: string) => void;
 }
 
 // Get theme-aware modal styles (no system preference - force theme mode)
@@ -61,17 +72,30 @@ export default function MessageActionsModal({
   themeIsDarkMode = true,
   children,
   onReply,
-  onPinSelf,
-  onPinOther,
+  onPin,
+  onAddToPin,
+  getPinRequirements,
   onBlock,
   onTip,
   onReact,
   onDelete,
+  // Legacy props
+  onPinSelf,
+  onPinOther,
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Pin input state
+  const [showPinInput, setShowPinInput] = useState(false);
+  const [pinRequirements, setPinRequirements] = useState<PinRequirements | null>(null);
+  const [pinAmount, setPinAmount] = useState(0);
+  const [isPinning, setIsPinning] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+
   const dragStartY = React.useRef(0);
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
@@ -97,6 +121,10 @@ export default function MessageActionsModal({
   const handleOpen = () => {
     setIsOpen(true);
     setDragOffset(0);
+    setHasAnimatedIn(false);
+
+    // Mark animation as complete after it finishes (300ms)
+    setTimeout(() => setHasAnimatedIn(true), 300);
 
     // Haptic feedback (Android only)
     if (typeof window !== 'undefined' && 'vibrate' in navigator) {
@@ -117,8 +145,87 @@ export default function MessageActionsModal({
     setTimeout(() => {
       setIsOpen(false);
       setIsClosing(false);
+      setHasAnimatedIn(false);
       setDragOffset(0);
+      // Reset pin state
+      setShowPinInput(false);
+      setPinRequirements(null);
+      setPinAmount(0);
+      setPinError(null);
     }, 250); // Match animation duration
+  };
+
+  // Handle opening the pin input step
+  const handleOpenPinInput = async () => {
+    if (getPinRequirements) {
+      try {
+        const requirements = await getPinRequirements(message.id);
+        setPinRequirements(requirements);
+        setPinAmount(requirements.required_cents);
+        setShowPinInput(true);
+        setPinError(null);
+      } catch (error) {
+        console.error('Failed to get pin requirements:', error);
+        setPinError('Failed to load pin requirements');
+      }
+    } else {
+      // Fallback: use defaults if no getPinRequirements provided
+      setPinRequirements({
+        current_pin_cents: 0,
+        minimum_cents: 25,
+        required_cents: 25,
+        duration_minutes: 120,
+      });
+      setPinAmount(25);
+      setShowPinInput(true);
+    }
+  };
+
+  // Handle pin submission
+  const handlePinSubmit = async () => {
+    if (!pinRequirements) return;
+
+    // Validate amount
+    if (pinAmount < pinRequirements.required_cents) {
+      setPinError(`Must pay at least $${(pinRequirements.required_cents / 100).toFixed(2)}`);
+      return;
+    }
+
+    setIsPinning(true);
+    setPinError(null);
+
+    try {
+      const isAddToPin = message.is_pinned;
+      const handler = isAddToPin ? onAddToPin : onPin;
+
+      if (handler) {
+        const success = await handler(message.id, pinAmount);
+        if (success) {
+          handleClose();
+        } else {
+          setPinError('Failed to pin message');
+        }
+      } else {
+        // Legacy fallback
+        if (isOwnMessage && onPinSelf) {
+          onPinSelf(message.id);
+          handleClose();
+        } else if (!isOwnMessage && onPinOther) {
+          onPinOther(message.id);
+          handleClose();
+        }
+      }
+    } catch (error: any) {
+      setPinError(error.message || 'Failed to pin message');
+    } finally {
+      setIsPinning(false);
+    }
+  };
+
+  // Increment/decrement pin amount
+  const adjustPinAmount = (delta: number) => {
+    const newAmount = Math.max(pinRequirements?.required_cents || 25, pinAmount + delta);
+    setPinAmount(newAmount);
   };
 
   const handleDragStart = (e: React.TouchEvent) => {
@@ -177,52 +284,25 @@ export default function MessageActionsModal({
     });
   }
 
-  // Pin self (own message, not pinned)
-  if (isOwnMessage && !message.is_pinned && onPinSelf) {
-    actions.push({
-      icon: Pin,
-      label: 'Pin My Message',
-      action: () => {
-        onPinSelf(message.id);
-        handleClose();
-      },
-    });
-  }
+  // Pin actions (new API with amount input)
+  const hasPinSupport = onPin || onAddToPin || getPinRequirements || onPinSelf || onPinOther;
 
-  // Keep pinned (own message, already pinned)
-  if (isOwnMessage && message.is_pinned && onPinSelf) {
-    actions.push({
-      icon: Pin,
-      label: 'Keep My Message Pinned',
-      action: () => {
-        onPinSelf(message.id);
-        handleClose();
-      },
-    });
-  }
-
-  // Pin other (not own message, not pinned)
-  if (!isOwnMessage && !message.is_pinned && onPinOther) {
-    actions.push({
-      icon: Pin,
-      label: 'Pin Message',
-      action: () => {
-        onPinOther(message.id);
-        handleClose();
-      },
-    });
-  }
-
-  // Keep pinned (not own message, already pinned)
-  if (!isOwnMessage && message.is_pinned && onPinOther) {
-    actions.push({
-      icon: Pin,
-      label: 'Keep Message Pinned',
-      action: () => {
-        onPinOther(message.id);
-        handleClose();
-      },
-    });
+  if (hasPinSupport) {
+    if (!message.is_pinned) {
+      // Not pinned - show "Pin Message" or "Pin My Message"
+      actions.push({
+        icon: Pin,
+        label: isOwnMessage ? 'Pin My Message' : 'Pin Message',
+        action: handleOpenPinInput,
+      });
+    } else {
+      // Already pinned - show "Add to Pin" to increase value
+      actions.push({
+        icon: Pin,
+        label: isOwnMessage ? 'Add to My Pin' : 'Add to Pin',
+        action: handleOpenPinInput,
+      });
+    }
   }
 
   if (!isOwnMessage && onTip) {
@@ -327,7 +407,7 @@ export default function MessageActionsModal({
 
           {/* Modal Container */}
           <div
-            className={`relative w-full max-w-lg ${isClosing ? 'animate-slide-down' : (!isDragging && 'animate-slide-up')}`}
+            className={`relative w-full max-w-lg ${isClosing ? 'animate-slide-down' : (!hasAnimatedIn && 'animate-slide-up')}`}
             style={{
               transform: `translateY(${dragOffset}px)`,
               transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -364,28 +444,106 @@ export default function MessageActionsModal({
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="px-6 pb-8 space-y-3">
-                {actions.map((action, index) => {
-                  const Icon = action.icon;
-                  return (
+              {/* Actions or Pin Input */}
+              {showPinInput && pinRequirements ? (
+                <div className="px-6 pb-8 space-y-4">
+                  {/* Pin Amount Header */}
+                  <div className="text-center">
+                    <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {message.is_pinned ? 'Add to Pin' : 'Pin Message'}
+                    </h3>
+                    <p className={`text-sm mt-1 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {message.is_pinned
+                        ? 'Add value to keep your message pinned'
+                        : pinRequirements.current_pin_cents > 0
+                          ? `Current pin: $${(pinRequirements.current_pin_cents / 100).toFixed(2)}`
+                          : `Duration: ${pinRequirements.duration_minutes} minutes`
+                      }
+                    </p>
+                  </div>
+
+                  {/* Amount Input */}
+                  <div className="flex items-center justify-center gap-4">
                     <button
-                      key={index}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        action.action();
-                      }}
-                      onTouchStart={(e) => e.stopPropagation()}
-                      onTouchMove={(e) => e.stopPropagation()}
-                      onTouchEnd={(e) => e.stopPropagation()}
-                      className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 cursor-pointer ${modalStyles.actionButton}`}
+                      onClick={(e) => { e.stopPropagation(); adjustPinAmount(-25); }}
+                      disabled={pinAmount <= pinRequirements.required_cents}
+                      className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                        pinAmount <= pinRequirements.required_cents
+                          ? 'opacity-50 cursor-not-allowed'
+                          : 'active:scale-95'
+                      } ${themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'}`}
                     >
-                      <Icon className={`w-6 h-6 ${modalStyles.actionIcon}`} />
-                      <span className="text-base font-medium">{action.label}</span>
+                      <Minus className="w-5 h-5" />
                     </button>
-                  );
-                })}
-              </div>
+
+                    <div className={`text-3xl font-bold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      ${(pinAmount / 100).toFixed(2)}
+                    </div>
+
+                    <button
+                      onClick={(e) => { e.stopPropagation(); adjustPinAmount(25); }}
+                      className={`w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95 ${
+                        themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Minimum required */}
+                  <p className={`text-center text-xs ${themeIsDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    Minimum: ${(pinRequirements.required_cents / 100).toFixed(2)}
+                  </p>
+
+                  {/* Error message */}
+                  {pinError && (
+                    <p className="text-center text-sm text-red-500">{pinError}</p>
+                  )}
+
+                  {/* Buttons */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowPinInput(false); }}
+                      className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
+                        themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handlePinSubmit(); }}
+                      disabled={isPinning}
+                      className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
+                        isPinning ? 'opacity-50 cursor-not-allowed' : ''
+                      } ${themeIsDarkMode ? 'bg-cyan-600 text-white' : 'bg-purple-600 text-white'}`}
+                    >
+                      {isPinning ? 'Pinning...' : message.is_pinned ? 'Add to Pin' : 'Pin Message'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-6 pb-8 space-y-3">
+                  {actions.map((action, index) => {
+                    const Icon = action.icon;
+                    return (
+                      <button
+                        key={index}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          action.action();
+                        }}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        onTouchMove={(e) => e.stopPropagation()}
+                        onTouchEnd={(e) => e.stopPropagation()}
+                        className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 cursor-pointer ${modalStyles.actionButton}`}
+                      >
+                        <Icon className={`w-6 h-6 ${modalStyles.actionIcon}`} />
+                        <span className="text-base font-medium">{action.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>,

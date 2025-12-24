@@ -80,8 +80,8 @@ class Command(BaseCommand):
             # Get top 3 reactions by count
             top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
 
-            # Cache them
-            success = MessageCache.set_message_reactions(chat_room.code, str(msg.id), top_reactions)
+            # Cache them (use room_id for cache key uniqueness)
+            success = MessageCache.set_message_reactions(chat_room.id, str(msg.id), top_reactions)
 
             if success:
                 synced += 1
