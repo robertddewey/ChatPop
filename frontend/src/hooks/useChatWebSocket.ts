@@ -32,6 +32,22 @@ export function useChatWebSocket({
   const MAX_RECONNECT_ATTEMPTS = Infinity; // Infinite reconnection attempts with polling fallback
   const RECONNECT_DELAY = 2000;
 
+  // Use refs for callbacks to avoid stale closures in WebSocket handlers
+  const onMessageRef = useRef(onMessage);
+  const onUserBlockedRef = useRef(onUserBlocked);
+  const onUserKickedRef = useRef(onUserKicked);
+  const onReactionRef = useRef(onReaction);
+  const onMessageDeletedRef = useRef(onMessageDeleted);
+  const onErrorRef = useRef(onError);
+
+  // Keep refs up to date
+  useEffect(() => { onMessageRef.current = onMessage; }, [onMessage]);
+  useEffect(() => { onUserBlockedRef.current = onUserBlocked; }, [onUserBlocked]);
+  useEffect(() => { onUserKickedRef.current = onUserKicked; }, [onUserKicked]);
+  useEffect(() => { onReactionRef.current = onReaction; }, [onReaction]);
+  useEffect(() => { onMessageDeletedRef.current = onMessageDeleted; }, [onMessageDeleted]);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
+
   const connect = useCallback(() => {
     if (!enabled || !sessionToken || ws.current?.readyState === WebSocket.OPEN) {
       return;
@@ -68,8 +84,8 @@ export function useChatWebSocket({
         // Handle user_blocked event
         if (data.type === 'user_blocked') {
           console.log('[WebSocket] User blocked event received:', data.message);
-          if (onUserBlocked) {
-            onUserBlocked(data.message);
+          if (onUserBlockedRef.current) {
+            onUserBlockedRef.current(data.message);
           }
           return;
         }
@@ -77,8 +93,8 @@ export function useChatWebSocket({
         // Handle user_kicked event (user was kicked/banned from chat)
         if (data.type === 'kicked') {
           console.log('[WebSocket] User kicked event received:', data.message);
-          if (onUserKicked) {
-            onUserKicked(data.message);
+          if (onUserKickedRef.current) {
+            onUserKickedRef.current(data.message);
           }
           return;
         }
@@ -86,8 +102,8 @@ export function useChatWebSocket({
         // Handle reaction events
         if (data.type === 'reaction') {
           console.log('[WebSocket] Reaction event received:', data);
-          if (onReaction) {
-            onReaction(data);
+          if (onReactionRef.current) {
+            onReactionRef.current(data);
           }
           return;
         }
@@ -95,15 +111,15 @@ export function useChatWebSocket({
         // Handle message deletion events
         if (data.type === 'message_deleted') {
           console.log('[WebSocket] Message deleted event received:', data.message_id);
-          if (onMessageDeleted) {
-            onMessageDeleted(data.message_id);
+          if (onMessageDeletedRef.current) {
+            onMessageDeletedRef.current(data.message_id);
           }
           return;
         }
 
         // Handle chat messages (has an id field)
-        if (onMessage && data.id) {
-          onMessage(data as Message);
+        if (onMessageRef.current && data.id) {
+          onMessageRef.current(data as Message);
         }
       } catch (error) {
         console.error('[WebSocket] Failed to parse message:', error);
@@ -112,8 +128,8 @@ export function useChatWebSocket({
 
     socket.onerror = (error) => {
       console.error('[WebSocket] Error:', error);
-      if (onError) {
-        onError(error);
+      if (onErrorRef.current) {
+        onErrorRef.current(error);
       }
     };
 
@@ -143,7 +159,7 @@ export function useChatWebSocket({
     };
 
     ws.current = socket;
-  }, [chatCode, sessionToken, onMessage, onUserBlocked, onUserKicked, onReaction, onMessageDeleted, onError, enabled]);
+  }, [chatCode, sessionToken, enabled]); // Callbacks use refs, no need to include them
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {

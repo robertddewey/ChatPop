@@ -76,11 +76,11 @@ export default function JoinChatModal({
   const audioContextRef = React.useRef<AudioContext>();
   const validationTimeoutRef = React.useRef<NodeJS.Timeout>();
 
-  // Import the audio initialization function
-  const { initAudioContext } = React.useMemo(() => {
+  // Import the audio functions
+  const { initAudioContext, playJoinSound } = React.useMemo(() => {
     return typeof window !== 'undefined'
       ? require('@/lib/sounds')
-      : { initAudioContext: () => {} };
+      : { initAudioContext: () => {}, playJoinSound: () => {} };
   }, []);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
@@ -165,8 +165,12 @@ export default function JoinChatModal({
     e.preventDefault();
     setError('');
 
-    // Initialize AudioContext during user gesture (button click)
-    initAudioContext();
+    // Play sound and AWAIT it during user gesture to unlock audio on iOS
+    // The await is critical for iOS - it must complete during the gesture
+    await playJoinSound();
+
+    // Also initialize AudioContext for future sounds
+    await initAudioContext();
 
     // Use placeholder (reserved username) if no username entered
     const finalUsername = username.trim() || currentUserDisplayName || '';

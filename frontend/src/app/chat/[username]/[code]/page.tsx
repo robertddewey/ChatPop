@@ -16,7 +16,7 @@ import RegisterModal from '@/components/RegisterModal';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
-import { playJoinSound } from '@/lib/sounds';
+import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
 import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft, Reply, X } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
@@ -219,7 +219,11 @@ export default function ChatPage() {
       shouldAutoScrollRef.current = true;
       return [...prev, message];
     });
-  }, []);
+    // Play receive sound only for messages from others (not your own)
+    if (message.username !== username) {
+      playReceiveMessageSound();
+    }
+  }, [username]);
 
   // Handle user blocked event (eviction)
   const handleUserBlocked = useCallback((message: string) => {
@@ -421,15 +425,10 @@ export default function ChatPage() {
 
         console.log('==============================');
 
-        // Check if user has already joined by looking for session token
+        // Load session token if it exists (needed for WebSocket auth after join)
+        // But don't auto-join - always show modal to require user gesture for audio permissions
         const existingSessionToken = localStorage.getItem(`chat_session_${code}`);
-        if (existingSessionToken) {
-          console.log('[Auto-Join] Session token found - setting hasJoined to true');
-          setHasJoined(true);
-          setSessionToken(existingSessionToken);
-        } else {
-          setHasJoined(false);
-        }
+        setSessionToken(existingSessionToken);
 
         setLoading(false);
       } catch (err: any) {
@@ -670,9 +669,6 @@ export default function ChatPage() {
 
       // Add history entry so back button shows join modal again
       window.history.pushState({ joined: true }, '', window.location.href);
-
-      // Play success sound to verify audio works after user gesture
-      playJoinSound();
     } catch (err: any) {
       // Log the full error structure for debugging
       console.error('[Join Error] Full error:', err);
@@ -773,6 +769,7 @@ export default function ChatPage() {
         wsSendMessage(newMessage.trim(), replyingTo?.id);
         setNewMessage('');
         shouldAutoScrollRef.current = true; // Always scroll when sending a message
+        playSendMessageSound(); // Play send sound
       } else {
         // Fallback to REST API (for backwards compatibility or if WebSocket fails)
         let messageUsername = username;
@@ -1362,7 +1359,7 @@ export default function ChatPage() {
       {!hasJoined && chatRoom && !authMode && (
         <JoinChatModal
           chatRoom={chatRoom}
-          currentUserDisplayName={roomUsername}
+          currentUserDisplayName={username}
           hasJoinedBefore={hasJoinedBefore}
           isBlocked={isBlocked}
           isLoggedIn={!!currentUserId}
