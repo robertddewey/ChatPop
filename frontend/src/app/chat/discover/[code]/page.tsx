@@ -1089,8 +1089,8 @@ export default function ChatPage() {
     return aboveViewportHosts;
   }, [filteredMessages, aboveViewportMessageIds]);
 
-  // Only show pinned in sticky if not visible in scroll area
-  const stickyPinnedMessage = topPinnedMessage && !visibleMessageIds.has(topPinnedMessage.id) ? topPinnedMessage : null;
+  // Always show pinned message in sticky area (user paid for visibility)
+  const stickyPinnedMessage = topPinnedMessage || null;
 
   // Check if user is scrolled near the bottom
   const checkIfNearBottom = () => {
