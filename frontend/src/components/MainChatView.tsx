@@ -58,6 +58,7 @@ const tailwindColors: Record<string, string> = {
   'text-white': '#ffffff',
   'text-gray-400': '#9ca3af',
   'text-red-500': '#ef4444',
+  'text-purple-400': '#c084fc',
 };
 
 // Convert Tailwind color class to inline color style
