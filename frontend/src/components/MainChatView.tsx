@@ -645,6 +645,11 @@ export default function MainChatView({
                     reactions={messageReactions[message.id] || message.reactions || []}
                     onReactionClick={(emoji) => handleReactionToggle(message.id, emoji)}
                     themeIsDarkMode={themeIsDarkMode}
+                    highlightTheme={currentDesign.reactionHighlightBg ? {
+                      reaction_highlight_bg: currentDesign.reactionHighlightBg,
+                      reaction_highlight_border: currentDesign.reactionHighlightBorder,
+                      reaction_highlight_text: currentDesign.reactionHighlightText,
+                    } : undefined}
                   />
               </div>
             </div>

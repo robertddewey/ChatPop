@@ -519,6 +519,18 @@ class MessageListView(APIView):
         # Query params
         limit = int(request.query_params.get('limit', config.MESSAGE_LIST_DEFAULT_LIMIT))
         before_timestamp = request.query_params.get('before')  # Unix timestamp for pagination
+        session_token = request.query_params.get('session_token')
+
+        # Extract current user's fingerprint and user_id from session token (for has_reacted)
+        current_fingerprint = None
+        current_user_id = None
+        if session_token:
+            try:
+                session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+                current_fingerprint = session_data.get('fingerprint')
+                current_user_id = session_data.get('user_id')
+            except Exception:
+                pass  # Invalid token - just proceed without has_reacted
 
         # Enforce maximum limit from Constance settings (security: prevent unlimited message requests)
         max_limit = config.MESSAGE_HISTORY_MAX_COUNT
@@ -556,7 +568,9 @@ class MessageListView(APIView):
                         chat_room,
                         limit=remaining_limit,
                         before_timestamp=oldest_cached_timestamp,
-                        request=request
+                        request=request,
+                        current_fingerprint=current_fingerprint,
+                        current_user_id=current_user_id
                     )
 
                     # Backfill cache with the older messages we just fetched
@@ -579,14 +593,39 @@ class MessageListView(APIView):
                 message_ids = [msg['id'] for msg in messages]
                 reactions_by_message = MessageCache.batch_get_reactions(chat_room.id, message_ids)
 
-                # Attach reactions to each message
+                # Get current user's reactions for has_reacted (single query)
+                user_reactions = {}  # message_id -> set of emojis
+                if current_fingerprint or current_user_id:
+                    from django.db.models import Q
+                    # Build query to match either fingerprint or user_id
+                    q_filter = Q()
+                    if current_fingerprint:
+                        q_filter |= Q(fingerprint=current_fingerprint)
+                    if current_user_id:
+                        q_filter |= Q(user_id=current_user_id)
+
+                    user_reaction_records = MessageReaction.objects.filter(
+                        Q(message_id__in=message_ids) & q_filter
+                    ).values('message_id', 'emoji')
+                    for record in user_reaction_records:
+                        msg_id = str(record['message_id'])
+                        if msg_id not in user_reactions:
+                            user_reactions[msg_id] = set()
+                        user_reactions[msg_id].add(record['emoji'])
+
+                # Attach reactions to each message with has_reacted
                 for msg in messages:
                     msg_id = msg['id']
-                    msg['reactions'] = reactions_by_message.get(msg_id, [])
+                    reactions = reactions_by_message.get(msg_id, [])
+                    user_emojis = user_reactions.get(msg_id, set())
+                    # Add has_reacted to each reaction
+                    for reaction in reactions:
+                        reaction['has_reacted'] = reaction['emoji'] in user_emojis
+                    msg['reactions'] = reactions
             else:
                 # Cache miss - fall back to PostgreSQL and backfill cache
                 print(f"DEBUG: Cache miss! Calling _fetch_from_db, limit={limit}, before_timestamp={before_timestamp}")
-                messages = self._fetch_from_db(chat_room, limit, before_timestamp, request)
+                messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id)
                 source = 'postgresql_fallback'
                 print(f"DEBUG: _fetch_from_db returned {len(messages)} messages")
 
@@ -597,7 +636,7 @@ class MessageListView(APIView):
                 print(f"DEBUG: _backfill_cache completed")
         else:
             # Cache disabled - always use PostgreSQL
-            messages = self._fetch_from_db(chat_room, limit, before_timestamp, request)
+            messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id)
 
         # Filter blocked users for authenticated users
         if request.user and request.user.is_authenticated:
@@ -628,7 +667,7 @@ class MessageListView(APIView):
             }
         })
 
-    def _fetch_from_db(self, chat_room, limit, before_timestamp=None, request=None):
+    def _fetch_from_db(self, chat_room, limit, before_timestamp=None, request=None, current_fingerprint=None, current_user_id=None):
         """
         Fallback: fetch messages from PostgreSQL.
 
@@ -656,6 +695,26 @@ class MessageListView(APIView):
         # Batch fetch reactions from cache for all messages (SOLVES N+1 PROBLEM)
         message_ids = [str(msg.id) for msg in messages]
         reactions_by_message = MessageCache.batch_get_reactions(chat_room.id, message_ids)
+
+        # Get current user's reactions for has_reacted (single query)
+        user_reactions = {}  # message_id -> set of emojis
+        if current_fingerprint or current_user_id:
+            from django.db.models import Q
+            # Build query to match either fingerprint or user_id
+            q_filter = Q()
+            if current_fingerprint:
+                q_filter |= Q(fingerprint=current_fingerprint)
+            if current_user_id:
+                q_filter |= Q(user_id=current_user_id)
+
+            user_reaction_records = MessageReaction.objects.filter(
+                Q(message_id__in=message_ids) & q_filter
+            ).values('message_id', 'emoji')
+            for record in user_reaction_records:
+                msg_id = str(record['message_id'])
+                if msg_id not in user_reactions:
+                    user_reactions[msg_id] = set()
+                user_reactions[msg_id].add(record['emoji'])
 
         # Serialize (with username_is_reserved computation)
         serialized = []
@@ -688,19 +747,23 @@ class MessageListView(APIView):
                 # Cache miss: fallback to database query (compute reaction summary)
                 from collections import defaultdict
                 reactions_list = msg.reactions.all()
-                emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
+                emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0})
 
                 for reaction in reactions_list:
                     emoji = reaction.emoji
                     emoji_counts[emoji]['emoji'] = emoji
                     emoji_counts[emoji]['count'] += 1
-                    emoji_counts[emoji]['users'].append(reaction.username)
 
                 top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
 
                 # Cache the computed reactions for next time
                 if top_reactions:
                     MessageCache.set_message_reactions(chat_room.id, msg_id_str, top_reactions)
+
+            # Add has_reacted to each reaction
+            user_emojis = user_reactions.get(msg_id_str, set())
+            for reaction in top_reactions:
+                reaction['has_reacted'] = reaction['emoji'] in user_emojis
 
             serialized.append({
                 'id': str(msg.id),
@@ -1687,13 +1750,12 @@ class MessageReactionToggleView(APIView):
         # Update reaction cache after database modification
         from collections import defaultdict
         reactions_list = MessageReaction.objects.filter(message=message)
-        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
+        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0})
 
         for reaction in reactions_list:
             emoji = reaction.emoji
             emoji_counts[emoji]['emoji'] = emoji
             emoji_counts[emoji]['count'] += 1
-            emoji_counts[emoji]['users'].append(reaction.username)
 
         # Get top 3 reactions by count
         top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
@@ -1735,21 +1797,44 @@ class MessageReactionsListView(APIView):
         chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
 
+        # Get current user's fingerprint and user_id for has_reacted
+        session_token = request.query_params.get('session_token')
+        current_fingerprint = None
+        current_user_id = None
+        if session_token:
+            try:
+                session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+                current_fingerprint = session_data.get('fingerprint')
+                current_user_id = session_data.get('user_id')
+            except Exception:
+                pass
+
         reactions = MessageReaction.objects.filter(message=message).order_by('-created_at')
         serializer = MessageReactionSerializer(reactions, many=True)
 
         # Group reactions by emoji with counts
         from collections import defaultdict
-        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'users': []})
+        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0})
+        user_emojis = set()  # Track current user's emojis
 
         for reaction in reactions:
             emoji = reaction.emoji
             emoji_counts[emoji]['emoji'] = emoji
             emoji_counts[emoji]['count'] += 1
-            emoji_counts[emoji]['users'].append(reaction.username)
+            # Check if this is the current user's reaction (by fingerprint or user_id)
+            is_user_reaction = (
+                (current_fingerprint and reaction.fingerprint == current_fingerprint) or
+                (current_user_id and reaction.user_id and str(reaction.user_id) == current_user_id)
+            )
+            if is_user_reaction:
+                user_emojis.add(emoji)
 
         # Sort by count (descending) and take top 3
         top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+
+        # Add has_reacted to each summary item
+        for reaction in top_reactions:
+            reaction['has_reacted'] = reaction['emoji'] in user_emojis
 
         return Response({
             'reactions': serializer.data,

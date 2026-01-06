@@ -78,6 +78,11 @@ class ChatTheme(models.Model):
     badge_icon_color = models.CharField(max_length=100, default='text-blue-400', help_text="Tailwind classes for verified badge icon color")
     reply_icon_color = models.CharField(max_length=100, default='text-cyan-400', help_text="Tailwind classes for reply icon color")
 
+    # Reaction Highlight (when user has reacted)
+    reaction_highlight_bg = models.CharField(max_length=100, default='bg-zinc-700', help_text="Background classes for highlighted reaction pill")
+    reaction_highlight_border = models.CharField(max_length=100, default='border border-zinc-500', help_text="Border classes for highlighted reaction pill")
+    reaction_highlight_text = models.CharField(max_length=100, default='text-zinc-200', help_text="Text color classes for highlighted reaction count")
+
     # Username Styling (per message type)
     my_username = models.CharField(max_length=200, default='text-xs font-semibold text-white', help_text="Tailwind classes for current user's username")
     regular_username = models.CharField(max_length=200, default='text-xs font-semibold text-white', help_text="Tailwind classes for other users' usernames")

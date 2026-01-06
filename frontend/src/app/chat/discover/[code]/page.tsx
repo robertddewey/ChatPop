@@ -74,6 +74,9 @@ function convertThemeToCamelCase(theme: ChatTheme): any {
     replyPreviewContent: theme.reply_preview_content,
     replyPreviewCloseButton: theme.reply_preview_close_button,
     replyPreviewCloseIcon: theme.reply_preview_close_icon,
+    reactionHighlightBg: theme.reaction_highlight_bg,
+    reactionHighlightBorder: theme.reaction_highlight_border,
+    reactionHighlightText: theme.reaction_highlight_text,
   };
 }
 
@@ -139,6 +142,17 @@ const defaultTheme: ChatTheme = {
   crown_icon_color: "text-teal-400",
   badge_icon_color: "text-emerald-400",
   reply_icon_color: "text-emerald-300",
+  my_username: "text-xs font-semibold text-emerald-300",
+  regular_username: "text-xs font-semibold text-zinc-300",
+  host_username: "text-xs font-semibold text-teal-300",
+  pinned_username: "text-xs font-semibold text-amber-300",
+  my_timestamp: "text-xs text-emerald-200",
+  regular_timestamp: "text-xs text-zinc-400",
+  host_timestamp: "text-xs text-teal-200",
+  pinned_timestamp: "text-xs text-amber-200",
+  reaction_highlight_bg: "bg-zinc-700",
+  reaction_highlight_border: "border border-zinc-500",
+  reaction_highlight_text: "text-zinc-200",
 };
 
 export default function ChatPage() {
@@ -258,9 +272,9 @@ export default function ChatPage() {
     const { message_id, action, emoji } = data;
     console.log('[Reactions] WebSocket event:', { message_id, action, emoji });
 
-    // Fetch fresh reaction summary for this message
+    // Fetch fresh reaction summary for this message (with sessionToken for has_reacted)
     try {
-      const { summary } = await messageApi.getReactions(code, message_id);
+      const { summary } = await messageApi.getReactions(code, message_id, undefined, sessionToken || undefined);
       setMessageReactions(prev => ({
         ...prev,
         [message_id]: summary
@@ -268,7 +282,7 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Failed to fetch reactions:', error);
     }
-  }, [code]);
+  }, [code, sessionToken]);
 
   // Handle message deletion WebSocket events
   const handleMessageDeleted = useCallback((messageId: string) => {
@@ -590,7 +604,7 @@ export default function ChatPage() {
   // Load messages
   const loadMessages = async () => {
     try {
-      const msgs = await messageApi.getMessages(code);
+      const msgs = await messageApi.getMessages(code, undefined, sessionToken || undefined);
       setMessages(msgs);
       setHasMoreMessages(true); // Reset when loading fresh messages
 
@@ -1044,11 +1058,40 @@ export default function ChatPage() {
         setMessageReactions(prev => {
           const updated = { ...prev };
           const reactions = updated[messageId] || [];
-          updated[messageId] = reactions.filter(r => r.emoji !== emoji);
+          // Find the reaction and decrement count, or remove if count becomes 0
+          updated[messageId] = reactions
+            .map(r => r.emoji === emoji ? { ...r, count: r.count - 1, has_reacted: false } : r)
+            .filter(r => r.count > 0);
+          return updated;
+        });
+      } else if (result.action === 'added') {
+        // Optimistically add the reaction with has_reacted: true
+        setMessageReactions(prev => {
+          const updated = { ...prev };
+          const reactions = [...(updated[messageId] || [])];
+          const existingIndex = reactions.findIndex(r => r.emoji === emoji);
+          if (existingIndex >= 0) {
+            reactions[existingIndex] = { ...reactions[existingIndex], count: reactions[existingIndex].count + 1, has_reacted: true };
+          } else {
+            reactions.push({ emoji, count: 1, has_reacted: true });
+          }
+          updated[messageId] = reactions;
+          return updated;
+        });
+      } else if (result.action === 'updated') {
+        // User changed their reaction from one emoji to another
+        setMessageReactions(prev => {
+          const updated = { ...prev };
+          const reactions = [...(updated[messageId] || [])];
+          // Remove has_reacted from old reactions, add to new
+          updated[messageId] = reactions.map(r => ({
+            ...r,
+            has_reacted: r.emoji === emoji
+          }));
           return updated;
         });
       }
-      // For 'added' or 'updated', the WebSocket will broadcast the update
+      // WebSocket will also broadcast the update for consistency across clients
     } catch (error) {
       console.error('Failed to toggle reaction:', error);
     }

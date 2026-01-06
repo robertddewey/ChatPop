@@ -130,6 +130,9 @@ export interface ChatTheme {
   regular_timestamp: string;
   host_timestamp: string;
   pinned_timestamp: string;
+  reaction_highlight_bg: string;
+  reaction_highlight_border: string;
+  reaction_highlight_text: string;
 }
 
 export interface ChatRoom {
@@ -170,7 +173,7 @@ export interface MessageReaction {
 export interface ReactionSummary {
   emoji: string;
   count: number;
-  users: string[];
+  has_reacted: boolean;
 }
 
 export interface Message {
@@ -424,8 +427,12 @@ export const chatApi = {
 };
 
 export const messageApi = {
-  getMessages: async (code: string, roomUsername?: string): Promise<Message[]> => {
-    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/`);
+  getMessages: async (code: string, roomUsername?: string, sessionToken?: string): Promise<Message[]> => {
+    const params: Record<string, string> = {};
+    if (sessionToken) {
+      params.session_token = sessionToken;
+    }
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/`, { params });
     // Support new Redis cache response format: { messages: [...], pinned_messages: [...], source: "redis" }
     // Fallback to old paginated format: { results: [...] }
     // Fallback to direct array: [...]
@@ -538,12 +545,16 @@ export const messageApi = {
     return response.data;
   },
 
-  getReactions: async (code: string, messageId: string, roomUsername?: string): Promise<{
+  getReactions: async (code: string, messageId: string, roomUsername?: string, sessionToken?: string): Promise<{
     reactions: MessageReaction[];
     summary: ReactionSummary[];
     total_count: number;
   }> => {
-    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/reactions/`);
+    const params: Record<string, string> = {};
+    if (sessionToken) {
+      params.session_token = sessionToken;
+    }
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/reactions/`, { params });
     return response.data;
   },
 
