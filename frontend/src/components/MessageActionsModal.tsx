@@ -416,17 +416,20 @@ export default function MessageActionsModal({
             <div
               className={`w-full ${modalStyles.container} rounded-t-3xl`}
               onClick={(e) => e.stopPropagation()}
-              onTouchStart={handleDragStart}
-              onTouchMove={handleDragMove}
-              onTouchEnd={handleDragEnd}
             >
-              {/* Drag handle */}
-              <div className="pt-3 pb-2 flex justify-center">
-                <div className={`w-12 h-1.5 ${modalStyles.dragHandle} rounded-full`} />
-              </div>
+              {/* Draggable area: handle + message preview */}
+              <div
+                onTouchStart={handleDragStart}
+                onTouchMove={handleDragMove}
+                onTouchEnd={handleDragEnd}
+              >
+                {/* Drag handle */}
+                <div className="pt-3 pb-2 flex justify-center">
+                  <div className={`w-12 h-1.5 ${modalStyles.dragHandle} rounded-full`} />
+                </div>
 
-              {/* Message Preview */}
-              <div className="px-6 pt-2 pb-6">
+                {/* Message Preview */}
+                <div className="px-6 pt-2 pb-6">
                 <div className={`p-4 ${modalStyles.messagePreview}`}>
                   <div className="flex items-center gap-1 mb-2">
                     <span className={`font-semibold text-sm ${modalStyles.usernameText}`}>
@@ -442,11 +445,12 @@ export default function MessageActionsModal({
                     {message.content}
                   </p>
                 </div>
+                </div>
               </div>
 
               {/* Actions or Pin Input */}
               {showPinInput && pinRequirements ? (
-                <div className="px-6 pb-8 space-y-4">
+                <div className="px-6 pb-8 space-y-4 max-h-[280px] overflow-y-auto">
                   {/* Pin Amount Header */}
                   <div className="text-center">
                     <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -522,7 +526,7 @@ export default function MessageActionsModal({
                   </div>
                 </div>
               ) : (
-                <div className="px-6 pb-8 space-y-3">
+                <div className="px-6 pb-8 space-y-3 max-h-[280px] overflow-y-auto">
                   {actions.map((action, index) => {
                     const Icon = action.icon;
                     return (
