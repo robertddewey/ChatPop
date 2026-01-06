@@ -142,7 +142,7 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
         # Validate discovery_radius_miles is in allowed options
         if discovery_radius_miles is not None:
             from constance import config
-            allowed_options = config.CHAT_DISCOVERY_RADIUS_OPTIONS
+            allowed_options = [int(x.strip()) for x in config.CHAT_DISCOVERY_RADIUS_OPTIONS.split(',')]
             if discovery_radius_miles not in allowed_options:
                 raise serializers.ValidationError({
                     'discovery_radius_miles': f'Must be one of: {allowed_options}'
@@ -273,12 +273,12 @@ class MessageSerializer(serializers.ModelSerializer):
             'id', 'chat_room', 'username', 'user', 'message_type', 'content', 'voice_url',
             'voice_duration', 'voice_waveform',
             'reply_to', 'reply_to_message',
-            'is_pinned', 'pinned_at', 'pinned_until', 'pin_amount_paid',
+            'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount',
             'is_from_host', 'username_is_reserved', 'time_until_unpin', 'created_at', 'is_deleted'
         ]
         read_only_fields = [
             'id', 'user', 'message_type', 'voice_url', 'voice_duration', 'voice_waveform',
-            'is_pinned', 'pinned_at', 'pinned_until', 'pin_amount_paid', 'created_at', 'is_deleted'
+            'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount', 'created_at', 'is_deleted'
         ]
 
     def get_is_from_host(self, obj):
@@ -293,8 +293,8 @@ class MessageSerializer(serializers.ModelSerializer):
         )
 
     def get_time_until_unpin(self, obj):
-        if obj.is_pinned and obj.pinned_until:
-            remaining = (obj.pinned_until - timezone.now()).total_seconds()
+        if obj.is_pinned and obj.sticky_until:
+            remaining = (obj.sticky_until - timezone.now()).total_seconds()
             return max(0, int(remaining))
         return None
 

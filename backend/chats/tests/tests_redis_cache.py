@@ -273,11 +273,12 @@ class RedisMessageCacheTests(TransactionTestCase):
         )
 
         # Pin the message
-        pinned_until = timezone.now() + timedelta(hours=1)
+        sticky_until = timezone.now() + timedelta(hours=1)
         message.is_pinned = True
         message.pinned_at = timezone.now()
-        message.pinned_until = pinned_until
+        message.sticky_until = sticky_until
         message.pin_amount_paid = Decimal('5.00')
+        message.current_pin_amount = Decimal('5.00')
         message.save()
 
         # Add to pinned cache
@@ -290,6 +291,7 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(pinned[0]['content'], 'Important message')
         self.assertTrue(pinned[0]['is_pinned'])
         self.assertEqual(pinned[0]['pin_amount_paid'], '5.00')
+        self.assertEqual(pinned[0]['current_pin_amount'], '5.00')
 
     @allure.title("Pinned message auto expiry")
     @allure.description("Test that expired pinned messages are automatically removed")
@@ -307,8 +309,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         # Pin with expiry in the past
         message.is_pinned = True
         message.pinned_at = timezone.now() - timedelta(hours=2)
-        message.pinned_until = timezone.now() - timedelta(hours=1)
+        message.sticky_until = timezone.now() - timedelta(hours=1)
         message.pin_amount_paid = Decimal('5.00')
+        message.current_pin_amount = Decimal('5.00')
         message.save()
 
         MessageCache.add_pinned_message(message)
@@ -332,7 +335,7 @@ class RedisMessageCacheTests(TransactionTestCase):
 
         message.is_pinned = True
         message.pinned_at = timezone.now()
-        message.pinned_until = timezone.now() + timedelta(hours=1)
+        message.sticky_until = timezone.now() + timedelta(hours=1)
         message.save()
 
         MessageCache.add_pinned_message(message)
@@ -350,10 +353,10 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(len(pinned), 0)
 
     @allure.title("Multiple pinned messages ordered correctly")
-    @allure.description("Test that pinned messages are ordered by pinned_until timestamp")
+    @allure.description("Test that pinned messages are ordered by sticky_until timestamp")
     @allure.severity(allure.severity_level.NORMAL)
     def test_multiple_pinned_messages_ordering(self):
-        """Test that pinned messages are ordered by pinned_until timestamp"""
+        """Test that pinned messages are ordered by sticky_until timestamp"""
         # Create multiple pinned messages
         now = timezone.now()
 
@@ -368,15 +371,16 @@ class RedisMessageCacheTests(TransactionTestCase):
             message.is_pinned = True
             message.pinned_at = now
             # Different expiry times
-            message.pinned_until = now + timedelta(hours=i+1)
+            message.sticky_until = now + timedelta(hours=i+1)
             message.pin_amount_paid = Decimal(f'{i+1}.00')
+            message.current_pin_amount = Decimal(f'{i+1}.00')
             message.save()
 
             MessageCache.add_pinned_message(message)
 
         pinned = MessageCache.get_pinned_messages(self.chat_room.id)
 
-        # Should be ordered by pinned_until (ascending)
+        # Should be ordered by sticky_until (ascending)
         self.assertEqual(len(pinned), 3)
         self.assertEqual(pinned[0]['content'], 'Pin 0')  # Expires first
         self.assertEqual(pinned[2]['content'], 'Pin 2')  # Expires last
@@ -434,7 +438,7 @@ class RedisMessageCacheTests(TransactionTestCase):
             content='Pinned'
         )
         pinned_msg.is_pinned = True
-        pinned_msg.pinned_until = timezone.now() + timedelta(hours=1)
+        pinned_msg.sticky_until = timezone.now() + timedelta(hours=1)
         pinned_msg.save()
         MessageCache.add_pinned_message(pinned_msg)
 
@@ -470,8 +474,9 @@ class RedisMessageCacheTests(TransactionTestCase):
             reply_to=reply_to_msg,
             is_pinned=True,
             pinned_at=timezone.now(),
-            pinned_until=timezone.now() + timedelta(hours=1),
-            pin_amount_paid=Decimal('10.50')
+            sticky_until=timezone.now() + timedelta(hours=1),
+            pin_amount_paid=Decimal('10.50'),
+            current_pin_amount=Decimal('10.50')
         )
 
         MessageCache.add_message(message)
@@ -488,8 +493,9 @@ class RedisMessageCacheTests(TransactionTestCase):
         self.assertEqual(msg_data['reply_to_id'], str(reply_to_msg.id))
         self.assertTrue(msg_data['is_pinned'])
         self.assertIsNotNone(msg_data['pinned_at'])
-        self.assertIsNotNone(msg_data['pinned_until'])
+        self.assertIsNotNone(msg_data['sticky_until'])
         self.assertEqual(msg_data['pin_amount_paid'], '10.50')
+        self.assertEqual(msg_data['current_pin_amount'], '10.50')
         self.assertFalse(msg_data['is_deleted'])
 
     @allure.title("Redis failure graceful degradation")
@@ -713,7 +719,7 @@ class RedisPerformanceTests(TransactionTestCase):
                 content=f'Pinned {i}'
             )
             message.is_pinned = True
-            message.pinned_until = timezone.now() + timedelta(hours=i+1)
+            message.sticky_until = timezone.now() + timedelta(hours=i+1)
             message.save()
             messages.append(message)
 

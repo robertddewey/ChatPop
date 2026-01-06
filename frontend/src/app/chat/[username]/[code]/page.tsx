@@ -61,6 +61,7 @@ function convertThemeToCamelCase(theme: ChatTheme): any {
     myUsername: theme.my_username,
     regularUsername: theme.regular_username,
     hostUsername: theme.host_username,
+    myHostUsername: theme.my_host_username,
     pinnedUsername: theme.pinned_username,
     stickyHostUsername: theme.sticky_host_username,
     stickyPinnedUsername: theme.sticky_pinned_username,
@@ -193,6 +194,9 @@ export default function ChatPage() {
   // Emoji reactions state
   const [messageReactions, setMessageReactions] = useState<Record<string, ReactionSummary[]>>({});
 
+  // Pin expiry trigger - incrementing this forces re-computation of topPinnedMessage
+  const [pinExpiryTick, setPinExpiryTick] = useState(0);
+
   // View state - supports multiple feature views
   type ViewType = 'main' | 'backroom';
   const [activeView, setActiveView] = useState<ViewType>('main');
@@ -287,6 +291,27 @@ export default function ChatPage() {
     });
   }, []);
 
+  // Handle message pinned WebSocket events
+  const handleMessagePinned = useCallback((message: Message, isTopPin: boolean) => {
+    console.log('[Message Pin] WebSocket event - updating message:', message.id, 'isTopPin:', isTopPin);
+
+    // Update the message in local state with new pin data
+    setMessages(prev => prev.map(msg =>
+      msg.id === message.id
+        ? { ...msg, is_pinned: message.is_pinned, pin_amount_paid: message.pin_amount_paid, current_pin_amount: message.current_pin_amount, pinned_at: message.pinned_at, sticky_until: message.sticky_until }
+        : msg
+    ));
+  }, []);
+
+  // Handle visibility changes (mobile app switching)
+  const handleVisibilityChange = useCallback((isVisible: boolean) => {
+    if (isVisible && hasJoined) {
+      console.log('[Visibility] Page visible, refreshing messages...');
+      // Refetch messages to get any updates missed while away
+      loadMessages();
+    }
+  }, [hasJoined]);
+
   // WebSocket connection
   const { sendMessage: wsSendMessage, sendRawMessage, isConnected } = useChatWebSocket({
     chatCode: code,
@@ -296,6 +321,8 @@ export default function ChatPage() {
     onUserKicked: handleUserKicked,
     onReaction: handleReactionEvent,
     onMessageDeleted: handleMessageDeleted,
+    onMessagePinned: handleMessagePinned,
+    onVisibilityChange: handleVisibilityChange,
     enabled: hasJoined && !!sessionToken,
   });
 
@@ -1057,11 +1084,12 @@ export default function ChatPage() {
   }, [filteredMessages]);
 
   const topPinnedMessage = useMemo(() => {
+    const now = new Date();
     return filteredMessages
-      .filter(m => m.is_pinned && !m.is_from_host)
-      .sort((a, b) => parseFloat(b.pin_amount_paid) - parseFloat(a.pin_amount_paid))
-      [0]; // Get highest paid
-  }, [filteredMessages]);
+      .filter(m => m.is_pinned && !m.is_from_host && (!m.sticky_until || new Date(m.sticky_until) > now))
+      .sort((a, b) => parseFloat(b.current_pin_amount) - parseFloat(a.current_pin_amount))
+      [0]; // Get highest paid, non-expired
+  }, [filteredMessages, pinExpiryTick]);
 
   // Check if current user is the host
   const isHost = useMemo(() => {
@@ -1092,6 +1120,29 @@ export default function ChatPage() {
 
   // Always show pinned message in sticky area (user paid for visibility)
   const stickyPinnedMessage = topPinnedMessage || null;
+
+  // Auto-remove expired pins from sticky section
+  useEffect(() => {
+    if (!stickyPinnedMessage?.sticky_until) return;
+
+    const expiryTime = new Date(stickyPinnedMessage.sticky_until).getTime();
+    const now = Date.now();
+    const timeRemaining = expiryTime - now;
+
+    // If already expired, trigger immediate re-computation
+    if (timeRemaining <= 0) {
+      setPinExpiryTick(t => t + 1);
+      return;
+    }
+
+    // Set timer to trigger re-computation when pin expires
+    const timer = setTimeout(() => {
+      console.log('[Pin Expiry] Pin expired, removing from sticky section');
+      setPinExpiryTick(t => t + 1);
+    }, timeRemaining);
+
+    return () => clearTimeout(timer);
+  }, [stickyPinnedMessage?.id, stickyPinnedMessage?.sticky_until]);
 
   // Check if user is scrolled near the bottom
   const checkIfNearBottom = () => {

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -81,6 +82,7 @@ class ChatTheme(models.Model):
     my_username = models.CharField(max_length=200, default='text-xs font-semibold text-white', help_text="Tailwind classes for current user's username")
     regular_username = models.CharField(max_length=200, default='text-xs font-semibold text-white', help_text="Tailwind classes for other users' usernames")
     host_username = models.CharField(max_length=200, default='text-sm font-semibold', help_text="Tailwind classes for host username (used with host_text for color)")
+    my_host_username = models.CharField(max_length=200, default='text-sm font-semibold text-red-500', help_text="Tailwind classes for host's own username when viewing their own messages")
     pinned_username = models.CharField(max_length=200, default='text-sm font-semibold', help_text="Tailwind classes for pinned message username (used with pinned_text for color)")
     sticky_host_username = models.CharField(max_length=200, default='text-sm font-semibold text-white', help_text="Tailwind classes for host username in sticky area")
     sticky_pinned_username = models.CharField(max_length=200, default='text-sm font-semibold text-white', help_text="Tailwind classes for pinned message username in sticky area")
@@ -284,8 +286,10 @@ class Message(models.Model):
     # Pinning
     is_pinned = models.BooleanField(default=False)
     pinned_at = models.DateTimeField(null=True, blank=True)
-    pinned_until = models.DateTimeField(null=True, blank=True)
+    sticky_until = models.DateTimeField(null=True, blank=True)
     pin_amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    # Current session amount - resets when pin expires or is outbid
+    current_pin_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -314,18 +318,23 @@ class Message(models.Model):
         from decimal import Decimal
 
         duration_minutes = config.PIN_DURATION_MINUTES
+        amount_dollars = Decimal(amount_paid_cents) / 100
+
         self.is_pinned = True
         self.pinned_at = timezone.now()
-        self.pinned_until = self.pinned_at + timezone.timedelta(minutes=duration_minutes)
-        # Store as Decimal for consistency with existing field
-        self.pin_amount_paid = Decimal(amount_paid_cents) / 100
+        self.sticky_until = self.pinned_at + timezone.timedelta(minutes=duration_minutes)
+        # Current session amount (for bidding)
+        self.current_pin_amount = amount_dollars
+        # Lifetime total (for analytics)
+        self.pin_amount_paid = (self.pin_amount_paid or Decimal('0')) + amount_dollars
         self.save()
 
     def unpin_message(self):
         """Unpin a message"""
         self.is_pinned = False
         self.pinned_at = None
-        self.pinned_until = None
+        self.sticky_until = None
+        self.current_pin_amount = Decimal('0')
         self.save()
 
 
@@ -619,6 +628,112 @@ class UserBlock(models.Model):
 
     def __str__(self):
         return f"{self.blocker.username} blocks {self.blocked_username}"
+
+
+class SiteBan(models.Model):
+    """
+    Site-wide ban for users, preventing access to ALL chats.
+
+    Staff/admins can ban by user account, IP address, or fingerprint.
+    At least one identifier must be set. Multiple can be set for comprehensive blocking.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Who is being banned (at least one must be set)
+    banned_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='site_bans',
+        help_text="Registered user account ban"
+    )
+    banned_ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="IP address ban"
+    )
+    banned_fingerprint = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Browser fingerprint ban"
+    )
+
+    # Who created the ban (must be staff)
+    banned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='site_bans_issued',
+        help_text="Staff member who issued the ban"
+    )
+
+    # Metadata
+    reason = models.TextField(help_text="Reason for the ban")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the ban expires (null = permanent)"
+    )
+    is_active = models.BooleanField(default=True, help_text="Whether ban is currently active")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Site Ban'
+        verbose_name_plural = 'Site Bans'
+        indexes = [
+            models.Index(fields=['banned_user']),
+            models.Index(fields=['banned_ip_address']),
+            models.Index(fields=['banned_fingerprint']),
+            models.Index(fields=['is_active', 'expires_at']),
+        ]
+
+    def __str__(self):
+        identifiers = []
+        if self.banned_user:
+            identifiers.append(f"user:{self.banned_user.username}")
+        if self.banned_ip_address:
+            identifiers.append(f"ip:{self.banned_ip_address}")
+        if self.banned_fingerprint:
+            identifiers.append(f"fingerprint:{self.banned_fingerprint[:8]}...")
+        identifier_str = ", ".join(identifiers) if identifiers else "unknown"
+        return f"Site Ban: {identifier_str}"
+
+    def is_expired(self):
+        """Check if the ban has expired."""
+        if not self.expires_at:
+            return False  # Permanent ban
+        return timezone.now() > self.expires_at
+
+    @classmethod
+    def is_banned(cls, user=None, ip_address=None, fingerprint=None):
+        """
+        Check if any of the provided identifiers are banned.
+
+        Returns the active SiteBan if found, None otherwise.
+        """
+        from django.db.models import Q
+
+        if not any([user, ip_address, fingerprint]):
+            return None
+
+        # Build query for active, non-expired bans
+        query = Q(is_active=True) & (Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
+
+        # Add identifier conditions (OR logic)
+        identifier_query = Q()
+        if user:
+            identifier_query |= Q(banned_user=user)
+        if ip_address:
+            identifier_query |= Q(banned_ip_address=ip_address)
+        if fingerprint:
+            identifier_query |= Q(banned_fingerprint=fingerprint)
+
+        return cls.objects.filter(query & identifier_query).first()
 
 
 class Transaction(models.Model):

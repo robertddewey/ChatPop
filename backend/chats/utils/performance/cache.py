@@ -93,8 +93,9 @@ class MessageCache:
             "reply_to_message": reply_to_message,
             "is_pinned": message.is_pinned,
             "pinned_at": message.pinned_at.isoformat() if message.pinned_at else None,
-            "pinned_until": message.pinned_until.isoformat() if message.pinned_until else None,
+            "sticky_until": message.sticky_until.isoformat() if message.sticky_until else None,
             "pin_amount_paid": str(message.pin_amount_paid) if message.pin_amount_paid else "0.00",
+            "current_pin_amount": str(message.current_pin_amount) if message.current_pin_amount else "0.00",
             "created_at": message.created_at.isoformat(),
             "is_deleted": message.is_deleted,
         }
@@ -380,8 +381,8 @@ class MessageCache:
             data_key = cls.PINNED_MESSAGE_KEY.format(room_id=room_id, message_id=message_id)
             order_key = cls.PINNED_ORDER_KEY.format(room_id=room_id)
 
-            # Score = pin_amount_paid (for ordering by highest bidder)
-            score = float(message.pin_amount_paid) if message.pin_amount_paid else 0.0
+            # Score = current_pin_amount (session value for bidding, not lifetime total)
+            score = float(message.current_pin_amount) if message.current_pin_amount else 0.0
 
             # Use pipeline for atomic update
             pipe = redis_client.pipeline()
@@ -440,7 +441,7 @@ class MessageCache:
         """
         Get all active pinned messages for a chat, ordered by pin_amount_paid (highest first).
 
-        Automatically filters out expired pins (pinned_until < now).
+        Automatically filters out expired pins (sticky_until < now).
         """
         try:
             redis_client = cls._get_redis_client()
@@ -477,9 +478,9 @@ class MessageCache:
                     msg_data = json.loads(msg_json)
 
                     # Check if pin has expired
-                    pinned_until = msg_data.get('pinned_until')
-                    if pinned_until:
-                        expiry_time = datetime.fromisoformat(pinned_until).timestamp()
+                    sticky_until = msg_data.get('sticky_until')
+                    if sticky_until:
+                        expiry_time = datetime.fromisoformat(sticky_until).timestamp()
                         if expiry_time < now:
                             expired_ids.append(mid)
                             continue
@@ -519,12 +520,13 @@ class MessageCache:
         """
         Get the current highest pin value for a chat in cents.
 
+        Uses current_pin_amount (session value) for bidding, not lifetime total.
         Returns 0 if no active pins exist.
         """
         top_pin = cls.get_top_pinned_message(room_id)
         if top_pin:
-            # pin_amount_paid is stored as dollars (e.g., 0.25), convert to cents
-            return int(float(top_pin.get('pin_amount_paid', 0)) * 100)
+            # current_pin_amount is the session value for bidding (dollars -> cents)
+            return int(float(top_pin.get('current_pin_amount', 0)) * 100)
         return 0
 
     @classmethod

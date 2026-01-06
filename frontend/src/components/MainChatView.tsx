@@ -297,7 +297,7 @@ export default function MainChatView({
                   <div className="flex items-center gap-1">
                     <Pin size={14} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                     <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
-                      ${stickyPinnedMessage.pin_amount_paid}
+                      ${stickyPinnedMessage.current_pin_amount}
                     </span>
                   </div>
                   <span
@@ -449,7 +449,11 @@ export default function MainChatView({
                     <div className="mb-1 flex items-center gap-1">
                       <span
                         className="text-xs font-semibold"
-                        style={{ color: getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff' }}
+                        style={{
+                          color: message.username.toLowerCase() === username.toLowerCase()
+                            ? getTextColor(currentDesign.myHostUsername) || '#ef4444'  // Your own host messages
+                            : getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff'
+                        }}
                       >
                         {message.username}
                       </span>
@@ -466,7 +470,7 @@ export default function MainChatView({
                     </div>
                   )}
 
-                  {/* Pinned message header - OUTSIDE bubble */}
+                  {/* Pinned message header - OUTSIDE bubble (no $ value - only shown in sticky section) */}
                   {message.is_pinned && !message.is_from_host && (
                     <div className="mb-1 flex items-center gap-1">
                       <span
@@ -486,9 +490,6 @@ export default function MainChatView({
                         <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
                       )}
                       <Pin size={14} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
-                      <span className={`text-xs opacity-70`} style={{ color: getTextColor(currentDesign.pinnedText) || '#fbbf24' }}>
-                        ${message.pin_amount_paid}
-                      </span>
                       <span
                         className="text-xs opacity-60"
                         style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}

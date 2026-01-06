@@ -187,8 +187,9 @@ export interface Message {
   reply_to_message: ReplyToMessage | null;
   is_pinned: boolean;
   pinned_at: string | null;
-  pinned_until: string | null;
+  sticky_until: string | null;
   pin_amount_paid: string;
+  current_pin_amount: string;
   is_from_host: boolean;
   username_is_reserved: boolean;
   time_until_unpin: number | null;
@@ -474,7 +475,7 @@ export const messageApi = {
   pinMessage: async (code: string, messageId: string, amountCents: number, roomUsername?: string): Promise<{
     success: boolean;
     message: string;
-    pinned_until: string;
+    sticky_until: string;
   }> => {
     const sessionToken = localStorage.getItem(`chat_session_${code}`);
 
@@ -758,6 +759,124 @@ export const locationApi = {
       offset: params.offset ?? 0,
       limit: params.limit ?? 20,
     });
+    return response.data;
+  },
+};
+
+// Admin API Types
+export interface SiteBan {
+  id: string;
+  banned_user: string | null;
+  banned_user_id: string | null;
+  banned_ip_address: string | null;
+  banned_fingerprint: string | null;
+  banned_fingerprint_full: string | null;
+  reason: string;
+  banned_by: string | null;
+  created_at: string;
+  expires_at: string | null;
+  is_active: boolean;
+  is_expired: boolean;
+}
+
+export interface AdminChatDetail {
+  chat_room: ChatRoom;
+  chat_url: string;
+  is_ai_generated: boolean;
+}
+
+export interface AdminMessageList {
+  messages: Message[];
+  count: number;
+}
+
+// Admin API (staff only)
+export const adminApi = {
+  // Get chat room details by UUID
+  getChatDetail: async (roomId: string): Promise<AdminChatDetail> => {
+    const response = await api.get(`/api/chats/admin/${roomId}/`);
+    return response.data;
+  },
+
+  // Get messages for a chat room
+  getMessages: async (roomId: string, limit = 100, offset = 0): Promise<AdminMessageList> => {
+    const response = await api.get(`/api/chats/admin/${roomId}/messages/`, {
+      params: { limit, offset },
+    });
+    return response.data;
+  },
+
+  // Delete a message
+  deleteMessage: async (roomId: string, messageId: string): Promise<{
+    success: boolean;
+    message: string;
+    deleted_by: string;
+  }> => {
+    const response = await api.post(`/api/chats/admin/${roomId}/messages/${messageId}/delete/`);
+    return response.data;
+  },
+
+  // Unpin a message
+  unpinMessage: async (roomId: string, messageId: string): Promise<{
+    success: boolean;
+    message: string;
+    unpinned_by: string;
+  }> => {
+    const response = await api.post(`/api/chats/admin/${roomId}/messages/${messageId}/unpin/`);
+    return response.data;
+  },
+
+  // List site bans
+  getSiteBans: async (activeOnly = false): Promise<{
+    bans: SiteBan[];
+    count: number;
+  }> => {
+    const response = await api.get('/api/chats/admin/site-bans/', {
+      params: { active_only: activeOnly },
+    });
+    return response.data;
+  },
+
+  // Create a site ban
+  createSiteBan: async (data: {
+    user_id?: string;
+    username?: string;
+    ip_address?: string;
+    fingerprint?: string;
+    reason: string;
+    expires_at?: string;
+  }): Promise<{
+    success: boolean;
+    ban_id: string;
+    message: string;
+    kicked_immediately: boolean;
+  }> => {
+    const response = await api.post('/api/chats/admin/site-bans/create/', data);
+    return response.data;
+  },
+
+  // Revoke a site ban
+  revokeSiteBan: async (banId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> => {
+    const response = await api.post(`/api/chats/admin/site-bans/${banId}/revoke/`);
+    return response.data;
+  },
+
+  // Create a chat-specific ban
+  createChatBan: async (roomId: string, data: {
+    username?: string;
+    fingerprint?: string;
+    reason?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    block_id?: string;
+    already_banned?: boolean;
+    banned_by?: string;
+  }> => {
+    const response = await api.post(`/api/chats/admin/${roomId}/ban/`, data);
     return response.data;
   },
 };

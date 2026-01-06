@@ -1,3 +1,4 @@
+from decimal import Decimal
 from rest_framework import status, generics, permissions, parsers
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -102,8 +103,10 @@ class ChatConfigView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
+        # Parse comma-separated string to list of integers
+        radius_options = [int(x.strip()) for x in config.CHAT_DISCOVERY_RADIUS_OPTIONS.split(',')]
         return Response({
-            'discovery_radius_options': config.CHAT_DISCOVERY_RADIUS_OPTIONS,
+            'discovery_radius_options': radius_options,
         })
 
 
@@ -151,7 +154,7 @@ class NearbyDiscoverableChatsView(APIView):
             )
 
         # Validate radius is in allowed options
-        allowed_radii = config.CHAT_DISCOVERY_RADIUS_OPTIONS
+        allowed_radii = [int(x.strip()) for x in config.CHAT_DISCOVERY_RADIUS_OPTIONS.split(',')]
         if radius not in allowed_radii:
             return Response(
                 {'error': f'radius must be one of: {allowed_radii}'},
@@ -333,7 +336,17 @@ class ChatRoomJoinView(APIView):
                         "Invalid username. Please use the suggest username feature to get a valid username."
                     )
 
-        # SECURITY CHECK 1: Check if user is blocked
+        # SECURITY CHECK 1a: Check for site-wide ban
+        from .models import SiteBan
+        site_ban = SiteBan.is_banned(
+            user=request.user if request.user.is_authenticated else None,
+            ip_address=ip_address,
+            fingerprint=fingerprint
+        )
+        if site_ban:
+            raise PermissionDenied("You have been banned from this site.")
+
+        # SECURITY CHECK 1b: Check if user is blocked from this chat
         from .utils.security.blocking import check_if_blocked
         is_blocked, block_message = check_if_blocked(
             chat_room=chat_room,
@@ -705,8 +718,9 @@ class MessageListView(APIView):
                 'reply_to_message': reply_to_message,
                 'is_pinned': msg.is_pinned,
                 'pinned_at': msg.pinned_at.isoformat() if msg.pinned_at else None,
-                'pinned_until': msg.pinned_until.isoformat() if msg.pinned_until else None,
+                'sticky_until': msg.sticky_until.isoformat() if msg.sticky_until else None,
                 'pin_amount_paid': str(msg.pin_amount_paid) if msg.pin_amount_paid else "0.00",
+                'current_pin_amount': str(msg.current_pin_amount) if msg.current_pin_amount else "0.00",
                 'created_at': msg.created_at.isoformat(),
                 'is_deleted': msg.is_deleted,
                 'reactions': top_reactions,
@@ -802,31 +816,12 @@ class MessageCreateView(generics.CreateAPIView):
             username=username
         )
 
-        # Check if user is banned from this chat (ChatBlock)
-        from .models import ChatBlock
-        user_id = session_data.get('user_id')
-        fingerprint = session_data.get('fingerprint')
-
-        # Check for ban by username (case-insensitive)
-        if ChatBlock.objects.filter(
-            chat_room=chat_room,
-            blocked_username__iexact=username
-        ).exists():
-            raise PermissionDenied("You have been banned from this chat")
-
-        # Check for ban by fingerprint
-        if fingerprint and ChatBlock.objects.filter(
-            chat_room=chat_room,
-            blocked_fingerprint=fingerprint
-        ).exists():
-            raise PermissionDenied("You have been banned from this chat")
-
-        # Check for ban by user ID
-        if user_id and ChatBlock.objects.filter(
-            chat_room=chat_room,
-            blocked_user_id=user_id
-        ).exists():
-            raise PermissionDenied("You have been banned from this chat")
+        # NOTE: Ban checks removed from per-message flow for performance.
+        # Bans are enforced at:
+        # 1. Join time (ChatRoomJoinView) - blocks initial access
+        # 2. WebSocket connect (ChatConsumer.connect) - blocks reconnection
+        # 3. WebSocket kick (user_kicked event) - immediately evicts banned users
+        # This eliminates 3 DB queries per message while maintaining security.
 
         serializer = self.get_serializer(
             data=request.data,
@@ -896,6 +891,17 @@ class MessagePinView(APIView):
         # TODO: Process payment with Stripe here
         # For now, just pin the message
 
+        # Reset current_pin_amount on the outbid message (if any)
+        top_pinned_before = MessageCache.get_top_pinned_message(chat_room.id)
+        if top_pinned_before and top_pinned_before.get('id') != str(message.id):
+            try:
+                outbid_message = Message.objects.get(id=top_pinned_before['id'])
+                outbid_message.current_pin_amount = Decimal('0')
+                outbid_message.save(update_fields=['current_pin_amount'])
+                MessageCache.update_message(outbid_message)
+            except Message.DoesNotExist:
+                pass
+
         # Pin the message (uses Constance duration)
         message.pin_message(amount_paid_cents=amount_cents)
 
@@ -905,11 +911,34 @@ class MessagePinView(APIView):
 
         # Get updated top pinned message to return
         top_pinned = MessageCache.get_top_pinned_message(chat_room.id)
+        is_top_pin = top_pinned and top_pinned.get('id') == str(message.id)
+
+        # Broadcast pin update via WebSocket
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        from rest_framework.renderers import JSONRenderer
+        import json as json_module
+
+        channel_layer = get_channel_layer()
+        room_group_name = f'chat_{chat_room.code}'
+
+        # Convert serializer data to JSON-safe format (UUIDs become strings)
+        serialized_data = MessageSerializer(message).data
+        json_safe_data = json_module.loads(JSONRenderer().render(serialized_data))
+
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'message_pinned',
+                'message': json_safe_data,
+                'is_top_pin': is_top_pin,
+            }
+        )
 
         return Response({
             'success': True,
             'message': MessageSerializer(message).data,
-            'is_top_pin': top_pinned and top_pinned.get('id') == str(message.id),
+            'is_top_pin': is_top_pin,
             'amount_cents': amount_cents,
             'duration_minutes': config.PIN_DURATION_MINUTES,
         })
@@ -945,22 +974,62 @@ class AddToPinView(APIView):
 
         # TODO: Process payment with Stripe here
 
-        # Add to the existing pin amount (convert to Decimal for consistency)
-        current_amount = message.pin_amount_paid or Decimal('0')
-        new_amount = current_amount + (Decimal(add_cents) / 100)
-        message.pin_amount_paid = new_amount
-        message.save(update_fields=['pin_amount_paid'])
+        add_amount = Decimal(add_cents) / 100
+        now = timezone.now()
+        is_expired = message.sticky_until and message.sticky_until < now
+
+        # Capture previous session amount before modification
+        previous_session_amount = message.current_pin_amount or Decimal('0')
+
+        # Update lifetime total
+        message.pin_amount_paid = (message.pin_amount_paid or Decimal('0')) + add_amount
+
+        if is_expired:
+            # Pin expired - start fresh session with new timer
+            message.sticky_until = now + timezone.timedelta(minutes=config.PIN_DURATION_MINUTES)
+            message.pinned_at = now
+            # Fresh session - current amount is just what was just paid
+            message.current_pin_amount = add_amount
+            fields_to_update = ['pin_amount_paid', 'current_pin_amount', 'sticky_until', 'pinned_at']
+        else:
+            # Active pin - add to current session amount
+            message.current_pin_amount = (message.current_pin_amount or Decimal('0')) + add_amount
+            fields_to_update = ['pin_amount_paid', 'current_pin_amount']
+
+        message.save(update_fields=fields_to_update)
 
         # Update both caches: main messages list and pinned messages
         MessageCache.update_message(message)
         MessageCache.add_pinned_message(message)
 
+        # Broadcast pin update via WebSocket
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        from rest_framework.renderers import JSONRenderer
+        import json as json_module
+
+        channel_layer = get_channel_layer()
+        room_group_name = f'chat_{chat_room.code}'
+
+        # Convert serializer data to JSON-safe format (UUIDs become strings)
+        serialized_data = MessageSerializer(message).data
+        json_safe_data = json_module.loads(JSONRenderer().render(serialized_data))
+
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'message_pinned',
+                'message': json_safe_data,
+                'is_top_pin': True,  # After add-to-pin, message is still top pin
+            }
+        )
+
         return Response({
             'success': True,
             'message': MessageSerializer(message).data,
-            'previous_cents': int(current_amount * 100),
+            'previous_cents': int(previous_session_amount * 100),
             'added_cents': add_cents,
-            'new_total_cents': int(new_amount * 100),
+            'new_session_cents': int(message.current_pin_amount * 100),
         })
 
 
@@ -2682,4 +2751,430 @@ class PhotoAnalysisView(APIView):
             traceback.print_exc()
             return Response({
                 'error': f'Failed to analyze photo: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =============================================================================
+# ADMIN/STAFF MODERATION VIEWS
+# =============================================================================
+
+class IsStaffUser(permissions.BasePermission):
+    """Allow only staff/superuser access."""
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser)
+
+
+class AdminChatDetailView(APIView):
+    """
+    Get chat room details by UUID for admin moderation.
+    Staff can view any chat without joining.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request, room_id):
+        from .serializers import ChatRoomSerializer
+
+        chat_room = get_object_or_404(ChatRoom, id=room_id)
+
+        # Get chat URL for reference
+        is_ai_generated = chat_room.source == ChatRoom.SOURCE_AI
+        if is_ai_generated:
+            chat_url = f"/chat/discover/{chat_room.code}"
+        else:
+            chat_url = f"/chat/{chat_room.host.reserved_username}/{chat_room.code}"
+
+        return Response({
+            'chat_room': ChatRoomSerializer(chat_room).data,
+            'chat_url': chat_url,
+            'is_ai_generated': is_ai_generated,
+        })
+
+
+class AdminMessageListView(APIView):
+    """
+    Get messages for a chat room by UUID for admin moderation.
+    Returns all messages including deleted ones for transparency.
+    Includes participation data (IP, fingerprint) for ban functionality.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request, room_id):
+        from .serializers import MessageSerializer
+
+        chat_room = get_object_or_404(ChatRoom, id=room_id)
+
+        # Get messages from cache or database (include all, even deleted for admin view)
+        messages = Message.objects.filter(chat_room=chat_room).select_related('user').order_by('created_at')
+
+        # Optional: limit for pagination
+        limit = int(request.query_params.get('limit', 100))
+        offset = int(request.query_params.get('offset', 0))
+        messages = messages[offset:offset + limit]
+
+        # Build a map of username -> participation data for this chat
+        participations = ChatParticipation.objects.filter(chat_room=chat_room)
+        participation_map = {}
+        for p in participations:
+            participation_map[p.username.lower()] = {
+                'user_id': str(p.user.id) if p.user else None,
+                'fingerprint': p.fingerprint,
+                'ip_address': p.ip_address,
+            }
+
+        # Serialize messages and add participation data
+        message_data = MessageSerializer(messages, many=True).data
+        for msg in message_data:
+            username_lower = msg.get('username', '').lower()
+            if username_lower in participation_map:
+                msg['participation'] = participation_map[username_lower]
+            else:
+                msg['participation'] = None
+
+        return Response({
+            'messages': message_data,
+            'count': len(message_data),
+        })
+
+
+class AdminMessageDeleteView(APIView):
+    """
+    Delete a message as admin/staff.
+    Same as host deletion but available to all staff.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, room_id, message_id):
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        import logging
+        logger = logging.getLogger(__name__)
+
+        chat_room = get_object_or_404(ChatRoom, id=room_id)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room)
+
+        logger.info(f"[ADMIN_DELETE] Staff {request.user.username} deleting message {message_id}")
+
+        # Check if already deleted
+        if message.is_deleted:
+            return Response({
+                'success': True,
+                'message': 'Message was already deleted',
+                'already_deleted': True
+            })
+
+        # Soft delete
+        message.is_deleted = True
+        message.save()
+        logger.info(f"[ADMIN_DELETE] Message {message_id} marked as deleted")
+
+        # Remove from Redis cache
+        MessageCache.remove_message(chat_room.id, str(message_id))
+        logger.info(f"[ADMIN_DELETE] Message {message_id} removed from cache")
+
+        # Broadcast deletion via WebSocket
+        channel_layer = get_channel_layer()
+        room_group_name = f'chat_{chat_room.code}'
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'message_deleted',
+                'message_id': str(message_id)
+            }
+        )
+
+        return Response({
+            'success': True,
+            'message': 'Message deleted',
+            'deleted_by': request.user.username,
+        })
+
+
+class AdminMessageUnpinView(APIView):
+    """
+    Unpin a message as admin/staff.
+    Removes pinned status and updates cache.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, room_id, message_id):
+        import logging
+        logger = logging.getLogger(__name__)
+
+        chat_room = get_object_or_404(ChatRoom, id=room_id)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room)
+
+        if not message.is_pinned:
+            return Response({
+                'success': True,
+                'message': 'Message was not pinned',
+                'already_unpinned': True
+            })
+
+        logger.info(f"[ADMIN_UNPIN] Staff {request.user.username} unpinning message {message_id}")
+
+        # Unpin the message
+        message.is_pinned = False
+        message.pinned_at = None
+        message.sticky_until = None
+        # Keep pin_amount_paid for record-keeping
+        message.save()
+
+        # Update cache
+        MessageCache.update_message(message)
+        logger.info(f"[ADMIN_UNPIN] Message {message_id} unpinned and cache updated")
+
+        return Response({
+            'success': True,
+            'message': 'Message unpinned',
+            'unpinned_by': request.user.username,
+        })
+
+
+class AdminSiteBanListView(APIView):
+    """List all site bans."""
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        from .models import SiteBan
+
+        bans = SiteBan.objects.all().select_related('banned_user', 'banned_by')
+
+        # Optional filter by active only
+        active_only = request.query_params.get('active_only', 'false').lower() == 'true'
+        if active_only:
+            from django.db.models import Q
+            from django.utils import timezone
+            bans = bans.filter(
+                is_active=True
+            ).filter(
+                Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+            )
+
+        ban_list = []
+        for ban in bans:
+            ban_list.append({
+                'id': str(ban.id),
+                'banned_user': ban.banned_user.username if ban.banned_user else None,
+                'banned_user_id': str(ban.banned_user.id) if ban.banned_user else None,
+                'banned_ip_address': ban.banned_ip_address,
+                'banned_fingerprint': ban.banned_fingerprint[:8] + '...' if ban.banned_fingerprint else None,
+                'banned_fingerprint_full': ban.banned_fingerprint,
+                'reason': ban.reason,
+                'banned_by': ban.banned_by.username if ban.banned_by else None,
+                'created_at': ban.created_at.isoformat(),
+                'expires_at': ban.expires_at.isoformat() if ban.expires_at else None,
+                'is_active': ban.is_active,
+                'is_expired': ban.is_expired(),
+            })
+
+        return Response({
+            'bans': ban_list,
+            'count': len(ban_list),
+        })
+
+
+class AdminSiteBanCreateView(APIView):
+    """Create a site-wide ban."""
+    permission_classes = [IsStaffUser]
+
+    def post(self, request):
+        from .models import SiteBan
+        from django.contrib.auth import get_user_model
+        import logging
+        logger = logging.getLogger(__name__)
+
+        User = get_user_model()
+
+        # Get ban parameters
+        user_id = request.data.get('user_id')
+        username = request.data.get('username')  # Alternative to user_id
+        ip_address = request.data.get('ip_address')
+        fingerprint = request.data.get('fingerprint')
+        reason = request.data.get('reason', '')
+        expires_at = request.data.get('expires_at')  # ISO format or null for permanent
+
+        # At least one identifier required
+        if not any([user_id, username, ip_address, fingerprint]):
+            return Response({
+                'error': 'At least one identifier required (user_id, username, ip_address, or fingerprint)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not reason:
+            return Response({
+                'error': 'Reason is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Resolve user if username provided
+        banned_user = None
+        if user_id:
+            banned_user = get_object_or_404(User, id=user_id)
+        elif username:
+            banned_user = User.objects.filter(username__iexact=username).first()
+            # Note: not a 404 since username might be an anonymous user
+
+        # Parse expires_at
+        expires_datetime = None
+        if expires_at:
+            from django.utils.dateparse import parse_datetime
+            expires_datetime = parse_datetime(expires_at)
+
+        # Create the ban
+        ban = SiteBan.objects.create(
+            banned_user=banned_user,
+            banned_ip_address=ip_address,
+            banned_fingerprint=fingerprint,
+            banned_by=request.user,
+            reason=reason,
+            expires_at=expires_datetime,
+        )
+
+        logger.info(f"[ADMIN_BAN] Staff {request.user.username} created site ban {ban.id}")
+
+        # If banning a registered user, kick them from all active WebSocket connections
+        if banned_user:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+
+            channel_layer = get_channel_layer()
+            user_group_name = f'user_{banned_user.id}_notifications'
+
+            async_to_sync(channel_layer.group_send)(
+                user_group_name,
+                {
+                    'type': 'site_banned',
+                    'reason': reason,
+                    'message': 'You have been banned from this site.',
+                }
+            )
+            logger.info(f"[ADMIN_BAN] Sent site_banned event to user {banned_user.username}")
+
+        # Note: fingerprint/IP bans take effect on reconnect (can't easily find those connections)
+
+        return Response({
+            'success': True,
+            'ban_id': str(ban.id),
+            'message': f'Site ban created',
+            'kicked_immediately': banned_user is not None,
+        }, status=status.HTTP_201_CREATED)
+
+
+class AdminSiteBanRevokeView(APIView):
+    """Revoke (deactivate) a site ban."""
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, ban_id):
+        from .models import SiteBan
+        import logging
+        logger = logging.getLogger(__name__)
+
+        ban = get_object_or_404(SiteBan, id=ban_id)
+
+        if not ban.is_active:
+            return Response({
+                'success': True,
+                'message': 'Ban was already revoked',
+            })
+
+        ban.is_active = False
+        ban.save()
+
+        logger.info(f"[ADMIN_BAN] Staff {request.user.username} revoked site ban {ban_id}")
+
+        return Response({
+            'success': True,
+            'message': 'Site ban revoked',
+        })
+
+
+class AdminChatBanCreateView(APIView):
+    """
+    Create a chat-specific ban (ChatBlock) as admin/staff.
+    Same as host blocking but available to all staff.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, room_id):
+        from .utils.security.blocking import block_participation
+        import logging
+        logger = logging.getLogger(__name__)
+
+        chat_room = get_object_or_404(ChatRoom, id=room_id)
+
+        # Get ban parameters
+        username = request.data.get('username')
+        fingerprint = request.data.get('fingerprint')
+        reason = request.data.get('reason', 'Banned by site admin')
+
+        if not username and not fingerprint:
+            return Response({
+                'error': 'Either username or fingerprint is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        logger.info(f"[ADMIN_CHAT_BAN] Staff {request.user.username} banning from chat {room_id}")
+
+        # Find the participation to block
+        participation = None
+        if username:
+            participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                username__iexact=username
+            ).first()
+
+        if not participation and fingerprint:
+            participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                fingerprint=fingerprint
+            ).first()
+
+        if not participation:
+            return Response({
+                'error': 'User not found in this chat'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Create the block using the utility function
+        try:
+            block, created = block_participation(
+                participation=participation,
+                blocker=None,  # Admin block, no specific participation
+                reason=reason
+            )
+
+            if not created:
+                return Response({
+                    'success': True,
+                    'message': 'User was already banned from this chat',
+                    'already_banned': True
+                })
+
+            logger.info(f"[ADMIN_CHAT_BAN] Created ChatBlock {block.id} for {participation.username}")
+
+            # Kick user via WebSocket
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+
+            channel_layer = get_channel_layer()
+            room_group_name = f'chat_{chat_room.code}'
+
+            async_to_sync(channel_layer.group_send)(
+                room_group_name,
+                {
+                    'type': 'user_kicked',
+                    'username': participation.username,
+                    'fingerprint': participation.fingerprint,
+                    'user_id': str(participation.user.id) if participation.user else None,
+                    'message': 'You have been banned from this chat.',
+                }
+            )
+
+            return Response({
+                'success': True,
+                'message': f'User {participation.username} banned from this chat',
+                'block_id': str(block.id),
+                'banned_by': request.user.username,
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"[ADMIN_CHAT_BAN] Error creating block: {e}")
+            return Response({
+                'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

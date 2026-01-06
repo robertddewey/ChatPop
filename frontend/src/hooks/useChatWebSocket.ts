@@ -9,7 +9,9 @@ interface UseChatWebSocketOptions {
   onUserKicked?: (message: string) => void;
   onReaction?: (data: any) => void;
   onMessageDeleted?: (messageId: string) => void;
+  onMessagePinned?: (message: Message, isTopPin: boolean) => void;
   onError?: (error: Event) => void;
+  onVisibilityChange?: (isVisible: boolean) => void;
   enabled?: boolean;
 }
 
@@ -21,7 +23,9 @@ export function useChatWebSocket({
   onUserKicked,
   onReaction,
   onMessageDeleted,
+  onMessagePinned,
   onError,
+  onVisibilityChange,
   enabled = true,
 }: UseChatWebSocketOptions) {
   const ws = useRef<WebSocket | null>(null);
@@ -38,7 +42,9 @@ export function useChatWebSocket({
   const onUserKickedRef = useRef(onUserKicked);
   const onReactionRef = useRef(onReaction);
   const onMessageDeletedRef = useRef(onMessageDeleted);
+  const onMessagePinnedRef = useRef(onMessagePinned);
   const onErrorRef = useRef(onError);
+  const onVisibilityChangeRef = useRef(onVisibilityChange);
 
   // Keep refs up to date
   useEffect(() => { onMessageRef.current = onMessage; }, [onMessage]);
@@ -46,7 +52,9 @@ export function useChatWebSocket({
   useEffect(() => { onUserKickedRef.current = onUserKicked; }, [onUserKicked]);
   useEffect(() => { onReactionRef.current = onReaction; }, [onReaction]);
   useEffect(() => { onMessageDeletedRef.current = onMessageDeleted; }, [onMessageDeleted]);
+  useEffect(() => { onMessagePinnedRef.current = onMessagePinned; }, [onMessagePinned]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
+  useEffect(() => { onVisibilityChangeRef.current = onVisibilityChange; }, [onVisibilityChange]);
 
   const connect = useCallback(() => {
     if (!enabled || !sessionToken || ws.current?.readyState === WebSocket.OPEN) {
@@ -113,6 +121,15 @@ export function useChatWebSocket({
           console.log('[WebSocket] Message deleted event received:', data.message_id);
           if (onMessageDeletedRef.current) {
             onMessageDeletedRef.current(data.message_id);
+          }
+          return;
+        }
+
+        // Handle message pinned events
+        if (data.type === 'message_pinned') {
+          console.log('[WebSocket] Message pinned event received:', data.message);
+          if (onMessagePinnedRef.current) {
+            onMessagePinnedRef.current(data.message, data.is_top_pin);
           }
           return;
         }
@@ -208,6 +225,39 @@ export function useChatWebSocket({
       disconnect();
     };
   }, [enabled, sessionToken, connect, disconnect]);
+
+  // Handle visibility changes (mobile app switching, tab switching)
+  useEffect(() => {
+    if (!enabled) return;
+
+    const handleVisibilityChange = () => {
+      const isVisible = document.visibilityState === 'visible';
+
+      if (isVisible) {
+        // Page became visible - reconnect if needed and notify callback
+        if (ws.current?.readyState !== WebSocket.OPEN) {
+          console.log('[WebSocket] Page visible, reconnecting...');
+          connect();
+        }
+
+        // Notify callback so page can refetch data
+        if (onVisibilityChangeRef.current) {
+          onVisibilityChangeRef.current(true);
+        }
+      } else {
+        // Page hidden - optionally notify callback
+        if (onVisibilityChangeRef.current) {
+          onVisibilityChangeRef.current(false);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [enabled, connect]);
 
   const sendRawMessage = useCallback(
     (data: object) => {
