@@ -449,6 +449,12 @@
         border-bottom: none;
     }
 
+    #nearbyChatslist {
+        min-height: 150px;
+        max-height: 150px;
+        overflow-y: auto;
+    }
+
     /* Analytics Section Styles */
     .analytics-section {
         background: white;
@@ -1118,7 +1124,7 @@
             <h3 id="detailTitle">Location Details</h3>
             <button class="delete-btn" id="deleteBtn" onclick="deleteSelectedEntry()">Delete Entry</button>
         </div>
-        <div class="detail-grid">
+        <div class="detail-grid" style="grid-template-columns: repeat(3, 1fr);">
             <div class="detail-section">
                 <h4>Area Chat Rooms</h4>
                 <ul class="detail-list" id="areasList"></ul>
@@ -1126,6 +1132,21 @@
             <div class="detail-section">
                 <h4>Nearby Places</h4>
                 <ul class="detail-list" id="venuesList"></ul>
+            </div>
+            <div class="detail-section">
+                <h4 style="display: flex; align-items: center; gap: 8px;">
+                    Nearby Chats
+                    <select id="nearbyChatsRadius" onchange="fetchNearbyChats()" style="font-size: 12px; padding: 2px 6px; border-radius: 4px; border: 1px solid #dee2e6;">
+                        <option value="1">1 mi</option>
+                        <option value="5" selected>5 mi</option>
+                        <option value="10">10 mi</option>
+                        <option value="25">25 mi</option>
+                        <option value="50">50 mi</option>
+                    </select>
+                </h4>
+                <ul class="detail-list" id="nearbyChatslist">
+                    <li style="color: #6c757d;">Select a cache entry</li>
+                </ul>
             </div>
         </div>
     </div>
@@ -1534,6 +1555,75 @@
             ).join('');
         } else {
             venuesList.innerHTML = '<li style="color: #6c757d;">No venue suggestions</li>';
+        }
+
+        // Fetch nearby chats for this location
+        fetchNearbyChats();
+    }
+
+    async function fetchNearbyChats() {
+        const entry = entriesData.find(e => e.geohash === selectedGeohash);
+        if (!entry) return;
+
+        const nearbyList = document.getElementById('nearbyChatslist');
+        const radius = parseInt(document.getElementById('nearbyChatsRadius').value);
+
+        // Add subtle opacity to indicate loading without changing height
+        nearbyList.style.opacity = '0.5';
+
+        try {
+            const response = await fetch('/api/chats/nearby/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    latitude: entry.latitude,
+                    longitude: entry.longitude,
+                    radius: radius,
+                    limit: 20
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                nearbyList.innerHTML = `<li style="color: #dc3545;">${data.error}</li>`;
+                return;
+            }
+
+            if (data.chats && data.chats.length > 0) {
+                nearbyList.innerHTML = data.chats.map(chat => {
+                    const hostName = chat.host_username || 'Unknown';
+                    const distance = chat.distance_miles !== undefined ? `${chat.distance_miles} mi` : '';
+                    // Use url from serializer, or construct fallback
+                    const chatUrl = chat.url || `/chat/${hostName}/${chat.code}`;
+                    return `<li>
+                        <a href="${chatUrl}" target="_blank" style="text-decoration: none; color: inherit;">
+                            <strong>${chat.name}</strong>
+                        </a>
+                        <br>
+                        <span style="color: #6c757d; font-size: 11px;">
+                            ${distance} · ${hostName} · ${chat.participant_count || 0} users
+                        </span>
+                    </li>`;
+                }).join('');
+
+                // Add total count if there are more
+                if (data.total_count > data.chats.length) {
+                    nearbyList.innerHTML += `<li style="color: #6c757d; font-style: italic;">
+                        +${data.total_count - data.chats.length} more chats
+                    </li>`;
+                }
+            } else {
+                nearbyList.innerHTML = '<li style="color: #6c757d;">No discoverable chats nearby</li>';
+            }
+            nearbyList.style.opacity = '1';
+        } catch (error) {
+            console.error('Error fetching nearby chats:', error);
+            nearbyList.innerHTML = '<li style="color: #dc3545;">Error loading chats</li>';
+            nearbyList.style.opacity = '1';
         }
     }
 
