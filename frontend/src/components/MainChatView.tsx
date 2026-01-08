@@ -505,6 +505,12 @@ export default function MainChatView({
                   currentUsername={username}
                   isHost={chatRoom?.host.id === currentUserId}
                   themeIsDarkMode={themeIsDarkMode}
+                  isOutbid={
+                    message.is_pinned &&
+                    message.sticky_until &&
+                    new Date(message.sticky_until) > new Date() &&
+                    stickyPinnedMessage?.id !== message.id
+                  }
                   onReply={handleReply}
                   onPin={handlePin}
                   onAddToPin={handleAddToPin}

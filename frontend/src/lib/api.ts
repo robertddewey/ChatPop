@@ -467,12 +467,19 @@ export const messageApi = {
     return response.data;
   },
 
-  // Get pin requirements for a message (current pin value, minimum required, etc.)
+  // Get pin requirements for a message (current pin value, minimum required, tiers, etc.)
   getPinRequirements: async (code: string, messageId: string, roomUsername?: string): Promise<{
     current_pin_cents: number;
-    minimum_cents: number;
-    required_cents: number;
+    minimum_cents?: number;  // Legacy, deprecated
+    required_cents?: number;  // Legacy, deprecated
+    minimum_required_cents?: number;  // Total amount needed to win sticky
+    minimum_add_cents?: number;  // For reclaim: minimum tier to ADD (additive)
+    my_investment_cents?: number;  // User's existing investment (for reclaim)
     duration_minutes: number;
+    tiers?: { amount_cents: number; duration_minutes: number }[];  // Available tiers
+    is_current_sticky?: boolean;  // Is this message the current sticky holder
+    is_outbid?: boolean;  // Was this message outbid but has time remaining (can reclaim)
+    time_remaining_seconds?: number;  // Remaining time if outbid (for reclaim stacking)
   }> => {
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/pin/`);
     return response.data;

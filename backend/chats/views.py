@@ -19,6 +19,10 @@ from .serializers import (
 from .utils.security.auth import ChatSessionValidator
 from .utils.performance.cache import MessageCache
 from .utils.performance.monitoring import monitor
+from .utils.pin_tiers import (
+    get_valid_pin_tiers, get_tiers_for_frontend, get_next_tier_above,
+    get_tier_duration_minutes, get_new_pin_duration_minutes, validate_pin_amount, is_valid_tier
+)
 from chatpop.utils.media import save_voice_message, get_voice_message_url, transcode_webm_to_m4a
 import time
 
@@ -899,74 +903,202 @@ class MessageCreateView(generics.CreateAPIView):
         )
 
 
-class MessagePinView(APIView):
+class PinTiersView(APIView):
     """
-    Pin a message (requires payment).
-
-    To take the sticky spot, you must pay more than the current highest pin.
-    Duration is fixed by Constance config.PIN_DURATION_MINUTES.
+    Get available pin tiers and current sticky info for a chat.
+    Use this to display tier options before the user selects a message.
     """
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, code, message_id, username=None):
-        """Get current pin requirements for a chat."""
-        from constance import config
-
+    def get(self, request, code, username=None):
+        """Get pin tiers and current sticky status."""
         chat_room = get_chat_room_by_url(code, username)
 
         # Get current highest pin value from cache
         current_pin_cents = MessageCache.get_current_pin_value_cents(chat_room.id)
-        min_cents = config.PIN_MINIMUM_CENTS
+        current_pin_cents = int(current_pin_cents) if current_pin_cents else 0
 
-        # Required amount is the greater of minimum or current+1 cent
-        required_cents = max(min_cents, int(current_pin_cents) + 1) if current_pin_cents > 0 else min_cents
+        # Get minimum required tier to outbid
+        min_required_cents = get_next_tier_above(current_pin_cents) if current_pin_cents > 0 else get_valid_pin_tiers()[0]
+
+        # Get top pinned message info
+        top_pinned = MessageCache.get_top_pinned_message(chat_room.id)
 
         return Response({
-            'current_pin_cents': int(current_pin_cents) if current_pin_cents else 0,
-            'minimum_cents': min_cents,
-            'required_cents': required_cents,
-            'duration_minutes': config.PIN_DURATION_MINUTES,
+            'current_pin_cents': current_pin_cents,
+            'minimum_required_cents': min_required_cents,
+            'duration_minutes': get_new_pin_duration_minutes(),
+            'tiers': get_tiers_for_frontend(),
+            'has_active_sticky': top_pinned is not None,
+            'top_pinned_message_id': top_pinned.get('id') if top_pinned else None,
+        })
+
+
+class MessagePinView(APIView):
+    """
+    Pin a message (requires payment).
+
+    To take the sticky spot, you must bid at least the next tier above the current sticky.
+    Duration is fixed at PIN_NEW_PIN_DURATION_MINUTES (default 1 hour).
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, code, message_id, username=None):
+        """Get current pin requirements and available tiers for a message."""
+        chat_room = get_chat_room_by_url(code, username)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
+
+        now = timezone.now()
+
+        # Get current top sticky from cache
+        top_pinned = MessageCache.get_top_pinned_message(chat_room.id)
+        if top_pinned:
+            try:
+                current_pin_cents = int(float(top_pinned.get('current_pin_amount', 0)) * 100)
+            except (ValueError, TypeError):
+                current_pin_cents = 0
+        else:
+            current_pin_cents = 0
+
+        # Check if THIS message is the current sticky holder
+        is_current_sticky = top_pinned and top_pinned.get('id') == str(message.id)
+
+        # Check if this message was pinned but outbid (has time remaining but not top)
+        is_outbid = (
+            message.is_pinned and
+            message.sticky_until and
+            message.sticky_until > now and
+            not is_current_sticky
+        )
+
+        # Get user's existing investment (only valid if not expired)
+        # This is the lazy expiration check - investment "resets" when sticky_until passes
+        my_investment_cents = 0
+        if is_outbid and message.current_pin_amount:
+            my_investment_cents = int(float(message.current_pin_amount) * 100)
+
+        # Get minimum required total to win the sticky (next tier above current)
+        min_total_cents = None
+        if not is_current_sticky and current_pin_cents > 0:
+            min_total_cents = get_next_tier_above(current_pin_cents)
+        elif not is_current_sticky:
+            min_total_cents = get_valid_pin_tiers()[0]
+
+        # For reclaim: calculate minimum tier to ADD (total needed minus existing investment)
+        min_add_cents = None
+        if is_outbid and min_total_cents:
+            # Need to add enough to reach min_total_cents
+            delta = min_total_cents - my_investment_cents
+            if delta <= 0:
+                # Already have enough investment, just need smallest tier
+                min_add_cents = get_valid_pin_tiers()[0]
+            else:
+                # Find smallest tier >= delta
+                tiers = get_valid_pin_tiers()
+                for tier in tiers:
+                    if tier >= delta:
+                        min_add_cents = tier
+                        break
+                # If no tier found (delta > max tier), use the delta rounded up
+                if min_add_cents is None:
+                    min_add_cents = delta
+
+        # Calculate time remaining if outbid (for reclaim time stacking)
+        time_remaining_seconds = None
+        if is_outbid and message.sticky_until:
+            time_remaining_seconds = max(0, int((message.sticky_until - now).total_seconds()))
+
+        return Response({
+            'current_pin_cents': current_pin_cents,
+            'minimum_required_cents': min_total_cents,  # Total needed to win
+            'minimum_add_cents': min_add_cents,  # For reclaim: min tier to add
+            'my_investment_cents': my_investment_cents,  # User's existing investment
+            'duration_minutes': get_new_pin_duration_minutes(),
+            'tiers': get_tiers_for_frontend(),
+            'is_current_sticky': is_current_sticky,
+            'is_outbid': is_outbid,
+            'time_remaining_seconds': time_remaining_seconds,
         })
 
     def post(self, request, code, message_id, username=None):
         """Pin a message by paying to take the sticky spot."""
-        from constance import config
-
         chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
+
+        now = timezone.now()
 
         serializer = MessagePinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         amount_cents = serializer.validated_data['amount_cents']
 
-        # Get current highest pin value
-        current_pin_cents = MessageCache.get_current_pin_value_cents(chat_room.id)
+        # Get current top sticky
+        top_pinned_before = MessageCache.get_top_pinned_message(chat_room.id)
+        if top_pinned_before:
+            try:
+                current_pin_cents = int(float(top_pinned_before.get('current_pin_amount', 0)) * 100)
+            except (ValueError, TypeError):
+                current_pin_cents = 0
+        else:
+            current_pin_cents = 0
 
-        # Validate: must pay more than current pin to take the spot
-        if current_pin_cents and amount_cents <= current_pin_cents:
+        # Check if this is a "reclaim" - message was outbid but has time remaining
+        is_reclaim = (
+            message.is_pinned and
+            message.sticky_until and
+            message.sticky_until > now and
+            top_pinned_before and
+            top_pinned_before.get('id') != str(message.id)
+        )
+
+        # Get existing investment for reclaim scenarios
+        my_investment_cents = 0
+        if is_reclaim and message.current_pin_amount:
+            my_investment_cents = int(float(message.current_pin_amount) * 100)
+
+        # For reclaim: the total bid is existing investment + new payment
+        # For new pin: the total bid is just the payment
+        total_bid_cents = my_investment_cents + amount_cents if is_reclaim else amount_cents
+
+        # Validate that total bid beats the current sticky
+        min_required_cents = get_next_tier_above(current_pin_cents) if current_pin_cents > 0 else get_valid_pin_tiers()[0]
+
+        if total_bid_cents < min_required_cents:
             return Response({
-                'error': 'Must pay more than current pin to take the sticky spot',
-                'current_pin_cents': int(current_pin_cents),
-                'required_cents': int(current_pin_cents) + 1,
+                'error': f'Total bid ${total_bid_cents/100:.2f} does not meet minimum ${min_required_cents/100:.2f}',
+                'current_pin_cents': current_pin_cents,
+                'minimum_required_cents': min_required_cents,
+                'my_investment_cents': my_investment_cents,
+                'tiers': get_tiers_for_frontend(),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate that amount_cents is a valid tier
+        if not is_valid_tier(amount_cents):
+            return Response({
+                'error': f'${amount_cents/100:.2f} is not a valid tier',
+                'tiers': get_tiers_for_frontend(),
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # TODO: Process payment with Stripe here
         # For now, just pin the message
 
-        # Reset current_pin_amount on the outbid message (if any)
-        top_pinned_before = MessageCache.get_top_pinned_message(chat_room.id)
-        if top_pinned_before and top_pinned_before.get('id') != str(message.id):
-            try:
-                outbid_message = Message.objects.get(id=top_pinned_before['id'])
-                outbid_message.current_pin_amount = Decimal('0')
-                outbid_message.save(update_fields=['current_pin_amount'])
-                MessageCache.update_message(outbid_message)
-            except Message.DoesNotExist:
-                pass
+        # NOTE: We intentionally do NOT reset current_pin_amount on outbid messages.
+        # The outbid user's investment remains until their sticky_until expires,
+        # allowing them to "reclaim" by adding to their existing investment.
+        # Expiration check happens lazily at read time.
 
-        # Pin the message (uses Constance duration)
-        message.pin_message(amount_paid_cents=amount_cents)
+        # Calculate duration based on whether this is a reclaim or new pin
+        if is_reclaim:
+            # Reclaim: stack tier's time extension on remaining time
+            time_remaining_seconds = max(0, (message.sticky_until - now).total_seconds())
+            tier_extension_minutes = get_tier_duration_minutes(amount_cents)
+            total_seconds = time_remaining_seconds + (tier_extension_minutes * 60)
+            total_minutes = int(total_seconds / 60)
+            # Pass the combined total (existing + new) as the pin amount
+            message.pin_message(amount_paid_cents=total_bid_cents, duration_minutes=total_minutes)
+        else:
+            # Standard new pin: use default duration
+            message.pin_message(amount_paid_cents=amount_cents)
 
         # Update both caches: main messages list and pinned messages
         MessageCache.update_message(message)
@@ -1003,31 +1135,57 @@ class MessagePinView(APIView):
             'message': MessageSerializer(message).data,
             'is_top_pin': is_top_pin,
             'amount_cents': amount_cents,
-            'duration_minutes': config.PIN_DURATION_MINUTES,
+            'duration_minutes': get_new_pin_duration_minutes(),
         })
 
 
 class AddToPinView(APIView):
     """
-    Add to an existing pinned message's value.
+    Add to an existing sticky pinned message.
 
-    This increases the pin amount but does NOT reset the duration.
-    Use this to defend your sticky position without restarting the timer.
+    This increases the pin amount AND extends the duration based on tier.
+    Only available for the current sticky holder (active, non-expired pin).
     """
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, code, message_id, username=None):
-        """Add value to an existing pinned message."""
-        from constance import config
-        from decimal import Decimal
-
+    def get(self, request, code, message_id, username=None):
+        """Get tier info for adding to a pinned message."""
         chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
 
-        # Validate message is currently pinned
+        now = timezone.now()
+        is_expired = message.sticky_until and message.sticky_until < now
+        time_remaining_seconds = 0
+        if message.sticky_until and not is_expired:
+            time_remaining_seconds = int((message.sticky_until - now).total_seconds())
+
+        return Response({
+            'is_pinned': message.is_pinned,
+            'is_expired': is_expired,
+            'current_pin_cents': int(message.current_pin_amount * 100) if message.current_pin_amount else 0,
+            'time_remaining_seconds': time_remaining_seconds,
+            'tiers': get_tiers_for_frontend(),
+        })
+
+    def post(self, request, code, message_id, username=None):
+        """Add value and time to an existing pinned message."""
+        chat_room = get_chat_room_by_url(code, username)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
+
+        now = timezone.now()
+        is_expired = message.sticky_until and message.sticky_until < now
+
+        # Validate message is currently the active sticky (not expired)
         if not message.is_pinned:
             return Response({
-                'error': 'Message is not currently pinned'
+                'error': 'Message is not currently pinned',
+                'action_hint': 'Use Pin Message to pin this message'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if is_expired:
+            return Response({
+                'error': 'Pin has expired. Use Re-pin to start a new pin session.',
+                'action_hint': 'Use Re-pin (Pin Message) to start fresh'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = MessagePinSerializer(data=request.data)
@@ -1035,31 +1193,35 @@ class AddToPinView(APIView):
 
         add_cents = serializer.validated_data['amount_cents']
 
+        # Validate tier
+        validation = validate_pin_amount(add_cents, is_add_to_pin=True)
+        if not validation['valid']:
+            return Response({
+                'error': validation['error'],
+                'tiers': get_tiers_for_frontend(),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         # TODO: Process payment with Stripe here
 
         add_amount = Decimal(add_cents) / 100
-        now = timezone.now()
-        is_expired = message.sticky_until and message.sticky_until < now
 
-        # Capture previous session amount before modification
+        # Get time extension for this tier
+        extension_minutes = get_tier_duration_minutes(add_cents)
+
+        # Capture previous values before modification
         previous_session_amount = message.current_pin_amount or Decimal('0')
+        previous_sticky_until = message.sticky_until
 
         # Update lifetime total
         message.pin_amount_paid = (message.pin_amount_paid or Decimal('0')) + add_amount
 
-        if is_expired:
-            # Pin expired - start fresh session with new timer
-            message.sticky_until = now + timezone.timedelta(minutes=config.PIN_DURATION_MINUTES)
-            message.pinned_at = now
-            # Fresh session - current amount is just what was just paid
-            message.current_pin_amount = add_amount
-            fields_to_update = ['pin_amount_paid', 'current_pin_amount', 'sticky_until', 'pinned_at']
-        else:
-            # Active pin - add to current session amount
-            message.current_pin_amount = (message.current_pin_amount or Decimal('0')) + add_amount
-            fields_to_update = ['pin_amount_paid', 'current_pin_amount']
+        # Add to current session amount (increases defense against outbid)
+        message.current_pin_amount = (message.current_pin_amount or Decimal('0')) + add_amount
 
-        message.save(update_fields=fields_to_update)
+        # Extend time from current expiry (stacks)
+        message.sticky_until = message.sticky_until + timezone.timedelta(minutes=extension_minutes)
+
+        message.save(update_fields=['pin_amount_paid', 'current_pin_amount', 'sticky_until'])
 
         # Update both caches: main messages list and pinned messages
         MessageCache.update_message(message)
@@ -1087,12 +1249,17 @@ class AddToPinView(APIView):
             }
         )
 
+        # Calculate new time remaining
+        new_time_remaining_seconds = int((message.sticky_until - now).total_seconds())
+
         return Response({
             'success': True,
             'message': MessageSerializer(message).data,
             'previous_cents': int(previous_session_amount * 100),
             'added_cents': add_cents,
             'new_session_cents': int(message.current_pin_amount * 100),
+            'extension_minutes': extension_minutes,
+            'new_time_remaining_seconds': new_time_remaining_seconds,
         })
 
 

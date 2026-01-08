@@ -3,15 +3,27 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
-import { Pin, DollarSign, Ban, X, BadgeCheck, Reply, Trash2, Plus, Minus } from 'lucide-react';
+import { Pin, DollarSign, Ban, X, BadgeCheck, Reply, Trash2 } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import { isDarkTheme } from '@/lib/themes';
 
+interface PinTier {
+  amount_cents: number;
+  duration_minutes: number;
+}
+
 interface PinRequirements {
   current_pin_cents: number;
-  minimum_cents: number;
-  required_cents: number;
+  minimum_cents?: number;  // Legacy, deprecated
+  required_cents?: number;  // Legacy, deprecated
+  minimum_required_cents?: number;  // Total amount needed to win sticky
+  minimum_add_cents?: number;  // For reclaim: minimum tier to ADD (additive)
+  my_investment_cents?: number;  // User's existing investment (for reclaim)
   duration_minutes: number;
+  tiers?: PinTier[];  // Available tiers
+  is_current_sticky?: boolean;  // Is this message the current sticky holder
+  is_outbid?: boolean;  // Was this message outbid but has time remaining (can reclaim)
+  time_remaining_seconds?: number;  // Remaining time if outbid (for reclaim stacking)
 }
 
 interface MessageActionsModalProps {
@@ -19,6 +31,7 @@ interface MessageActionsModalProps {
   currentUsername?: string;
   isHost?: boolean;
   themeIsDarkMode?: boolean;
+  isOutbid?: boolean;  // Message was pinned but outbid (has time remaining, not current sticky)
   children: React.ReactNode;
   onReply?: (message: Message) => void;
   onPin?: (messageId: string, amountCents: number) => Promise<boolean>;
@@ -70,6 +83,7 @@ export default function MessageActionsModal({
   currentUsername,
   isHost = false,
   themeIsDarkMode = true,
+  isOutbid = false,
   children,
   onReply,
   onPin,
@@ -92,9 +106,10 @@ export default function MessageActionsModal({
   // Pin input state
   const [showPinInput, setShowPinInput] = useState(false);
   const [pinRequirements, setPinRequirements] = useState<PinRequirements | null>(null);
-  const [pinAmount, setPinAmount] = useState(0);
+  const [selectedTier, setSelectedTier] = useState<PinTier | null>(null);
   const [isPinning, setIsPinning] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
+  const [showAllTiers, setShowAllTiers] = useState(false);
 
   const dragStartY = React.useRef(0);
   const isOwnMessage = message.username === currentUsername;
@@ -150,8 +165,9 @@ export default function MessageActionsModal({
       // Reset pin state
       setShowPinInput(false);
       setPinRequirements(null);
-      setPinAmount(0);
+      setSelectedTier(null);
       setPinError(null);
+      setShowAllTiers(false);
     }, 250); // Match animation duration
   };
 
@@ -161,7 +177,7 @@ export default function MessageActionsModal({
       try {
         const requirements = await getPinRequirements(message.id);
         setPinRequirements(requirements);
-        setPinAmount(requirements.required_cents);
+        setSelectedTier(null);  // Reset selection
         setShowPinInput(true);
         setPinError(null);
       } catch (error) {
@@ -172,22 +188,25 @@ export default function MessageActionsModal({
       // Fallback: use defaults if no getPinRequirements provided
       setPinRequirements({
         current_pin_cents: 0,
-        minimum_cents: 25,
-        required_cents: 25,
-        duration_minutes: 120,
+        duration_minutes: 60,
+        tiers: [
+          { amount_cents: 100, duration_minutes: 10 },
+          { amount_cents: 200, duration_minutes: 15 },
+          { amount_cents: 500, duration_minutes: 20 },
+          { amount_cents: 1000, duration_minutes: 30 },
+          { amount_cents: 1500, duration_minutes: 45 },
+          { amount_cents: 2000, duration_minutes: 60 },
+        ],
       });
-      setPinAmount(25);
+      setSelectedTier(null);
       setShowPinInput(true);
     }
   };
 
   // Handle pin submission
   const handlePinSubmit = async () => {
-    if (!pinRequirements) return;
-
-    // Validate amount
-    if (pinAmount < pinRequirements.required_cents) {
-      setPinError(`Must pay at least $${(pinRequirements.required_cents / 100).toFixed(2)}`);
+    if (!pinRequirements || !selectedTier) {
+      setPinError('Please select a tier');
       return;
     }
 
@@ -195,11 +214,11 @@ export default function MessageActionsModal({
     setPinError(null);
 
     try {
-      const isAddToPin = message.is_pinned;
-      const handler = isAddToPin ? onAddToPin : onPin;
+      // Determine if this is add-to-pin (current sticky holder) or new pin/re-pin/reclaim
+      const handler = pinRequirements?.is_current_sticky ? onAddToPin : onPin;
 
       if (handler) {
-        const success = await handler(message.id, pinAmount);
+        const success = await handler(message.id, selectedTier.amount_cents);
         if (success) {
           handleClose();
         } else {
@@ -222,10 +241,39 @@ export default function MessageActionsModal({
     }
   };
 
-  // Increment/decrement pin amount
-  const adjustPinAmount = (delta: number) => {
-    const newAmount = Math.max(pinRequirements?.required_cents || 25, pinAmount + delta);
-    setPinAmount(newAmount);
+  // Check if a tier is available (for outbidding, must be above current)
+  const isTierAvailable = (tier: PinTier): boolean => {
+    if (!pinRequirements) return true;
+
+    // For Add-to-Pin (current sticky holder), all tiers are available
+    if (pinRequirements.is_current_sticky) return true;
+
+    // For reclaim (outbid but has time remaining): use minimum_add_cents
+    // This is additive - tier + existing investment must beat current sticky
+    if (pinRequirements.is_outbid && pinRequirements.minimum_add_cents) {
+      return tier.amount_cents >= pinRequirements.minimum_add_cents;
+    }
+
+    // For new pin or re-pin: must be at or above minimum required total
+    const minRequired = pinRequirements.minimum_required_cents || pinRequirements.required_cents || 0;
+    return tier.amount_cents >= minRequired;
+  };
+
+  // Format duration for display (short form for pills)
+  const formatDuration = (minutes: number): string => {
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
+  // Format duration for display (long form for headers)
+  const formatDurationLong = (minutes: number): string => {
+    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (mins > 0) return `${hours} hour${hours !== 1 ? 's' : ''} ${mins} minute${mins !== 1 ? 's' : ''}`;
+    return `${hours} hour${hours !== 1 ? 's' : ''}`;
   };
 
   const handleDragStart = (e: React.TouchEvent) => {
@@ -285,21 +333,39 @@ export default function MessageActionsModal({
   }
 
   // Pin actions (new API with amount input)
-  const hasPinSupport = onPin || onAddToPin || getPinRequirements || onPinSelf || onPinOther;
+  // Host messages are already sticky, so disable pinning for them
+  const hasPinSupport = !message.is_from_host && (onPin || onAddToPin || getPinRequirements || onPinSelf || onPinOther);
+
+  // Check if pin has expired
+  const isPinExpired = message.is_pinned && message.sticky_until && new Date(message.sticky_until) < new Date();
 
   if (hasPinSupport) {
     if (!message.is_pinned) {
-      // Not pinned - show "Pin Message" or "Pin My Message"
+      // Not pinned - show "Pin Message"
       actions.push({
         icon: Pin,
-        label: isOwnMessage ? 'Pin My Message' : 'Pin Message',
+        label: 'Pin Message',
+        action: handleOpenPinInput,
+      });
+    } else if (isPinExpired) {
+      // Pin expired - show "Re-pin" to restart the timer
+      actions.push({
+        icon: Pin,
+        label: 'Re-pin Message',
+        action: handleOpenPinInput,
+      });
+    } else if (isOutbid) {
+      // Outbid but has time remaining - show "Reclaim Pin"
+      actions.push({
+        icon: Pin,
+        label: 'Reclaim Pin',
         action: handleOpenPinInput,
       });
     } else {
-      // Already pinned - show "Add to Pin" to increase value
+      // Active pin and current sticky holder - show "Add to Pin"
       actions.push({
         icon: Pin,
-        label: isOwnMessage ? 'Add to My Pin' : 'Add to Pin',
+        label: 'Add to Pin',
         action: handleOpenPinInput,
       });
     }
@@ -450,64 +516,140 @@ export default function MessageActionsModal({
 
               {/* Actions or Pin Input */}
               {showPinInput && pinRequirements ? (
-                <div className="px-6 pb-8 space-y-4 max-h-[280px] overflow-y-auto">
+                <div className="pb-8 space-y-4 max-h-[320px] overflow-y-auto w-full">
                   {/* Pin Amount Header */}
-                  <div className="text-center">
+                  <div className="text-center px-6">
                     <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {message.is_pinned ? 'Add to Pin' : 'Pin Message'}
+                      {pinRequirements.is_current_sticky
+                        ? 'Add to Pin'
+                        : pinRequirements.is_outbid
+                          ? 'Reclaim Pin'
+                          : !message.is_pinned
+                            ? 'Pin Message'
+                            : 'Re-pin Message'
+                      }
                     </h3>
                     <p className={`text-sm mt-1 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {message.is_pinned
-                        ? 'Add value to keep your message pinned'
-                        : pinRequirements.current_pin_cents > 0
-                          ? `Current pin: $${(pinRequirements.current_pin_cents / 100).toFixed(2)}`
-                          : `Duration: ${pinRequirements.duration_minutes} minutes`
-                      }
+                      {(() => {
+                        if (pinRequirements.is_current_sticky) {
+                          return 'Extend pin duration';
+                        } else if (pinRequirements.is_outbid) {
+                          const minAdd = pinRequirements.minimum_add_cents || 0;
+                          const timeRemaining = pinRequirements.time_remaining_seconds || 0;
+                          const hours = Math.floor(timeRemaining / 3600);
+                          const mins = Math.ceil((timeRemaining % 3600) / 60);
+                          const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                          return `Add $${(minAdd / 100).toFixed(0)}+ to reclaim • ${timeStr} remaining`;
+                        } else if (pinRequirements.current_pin_cents > 0) {
+                          const minRequired = pinRequirements.minimum_required_cents || 0;
+                          return `Outbid current pin (min $${(minRequired / 100).toFixed(0)})`;
+                        } else {
+                          return `Pin for ${formatDurationLong(pinRequirements.duration_minutes)}`;
+                        }
+                      })()}
                     </p>
                   </div>
 
-                  {/* Amount Input */}
-                  <div className="flex items-center justify-center gap-4">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); adjustPinAmount(-25); }}
-                      disabled={pinAmount <= pinRequirements.required_cents}
-                      className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                        pinAmount <= pinRequirements.required_cents
-                          ? 'opacity-50 cursor-not-allowed'
-                          : 'active:scale-95'
-                      } ${themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'}`}
-                    >
-                      <Minus className="w-5 h-5" />
-                    </button>
+                  {/* Tier Selection - Quick Picks + More */}
+                  {pinRequirements.tiers && pinRequirements.tiers.length > 0 && (
+                    <div className="px-6">
+                      {(() => {
+                        // Filter out unavailable tiers (below minimum for outbid)
+                        const availableTiers = pinRequirements.tiers.filter(t => isTierAvailable(t));
+                        // Show first 6 available tiers as quick picks
+                        const quickPicks = availableTiers.slice(0, 6);
+                        const moreTiers = availableTiers.slice(6);
+                        const displayTiers = showAllTiers ? availableTiers : quickPicks;
 
-                    <div className={`text-3xl font-bold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      ${(pinAmount / 100).toFixed(2)}
+                        // For add-to-pin or reclaim, show tier's time extension
+                        // For new pin/re-pin, show standard duration
+                        const showTimeExtension = pinRequirements.is_current_sticky || pinRequirements.is_outbid;
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-3 gap-2">
+                              {displayTiers.map((tier) => {
+                                const isSelected = selectedTier?.amount_cents === tier.amount_cents;
+
+                                return (
+                                  <button
+                                    key={tier.amount_cents}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedTier(tier);
+                                    }}
+                                    className={`py-3 px-2 rounded-xl transition-colors ${
+                                      isSelected
+                                        ? themeIsDarkMode
+                                          ? 'bg-cyan-600 text-white ring-2 ring-cyan-400'
+                                          : 'bg-purple-600 text-white ring-2 ring-purple-400'
+                                        : themeIsDarkMode
+                                          ? 'bg-zinc-700 text-white hover:bg-zinc-600'
+                                          : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                                    }`}
+                                  >
+                                    <div className="font-bold text-lg">
+                                      ${(tier.amount_cents / 100).toFixed(0)}
+                                    </div>
+                                    <div className={`text-xs ${
+                                      isSelected
+                                        ? 'text-white/70'
+                                        : themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'
+                                    }`}>
+                                      {showTimeExtension ? `+${formatDuration(tier.duration_minutes)}` : formatDuration(pinRequirements.duration_minutes)}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* More/Less button */}
+                            {moreTiers.length > 0 && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowAllTiers(!showAllTiers);
+                                }}
+                                className={`w-full mt-2 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                  themeIsDarkMode
+                                    ? 'text-cyan-400 hover:bg-zinc-800'
+                                    : 'text-purple-600 hover:bg-gray-100'
+                                }`}
+                              >
+                                {showAllTiers ? 'Show less' : `More options ($${moreTiers[0].amount_cents / 100}-$${moreTiers[moreTiers.length - 1].amount_cents / 100})`}
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
+                  )}
 
-                    <button
-                      onClick={(e) => { e.stopPropagation(); adjustPinAmount(25); }}
-                      className={`w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95 ${
-                        themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
-                      }`}
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {/* Minimum required */}
-                  <p className={`text-center text-xs ${themeIsDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                    Minimum: ${(pinRequirements.required_cents / 100).toFixed(2)}
-                  </p>
+                  {/* Selected tier summary */}
+                  {selectedTier && (
+                    <div className={`text-center py-2 px-4 mx-6 rounded-lg ${
+                      themeIsDarkMode ? 'bg-zinc-800' : 'bg-gray-50'
+                    }`}>
+                      <span className={`text-sm ${themeIsDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                        {pinRequirements.is_current_sticky
+                          ? `Add $${(selectedTier.amount_cents / 100).toFixed(2)} to extend by ${formatDurationLong(selectedTier.duration_minutes)}`
+                          : pinRequirements.is_outbid
+                            ? `Pay $${(selectedTier.amount_cents / 100).toFixed(2)} to reclaim + ${formatDurationLong(selectedTier.duration_minutes)}`
+                            : `Pay $${(selectedTier.amount_cents / 100).toFixed(2)} to pin for ${formatDurationLong(pinRequirements.duration_minutes)}`
+                        }
+                      </span>
+                    </div>
+                  )}
 
                   {/* Error message */}
                   {pinError && (
-                    <p className="text-center text-sm text-red-500">{pinError}</p>
+                    <p className="text-center text-sm text-red-500 px-6">{pinError}</p>
                   )}
 
                   {/* Buttons */}
-                  <div className="flex gap-3 pt-2">
+                  <div className="flex gap-3 pt-2 px-6">
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowPinInput(false); }}
+                      onClick={(e) => { e.stopPropagation(); setShowPinInput(false); setSelectedTier(null); }}
                       className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
                         themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
                       }`}
@@ -516,12 +658,21 @@ export default function MessageActionsModal({
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handlePinSubmit(); }}
-                      disabled={isPinning}
+                      disabled={isPinning || !selectedTier}
                       className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
-                        isPinning ? 'opacity-50 cursor-not-allowed' : ''
+                        (isPinning || !selectedTier) ? 'opacity-50 cursor-not-allowed' : ''
                       } ${themeIsDarkMode ? 'bg-cyan-600 text-white' : 'bg-purple-600 text-white'}`}
                     >
-                      {isPinning ? 'Pinning...' : message.is_pinned ? 'Add to Pin' : 'Pin Message'}
+                      {isPinning
+                        ? 'Processing...'
+                        : pinRequirements.is_current_sticky
+                          ? 'Add to Pin'
+                          : pinRequirements.is_outbid
+                            ? 'Reclaim Pin'
+                            : !message.is_pinned
+                              ? 'Pin Message'
+                              : 'Re-pin'
+                      }
                     </button>
                   </div>
                 </div>

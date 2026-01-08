@@ -366,15 +366,13 @@ class MessagePinSerializer(serializers.Serializer):
     )
 
     def validate_amount_cents(self, value):
-        """Validate that amount meets minimum requirement."""
-        from constance import config
+        """Validate that amount is a valid tier."""
+        from .utils.pin_tiers import is_valid_tier, get_valid_pin_tiers
 
-        # Get minimum from Constance
-        min_cents = config.PIN_MINIMUM_CENTS
-
-        if value < min_cents:
+        if not is_valid_tier(value):
+            valid_tiers = get_valid_pin_tiers()
             raise serializers.ValidationError(
-                f'Amount must be at least {min_cents} cents (${min_cents/100:.2f})'
+                f'Amount must be a valid tier. Valid tiers: {valid_tiers[:6]}...'
             )
 
         return value
