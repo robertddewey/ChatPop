@@ -1124,13 +1124,14 @@ export default function ChatPage() {
       .reverse(); // Show newest first
   }, [filteredMessages]);
 
+  // Use full messages list (not filtered) so sticky pin is always the true winner
   const topPinnedMessage = useMemo(() => {
     const now = new Date();
-    return filteredMessages
+    return messages
       .filter(m => m.is_pinned && !m.is_from_host && (!m.sticky_until || new Date(m.sticky_until) > now))
       .sort((a, b) => parseFloat(b.current_pin_amount) - parseFloat(a.current_pin_amount))
       [0]; // Get highest paid, non-expired
-  }, [filteredMessages, pinExpiryTick]);
+  }, [messages, pinExpiryTick]);
 
   // Check if current user is the host
   const isHost = useMemo(() => {
