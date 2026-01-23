@@ -2,18 +2,31 @@ from django.urls import path
 from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
     ChatConfigView, NearbyDiscoverableChatsView,
-    MessageListView, MessageCreateView, MessagePinView, AddToPinView, MessageDeleteView,
+    MessageListView, MessageCreateView, MessagePinView, AddToPinView, MessageDeleteView, PinTiersView,
     FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
-    VoiceUploadView, VoiceStreamView,
+    VoiceUploadView, VoiceStreamView, PhotoUploadView, VideoUploadView,
     MessageReactionToggleView, MessageReactionsListView,
     BlockUserView, UnblockUserView, BlockedUsersListView,
     UserBlockView, UserUnblockView, UserBlockListView,
-    PhotoAnalysisView, ChatRoomCreateFromPhotoView
+    PhotoAnalysisView, ChatRoomCreateFromPhotoView,
+    # Admin/Staff moderation views
+    AdminChatDetailView, AdminMessageListView, AdminMessageDeleteView, AdminMessageUnpinView,
+    AdminSiteBanListView, AdminSiteBanCreateView, AdminSiteBanRevokeView, AdminChatBanCreateView,
 )
 
 app_name = 'chats'
 
 urlpatterns = [
+    # Admin/Staff Moderation - MUST come before other patterns
+    path('admin/<uuid:room_id>/', AdminChatDetailView.as_view(), name='admin-chat-detail'),
+    path('admin/<uuid:room_id>/messages/', AdminMessageListView.as_view(), name='admin-message-list'),
+    path('admin/<uuid:room_id>/messages/<uuid:message_id>/delete/', AdminMessageDeleteView.as_view(), name='admin-message-delete'),
+    path('admin/<uuid:room_id>/messages/<uuid:message_id>/unpin/', AdminMessageUnpinView.as_view(), name='admin-message-unpin'),
+    path('admin/<uuid:room_id>/ban/', AdminChatBanCreateView.as_view(), name='admin-chat-ban'),
+    path('admin/site-bans/', AdminSiteBanListView.as_view(), name='admin-site-bans-list'),
+    path('admin/site-bans/create/', AdminSiteBanCreateView.as_view(), name='admin-site-ban-create'),
+    path('admin/site-bans/<uuid:ban_id>/revoke/', AdminSiteBanRevokeView.as_view(), name='admin-site-ban-revoke'),
+
     # User Blocking (registered users only, site-wide) - MUST come before other patterns
     path('user-blocks/', UserBlockListView.as_view(), name='user-blocks-list'),
     path('user-blocks/block/', UserBlockView.as_view(), name='user-block'),
@@ -39,6 +52,7 @@ urlpatterns = [
     path('discover/<str:code>/join/', ChatRoomJoinView.as_view(), name='chat-join-ai'),
     path('discover/<str:code>/messages/', MessageListView.as_view(), name='message-list-ai'),
     path('discover/<str:code>/messages/send/', MessageCreateView.as_view(), name='message-create-ai'),
+    path('discover/<str:code>/pin-tiers/', PinTiersView.as_view(), name='pin-tiers-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/pin/', MessagePinView.as_view(), name='message-pin-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/add-to-pin/', AddToPinView.as_view(), name='add-to-pin-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/delete/', MessageDeleteView.as_view(), name='message-delete-ai'),
@@ -51,6 +65,8 @@ urlpatterns = [
     path('discover/<str:code>/update-my-theme/', UpdateMyThemeView.as_view(), name='update-my-theme-ai'),
     path('discover/<str:code>/check-rate-limit/', CheckRateLimitView.as_view(), name='check-rate-limit-ai'),
     path('discover/<str:code>/voice/upload/', VoiceUploadView.as_view(), name='voice-upload-ai'),
+    path('discover/<str:code>/photo/upload/', PhotoUploadView.as_view(), name='photo-upload-ai'),
+    path('discover/<str:code>/video/upload/', VideoUploadView.as_view(), name='video-upload-ai'),
     path('discover/<str:code>/block-user/', BlockUserView.as_view(), name='block-user-ai'),
     path('discover/<str:code>/unblock/', UnblockUserView.as_view(), name='unblock-user-ai'),
     path('discover/<str:code>/blocked-users/', BlockedUsersListView.as_view(), name='blocked-users-list-ai'),
@@ -61,6 +77,7 @@ urlpatterns = [
     path('<str:username>/<str:code>/join/', ChatRoomJoinView.as_view(), name='chat-join'),
     path('<str:username>/<str:code>/messages/', MessageListView.as_view(), name='message-list'),
     path('<str:username>/<str:code>/messages/send/', MessageCreateView.as_view(), name='message-create'),
+    path('<str:username>/<str:code>/pin-tiers/', PinTiersView.as_view(), name='pin-tiers'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/pin/', MessagePinView.as_view(), name='message-pin'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/add-to-pin/', AddToPinView.as_view(), name='add-to-pin'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/delete/', MessageDeleteView.as_view(), name='message-delete'),
@@ -73,6 +90,8 @@ urlpatterns = [
     path('<str:username>/<str:code>/update-my-theme/', UpdateMyThemeView.as_view(), name='update-my-theme'),
     path('<str:username>/<str:code>/check-rate-limit/', CheckRateLimitView.as_view(), name='check-rate-limit'),
     path('<str:username>/<str:code>/voice/upload/', VoiceUploadView.as_view(), name='voice-upload'),
+    path('<str:username>/<str:code>/photo/upload/', PhotoUploadView.as_view(), name='photo-upload'),
+    path('<str:username>/<str:code>/video/upload/', VideoUploadView.as_view(), name='video-upload'),
     path('<str:username>/<str:code>/block-user/', BlockUserView.as_view(), name='block-user'),
     path('<str:username>/<str:code>/unblock/', UnblockUserView.as_view(), name='unblock-user'),
     path('<str:username>/<str:code>/blocked-users/', BlockedUsersListView.as_view(), name='blocked-users-list'),

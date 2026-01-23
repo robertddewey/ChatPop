@@ -15,6 +15,7 @@ import LoginModal from '@/components/LoginModal';
 import RegisterModal from '@/components/RegisterModal';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
+import MediaPicker from '@/components/MediaPicker';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playJoinSound } from '@/lib/sounds';
 import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft, Reply, X } from 'lucide-react';
@@ -198,6 +199,7 @@ export default function ChatPage() {
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
+  const [hasMediaSelected, setHasMediaSelected] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // Message filter
@@ -801,6 +803,12 @@ export default function ChatPage() {
       return;
     }
 
+    // If there's media selected, send it via the global method
+    if ((window as any).__mediaPickerHasMedia && (window as any).__mediaPickerSendMethod) {
+      (window as any).__mediaPickerSendMethod();
+      return;
+    }
+
     if (!newMessage.trim() || sending) return;
 
     setSending(true);
@@ -908,6 +916,122 @@ export default function ChatPage() {
     }
   };
 
+  // Handle photo message upload
+  const handlePhotoSelected = async (file: File, width: number, height: number) => {
+    if (sending) return;
+
+    setSending(true);
+    try {
+      let messageUsername = username;
+
+      if (!messageUsername) {
+        const token = localStorage.getItem('auth_token');
+        const isLoggedIn = !!token;
+        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+      }
+
+      if (!messageUsername && chatRoom) {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          messageUsername = chatRoom.host.reserved_username || chatRoom.host.email.split('@')[0];
+        }
+      }
+
+      if (!messageUsername) {
+        console.error('No username available');
+        alert('Please join the chat first');
+        return;
+      }
+
+      // Upload photo and get the URL
+      const { photo_url, width: uploadedWidth, height: uploadedHeight } = await messageApi.uploadPhoto(code, file);
+
+      console.log('[Photo Upload] Sending photo message:', {
+        photo_url,
+        width: uploadedWidth,
+        height: uploadedHeight
+      });
+
+      // Send the photo message via WebSocket
+      sendRawMessage({
+        message: '', // Empty message text for photo-only messages
+        photo_url: photo_url,
+        photo_width: uploadedWidth,
+        photo_height: uploadedHeight,
+        reply_to_id: replyingTo?.id,
+      });
+
+      // Auto-scroll to show new message
+      shouldAutoScrollRef.current = true;
+    } catch (err: any) {
+      console.error('Failed to upload photo:', err);
+      const errorMsg = err.response?.data?.error || err.message || 'Unknown error occurred';
+      alert(`Failed to send photo: ${errorMsg}`);
+    } finally {
+      setSending(false);
+      setReplyingTo(null);
+      setHasMediaSelected(false);
+    }
+  };
+
+  // Handle video message upload
+  const handleVideoSelected = async (file: File, duration: number, thumbnail: Blob | null) => {
+    if (sending) return;
+
+    setSending(true);
+    try {
+      let messageUsername = username;
+
+      if (!messageUsername) {
+        const token = localStorage.getItem('auth_token');
+        const isLoggedIn = !!token;
+        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+      }
+
+      if (!messageUsername && chatRoom) {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          messageUsername = chatRoom.host.reserved_username || chatRoom.host.email.split('@')[0];
+        }
+      }
+
+      if (!messageUsername) {
+        console.error('No username available');
+        alert('Please join the chat first');
+        return;
+      }
+
+      // Upload video and get URLs
+      const { video_url, duration: uploadedDuration, thumbnail_url } = await messageApi.uploadVideo(code, file);
+
+      console.log('[Video Upload] Sending video message:', {
+        video_url,
+        duration: uploadedDuration,
+        thumbnail_url
+      });
+
+      // Send the video message via WebSocket
+      sendRawMessage({
+        message: '', // Empty message text for video-only messages
+        video_url: video_url,
+        video_duration: uploadedDuration,
+        video_thumbnail_url: thumbnail_url,
+        reply_to_id: replyingTo?.id,
+      });
+
+      // Auto-scroll to show new message
+      shouldAutoScrollRef.current = true;
+    } catch (err: any) {
+      console.error('Failed to upload video:', err);
+      const errorMsg = err.response?.data?.error || err.message || 'Unknown error occurred';
+      alert(`Failed to send video: ${errorMsg}`);
+    } finally {
+      setSending(false);
+      setReplyingTo(null);
+      setHasMediaSelected(false);
+    }
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -934,12 +1058,17 @@ export default function ChatPage() {
 
   // Message action handlers (wrapped in useCallback to prevent re-renders)
 
-  // Get pin requirements for a message (current pin value, minimum required, etc.)
+  // Get pin requirements for a message (current pin value, minimum required, tiers, etc.)
   const getPinRequirements = useCallback(async (messageId: string): Promise<{
     current_pin_cents: number;
-    minimum_cents: number;
-    required_cents: number;
+    minimum_cents?: number;
+    required_cents?: number;
+    minimum_required_cents?: number;
     duration_minutes: number;
+    tiers?: { amount_cents: number; duration_minutes: number }[];
+    is_pinned?: boolean;
+    is_expired?: boolean;
+    time_remaining_seconds?: number;
   }> => {
     return await messageApi.getPinRequirements(code, messageId);
   }, [code]);
@@ -1646,9 +1775,20 @@ export default function ChatPage() {
               disabled={sending || !hasJoined}
             />
           )}
+          {(chatRoom?.photo_enabled || chatRoom?.video_enabled) && (
+            <MediaPicker
+              onPhotoSelected={handlePhotoSelected}
+              onVideoSelected={handleVideoSelected}
+              onMediaReady={setHasMediaSelected}
+              photoEnabled={chatRoom?.photo_enabled}
+              videoEnabled={chatRoom?.video_enabled}
+              disabled={sending || !hasJoined}
+              maxVideoDuration={30}
+            />
+          )}
           <button
             type="submit"
-            disabled={sending || (!newMessage.trim() && !hasVoiceRecording)}
+            disabled={sending || (!newMessage.trim() && !hasVoiceRecording && !hasMediaSelected)}
             className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send

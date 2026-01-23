@@ -271,14 +271,19 @@ class MessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = [
-            'id', 'chat_room', 'username', 'user', 'message_type', 'content', 'voice_url',
-            'voice_duration', 'voice_waveform',
+            'id', 'chat_room', 'username', 'user', 'message_type', 'content',
+            'voice_url', 'voice_duration', 'voice_waveform',
+            'photo_url', 'photo_width', 'photo_height',
+            'video_url', 'video_duration', 'video_thumbnail_url',
             'reply_to', 'reply_to_message',
             'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount',
             'is_from_host', 'username_is_reserved', 'time_until_unpin', 'created_at', 'is_deleted'
         ]
         read_only_fields = [
-            'id', 'user', 'message_type', 'voice_url', 'voice_duration', 'voice_waveform',
+            'id', 'user', 'message_type',
+            'voice_url', 'voice_duration', 'voice_waveform',
+            'photo_url', 'photo_width', 'photo_height',
+            'video_url', 'video_duration', 'video_thumbnail_url',
             'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount', 'created_at', 'is_deleted'
         ]
 

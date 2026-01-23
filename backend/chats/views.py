@@ -2180,15 +2180,40 @@ class VoiceStreamView(APIView):
                 raise Http404("Voice message not found")
 
             # Determine content type from file extension
-            content_type = 'audio/webm'  # default
-            if storage_path.endswith('.m4a') or storage_path.endswith('.mp4'):
+            content_type = 'application/octet-stream'  # default
+            ext = storage_path.lower().split('.')[-1] if '.' in storage_path else ''
+
+            # Audio types
+            if ext in ('m4a', 'mp4') and 'voice' in storage_path:
                 content_type = 'audio/mp4'
-            elif storage_path.endswith('.mp3') or storage_path.endswith('.mpeg'):
+            elif ext == 'webm' and 'voice' in storage_path:
+                content_type = 'audio/webm'
+            elif ext in ('mp3', 'mpeg'):
                 content_type = 'audio/mpeg'
-            elif storage_path.endswith('.ogg'):
+            elif ext == 'ogg':
                 content_type = 'audio/ogg'
-            elif storage_path.endswith('.wav'):
+            elif ext == 'wav':
                 content_type = 'audio/wav'
+            # Image types
+            elif ext in ('jpg', 'jpeg'):
+                content_type = 'image/jpeg'
+            elif ext == 'png':
+                content_type = 'image/png'
+            elif ext == 'webp':
+                content_type = 'image/webp'
+            elif ext == 'gif':
+                content_type = 'image/gif'
+            elif ext in ('heic', 'heif'):
+                content_type = 'image/heic'
+            # Video types
+            elif ext == 'mp4':
+                content_type = 'video/mp4'
+            elif ext == 'webm':
+                content_type = 'video/webm'
+            elif ext == 'mov':
+                content_type = 'video/quicktime'
+            elif ext == 'm4v':
+                content_type = 'video/x-m4v'
 
             # Get file size
             file_obj.seek(0, os.SEEK_END)
@@ -2269,6 +2294,287 @@ class VoiceStreamView(APIView):
             return JsonResponse({
                 'error': f'Failed to stream voice message: {str(e)}'
             }, status=500)
+
+
+class PhotoUploadView(APIView):
+    """
+    Upload a photo message.
+    Available to all chat participants if photo_enabled=True on the chat room.
+    Compresses images to max 1920px, 80% quality JPEG.
+    """
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+
+    def post(self, request, code, username=None):
+        from .utils.security.auth import ChatSessionValidator
+        from rest_framework.exceptions import PermissionDenied
+        from chatpop.utils.media import save_photo_message, get_photo_message_url, PHOTO_CONTENT_TYPE_TO_EXT
+        from PIL import Image
+        from io import BytesIO
+        from django.core.files.base import ContentFile
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Get chat room
+        chat_room = get_chat_room_by_url(code, username)
+
+        # Check if photo messages are enabled for this chat
+        if not chat_room.photo_enabled:
+            return Response({
+                'error': 'Photo messages are not enabled for this chat room'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        # Validate session token
+        session_token = request.data.get('session_token') or request.headers.get('X-Chat-Session-Token')
+        if not session_token:
+            return Response({
+                'error': 'Session token required to upload photos'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+        except PermissionDenied:
+            return Response({
+                'error': 'Invalid session token'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Get uploaded file
+        photo_file = request.FILES.get('photo')
+        if not photo_file:
+            return Response({
+                'error': 'No photo file provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file size (max 10MB before compression)
+        if photo_file.size > 10 * 1024 * 1024:
+            return Response({
+                'error': 'Photo too large (max 10MB)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file type
+        allowed_types = list(PHOTO_CONTENT_TYPE_TO_EXT.keys())
+        if photo_file.content_type not in allowed_types:
+            return Response({
+                'error': f'Invalid file type. Allowed types: {", ".join(allowed_types)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            logger.info(f"[PhotoUpload] Received file: {photo_file.content_type}, {photo_file.size} bytes")
+
+            # Open image with Pillow
+            img = Image.open(photo_file)
+
+            # Apply EXIF orientation (fixes sideways mobile photos)
+            from PIL import ImageOps
+            try:
+                transposed = ImageOps.exif_transpose(img)
+                if transposed is not None:
+                    img = transposed
+            except Exception as exif_error:
+                logger.warning(f"[PhotoUpload] EXIF transpose failed (ignoring): {exif_error}")
+
+            # Convert RGBA to RGB (remove alpha channel for JPEG)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = background
+
+            # Get original dimensions
+            original_width, original_height = img.size
+
+            # Resize if larger than 1920px on longest side
+            max_dimension = 1920
+            if original_width > max_dimension or original_height > max_dimension:
+                if original_width > original_height:
+                    new_width = max_dimension
+                    new_height = int(original_height * (max_dimension / original_width))
+                else:
+                    new_height = max_dimension
+                    new_width = int(original_width * (max_dimension / original_height))
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                logger.info(f"[PhotoUpload] Resized from {original_width}x{original_height} to {new_width}x{new_height}")
+
+            # Get final dimensions
+            final_width, final_height = img.size
+
+            # Save as JPEG with 80% quality
+            output = BytesIO()
+            img.save(output, format='JPEG', quality=80, optimize=True)
+            output.seek(0)
+
+            compressed_size = len(output.getvalue())
+            logger.info(f"[PhotoUpload] Compressed to {compressed_size} bytes")
+
+            # Save to storage
+            storage_path, storage_type = save_photo_message(
+                ContentFile(output.read()),
+                content_type='image/jpeg'
+            )
+
+            photo_url = get_photo_message_url(storage_path)
+
+            return Response({
+                'photo_url': photo_url,
+                'width': final_width,
+                'height': final_height,
+                'storage_path': storage_path,
+                'storage_type': storage_type
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': f'Failed to upload photo: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class VideoUploadView(APIView):
+    """
+    Upload a video message.
+    Available to all chat participants if video_enabled=True on the chat room.
+    Validates duration (max 30 seconds) and generates thumbnail.
+    """
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+
+    def post(self, request, code, username=None):
+        from .utils.security.auth import ChatSessionValidator
+        from rest_framework.exceptions import PermissionDenied
+        from chatpop.utils.media import (
+            save_video_message, save_video_thumbnail,
+            get_video_message_url, VIDEO_CONTENT_TYPE_TO_EXT
+        )
+        from django.core.files.base import ContentFile
+        import subprocess
+        import tempfile
+        import os
+        import logging
+        import json
+        logger = logging.getLogger(__name__)
+
+        # Get chat room
+        chat_room = get_chat_room_by_url(code, username)
+
+        # Check if video messages are enabled for this chat
+        if not chat_room.video_enabled:
+            return Response({
+                'error': 'Video messages are not enabled for this chat room'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        # Validate session token
+        session_token = request.data.get('session_token') or request.headers.get('X-Chat-Session-Token')
+        if not session_token:
+            return Response({
+                'error': 'Session token required to upload videos'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+        except PermissionDenied:
+            return Response({
+                'error': 'Invalid session token'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Get uploaded file
+        video_file = request.FILES.get('video')
+        if not video_file:
+            return Response({
+                'error': 'No video file provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file size (max 50MB)
+        if video_file.size > 50 * 1024 * 1024:
+            return Response({
+                'error': 'Video too large (max 50MB)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate file type
+        allowed_types = list(VIDEO_CONTENT_TYPE_TO_EXT.keys())
+        if video_file.content_type not in allowed_types:
+            return Response({
+                'error': f'Invalid file type. Allowed types: {", ".join(allowed_types)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            logger.info(f"[VideoUpload] Received file: {video_file.content_type}, {video_file.size} bytes")
+
+            # Save to temp file for ffprobe/ffmpeg processing
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+                for chunk in video_file.chunks():
+                    tmp.write(chunk)
+                tmp_path = tmp.name
+
+            try:
+                # Get video duration using ffprobe
+                probe_cmd = [
+                    'ffprobe', '-v', 'quiet', '-print_format', 'json',
+                    '-show_format', '-show_streams', tmp_path
+                ]
+                probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+                probe_data = json.loads(probe_result.stdout)
+                duration = float(probe_data.get('format', {}).get('duration', 0))
+
+                logger.info(f"[VideoUpload] Video duration: {duration} seconds")
+
+                # Validate duration (max 30 seconds)
+                if duration > 30:
+                    return Response({
+                        'error': 'Video too long (max 30 seconds)'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Generate thumbnail from first frame
+                thumb_path = tmp_path + '_thumb.jpg'
+                thumb_cmd = [
+                    'ffmpeg', '-y', '-i', tmp_path,
+                    '-vframes', '1', '-f', 'image2',
+                    '-vf', 'scale=480:-1',  # Scale to 480px width
+                    thumb_path
+                ]
+                subprocess.run(thumb_cmd, capture_output=True)
+
+                # Save video to storage
+                video_file.seek(0)
+                storage_path, storage_type = save_video_message(
+                    video_file,
+                    content_type=video_file.content_type
+                )
+                video_url = get_video_message_url(storage_path)
+
+                # Save thumbnail to storage
+                thumbnail_url = None
+                if os.path.exists(thumb_path):
+                    with open(thumb_path, 'rb') as thumb_file:
+                        # Extract video filename from storage path
+                        video_filename = os.path.basename(storage_path)
+                        thumb_storage_path, _ = save_video_thumbnail(
+                            ContentFile(thumb_file.read()),
+                            video_filename
+                        )
+                        thumbnail_url = get_video_message_url(thumb_storage_path)
+                    os.unlink(thumb_path)
+
+            finally:
+                # Clean up temp file
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+            return Response({
+                'video_url': video_url,
+                'duration': round(duration, 2),
+                'thumbnail_url': thumbnail_url,
+                'storage_path': storage_path,
+                'storage_type': storage_type
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': f'Failed to upload video: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class BlockUserView(APIView):

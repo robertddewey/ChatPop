@@ -440,9 +440,9 @@ class MessageCacheInvalidationTests(TestCase):
         from django.utils import timezone
         from datetime import timedelta
 
-        # Pin the message with pinned_until timestamp
+        # Pin the message with sticky_until timestamp
         self.message.is_pinned = True
-        self.message.pinned_until = timezone.now() + timedelta(hours=1)
+        self.message.sticky_until = timezone.now() + timedelta(hours=1)
         self.message.save()
 
         # Add to pinned cache

@@ -37,11 +37,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close(code=4003)
             return
 
-        # Check if user is banned from this chat (ChatBlock)
-        is_banned = await self.check_if_banned(self.chat_code, self.username, session_data.get('fingerprint'), self.user_id)
+        # Get client IP address for site ban checking
+        client_ip = None
+        if 'client' in self.scope and self.scope['client']:
+            client_ip = self.scope['client'][0]  # (ip, port) tuple
+
+        # Check if user is banned from this chat (ChatBlock) or site-wide (SiteBan)
+        is_banned, ban_type = await self.check_if_banned(
+            self.chat_code,
+            self.username,
+            session_data.get('fingerprint'),
+            self.user_id,
+            client_ip
+        )
         if is_banned:
-            # Reject connection - user is banned from this chat
-            await self.close(code=4403)  # 4403 = Forbidden (banned from chat)
+            if ban_type == 'site':
+                await self.close(code=4503)  # 4503 = Site-wide ban
+            else:
+                await self.close(code=4403)  # 4403 = Chat ban
             return
 
         # Load blocked usernames for registered users
@@ -77,6 +90,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         voice_url = data.get('voice_url')  # Optional voice message URL
         voice_duration = data.get('voice_duration')  # Optional voice message duration (seconds)
         voice_waveform = data.get('voice_waveform')  # Optional voice waveform data (array of floats 0-1)
+        photo_url = data.get('photo_url')  # Optional photo URL
+        photo_width = data.get('photo_width')  # Optional photo width
+        photo_height = data.get('photo_height')  # Optional photo height
+        video_url = data.get('video_url')  # Optional video URL
+        video_duration = data.get('video_duration')  # Optional video duration (seconds)
+        video_thumbnail_url = data.get('video_thumbnail_url')  # Optional video thumbnail URL
 
         # Validate session token on each message (optional extra security)
         session_token = data.get('session_token', self.session_token)
@@ -88,14 +107,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }))
             return
 
-        # Check if user is banned from chat (backup check)
-        is_banned = await self.check_if_banned(self.chat_code, self.username, session_data.get('fingerprint'), self.user_id)
-        if is_banned:
-            await self.send(text_data=json.dumps({
-                'error': 'You have been banned from this chat'
-            }))
-            await self.close(code=4403)  # Close connection
-            return
+        # NOTE: Per-message ban check removed for performance.
+        # Bans are enforced at connect time and via user_kicked WebSocket event.
+        # If user is banned mid-session, they're immediately kicked via WebSocket.
 
         # Save message to PostgreSQL and Redis (dual-write)
         try:
@@ -107,7 +121,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 reply_to_id=reply_to_id,
                 voice_url=voice_url,
                 voice_duration=voice_duration,
-                voice_waveform=voice_waveform
+                voice_waveform=voice_waveform,
+                photo_url=photo_url,
+                photo_width=photo_width,
+                photo_height=photo_height,
+                video_url=video_url,
+                video_duration=video_duration,
+                video_thumbnail_url=video_thumbnail_url
             )
 
             # Serialize for broadcast (includes username_is_reserved)
@@ -154,6 +174,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'message_id': event['message_id']
         }))
 
+    async def message_pinned(self, event):
+        # Send pin update notification to WebSocket
+        await self.send(text_data=json.dumps({
+            'type': 'message_pinned',
+            'message': event['message'],
+            'is_top_pin': event.get('is_top_pin', False),
+        }))
+
     async def block_update(self, event):
         """Handle block/unblock updates from user_block_views.py"""
         action = event.get('action')  # 'add' or 'remove'
@@ -187,6 +215,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Close the WebSocket connection
             await self.close(code=4403)
 
+    async def site_banned(self, event):
+        """Handle user being site-wide banned by staff (SiteBan)"""
+        await self.send(text_data=json.dumps({
+            'type': 'site_banned',
+            'message': event.get('message', 'You have been banned from this site.')
+        }))
+        # Wait a moment to ensure message is transmitted before closing
+        import asyncio
+        await asyncio.sleep(0.1)
+        # Close the WebSocket connection with site ban code
+        await self.close(code=4503)
+
     @database_sync_to_async
     def validate_session(self, token, chat_code, username=None):
         """Validate JWT session token (async wrapper)"""
@@ -197,7 +237,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def save_message(self, chat_code, username, user_id, content, reply_to_id=None, voice_url=None, voice_duration=None, voice_waveform=None):
+    def save_message(self, chat_code, username, user_id, content, reply_to_id=None, voice_url=None, voice_duration=None, voice_waveform=None, photo_url=None, photo_width=None, photo_height=None, video_url=None, video_duration=None, video_thumbnail_url=None):
         """
         Save message to PostgreSQL and Redis (dual-write).
 
@@ -235,7 +275,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             reply_to=reply_to,
             voice_url=voice_url,
             voice_duration=voice_duration,
-            voice_waveform=voice_waveform
+            voice_waveform=voice_waveform,
+            photo_url=photo_url,
+            photo_width=photo_width,
+            photo_height=photo_height,
+            video_url=video_url,
+            video_duration=video_duration,
+            video_thumbnail_url=video_thumbnail_url
         )
 
         # Add to Redis cache (dual-write) - only if enabled
@@ -282,6 +328,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'voice_url': message.voice_url,
             'voice_duration': float(message.voice_duration) if message.voice_duration else None,
             'voice_waveform': message.voice_waveform,
+            'photo_url': message.photo_url,
+            'photo_width': message.photo_width,
+            'photo_height': message.photo_height,
+            'video_url': message.video_url,
+            'video_duration': float(message.video_duration) if message.video_duration else None,
+            'video_thumbnail_url': message.video_thumbnail_url,
             'reply_to_id': str(message.reply_to.id) if message.reply_to else None,
             'reply_to_message': reply_to_message,
             'is_pinned': message.is_pinned,
@@ -310,46 +362,66 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return blocked_usernames
 
     @database_sync_to_async
-    def check_if_banned(self, chat_code, username, fingerprint=None, user_id=None):
+    def check_if_banned(self, chat_code, username, fingerprint=None, user_id=None, ip_address=None):
         """
-        Check if user is banned from this chat (ChatBlock).
+        Check if user is banned from this chat (ChatBlock) or site-wide (SiteBan).
 
         Args:
             chat_code: Chat room code
             username: Username to check
             fingerprint: Browser fingerprint (optional)
             user_id: User ID for registered users (optional)
+            ip_address: IP address (optional, for site bans)
 
         Returns:
-            bool: True if banned, False otherwise
+            tuple: (is_banned: bool, ban_type: str|None)
+                   ban_type is 'chat' for ChatBlock, 'site' for SiteBan, None if not banned
         """
-        from .models import ChatBlock
+        from .models import ChatBlock, SiteBan
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
 
-        # Get chat room
+        # Check for site-wide ban first (applies to all chats)
+        user = None
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                pass
+
+        site_ban = SiteBan.is_banned(
+            user=user,
+            ip_address=ip_address,
+            fingerprint=fingerprint
+        )
+        if site_ban:
+            return True, 'site'
+
+        # Get chat room for ChatBlock check
         try:
             chat_room = ChatRoom.objects.get(code=chat_code)
         except ChatRoom.DoesNotExist:
-            return False
+            return False, None
 
         # Check for ChatBlock by username (case-insensitive)
         if ChatBlock.objects.filter(
             chat_room=chat_room,
             blocked_username__iexact=username
         ).exists():
-            return True
+            return True, 'chat'
 
         # Check for ChatBlock by fingerprint
         if fingerprint and ChatBlock.objects.filter(
             chat_room=chat_room,
             blocked_fingerprint=fingerprint
         ).exists():
-            return True
+            return True, 'chat'
 
         # Check for ChatBlock by user ID
         if user_id and ChatBlock.objects.filter(
             chat_room=chat_room,
             blocked_user_id=user_id
         ).exists():
-            return True
+            return True, 'chat'
 
-        return False
+        return False, None

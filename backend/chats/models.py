@@ -288,6 +288,16 @@ class Message(models.Model):
     voice_duration = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True, help_text="Duration of voice message in seconds")
     voice_waveform = models.JSONField(null=True, blank=True, help_text="Waveform amplitude data as array of floats (0-1)")
 
+    # Photo message
+    photo_url = models.URLField(max_length=500, blank=True, null=True, help_text="URL to photo file")
+    photo_width = models.IntegerField(null=True, blank=True, help_text="Photo width in pixels")
+    photo_height = models.IntegerField(null=True, blank=True, help_text="Photo height in pixels")
+
+    # Video message
+    video_url = models.URLField(max_length=500, blank=True, null=True, help_text="URL to video file")
+    video_duration = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True, help_text="Duration of video in seconds")
+    video_thumbnail_url = models.URLField(max_length=500, blank=True, null=True, help_text="URL to video thumbnail image")
+
     # Pinning
     is_pinned = models.BooleanField(default=False)
     pinned_at = models.DateTimeField(null=True, blank=True)
@@ -311,18 +321,22 @@ class Message(models.Model):
     def __str__(self):
         return f"{self.username}: {self.content[:50]}"
 
-    def pin_message(self, amount_paid_cents):
+    def pin_message(self, amount_paid_cents, duration_minutes=None):
         """
-        Pin a message. Duration comes from Constance config.PIN_DURATION_MINUTES.
+        Pin a message.
 
         Args:
             amount_paid_cents: Amount paid in cents to pin this message.
                               This determines priority in the sticky section.
+            duration_minutes: Optional duration override. If not provided,
+                             uses PIN_NEW_PIN_DURATION_MINUTES from constance.
         """
-        from constance import config
         from decimal import Decimal
+        from .utils.pin_tiers import get_new_pin_duration_minutes
 
-        duration_minutes = config.PIN_DURATION_MINUTES
+        if duration_minutes is None:
+            duration_minutes = get_new_pin_duration_minutes()
+
         amount_dollars = Decimal(amount_paid_cents) / 100
 
         self.is_pinned = True

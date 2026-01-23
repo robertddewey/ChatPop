@@ -4,9 +4,10 @@ import React, { useMemo } from 'react';
 import { BadgeCheck, Reply, Crown, Pin } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
+import PhotoMessage from './PhotoMessage';
+import VideoMessage from './VideoMessage';
 import ReactionBar from './ReactionBar';
-import { ChatRoom, Message } from '@/types';
-import { ReactionSummary } from '@/lib/api';
+import { ChatRoom, Message, ReactionSummary } from '@/lib/api';
 
 // Extract inline styles from Tailwind classes (opacity and filter)
 function extractInlineStyles(classString: string): { classes: string; style: React.CSSProperties } {
@@ -255,6 +256,41 @@ export default function MainChatView({
                       durationTextColor={currentDesign.hostVoiceMessageStyles?.durationTextColor}
                     />
                   </div>
+                ) : message.photo_url ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                      <img
+                        src={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                        alt="Host photo"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <span className={`text-sm ${currentDesign.hostText} opacity-70`}>
+                      Photo
+                    </span>
+                  </div>
+                ) : message.video_url ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 relative bg-black">
+                      {message.video_thumbnail_url ? (
+                        <img
+                          src={`${message.video_thumbnail_url}${message.video_thumbnail_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                          alt="Video thumbnail"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-zinc-700" />
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-full bg-black/50 flex items-center justify-center">
+                          <div className="w-0 h-0 border-l-[6px] border-l-white border-y-[4px] border-y-transparent ml-0.5" />
+                        </div>
+                      </div>
+                    </div>
+                    <span className={`text-sm ${currentDesign.hostText} opacity-70`}>
+                      Video
+                    </span>
+                  </div>
                 ) : (
                   <p className={`text-sm ${currentDesign.hostText} truncate`}>
                     {message.content}
@@ -320,6 +356,41 @@ export default function MainChatView({
                       voiceWaveformInactive={currentDesign.pinnedVoiceMessageStyles?.waveformInactive}
                       durationTextColor={currentDesign.pinnedVoiceMessageStyles?.durationTextColor}
                     />
+                  </div>
+                ) : stickyPinnedMessage.photo_url ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                      <img
+                        src={`${stickyPinnedMessage.photo_url}${stickyPinnedMessage.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                        alt="Pinned photo"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70`}>
+                      Photo
+                    </span>
+                  </div>
+                ) : stickyPinnedMessage.video_url ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 relative bg-black">
+                      {stickyPinnedMessage.video_thumbnail_url ? (
+                        <img
+                          src={`${stickyPinnedMessage.video_thumbnail_url}${stickyPinnedMessage.video_thumbnail_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                          alt="Video thumbnail"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-zinc-700" />
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-full bg-black/50 flex items-center justify-center">
+                          <div className="w-0 h-0 border-l-[6px] border-l-white border-y-[4px] border-y-transparent ml-0.5" />
+                        </div>
+                      </div>
+                    </div>
+                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70`}>
+                      Video
+                    </span>
                   </div>
                 ) : (
                   <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
@@ -624,6 +695,18 @@ export default function MainChatView({
                           }
                         />
                       </div>
+                    ) : message.photo_url ? (
+                      <PhotoMessage
+                        photoUrl={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                        width={message.photo_width || 300}
+                        height={message.photo_height || 200}
+                      />
+                    ) : message.video_url ? (
+                      <VideoMessage
+                        videoUrl={`${message.video_url}${message.video_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                        thumbnailUrl={message.video_thumbnail_url ? `${message.video_thumbnail_url}${message.video_thumbnail_url.includes('?') ? '&' : '?'}session_token=${sessionToken}` : ''}
+                        duration={message.video_duration || 0}
+                      />
                     ) : message.content ? (
                       <p className={`text-sm ${
                         message.is_from_host
@@ -638,9 +721,7 @@ export default function MainChatView({
                       </p>
                     ) : (
                       <p className="text-sm text-gray-500 italic">
-                        [Voice message - loading...]
-                        <br />
-                        <small>Debug: voice_url={JSON.stringify(message.voice_url)}, id={message.id}</small>
+                        [Media message - loading...]
                       </p>
                     )}
                   </div>

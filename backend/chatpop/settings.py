@@ -558,20 +558,35 @@ Response JSON:
 
     # Chat Discovery Settings (location-based chat discoverability)
     'CHAT_DISCOVERY_RADIUS_OPTIONS': (
-        [1, 5, 10, 25, 50],
-        'Available radius options in miles for location-based chat discovery. Users select from these when creating a discoverable chat.',
-        list
+        '1,5,10,25,50',
+        'Available radius options in miles for location-based chat discovery (comma-separated integers).',
+        str
     ),
 
-    # Message Pinning Settings
-    'PIN_DURATION_MINUTES': (
-        120,
-        'Fixed duration in minutes that a pinned message stays in the sticky section. Default: 120 (2 hours).',
+    # Message Pinning Settings - Tier System
+    'PIN_TIME_TIERS_JSON': (
+        '{"100":10,"200":15,"500":20,"1000":30,"1500":45,"2000":60}',
+        'JSON mapping of tier amount (cents) to duration (minutes) for Add-to-Pin time extensions. Format: {"amount_cents": duration_minutes, ...}. Default tiers: $1=10min, $2=15min, $5=20min, $10=30min, $15=45min, $20=60min',
+        str
+    ),
+    'PIN_TIER_INCREMENT_CENTS': (
+        500,
+        'Increment in cents for tiers beyond PIN_TIME_TIERS_JSON ($5 increments: $25, $30, $35...). Default: 500',
         int
     ),
-    'PIN_MINIMUM_CENTS': (
-        25,
-        'Minimum amount in cents required to pin a message (base price when no pins exist). Default: 25 (25 cents).',
+    'PIN_TIER_MAX_CENTS': (
+        20000,
+        'Maximum tier amount in cents. Default: 20000 ($200)',
+        int
+    ),
+    'PIN_NEW_PIN_DURATION_MINUTES': (
+        60,
+        'Duration in minutes for new pins or outbids (all tiers get same duration). Default: 60 (1 hour)',
+        int
+    ),
+    'PIN_MAX_EXTENSION_MINUTES': (
+        60,
+        'Maximum time extension per Add-to-Pin (caps duration for tiers beyond explicit list). Default: 60 minutes',
         int
     ),
 }

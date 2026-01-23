@@ -186,6 +186,12 @@ export interface Message {
   voice_url: string | null;
   voice_duration: number | null;
   voice_waveform: number[] | null;
+  photo_url: string | null;
+  photo_width: number | null;
+  photo_height: number | null;
+  video_url: string | null;
+  video_duration: number | null;
+  video_thumbnail_url: string | null;
   reply_to: string | null;
   reply_to_message: ReplyToMessage | null;
   is_pinned: boolean;
@@ -524,6 +530,56 @@ export const messageApi = {
 
     const response = await api.post(
       `${buildChatUrl(code, roomUsername)}/voice/upload/`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  },
+
+  uploadPhoto: async (code: string, photoFile: File, roomUsername?: string): Promise<{
+    photo_url: string;
+    width: number;
+    height: number;
+    storage_path: string;
+    storage_type: string;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
+    const formData = new FormData();
+    formData.append('photo', photoFile);
+    formData.append('session_token', sessionToken || '');
+
+    const response = await api.post(
+      `${buildChatUrl(code, roomUsername)}/photo/upload/`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  },
+
+  uploadVideo: async (code: string, videoFile: File, roomUsername?: string): Promise<{
+    video_url: string;
+    duration: number;
+    thumbnail_url: string;
+    storage_path: string;
+    storage_type: string;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
+    const formData = new FormData();
+    formData.append('video', videoFile);
+    formData.append('session_token', sessionToken || '');
+
+    const response = await api.post(
+      `${buildChatUrl(code, roomUsername)}/video/upload/`,
       formData,
       {
         headers: {

@@ -181,3 +181,100 @@ def delete_voice_message(storage_path: str) -> bool:
         bool: True if deleted successfully
     """
     return MediaStorage.delete_file(storage_path)
+
+
+# Content-Type to file extension mapping for photo messages
+PHOTO_CONTENT_TYPE_TO_EXT = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/heic': 'heic',
+    'image/heif': 'heif',
+}
+
+# Content-Type to file extension mapping for video messages
+VIDEO_CONTENT_TYPE_TO_EXT = {
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'video/quicktime': 'mov',
+    'video/x-m4v': 'm4v',
+}
+
+
+# Convenience functions for photo messages
+def save_photo_message(file_obj: BinaryIO, filename: Optional[str] = None, content_type: Optional[str] = None) -> tuple[str, str]:
+    """
+    Save a photo message file with correct extension based on content type.
+
+    Args:
+        file_obj: Photo file object
+        filename: Optional custom filename (if not provided, auto-generated)
+        content_type: MIME type of the image file (e.g., 'image/jpeg', 'image/png')
+
+    Returns:
+        tuple: (storage_path, storage_type)
+    """
+    if filename is None and content_type:
+        ext = PHOTO_CONTENT_TYPE_TO_EXT.get(content_type, 'jpg')
+        filename = f"{uuid.uuid4()}.{ext}"
+
+    return MediaStorage.save_file(file_obj, 'photos', filename)
+
+
+def get_photo_message_url(storage_path: str) -> str:
+    """Get the proxy URL for a photo message."""
+    return MediaStorage.get_file_url(storage_path)
+
+
+def delete_photo_message(storage_path: str) -> bool:
+    """Delete a photo message file."""
+    return MediaStorage.delete_file(storage_path)
+
+
+# Convenience functions for video messages
+def save_video_message(file_obj: BinaryIO, filename: Optional[str] = None, content_type: Optional[str] = None) -> tuple[str, str]:
+    """
+    Save a video message file with correct extension based on content type.
+
+    Args:
+        file_obj: Video file object
+        filename: Optional custom filename (if not provided, auto-generated)
+        content_type: MIME type of the video file (e.g., 'video/mp4', 'video/webm')
+
+    Returns:
+        tuple: (storage_path, storage_type)
+    """
+    if filename is None and content_type:
+        ext = VIDEO_CONTENT_TYPE_TO_EXT.get(content_type, 'mp4')
+        filename = f"{uuid.uuid4()}.{ext}"
+
+    return MediaStorage.save_file(file_obj, 'videos', filename)
+
+
+def save_video_thumbnail(file_obj: BinaryIO, video_filename: str) -> tuple[str, str]:
+    """
+    Save a video thumbnail image.
+
+    Args:
+        file_obj: Thumbnail image file object (JPEG)
+        video_filename: Base filename of the video (used to create matching thumbnail name)
+
+    Returns:
+        tuple: (storage_path, storage_type)
+    """
+    # Use same base name as video but with _thumb.jpg suffix
+    base_name = video_filename.rsplit('.', 1)[0]
+    thumb_filename = f"{base_name}_thumb.jpg"
+
+    return MediaStorage.save_file(file_obj, 'video_thumbnails', thumb_filename)
+
+
+def get_video_message_url(storage_path: str) -> str:
+    """Get the proxy URL for a video message."""
+    return MediaStorage.get_file_url(storage_path)
+
+
+def delete_video_message(storage_path: str) -> bool:
+    """Delete a video message file."""
+    return MediaStorage.delete_file(storage_path)
