@@ -303,15 +303,15 @@ export interface ChatParticipation {
 }
 
 /**
- * Build chat base URL based on room type:
- * - Manual rooms (with username): /api/chats/{username}/{code}
- * - AI rooms (discover): /api/chats/discover/{code}
+ * Build chat base URL.
+ * All rooms use: /api/chats/{username}/{code}
+ * - Manual rooms: username is the host's reserved_username
+ * - AI/Discover rooms: username is 'discover' (system user)
  */
 function buildChatUrl(code: string, roomUsername?: string): string {
-  if (roomUsername) {
-    return `/api/chats/${roomUsername}/${code}`;
-  }
-  return `/api/chats/discover/${code}`;
+  // Default to 'discover' for AI-generated rooms
+  const username = roomUsername || 'discover';
+  return `/api/chats/${username}/${code}`;
 }
 
 export const chatApi = {
@@ -711,8 +711,8 @@ export const messageApi = {
 
   // Create Chat from Photo Analysis
   createChatFromPhoto: async (data: {
-    photo_analysis_id: string;
-    suggestion_index: number;
+    media_analysis_id: string;
+    room_code: string;
   }): Promise<{
     created: boolean;
     chat_room: ChatRoom;

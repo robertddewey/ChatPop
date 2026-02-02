@@ -39,15 +39,17 @@ def get_client_ip(request):
 
 def get_chat_room_by_url(code, username=None):
     """
-    Get chat room by code and optional username.
+    Get chat room by code and username.
 
-    Supports two URL patterns:
-    - AI rooms: /discover/{code}/ (username=None)
-    - Manual rooms: /{username}/{code}/ (username provided)
+    All rooms use the same URL pattern: /{username}/{code}/
+    - Manual rooms: host is the creating user
+    - AI/Discover rooms: host is the 'discover' system user
+
+    For backwards compatibility, if username is None, defaults to 'discover'.
 
     Args:
         code: The chat room code (URL slug)
-        username: Optional username for manual rooms (case-insensitive lookup)
+        username: The host's reserved_username (case-insensitive). Defaults to 'discover'.
 
     Returns:
         ChatRoom instance
@@ -57,26 +59,19 @@ def get_chat_room_by_url(code, username=None):
     """
     from django.http import Http404
 
-    if username:
-        # Manual room: lookup by username (case-insensitive) + code
-        # Uses the (host__reserved_username, code) composite index for efficiency
-        chat_room = ChatRoom.objects.filter(
-            host__reserved_username__iexact=username,
-            code=code,
-            source=ChatRoom.SOURCE_MANUAL,
-            is_active=True
-        ).select_related('host', 'theme').first()
+    # Default to 'discover' for backwards compatibility with old routes
+    if not username:
+        username = 'discover'
 
-        if not chat_room:
-            raise Http404("Chat room not found")
-    else:
-        # AI room: lookup by code only (globally unique)
-        chat_room = get_object_or_404(
-            ChatRoom,
-            code=code,
-            source=ChatRoom.SOURCE_AI,
-            is_active=True
-        )
+    # Unified lookup: all rooms by username + code
+    chat_room = ChatRoom.objects.filter(
+        host__reserved_username__iexact=username,
+        code=code,
+        is_active=True
+    ).select_related('host', 'theme').first()
+
+    if not chat_room:
+        raise Http404("Chat room not found")
 
     return chat_room
 
@@ -234,20 +229,23 @@ class ChatRoomDetailView(APIView):
     def get(self, request, code, username=None):
         chat_room = get_chat_room_by_url(code, username)
 
-        # Check if host has joined
-        # Only allow non-host users to see the chat if host has joined
-        host_has_joined = ChatParticipation.objects.filter(
-            chat_room=chat_room,
-            user=chat_room.host
-        ).exists()
+        # AI-generated rooms (discover) are always accessible - skip host join check
+        # For manual rooms, check if host has joined first
+        if chat_room.source != ChatRoom.SOURCE_AI:
+            # Check if host has joined
+            # Only allow non-host users to see the chat if host has joined
+            host_has_joined = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                user=chat_room.host
+            ).exists()
 
-        # If host hasn't joined, only allow the host to see the chat
-        if not host_has_joined:
-            is_host = request.user.is_authenticated and request.user == chat_room.host
-            if not is_host:
-                # Return 404 to hide the chat from non-host users
-                from django.http import Http404
-                raise Http404("Chat room not found")
+            # If host hasn't joined, only allow the host to see the chat
+            if not host_has_joined:
+                is_host = request.user.is_authenticated and request.user == chat_room.host
+                if not is_host:
+                    # Return 404 to hide the chat from non-host users
+                    from django.http import Http404
+                    raise Http404("Chat room not found")
 
         # Don't expose access_code in response
         serializer = ChatRoomSerializer(chat_room)
@@ -282,20 +280,22 @@ class ChatRoomJoinView(APIView):
     def post(self, request, code, username=None):
         chat_room = get_chat_room_by_url(code, username)
 
-        # Check if host has joined
-        # Only allow non-host users to join if host has joined first
-        host_has_joined = ChatParticipation.objects.filter(
-            chat_room=chat_room,
-            user=chat_room.host
-        ).exists()
+        # AI-generated rooms (discover) are always joinable - skip host join check
+        if chat_room.source != ChatRoom.SOURCE_AI:
+            # Check if host has joined
+            # Only allow non-host users to join if host has joined first
+            host_has_joined = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                user=chat_room.host
+            ).exists()
 
-        # If host hasn't joined, only allow the host to join
-        if not host_has_joined:
-            is_host = request.user.is_authenticated and request.user == chat_room.host
-            if not is_host:
-                # Return 404 to hide the chat from non-host users
-                from django.http import Http404
-                raise Http404("Chat room not found")
+            # If host hasn't joined, only allow the host to join
+            if not host_has_joined:
+                is_host = request.user.is_authenticated and request.user == chat_room.host
+                if not is_host:
+                    # Return 404 to hide the chat from non-host users
+                    from django.http import Http404
+                    raise Http404("Chat room not found")
 
         serializer = ChatRoomJoinSerializer(data=request.data)
         try:
@@ -3042,7 +3042,6 @@ class ChatRoomCreateFromPhotoView(APIView):
 
     def post(self, request):
         from media_analysis.models import PhotoAnalysis
-        from media_analysis.utils.similarity import find_similar_rooms
         from .serializers import ChatRoomCreateFromPhotoSerializer
         from django.contrib.auth import get_user_model
         import logging
@@ -3074,9 +3073,11 @@ class ChatRoomCreateFromPhotoView(APIView):
                 }
 
             # Add similar room codes (if embedding exists)
+            # Note: Similarity search is optional and may not be implemented yet
             similar_room_codes = set()
             if media_analysis.suggestions_embedding is not None:
                 try:
+                    from media_analysis.utils.room_matching import find_similar_rooms
                     similar_rooms = find_similar_rooms(
                         embedding_vector=media_analysis.suggestions_embedding,
                         exclude_photo_id=str(media_analysis.id)
@@ -3084,8 +3085,8 @@ class ChatRoomCreateFromPhotoView(APIView):
                     for room in similar_rooms:
                         similar_room_codes.add(room.room_code)
                         # Similar rooms don't need metadata - they already exist
-                except Exception as e:
-                    logger.warning(f"Similarity search failed (non-fatal): {str(e)}")
+                except (ImportError, Exception) as e:
+                    logger.warning(f"Similarity search skipped (non-fatal): {str(e)}")
 
             # Validate room_code is in allowed set
             is_ai_suggestion = room_code in allowed_codes
@@ -3127,18 +3128,23 @@ class ChatRoomCreateFromPhotoView(APIView):
                     f"Room '{room_code}' does not exist. Cannot create from similar room."
                 )
 
-            # Get or create system user for discover rooms
-            system_user, created = User.objects.get_or_create(
-                email='discover@chatpop.app',
-                defaults={
-                    'reserved_username': 'ChatPopDiscover',
-                    'is_active': False,  # Cannot login
-                }
-            )
-            if created:
-                system_user.set_unusable_password()
-                system_user.save()
-                logger.info("Created system user for discover rooms")
+            # Get the discover system user (created via fixture)
+            # UUID: 00000000-0000-0000-0000-000000000001
+            try:
+                system_user = User.objects.get(reserved_username='discover')
+            except User.DoesNotExist:
+                # Fallback: create if fixture wasn't loaded
+                system_user, created = User.objects.get_or_create(
+                    email='discover@system.chatpop.app',
+                    defaults={
+                        'reserved_username': 'discover',
+                        'is_active': False,  # Cannot login
+                    }
+                )
+                if created:
+                    system_user.set_unusable_password()
+                    system_user.save()
+                    logger.info("Created discover system user (fixture not loaded)")
 
             # Get default theme for AI rooms (dark-mode)
             theme = ChatTheme.objects.filter(theme_id='dark-mode').first()

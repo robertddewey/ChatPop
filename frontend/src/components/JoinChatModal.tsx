@@ -108,7 +108,7 @@ export default function JoinChatModal({
 
       try {
         const fingerprint = await getFingerprint();
-        const result = await chatApi.checkRateLimit(chatRoom.code, fingerprint, currentUserDisplayName);
+        const result = await chatApi.checkRateLimit(chatRoom.code, fingerprint, chatRoom.host.reserved_username || undefined);
 
         if (result.is_rate_limited) {
           setIsRateLimited(true);
@@ -221,7 +221,7 @@ export default function JoinChatModal({
 
     try {
       const fingerprint = await getFingerprint();
-      const result = await chatApi.suggestUsername(chatRoom.code, fingerprint, currentUserDisplayName);
+      const result = await chatApi.suggestUsername(chatRoom.code, fingerprint, chatRoom.host.reserved_username || undefined);
 
       // Backend returns username for both new generation and rotation through previous ones
       if (result.username) {

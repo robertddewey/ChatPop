@@ -1,7 +1,9 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { messageApi } from '@/lib/api';
 
 interface Suggestion {
   id: number;
@@ -32,6 +34,10 @@ interface PhotoAnalysisModalProps {
 }
 
 export default function PhotoAnalysisModal({ result, isLoading, onClose }: PhotoAnalysisModalProps) {
+  const router = useRouter();
+  const [selectingIndex, setSelectingIndex] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   // Prevent body scrolling when modal is open
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -39,6 +45,31 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
       document.body.style.overflow = 'unset';
     };
   }, []);
+
+  const handleSuggestionClick = async (suggestion: Suggestion, index: number) => {
+    if (!result || selectingIndex !== null) return;
+
+    setSelectingIndex(index);
+    setError(null);
+
+    try {
+      // Create or join the room
+      const response = await messageApi.createChatFromPhoto({
+        media_analysis_id: result.analysis.id.toString(),
+        room_code: suggestion.key,
+      });
+
+      console.log('Room created/joined:', response);
+
+      // Navigate to the room
+      // URL will be /chat/discover/{key} for AI rooms
+      router.push(response.chat_room.url);
+    } catch (err: any) {
+      console.error('Failed to create/join room:', err);
+      setError(err.response?.data?.detail || err.message || 'Failed to join room');
+      setSelectingIndex(null);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
@@ -48,10 +79,10 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
         <div className="flex items-center justify-between p-6 border-b border-zinc-700">
           <div>
             <h1 className="text-2xl font-bold text-zinc-50">
-              {isLoading ? 'Analyzing Photo...' : 'Photo Analysis Complete'}
+              {isLoading ? 'Analyzing Photo...' : 'Join a Chat'}
             </h1>
             <p className="text-sm text-zinc-400 mt-1">
-              {isLoading ? '🔍 Processing your image' : (result?.cached ? '📊 Cached result' : '✨ Fresh analysis')}
+              {isLoading ? 'Finding relevant chat rooms' : `${result?.analysis.suggestions.length || 0} rooms found`}
             </p>
           </div>
           <button
@@ -76,66 +107,72 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
           ) : result ? (
             /* Results State */
             <>
-              {/* Analysis ID */}
-              <div className="mb-4 p-3 bg-zinc-900/50 border border-zinc-600 rounded-lg">
-                <p className="text-xs text-zinc-400 uppercase tracking-wide mb-1">Analysis ID</p>
-                <p className="text-sm text-zinc-200 font-mono">{result.analysis.id}</p>
-              </div>
-
               {/* Suggestions */}
               <div>
                 <h2 className="text-lg font-bold text-zinc-200 mb-3">
-                  Suggested Chat Rooms ({result.analysis.suggestions.length})
+                  Choose a Chat Room
                 </h2>
 
                 {result.analysis.suggestions.length === 0 ? (
                   <p className="text-zinc-400 text-center py-8">No suggestions found for this photo.</p>
                 ) : (
                   <div className="space-y-3">
-                    {result.analysis.suggestions.map((suggestion, idx) => (
-                      <div
-                        key={suggestion.id}
-                        className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-cyan-400 transition-colors"
-                      >
-                        {/* Name and Badge */}
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
-                            <h3 className="text-base font-bold text-zinc-50">{suggestion.name}</h3>
-                            {suggestion.is_proper_noun && (
-                              <span className="px-2 py-0.5 bg-purple-900/40 border border-purple-700 text-purple-300 text-xs font-semibold rounded">
-                                PROPER NOUN
+                    {result.analysis.suggestions.map((suggestion, idx) => {
+                      const isSelecting = selectingIndex === idx;
+                      const isDisabled = selectingIndex !== null && selectingIndex !== idx;
+
+                      return (
+                        <button
+                          key={suggestion.id}
+                          onClick={() => handleSuggestionClick(suggestion, idx)}
+                          disabled={selectingIndex !== null}
+                          className={`w-full text-left p-4 bg-zinc-900/50 border rounded-lg transition-all ${
+                            isSelecting
+                              ? 'border-cyan-400 bg-cyan-900/20'
+                              : isDisabled
+                              ? 'border-zinc-700 opacity-50 cursor-not-allowed'
+                              : 'border-zinc-600 hover:border-cyan-400 hover:bg-zinc-800/50 cursor-pointer'
+                          }`}
+                        >
+                          {/* Name and Badge */}
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
+                              <h3 className="text-base font-bold text-zinc-50">{suggestion.name}</h3>
+                              {suggestion.is_proper_noun && (
+                                <span className="px-2 py-0.5 bg-purple-900/40 border border-purple-700 text-purple-300 text-xs font-semibold rounded">
+                                  PROPER NOUN
+                                </span>
+                              )}
+                            </div>
+                            {isSelecting && (
+                              <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <p className="text-sm text-zinc-300 mb-3">{suggestion.description}</p>
+
+                          {/* Stats Row */}
+                          <div className="flex items-center gap-4 text-xs">
+                            {suggestion.has_room ? (
+                              <span className="px-2 py-1 bg-emerald-900/40 border border-emerald-700 text-emerald-300 rounded font-medium">
+                                {suggestion.active_users > 0 ? `${suggestion.active_users} active` : 'Room exists'}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 bg-zinc-700/40 border border-zinc-600 text-zinc-400 rounded font-medium">
+                                New room
+                              </span>
+                            )}
+                            {suggestion.usage_count > 1 && (
+                              <span className="text-zinc-400">
+                                {suggestion.usage_count}x matched
                               </span>
                             )}
                           </div>
-                        </div>
-
-                        {/* Description */}
-                        <p className="text-sm text-zinc-300 mb-3">{suggestion.description}</p>
-
-                        {/* Stats Grid */}
-                        <div className="grid grid-cols-2 gap-3 text-xs">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-zinc-500">Source:</span>
-                            <span className="text-zinc-300 font-medium">{suggestion.source}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-zinc-500">Usage:</span>
-                            <span className="text-zinc-300 font-medium">{suggestion.usage_count}x</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-zinc-500">Has Room:</span>
-                            <span className="text-zinc-300 font-medium">
-                              {suggestion.has_room ? 'Yes' : 'No'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-zinc-500">Active Users:</span>
-                            <span className="text-zinc-300 font-medium">{suggestion.active_users}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -145,14 +182,24 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
 
         {/* Footer */}
         <div className="p-4 border-t border-zinc-700">
+          {error && (
+            <div className="mb-3 p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
+              {error}
+            </div>
+          )}
+          {!isLoading && result && (
+            <p className="text-center text-zinc-400 text-sm mb-3">
+              Tap a suggestion to join the chat room
+            </p>
+          )}
           <button
             onClick={onClose}
-            disabled={isLoading}
-            className={`w-full px-6 py-3 bg-[#404eed] text-white font-semibold rounded-lg transition-all ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#3640d9] cursor-pointer'
+            disabled={isLoading || selectingIndex !== null}
+            className={`w-full px-6 py-3 bg-zinc-700 text-white font-semibold rounded-lg transition-all ${
+              isLoading || selectingIndex !== null ? 'opacity-50 cursor-not-allowed' : 'hover:bg-zinc-600 cursor-pointer'
             }`}
           >
-            Close
+            {selectingIndex !== null ? 'Joining room...' : 'Close'}
           </button>
         </div>
       </div>

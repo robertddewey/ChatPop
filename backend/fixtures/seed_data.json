@@ -510,5 +510,21 @@
     "created_at": "2025-10-20T08:17:57.660Z",
     "updated_at": "2025-10-20T08:17:58.453Z"
   }
+},
+{
+  "model": "accounts.user",
+  "pk": "00000000-0000-0000-0000-000000000001",
+  "fields": {
+    "email": "discover@system.chatpop.app",
+    "reserved_username": "discover",
+    "password": "!",
+    "is_active": false,
+    "is_staff": false,
+    "is_superuser": false,
+    "first_name": "ChatPop",
+    "last_name": "Discovery",
+    "email_notifications": false,
+    "push_notifications": false
+  }
 }
 ]

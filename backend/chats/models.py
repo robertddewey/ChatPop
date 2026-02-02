@@ -242,17 +242,15 @@ class ChatRoom(models.Model):
     @property
     def url(self):
         """
-        Get the chat room URL based on source type.
+        Get the chat room URL.
 
-        Manual rooms: /chat/{username}/{code}
-        AI rooms: /chat/discover/{code}
+        All rooms use: /chat/{host_username}/{code}
+        - Manual rooms: host is the creating user
+        - AI rooms: host is the "discover" system user
         """
-        if self.source == self.SOURCE_AI:
-            return f"/chat/discover/{self.code}"
-        else:
-            # Manual rooms use user's reserved_username or email prefix
-            username = self.host.reserved_username if self.host.reserved_username else self.host.email.split('@')[0]
-            return f"/chat/{username}/{self.code}"
+        # Use host's reserved_username or email prefix
+        username = self.host.reserved_username if self.host.reserved_username else self.host.email.split('@')[0]
+        return f"/chat/{username}/{self.code}"
 
     @property
     def message_count(self):
