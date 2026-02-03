@@ -558,8 +558,8 @@ Response JSON:
 
     # Chat Discovery Settings (location-based chat discoverability)
     'CHAT_DISCOVERY_RADIUS_OPTIONS': (
-        '1,5,10,25,50',
-        'Available radius options in miles for location-based chat discovery (comma-separated integers).',
+        '[1, 5, 10, 25, 50]',
+        'Available radius options in miles for location-based chat discovery (JSON array of integers).',
         str
     ),
 

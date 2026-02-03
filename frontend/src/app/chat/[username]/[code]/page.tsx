@@ -188,6 +188,7 @@ export default function ChatPage() {
   // Join state for guests
   const [hasJoined, setHasJoined] = useState(false);
   const [hasJoinedBefore, setHasJoinedBefore] = useState(false);
+  const [joinModalKey, setJoinModalKey] = useState(0); // Force remount on back navigation
   const [isBlocked, setIsBlocked] = useState(false);
   const [username, setUsername] = useState('');
   const [accessCode, setAccessCode] = useState('');
@@ -573,7 +574,13 @@ export default function ChatPage() {
       // If user is in main chat and presses back, show join modal and reset state
       if (hasJoined) {
         setHasJoined(false);
+        setHasJoinedBefore(true); // They've joined, so mark as returning user
         setMessages([]); // Clear messages to show fresh state
+        setJoinModalKey(prev => prev + 1); // Force modal remount
+      } else {
+        // User is on join modal - navigate to homepage with full reload
+        // Full reload needed to remove chat-layout.css styles (overflow: hidden, position: fixed)
+        window.location.href = '/';
       }
     };
 
@@ -1615,6 +1622,7 @@ export default function ChatPage() {
       {/* Join Modal - rendered when user hasn't joined and auth modal is not open */}
       {!hasJoined && chatRoom && !authMode && (
         <JoinChatModal
+          key={joinModalKey}
           chatRoom={chatRoom}
           currentUserDisplayName={username}
           hasJoinedBefore={hasJoinedBefore}
@@ -1644,8 +1652,15 @@ export default function ChatPage() {
                 onClick={() => {
                   if (activeView !== 'main') {
                     setActiveView('main');  // Return to main chat
+                  } else if (hasJoined) {
+                    // In chat - go back to join modal
+                    setHasJoined(false);
+                    setHasJoinedBefore(true);
+                    setMessages([]);
+                    setJoinModalKey(prev => prev + 1);
                   } else {
-                    router.back();  // Leave the chat
+                    // On join modal - go to homepage with full reload
+                    window.location.href = '/';
                   }
                 }}
                 className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}

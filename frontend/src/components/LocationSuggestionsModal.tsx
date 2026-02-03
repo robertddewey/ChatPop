@@ -2,13 +2,15 @@
 
 import { X, MapPin, Navigation, Lock, ChevronDown, Users } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { locationApi, chatApi, LocationSuggestion, LocationAnalysisResponse, NearbyDiscoverableChat } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { locationApi, chatApi, messageApi, LocationSuggestion, LocationAnalysisResponse, NearbyDiscoverableChat } from '@/lib/api';
 
 interface LocationSuggestionsModalProps {
   onClose: () => void;
 }
 
 export default function LocationSuggestionsModal({ onClose }: LocationSuggestionsModalProps) {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<LocationAnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +18,12 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
 
   // User coordinates for reuse
   const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Selection state for Area Chat Rooms and Nearby Chats
+  const [selectingAreaIndex, setSelectingAreaIndex] = useState<number | null>(null);
+  const [selectingVenueIndex, setSelectingVenueIndex] = useState<number | null>(null);
+  const [selectingNearbyIndex, setSelectingNearbyIndex] = useState<number | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
 
   // Nearby discoverable chats state
   const [nearbyChats, setNearbyChats] = useState<NearbyDiscoverableChat[]>([]);
@@ -30,6 +38,9 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
   // Ref for infinite scroll
   const nearbyChatsEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Check if any selection is in progress
+  const isSelecting = selectingAreaIndex !== null || selectingVenueIndex !== null || selectingNearbyIndex !== null;
 
   // Check location permission status on mount
   useEffect(() => {
@@ -184,6 +195,59 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
     }
   };
 
+  // Handle Area Chat Room click (AI-generated, needs API call)
+  const handleAreaClick = async (suggestion: LocationSuggestion, index: number) => {
+    if (!result || isSelecting) return;
+
+    setSelectingAreaIndex(index);
+    setSelectionError(null);
+
+    try {
+      const response = await messageApi.createChatFromLocation({
+        location_analysis_id: result.id,
+        room_code: suggestion.key,
+      });
+
+      console.log('Location room created/joined:', response);
+      router.push(response.chat_room.url);
+    } catch (err: any) {
+      console.error('Failed to create/join location room:', err);
+      setSelectionError(err.response?.data?.detail || err.message || 'Failed to join room');
+      setSelectingAreaIndex(null);
+    }
+  };
+
+  // Handle Venue click (AI-generated, needs API call)
+  const handleVenueClick = async (suggestion: LocationSuggestion, index: number) => {
+    if (!result || isSelecting) return;
+
+    setSelectingVenueIndex(index);
+    setSelectionError(null);
+
+    try {
+      const response = await messageApi.createChatFromLocation({
+        location_analysis_id: result.id,
+        room_code: suggestion.key,
+      });
+
+      console.log('Location room created/joined:', response);
+      router.push(response.chat_room.url);
+    } catch (err: any) {
+      console.error('Failed to create/join location room:', err);
+      setSelectionError(err.response?.data?.detail || err.message || 'Failed to join room');
+      setSelectingVenueIndex(null);
+    }
+  };
+
+  // Handle Nearby Chat click (user-generated, just navigate)
+  const handleNearbyChatClick = (chat: NearbyDiscoverableChat, index: number) => {
+    if (isSelecting) return;
+
+    setSelectingNearbyIndex(index);
+    // Navigate directly to the existing room
+    router.push(chat.url);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
       {/* Modal Container */}
@@ -264,25 +328,41 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                       Area Chat Rooms
                     </h2>
                     <div className="space-y-3">
-                      {areas.map((area, idx) => (
-                        <div
-                          key={area.key}
-                          className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-cyan-400 transition-colors cursor-pointer"
-                        >
-                          {/* Name and Badge */}
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
-                              <h3 className="text-base font-bold text-zinc-50">{area.name}</h3>
-                              <span className="px-2 py-0.5 bg-cyan-900/40 border border-cyan-700 text-cyan-300 text-xs font-semibold rounded uppercase">
-                                {area.type}
-                              </span>
+                      {areas.map((area, idx) => {
+                        const isSelectingThis = selectingAreaIndex === idx;
+                        const isDisabled = isSelecting && !isSelectingThis;
+
+                        return (
+                          <button
+                            key={area.key}
+                            onClick={() => handleAreaClick(area, idx)}
+                            disabled={isSelecting}
+                            className={`w-full text-left p-4 bg-zinc-900/50 border rounded-lg transition-all ${
+                              isSelectingThis
+                                ? 'border-cyan-400 bg-cyan-900/20'
+                                : isDisabled
+                                ? 'border-zinc-700 opacity-50 cursor-not-allowed'
+                                : 'border-zinc-600 hover:border-cyan-400 hover:bg-zinc-800/50 cursor-pointer'
+                            }`}
+                          >
+                            {/* Name and Badge */}
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
+                                <h3 className="text-base font-bold text-zinc-50">{area.name}</h3>
+                                <span className="px-2 py-0.5 bg-cyan-900/40 border border-cyan-700 text-cyan-300 text-xs font-semibold rounded uppercase">
+                                  {area.type}
+                                </span>
+                              </div>
+                              {isSelectingThis && (
+                                <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                              )}
                             </div>
-                          </div>
-                          {/* Description */}
-                          <p className="text-sm text-zinc-300">Chat with others in {area.name}</p>
-                        </div>
-                      ))}
+                            {/* Description */}
+                            <p className="text-sm text-zinc-300">Chat with others in {area.name}</p>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -294,25 +374,41 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                       Nearby Places
                     </h2>
                     <div className="space-y-3">
-                      {venues.map((venue, idx) => (
-                        <div
-                          key={venue.key}
-                          className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-cyan-400 transition-colors cursor-pointer"
-                        >
-                          {/* Name and Badge */}
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
-                              <h3 className="text-base font-bold text-zinc-50">{venue.name}</h3>
-                              <span className="px-2 py-0.5 bg-purple-900/40 border border-purple-700 text-purple-300 text-xs font-semibold rounded uppercase">
-                                {venue.type}
-                              </span>
+                      {venues.map((venue, idx) => {
+                        const isSelectingThis = selectingVenueIndex === idx;
+                        const isDisabled = isSelecting && !isSelectingThis;
+
+                        return (
+                          <button
+                            key={venue.key}
+                            onClick={() => handleVenueClick(venue, idx)}
+                            disabled={isSelecting}
+                            className={`w-full text-left p-4 bg-zinc-900/50 border rounded-lg transition-all ${
+                              isSelectingThis
+                                ? 'border-purple-400 bg-purple-900/20'
+                                : isDisabled
+                                ? 'border-zinc-700 opacity-50 cursor-not-allowed'
+                                : 'border-zinc-600 hover:border-purple-400 hover:bg-zinc-800/50 cursor-pointer'
+                            }`}
+                          >
+                            {/* Name and Badge */}
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
+                                <h3 className="text-base font-bold text-zinc-50">{venue.name}</h3>
+                                <span className="px-2 py-0.5 bg-purple-900/40 border border-purple-700 text-purple-300 text-xs font-semibold rounded uppercase">
+                                  {venue.type}
+                                </span>
+                              </div>
+                              {isSelectingThis && (
+                                <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                              )}
                             </div>
-                          </div>
-                          {/* Description */}
-                          <p className="text-sm text-zinc-300">Chat with others at {venue.name}</p>
-                        </div>
-                      ))}
+                            {/* Description */}
+                            <p className="text-sm text-zinc-300">Chat with others at {venue.name}</p>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -342,34 +438,52 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
 
                   {/* Nearby chats list */}
                   <div className="space-y-3">
-                    {nearbyChats.map((chat, idx) => (
-                      <div
-                        key={chat.id}
-                        className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-green-400 transition-colors cursor-pointer"
-                      >
-                        {/* Top row: Rank, Name, Distance */}
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="text-xs font-bold text-zinc-400 flex-shrink-0">#{idx + 1}</span>
-                            <h3 className="text-base font-bold text-zinc-50 truncate">{chat.name}</h3>
-                            {chat.access_mode === 'private' && (
-                              <Lock className="w-4 h-4 text-yellow-500 flex-shrink-0" />
-                            )}
+                    {nearbyChats.map((chat, idx) => {
+                      const isSelectingThis = selectingNearbyIndex === idx;
+                      const isDisabled = isSelecting && !isSelectingThis;
+
+                      return (
+                        <button
+                          key={chat.id}
+                          onClick={() => handleNearbyChatClick(chat, idx)}
+                          disabled={isSelecting}
+                          className={`w-full text-left p-4 bg-zinc-900/50 border rounded-lg transition-all ${
+                            isSelectingThis
+                              ? 'border-green-400 bg-green-900/20'
+                              : isDisabled
+                              ? 'border-zinc-700 opacity-50 cursor-not-allowed'
+                              : 'border-zinc-600 hover:border-green-400 hover:bg-zinc-800/50 cursor-pointer'
+                          }`}
+                        >
+                          {/* Top row: Rank, Name, Distance */}
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="text-xs font-bold text-zinc-400 flex-shrink-0">#{idx + 1}</span>
+                              <h3 className="text-base font-bold text-zinc-50 truncate">{chat.name}</h3>
+                              {chat.access_mode === 'private' && (
+                                <Lock className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                              <span className="text-sm text-zinc-400">
+                                {chat.distance_miles} mi
+                              </span>
+                              {isSelectingThis && (
+                                <div className="w-5 h-5 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+                              )}
+                            </div>
                           </div>
-                          <span className="text-sm text-zinc-400 flex-shrink-0 ml-2">
-                            {chat.distance_miles} mi
-                          </span>
-                        </div>
-                        {/* Bottom row: Host and participants */}
-                        <div className="flex items-center gap-3 text-sm text-zinc-400">
-                          <span>@{chat.host_username}</span>
-                          <span className="flex items-center gap-1">
-                            <Users className="w-3.5 h-3.5" />
-                            {chat.participant_count}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                          {/* Bottom row: Host and participants */}
+                          <div className="flex items-center gap-3 text-sm text-zinc-400">
+                            <span>@{chat.host_username}</span>
+                            <span className="flex items-center gap-1">
+                              <Users className="w-3.5 h-3.5" />
+                              {chat.participant_count}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
 
                     {/* Loading indicator for infinite scroll */}
                     {nearbyChatsLoading && nearbyChats.length > 0 && (
@@ -430,11 +544,24 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
 
         {/* Footer */}
         <div className="p-4 border-t border-zinc-700">
+          {selectionError && (
+            <div className="mb-3 p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
+              {selectionError}
+            </div>
+          )}
+          {!isLoading && result && (
+            <p className="text-center text-zinc-400 text-sm mb-3">
+              Tap a chat room to join
+            </p>
+          )}
           <button
             onClick={onClose}
-            className="w-full px-6 py-3 bg-[#404eed] text-white font-semibold rounded-lg transition-all hover:bg-[#3640d9] cursor-pointer"
+            disabled={isLoading || isSelecting}
+            className={`w-full px-6 py-3 bg-zinc-700 text-white font-semibold rounded-lg transition-all ${
+              isLoading || isSelecting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-zinc-600 cursor-pointer'
+            }`}
           >
-            Close
+            {isSelecting ? 'Joining room...' : 'Close'}
           </button>
         </div>
       </div>

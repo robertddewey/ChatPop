@@ -8,7 +8,7 @@ from .views import (
     MessageReactionToggleView, MessageReactionsListView,
     BlockUserView, UnblockUserView, BlockedUsersListView,
     UserBlockView, UserUnblockView, UserBlockListView,
-    PhotoAnalysisView, ChatRoomCreateFromPhotoView,
+    PhotoAnalysisView, ChatRoomCreateFromPhotoView, ChatRoomCreateFromLocationView,
     # Admin/Staff moderation views
     AdminChatDetailView, AdminMessageListView, AdminMessageDeleteView, AdminMessageUnpinView,
     AdminSiteBanListView, AdminSiteBanCreateView, AdminSiteBanRevokeView, AdminChatBanCreateView,
@@ -32,9 +32,10 @@ urlpatterns = [
     path('user-blocks/block/', UserBlockView.as_view(), name='user-block'),
     path('user-blocks/unblock/', UserUnblockView.as_view(), name='user-unblock'),
 
-    # Photo Analysis (Chat Generation)
+    # Photo/Location Analysis (Chat Generation)
     path('analyze-photo/', PhotoAnalysisView.as_view(), name='analyze-photo'),
     path('create-from-photo/', ChatRoomCreateFromPhotoView.as_view(), name='chat-create-from-photo'),
+    path('create-from-location/', ChatRoomCreateFromLocationView.as_view(), name='chat-create-from-location'),
 
     # Chat Management
     path('config/', ChatConfigView.as_view(), name='chat-config'),

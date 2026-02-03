@@ -142,8 +142,9 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
 
         # Validate discovery_radius_miles is in allowed options
         if discovery_radius_miles is not None:
+            import json
             from constance import config
-            allowed_options = [int(x.strip()) for x in config.CHAT_DISCOVERY_RADIUS_OPTIONS.split(',')]
+            allowed_options = json.loads(config.CHAT_DISCOVERY_RADIUS_OPTIONS)
             if discovery_radius_miles not in allowed_options:
                 raise serializers.ValidationError({
                     'discovery_radius_miles': f'Must be one of: {allowed_options}'
@@ -454,4 +455,25 @@ class ChatRoomCreateFromPhotoSerializer(serializers.Serializer):
             PhotoAnalysis.objects.get(id=value)
         except PhotoAnalysis.DoesNotExist:
             raise serializers.ValidationError("Photo analysis not found")
+        return value
+
+
+class ChatRoomCreateFromLocationSerializer(serializers.Serializer):
+    """
+    Serializer for creating/joining a chat room from location analysis.
+
+    Security: Only accepts location_analysis_id and room_code.
+    The room_code must match one of the suggestions linked to this location analysis.
+    Validation happens in the view to prevent client tampering.
+    """
+    location_analysis_id = serializers.UUIDField(required=True)
+    room_code = serializers.CharField(required=True, max_length=100)
+
+    def validate_location_analysis_id(self, value):
+        """Verify location analysis exists"""
+        from media_analysis.models import LocationAnalysis
+        try:
+            LocationAnalysis.objects.get(id=value)
+        except LocationAnalysis.DoesNotExist:
+            raise serializers.ValidationError("Location analysis not found")
         return value
