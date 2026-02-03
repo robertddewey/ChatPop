@@ -305,7 +305,7 @@ export default function JoinChatModal({
             <div className="text-center mb-8">
               <div className="flex items-center justify-center gap-1">
                 <p className={`text-sm ${modalStyles.subtitle}`}>You'll join as: <span className={`font-semibold ${modalStyles.title}`}>{currentUserDisplayName}</span></p>
-                {hasReservedUsername && (
+                {hasReservedUsername && isLoggedIn && (
                   <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
                 )}
               </div>
