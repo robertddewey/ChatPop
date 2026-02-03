@@ -1650,6 +1650,23 @@ class SuggestUsernameView(APIView):
             # Fallback to IP-based rate limiting
             fingerprint = get_client_ip(request)
 
+        # Check if this fingerprint already has a participation in this room
+        # If so, return their existing username immediately (they're a returning user)
+        existing_participation = ChatParticipation.objects.filter(
+            chat_room=chat_room,
+            fingerprint=fingerprint,
+            is_active=True
+        ).first()
+
+        if existing_participation:
+            logger.info(f"[USERNAME_SUGGEST] Returning user detected - fingerprint={fingerprint}, existing_username={existing_participation.username}")
+            return Response({
+                'username': existing_participation.username,
+                'is_returning': True,
+                'remaining': 0,
+                'generation_remaining': 0
+            })
+
         # Rate limiting key (per chat, per fingerprint/IP)
         rate_limit_key = f"username_suggest_limit:{code}:{fingerprint}"
         current_count = cache.get(rate_limit_key, 0)

@@ -73,6 +73,7 @@ export default function JoinChatModal({
   const [suggestionRemaining, setSuggestionRemaining] = useState<number | null>(null);
   const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>('manual');
   const [diceUsername, setDiceUsername] = useState<string | null>(null);
+  const [isReturningUser, setIsReturningUser] = useState(false);
   const audioContextRef = React.useRef<AudioContext>();
   const validationTimeoutRef = React.useRef<NodeJS.Timeout>();
 
@@ -231,6 +232,11 @@ export default function JoinChatModal({
         // Update both rate limit counters
         setSuggestionRemaining(result.remaining ?? null);
         setGenerationRemaining(result.generation_remaining ?? null);
+
+        // Check if this is a returning user (locked to their previous username)
+        if (result.is_returning) {
+          setIsReturningUser(true);
+        }
       }
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || err.message;
@@ -249,6 +255,13 @@ export default function JoinChatModal({
     }
   };
 
+  // Auto-fetch username for anonymous users on mount to detect returning users
+  useEffect(() => {
+    if (!isLoggedIn && !hasJoinedBefore && rateLimitChecked && !isRateLimited) {
+      handleSuggestUsername();
+    }
+  }, [isLoggedIn, hasJoinedBefore, rateLimitChecked, isRateLimited]);
+
   if (typeof document === 'undefined') return null;
 
   return createPortal(
@@ -261,7 +274,7 @@ export default function JoinChatModal({
         {/* Title */}
         <div className="mb-6 text-center">
           <h1 className={`text-2xl font-bold ${modalStyles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
-            {hasJoinedBefore ? (
+            {hasJoinedBefore || isReturningUser ? (
               'Welcome back!'
             ) : isLoggedIn ? (
               <>
@@ -355,8 +368,15 @@ export default function JoinChatModal({
                 </p>
               )}
             </div>
+          ) : isReturningUser ? (
+            // Anonymous returning user - show locked username
+            <div className="text-center mb-8">
+              <p className={`text-sm ${modalStyles.subtitle}`}>
+                Rejoining as: <span className={`font-semibold ${modalStyles.title}`}>{username}</span>
+              </p>
+            </div>
           ) : (
-            // Anonymous first-time user - show input
+            // Anonymous first-time user - show input with dice
             <div>
               <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
                 Your username
@@ -366,7 +386,7 @@ export default function JoinChatModal({
                   type="text"
                   value={username}
                   readOnly
-                  placeholder="Click the dice to generate"
+                  placeholder={isSuggestingUsername ? "Generating..." : "Click the dice to generate"}
                   className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors focus:outline-none cursor-default`}
                   maxLength={15}
                 />
