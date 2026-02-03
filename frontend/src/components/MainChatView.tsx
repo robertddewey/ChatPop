@@ -221,7 +221,7 @@ export default function MainChatView({
               onReact={handleReactionToggle}
             >
               <div
-                className={`${currentDesign.stickyHostMessage} cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
+                className={`${currentDesign.stickyHostMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
                 onClick={() => scrollToMessage(message.id)}
               >
                 <div className="flex items-center gap-1 mb-1">
@@ -235,13 +235,13 @@ export default function MainChatView({
                     <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
                   )}
                   <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                  <span
-                    className="text-xs opacity-60 ml-auto"
-                    style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
-                  >
-                    {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
                 </div>
+                <span
+                  className="absolute top-3 right-3 text-xs opacity-60"
+                  style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
+                >
+                  {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
                 {message.voice_url ? (
                   <div className={`px-3 py-2 rounded-lg ${currentDesign.hostVoiceMessageStyles?.containerBg || 'bg-teal-800'}`}>
                     <VoiceMessagePlayer
@@ -317,7 +317,7 @@ export default function MainChatView({
               onReact={handleReactionToggle}
             >
               <div
-                className={`${currentDesign.stickyPinnedMessage} cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
+                className={`${currentDesign.stickyPinnedMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
                 onClick={() => scrollToMessage(stickyPinnedMessage.id)}
               >
                 <div className="flex items-center gap-1 mb-1">
@@ -336,13 +336,13 @@ export default function MainChatView({
                       ${stickyPinnedMessage.current_pin_amount}
                     </span>
                   </div>
-                  <span
-                    className="text-xs opacity-60 ml-auto"
-                    style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
-                  >
-                    {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
                 </div>
+                <span
+                  className="absolute top-3 right-3 text-xs opacity-60"
+                  style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
+                >
+                  {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
                 {stickyPinnedMessage.voice_url ? (
                   <div className={`px-3 py-2 rounded-lg ${currentDesign.pinnedVoiceMessageStyles?.containerBg || 'bg-teal-800'}`}>
                     <VoiceMessagePlayer
