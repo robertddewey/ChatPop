@@ -734,6 +734,19 @@ export const messageApi = {
     const response = await api.post('/api/chats/create-from-location/', data);
     return response.data;
   },
+
+  // Create Chat from Music Analysis
+  createChatFromMusic: async (data: {
+    music_analysis_id: string;
+    room_code: string;
+  }): Promise<{
+    created: boolean;
+    chat_room: ChatRoom;
+    message: string;
+  }> => {
+    const response = await api.post('/api/chats/create-from-music/', data);
+    return response.data;
+  },
 };
 
 // Location API Types

@@ -3338,6 +3338,137 @@ class ChatRoomCreateFromLocationView(APIView):
             raise ValidationError(f"Failed to process room selection: {str(e)}")
 
 
+class ChatRoomCreateFromMusicView(APIView):
+    """
+    Create a chat room from a music analysis suggestion (AI-generated rooms).
+
+    Security: Only accepts music_analysis_id and room_code.
+    All room data (name, description, theme) is pulled from the
+    server-side MusicAnalysis and Suggestion records to prevent client tampering.
+
+    Note: Uses system user as host - discover rooms are community-owned,
+    not controlled by any individual user.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from media_analysis.models import MusicAnalysis, Suggestion
+        from .serializers import ChatRoomCreateFromMusicSerializer
+        from django.contrib.auth import get_user_model
+        import logging
+
+        User = get_user_model()
+        logger = logging.getLogger(__name__)
+
+        # Validate input (music_analysis_id + room_code)
+        serializer = ChatRoomCreateFromMusicSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        music_analysis_id = serializer.validated_data['music_analysis_id']
+        room_code = serializer.validated_data['room_code']
+
+        try:
+            # Fetch MusicAnalysis record (server-side source of truth)
+            music_analysis = MusicAnalysis.objects.get(id=music_analysis_id)
+
+            # Build allowed room codes from linked suggestions
+            allowed_codes = {}  # code -> suggestion_data (name, description)
+            for suggestion in music_analysis.suggestions.all():
+                allowed_codes[suggestion.key] = {
+                    'name': suggestion.name,
+                    'description': suggestion.description or f"Chat about {suggestion.name}"
+                }
+
+            # Validate room_code is in allowed set
+            if room_code not in allowed_codes:
+                raise ValidationError(
+                    f"Invalid room selection. Room code '{room_code}' is not in the list of "
+                    f"suggestions for this music analysis."
+                )
+
+            logger.info(f"User selected music room code '{room_code}'")
+
+            # Check if room already exists
+            existing_chat = ChatRoom.objects.filter(
+                code=room_code,
+                source=ChatRoom.SOURCE_AI,
+                is_active=True
+            ).first()
+
+            # Track selection REGARDLESS of whether room already exists
+            music_analysis.selected_suggestion_code = room_code
+            music_analysis.selected_at = timezone.now()
+            music_analysis.save(update_fields=['selected_suggestion_code', 'selected_at'])
+
+            if existing_chat:
+                # Room already exists - user is joining existing room
+                logger.info(f"User joining existing music room '{room_code}' (ID: {existing_chat.id})")
+                return Response({
+                    'created': False,
+                    'chat_room': ChatRoomSerializer(existing_chat).data,
+                    'message': 'Joined existing chat room'
+                }, status=status.HTTP_200_OK)
+
+            # Room doesn't exist - create it
+            # Get the discover system user (created via fixture)
+            try:
+                system_user = User.objects.get(reserved_username='discover')
+            except User.DoesNotExist:
+                # Fallback: create if fixture wasn't loaded
+                system_user, created = User.objects.get_or_create(
+                    email='discover@system.chatpop.app',
+                    defaults={
+                        'reserved_username': 'discover',
+                        'is_active': False,  # Cannot login
+                    }
+                )
+                if created:
+                    system_user.set_unusable_password()
+                    system_user.save()
+                    logger.info("Created discover system user (fixture not loaded)")
+
+            # Get default theme for AI rooms (dark-mode)
+            theme = ChatTheme.objects.filter(theme_id='dark-mode').first()
+            if not theme:
+                # Fallback to any theme if dark-mode doesn't exist
+                theme = ChatTheme.objects.first()
+
+            # Extract suggestion data for new room
+            suggestion_data = allowed_codes[room_code]
+            chat_name = suggestion_data['name']
+            chat_description = suggestion_data['description']
+
+            # Create the chat room with server-validated data
+            chat_room = ChatRoom.objects.create(
+                code=room_code,
+                name=chat_name,
+                description=chat_description,
+                host=system_user,  # System user owns all discover rooms
+                source=ChatRoom.SOURCE_AI,  # Mark as AI-generated
+                access_mode=ChatRoom.ACCESS_PUBLIC,  # AI rooms are always public
+                theme=theme,
+                theme_locked=False,  # Users can change theme
+                photo_enabled=True,
+                voice_enabled=False,
+                video_enabled=False,
+                is_active=True
+            )
+
+            logger.info(f"Created new music room '{room_code}' (ID: {chat_room.id})")
+
+            return Response({
+                'created': True,
+                'chat_room': ChatRoomSerializer(chat_room).data,
+                'message': 'Chat room created successfully'
+            }, status=status.HTTP_201_CREATED)
+
+        except MusicAnalysis.DoesNotExist:
+            raise ValidationError("Music analysis not found")
+        except Exception as e:
+            logger.error(f"Failed to create/join chat from music: {str(e)}", exc_info=True)
+            raise ValidationError(f"Failed to process room selection: {str(e)}")
+
+
 class PhotoAnalysisView(APIView):
     """
     Analyze an uploaded photo with OpenAI Vision API and generate chat topic suggestions.

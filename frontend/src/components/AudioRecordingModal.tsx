@@ -1,8 +1,9 @@
 'use client';
 
-import { X, Music, Mic } from 'lucide-react';
+import { X, Music, Mic, Loader2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
-import { api } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { api, messageApi } from '@/lib/api';
 
 interface MusicSuggestion {
   name: string;
@@ -34,11 +35,16 @@ interface AudioRecordingModalProps {
 const DEFAULT_RECORDING_DURATION = 8; // Fallback if config fetch fails
 
 export default function AudioRecordingModal({ onClose }: AudioRecordingModalProps) {
+  const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AudioRecognitionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(DEFAULT_RECORDING_DURATION);
+
+  // Selection state for joining chat rooms
+  const [selectingIndex, setSelectingIndex] = useState<number | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -184,6 +190,27 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
     }
   };
 
+  const handleSuggestionClick = async (suggestion: MusicSuggestion, index: number) => {
+    if (!result || !result.id || selectingIndex !== null) return;
+
+    setSelectingIndex(index);
+    setSelectionError(null);
+
+    try {
+      const response = await messageApi.createChatFromMusic({
+        music_analysis_id: result.id,
+        room_code: suggestion.key,
+      });
+
+      // Navigate to the chat room
+      router.push(response.chat_room.url);
+    } catch (err: any) {
+      console.error('Failed to join music chat room:', err);
+      setSelectionError(err.response?.data?.detail || err.message || 'Failed to join room');
+      setSelectingIndex(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
       {/* Modal Container */}
@@ -267,6 +294,13 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
                 </div>
               </div>
 
+              {/* Selection Error */}
+              {selectionError && (
+                <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg mb-4">
+                  <p className="text-red-400 text-sm">{selectionError}</p>
+                </div>
+              )}
+
               {/* Suggestions */}
               {result.suggestions && result.suggestions.length > 0 && (
                 <div>
@@ -277,7 +311,14 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
                     {result.suggestions.map((suggestion, idx) => (
                       <div
                         key={suggestion.key}
-                        className="p-4 bg-zinc-900/50 border border-zinc-600 rounded-lg hover:border-cyan-400 transition-colors cursor-pointer"
+                        onClick={() => handleSuggestionClick(suggestion, idx)}
+                        className={`p-4 bg-zinc-900/50 border rounded-lg transition-colors cursor-pointer ${
+                          selectingIndex === idx
+                            ? 'border-cyan-400 opacity-70'
+                            : selectingIndex !== null
+                            ? 'border-zinc-600 opacity-50 cursor-not-allowed'
+                            : 'border-zinc-600 hover:border-cyan-400'
+                        }`}
                       >
                         {/* Name and Badge */}
                         <div className="flex items-start justify-between mb-2">
@@ -288,6 +329,9 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
                               {suggestion.type}
                             </span>
                           </div>
+                          {selectingIndex === idx && (
+                            <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+                          )}
                         </div>
 
                         {/* Description */}

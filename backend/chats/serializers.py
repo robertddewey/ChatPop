@@ -477,3 +477,24 @@ class ChatRoomCreateFromLocationSerializer(serializers.Serializer):
         except LocationAnalysis.DoesNotExist:
             raise serializers.ValidationError("Location analysis not found")
         return value
+
+
+class ChatRoomCreateFromMusicSerializer(serializers.Serializer):
+    """
+    Serializer for creating/joining a chat room from music analysis.
+
+    Security: Only accepts music_analysis_id and room_code.
+    The room_code must match one of the suggestions linked to this music analysis.
+    Validation happens in the view to prevent client tampering.
+    """
+    music_analysis_id = serializers.UUIDField(required=True)
+    room_code = serializers.CharField(required=True, max_length=100)
+
+    def validate_music_analysis_id(self, value):
+        """Verify music analysis exists"""
+        from media_analysis.models import MusicAnalysis
+        try:
+            MusicAnalysis.objects.get(id=value)
+        except MusicAnalysis.DoesNotExist:
+            raise serializers.ValidationError("Music analysis not found")
+        return value
