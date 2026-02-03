@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { BadgeCheck, Reply, Crown, Pin } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
@@ -191,6 +191,32 @@ export default function MainChatView({
   messageReactions,
   loadingOlder = false,
 }: MainChatViewProps) {
+  // Ref for measuring sticky section height
+  const stickySectionRef = useRef<HTMLDivElement>(null);
+  const [stickyHeight, setStickyHeight] = useState(0);
+
+  // Measure sticky section height dynamically
+  useLayoutEffect(() => {
+    const stickyEl = stickySectionRef.current;
+    if (!stickyEl) {
+      setStickyHeight(0);
+      return;
+    }
+
+    // Initial measurement
+    setStickyHeight(stickyEl.offsetHeight);
+
+    // Watch for size changes
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setStickyHeight(entry.contentRect.height);
+      }
+    });
+
+    resizeObserver.observe(stickyEl);
+    return () => resizeObserver.disconnect();
+  }, [stickyHostMessages.length, stickyPinnedMessage]);
+
   // Extract inline styles from messagesAreaBg for dynamic opacity/filter support
   const backgroundStyles = useMemo(() => {
     if (!currentDesign?.messagesAreaBg) return { classes: '', style: {} };
@@ -202,7 +228,7 @@ export default function MainChatView({
     <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-white'}`}>
       {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
       {hasJoined && (stickyHostMessages.length > 0 || stickyPinnedMessage) && (
-        <div data-sticky-section className={currentDesign.stickySection}>
+        <div ref={stickySectionRef} data-sticky-section className={currentDesign.stickySection}>
           {/* Host Messages */}
           {stickyHostMessages.map((message) => (
             <MessageActionsModal
@@ -415,8 +441,11 @@ export default function MainChatView({
         onScroll={handleScroll}
         className={currentDesign.messagesArea}
       >
-        {/* Add padding-top when sticky messages are present to avoid overlap */}
-        <div className={`space-y-3 relative z-10 ${(stickyHostMessages.length > 0 || stickyPinnedMessage) ? 'pt-4' : ''}`}>
+        {/* Dynamic padding-top to avoid overlap with sticky section */}
+        <div
+          className="space-y-3 relative z-10"
+          style={{ paddingTop: stickyHeight > 0 ? `${stickyHeight + 8}px` : undefined }}
+        >
         {/* Loading indicator for infinite scroll */}
         {loadingOlder && (
           <div className="flex justify-center py-2">
