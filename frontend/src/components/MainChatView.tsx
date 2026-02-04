@@ -436,10 +436,11 @@ export default function MainChatView({
       />
 
       {/* Messages Area */}
+      {/* no-scroll-anchor class disables browser scroll anchoring on container AND all descendants */}
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className={currentDesign.messagesArea}
+        className={`${currentDesign.messagesArea} no-scroll-anchor`}
       >
         {/* Dynamic padding-top to avoid overlap with sticky section */}
         <div
@@ -772,7 +773,7 @@ export default function MainChatView({
           </div>
           );
         })}
-        <div ref={messagesEndRef} />
+        <div ref={messagesEndRef} style={{ overflowAnchor: 'none' }} />
         </div>
       </div>
     </div>

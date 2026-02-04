@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { chatApi, messageApi, authApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary } from '@/lib/api';
 import Header from '@/components/Header';
@@ -236,8 +237,8 @@ export default function ChatPage() {
       if (prev.some((m) => m.id === message.id)) {
         return prev;
       }
-      // Add new message and auto-scroll
-      shouldAutoScrollRef.current = true;
+      // Add new message - don't force auto-scroll here
+      // Let handleScroll manage shouldAutoScrollRef based on user's position
       return [...prev, message];
     });
     // Play receive sound only when someone replies to YOUR message (not their own)
@@ -634,12 +635,114 @@ export default function ChatPage() {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           shouldAutoScrollRef.current = true;
-          scrollToBottom(); // Explicitly scroll after DOM is ready
-          // Note: initialScrollDoneRef is set in handleScroll when we reach bottom
+
+          // Use INSTANT scroll to bottom (not smooth) so we can preload after
+          const container = messagesContainerRef.current;
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+
+          // Mark initial scroll as done AFTER instant scroll
+          // This prevents the auto-scroll useEffect from interfering with smooth scroll
+          initialScrollDoneRef.current = true;
+
+          // Scroll again after a short delay to catch any async layout changes
+          // (sticky section height, ResizeObserver updates, etc.)
+          setTimeout(() => {
+            if (container) {
+              container.scrollTop = container.scrollHeight;
+            }
+          }, 50);
+
+          // Preload next batch of messages AFTER scroll is complete
+          // Small delay ensures scroll position is stable
+          if (msgs.length > 0) {
+            setTimeout(() => {
+              preloadOlderMessages(msgs);
+            }, 150); // Increased to run after the second scroll
+          }
         });
       });
     } catch (err) {
       console.error('Failed to load messages:', err);
+    }
+  };
+
+  // Preload older messages silently (called after initial load)
+  const preloadOlderMessages = async (currentMessages: Message[]) => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // Use ref-based lock (synchronous) to prevent double preload
+    // State-based lock doesn't work because setState is async
+    if (preloadLockRef.current || loadingOlder) {
+      console.log('[Preload] Skipping - already loading');
+      return;
+    }
+
+    // Set ref lock immediately (synchronous)
+    preloadLockRef.current = true;
+
+    try {
+      setLoadingOlder(true); // Also set state to block loadOlderMessages
+
+      const oldestMessage = currentMessages[0];
+      const beforeTimestamp = new Date(oldestMessage.created_at).getTime() / 1000;
+
+      console.log('[Preload] Fetching messages before:', oldestMessage.id, 'timestamp:', beforeTimestamp);
+
+      const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(
+        code, beforeTimestamp, 50, roomUsername
+      );
+
+      console.log('[Preload] Received', olderMessages.length, 'messages, hasMore:', hasMore);
+
+      if (olderMessages.length > 0) {
+        // Filter out any duplicates (in case of overlap)
+        const existingIds = new Set(currentMessages.map(m => m.id));
+        const uniqueOlderMessages = olderMessages.filter(m => !existingIds.has(m.id));
+
+        console.log('[Preload] Unique messages to add:', uniqueOlderMessages.length);
+
+        if (uniqueOlderMessages.length > 0) {
+          // Freeze sticky state during insert
+          isInsertingRef.current = true;
+
+          // Capture scroll position RIGHT BEFORE flushSync
+          const previousScrollHeight = container.scrollHeight;
+          const previousScrollTop = container.scrollTop;
+
+          // Use flushSync for synchronous DOM update (same as loadOlderMessages)
+          flushSync(() => {
+            setMessages(prev => {
+              const prevIds = new Set(prev.map(m => m.id));
+              const filtered = uniqueOlderMessages.filter(m => !prevIds.has(m.id));
+              return [...filtered, ...prev];
+            });
+          });
+
+          // IMMEDIATELY adjust scroll after flushSync (no RAF delay)
+          const newScrollHeight = container.scrollHeight;
+          const heightDifference = newScrollHeight - previousScrollHeight;
+          container.scrollTop = previousScrollTop + heightDifference;
+          console.log('[Preload] Scroll adjusted by', heightDifference);
+
+          // Unfreeze sticky after adjustment settles
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              isInsertingRef.current = false;
+            });
+          });
+        }
+      }
+
+      setHasMoreMessages(hasMore);
+    } catch (err) {
+      console.error('Failed to preload older messages:', err);
+      isInsertingRef.current = false; // Ensure we unfreeze on error
+    } finally {
+      preloadLockRef.current = false; // Release ref lock
+      setLoadingOlder(false); // Release state lock
     }
   };
 
@@ -657,30 +760,59 @@ export default function ChatPage() {
     try {
       setLoadingOlder(true);
 
-      // Save scroll position relative to current scroll height
-      const previousScrollHeight = container.scrollHeight;
-      const previousScrollTop = container.scrollTop;
-
       // Get the oldest message timestamp
       const oldestMessage = messages[0];
       const beforeTimestamp = new Date(oldestMessage.created_at).getTime() / 1000;
 
-      // Fetch older messages
+      // Fetch older messages (async - user may scroll during this)
       const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(code, beforeTimestamp, 50, roomUsername);
 
       if (olderMessages.length > 0) {
-        // Prepend older messages
-        setMessages(prev => [...olderMessages, ...prev]);
+        // Freeze sticky state during insert
+        isInsertingRef.current = true;
 
-        // Use requestAnimationFrame to ensure DOM has updated
+        // Capture scroll position RIGHT BEFORE the DOM update
+        const previousScrollHeight = container.scrollHeight;
+        const previousScrollTop = container.scrollTop;
+
+        console.log('[Scroll Debug] BEFORE flushSync', {
+          previousScrollHeight,
+          previousScrollTop,
+          messagesCount: messages.length,
+          olderMessagesCount: olderMessages.length,
+        });
+
+        // Use flushSync to force synchronous state update and DOM mutation
+        flushSync(() => {
+          setMessages(prev => [...olderMessages, ...prev]);
+        });
+
+        // IMMEDIATELY adjust scroll after flushSync (no RAF delay)
+        // This prevents the user from seeing even 1 frame of wrong position
+        const newScrollHeight = container.scrollHeight;
+        const heightDifference = newScrollHeight - previousScrollHeight;
+        const targetScrollTop = previousScrollTop + heightDifference;
+        container.scrollTop = targetScrollTop;
+
+        console.log('[Scroll Debug] Scroll adjusted immediately', {
+          previousScrollTop,
+          targetScrollTop,
+          actualScrollTop: container.scrollTop,
+          heightDifference,
+        });
+
+        // Unfreeze sticky after a short delay
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            if (container) {
-              // Calculate new scroll position to maintain visual position
-              const newScrollHeight = container.scrollHeight;
-              const heightDifference = newScrollHeight - previousScrollHeight;
-              container.scrollTop = previousScrollTop + heightDifference;
-            }
+            isInsertingRef.current = false;
+          });
+        });
+
+        // Unfreeze sticky state after scroll adjustment settles
+        // Unfreeze sticky after adjustment settles
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            isInsertingRef.current = false;
           });
         });
       }
@@ -688,6 +820,7 @@ export default function ChatPage() {
       setHasMoreMessages(hasMore);
     } catch (err) {
       console.error('Failed to load older messages:', err);
+      isInsertingRef.current = false; // Ensure we unfreeze on error
     } finally {
       setLoadingOlder(false);
     }
@@ -1060,6 +1193,40 @@ export default function ChatPage() {
   const shouldAutoScrollRef = useRef(true);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
+  // Track if we're inserting older messages (to freeze sticky during insert)
+  const isInsertingRef = useRef(false);
+
+  // Ref-based lock for preload (synchronous, unlike state)
+  const preloadLockRef = useRef(false);
+
+  // Debug: Track all scroll position changes
+  const lastScrollTopRef = useRef<number>(0);
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const trackScroll = () => {
+      const currentScrollTop = container.scrollTop;
+      const diff = currentScrollTop - lastScrollTopRef.current;
+
+      // Only log significant changes (> 50px jump or direction change)
+      if (Math.abs(diff) > 50) {
+        console.log('[Scroll Track]', {
+          from: lastScrollTopRef.current,
+          to: currentScrollTop,
+          diff: diff,
+          jump: Math.abs(diff) > 500 ? '⚠️ BIG JUMP' : '',
+          timestamp: performance.now().toFixed(0),
+        });
+      }
+      lastScrollTopRef.current = currentScrollTop;
+    };
+
+    container.addEventListener('scroll', trackScroll, { passive: true });
+    return () => container.removeEventListener('scroll', trackScroll);
+  }, [hasJoined]);
+
+
   // Track which sticky messages are visible in scroll area
   const [visibleMessageIds, setVisibleMessageIds] = useState<Set<string>>(new Set());
   const [aboveViewportMessageIds, setAboveViewportMessageIds] = useState<Set<string>>(new Set());
@@ -1285,8 +1452,18 @@ export default function ChatPage() {
     return ids;
   }, [allStickyHostMessages, topPinnedMessage]);
 
+  // Refs to store previous sticky values (for freezing during insert)
+  const prevStickyHostRef = useRef<Message[]>([]);
+  const prevStickyPinnedRef = useRef<Message | null>(null);
+
   // Show the most recent host message that is above the viewport (scrolled past)
   const stickyHostMessages = useMemo(() => {
+    // If inserting older messages, return frozen value to prevent flash
+    if (isInsertingRef.current) {
+      console.log('[Sticky Debug] Returning FROZEN host messages', prevStickyHostRef.current.length);
+      return prevStickyHostRef.current;
+    }
+
     // Get all host messages from filtered messages
     const hostMessages = filteredMessages.filter(m => m.is_from_host);
 
@@ -1295,11 +1472,23 @@ export default function ChatPage() {
       .filter(m => aboveViewportMessageIds.has(m.id))
       .slice(-1); // Get the most recent one
 
+    // Save for future freeze
+    prevStickyHostRef.current = aboveViewportHosts;
+
     return aboveViewportHosts;
   }, [filteredMessages, aboveViewportMessageIds]);
 
   // Always show pinned message in sticky area (user paid for visibility)
-  const stickyPinnedMessage = topPinnedMessage || null;
+  const computedStickyPinnedMessage = topPinnedMessage || null;
+
+  // Freeze pinned message during insert too
+  const stickyPinnedMessage = useMemo(() => {
+    if (isInsertingRef.current) {
+      return prevStickyPinnedRef.current;
+    }
+    prevStickyPinnedRef.current = computedStickyPinnedMessage;
+    return computedStickyPinnedMessage;
+  }, [computedStickyPinnedMessage]);
 
   // Auto-remove expired pins from sticky section
   useEffect(() => {
@@ -1359,11 +1548,11 @@ export default function ChatPage() {
     }
     // If we're just temporarily not at bottom (e.g., content added), keep auto-scroll enabled
 
-    // Check if scrolled to top for infinite scroll
-    // Only allow after initial scroll to bottom is complete
+    // Infinite scroll - load older messages when user is far from top
+    // Trigger at 3000px to ensure insertion happens off-screen even if user scrolls fast
     if (
       initialScrollDoneRef.current &&
-      container.scrollTop < 100 &&
+      container.scrollTop < 3000 &&
       hasMoreMessages &&
       !loadingOlder &&
       messages.length > 0
@@ -1372,8 +1561,13 @@ export default function ChatPage() {
     }
   };
 
-  // Only auto-scroll if user is near bottom
+  // Only auto-scroll if user is near bottom (but NOT during initial load)
+  // Initial scroll is handled directly in loadMessages with instant scroll
   useEffect(() => {
+    // Skip during initial load - loadMessages handles that with instant scroll
+    if (!initialScrollDoneRef.current) {
+      return;
+    }
     if (shouldAutoScrollRef.current) {
       scrollToBottom();
     }
@@ -1462,6 +1656,11 @@ export default function ChatPage() {
 
       // Use requestAnimationFrame for smoother updates
       rafId = requestAnimationFrame(() => {
+        // Skip sticky updates while inserting older messages to prevent layout shifts
+        if (isInsertingRef.current) {
+          return;
+        }
+
         // Get the chat header element as our fixed reference point
         const chatHeader = document.querySelector('[data-chat-header]') as HTMLElement;
         let headerBottom = 0;
