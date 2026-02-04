@@ -1174,7 +1174,9 @@ export default function ChatPage() {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Use instant scroll (not smooth) to keep up with rapid message arrival
+    // Smooth animation can't complete before next message at high rates (10+ msg/sec)
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
   const scrollToMessage = (messageId: string) => {
