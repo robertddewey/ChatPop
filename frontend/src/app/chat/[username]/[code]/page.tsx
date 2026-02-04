@@ -692,7 +692,7 @@ export default function ChatPage() {
       console.log('[Preload] Fetching messages before:', oldestMessage.id, 'timestamp:', beforeTimestamp);
 
       const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(
-        code, beforeTimestamp, 50, roomUsername
+        code, beforeTimestamp, 100, roomUsername  // Preload 100 messages for smooth momentum scrolling
       );
 
       console.log('[Preload] Received', olderMessages.length, 'messages, hasMore:', hasMore);
@@ -1199,6 +1199,18 @@ export default function ChatPage() {
   // Ref-based lock for preload (synchronous, unlike state)
   const preloadLockRef = useRef(false);
 
+  // Debounce timer for infinite scroll trigger (prevents momentum scroll interruption)
+  const loadOlderDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (loadOlderDebounceRef.current) {
+        clearTimeout(loadOlderDebounceRef.current);
+      }
+    };
+  }, []);
+
   // Debug: Track all scroll position changes
   const lastScrollTopRef = useRef<number>(0);
   useEffect(() => {
@@ -1548,8 +1560,9 @@ export default function ChatPage() {
     }
     // If we're just temporarily not at bottom (e.g., content added), keep auto-scroll enabled
 
-    // Infinite scroll - load older messages when user is far from top
-    // Trigger at 3000px to ensure insertion happens off-screen even if user scrolls fast
+    // Infinite scroll - load older messages when near top
+    // Use debouncing to avoid interrupting momentum scroll
+    // Only trigger after 150ms of scroll inactivity in the trigger zone
     if (
       initialScrollDoneRef.current &&
       container.scrollTop < 3000 &&
@@ -1557,7 +1570,30 @@ export default function ChatPage() {
       !loadingOlder &&
       messages.length > 0
     ) {
-      loadOlderMessages();
+      // Clear any existing debounce timer
+      if (loadOlderDebounceRef.current) {
+        clearTimeout(loadOlderDebounceRef.current);
+      }
+
+      // Set new debounce timer - wait for scroll to settle before loading
+      loadOlderDebounceRef.current = setTimeout(() => {
+        // Re-check conditions after debounce (user may have scrolled away)
+        const currentContainer = messagesContainerRef.current;
+        if (
+          currentContainer &&
+          currentContainer.scrollTop < 3000 &&
+          hasMoreMessages &&
+          !loadingOlder
+        ) {
+          loadOlderMessages();
+        }
+      }, 150);
+    } else {
+      // User scrolled out of trigger zone - cancel pending load
+      if (loadOlderDebounceRef.current) {
+        clearTimeout(loadOlderDebounceRef.current);
+        loadOlderDebounceRef.current = null;
+      }
     }
   };
 
