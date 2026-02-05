@@ -1241,9 +1241,8 @@ export default function ChatPage() {
   }, [hasJoined]);
 
 
-  // Track which sticky messages are visible in scroll area
-  const [visibleMessageIds, setVisibleMessageIds] = useState<Set<string>>(new Set());
-  const [aboveViewportMessageIds, setAboveViewportMessageIds] = useState<Set<string>>(new Set());
+  // Note: We previously tracked scroll-based visibility for sticky host messages,
+  // but now always show the latest host message for simplicity and to prevent flickering
 
   // Message action handlers (wrapped in useCallback to prevent re-renders)
 
@@ -1457,20 +1456,12 @@ export default function ChatPage() {
     return !!(currentUserId && chatRoom && chatRoom.host.id === currentUserId);
   }, [currentUserId, chatRoom]);
 
-  // Get IDs to observe (useMemo to prevent infinite loops)
-  const idsToObserve = useMemo(() => {
-    const hostIds = allStickyHostMessages.map(m => m.id);
-    const pinnedId = topPinnedMessage?.id;
-    const ids = [...hostIds];
-    if (pinnedId) ids.push(pinnedId);
-    return ids;
-  }, [allStickyHostMessages, topPinnedMessage]);
-
   // Refs to store previous sticky values (for freezing during insert)
   const prevStickyHostRef = useRef<Message[]>([]);
   const prevStickyPinnedRef = useRef<Message | null>(null);
 
-  // Show the most recent host message that is above the viewport (scrolled past)
+  // Always show the most recent host message in sticky area
+  // This is simpler than scroll-based tracking and eliminates flickering
   const stickyHostMessages = useMemo(() => {
     // If inserting older messages, return frozen value to prevent flash
     if (isInsertingRef.current) {
@@ -1478,19 +1469,11 @@ export default function ChatPage() {
       return prevStickyHostRef.current;
     }
 
-    // Get all host messages from filtered messages
-    const hostMessages = filteredMessages.filter(m => m.is_from_host);
-
-    // Find the most recent host message that is above the viewport
-    const aboveViewportHosts = hostMessages
-      .filter(m => aboveViewportMessageIds.has(m.id))
-      .slice(-1); // Get the most recent one
-
     // Save for future freeze
-    prevStickyHostRef.current = aboveViewportHosts;
+    prevStickyHostRef.current = allStickyHostMessages;
 
-    return aboveViewportHosts;
-  }, [filteredMessages, aboveViewportMessageIds]);
+    return allStickyHostMessages;
+  }, [allStickyHostMessages]);
 
   // Always show pinned message in sticky area (user paid for visibility)
   const computedStickyPinnedMessage = topPinnedMessage || null;
@@ -1679,154 +1662,11 @@ export default function ChatPage() {
     document.body.style.backgroundColor = currentColor;
   }, [participationTheme, chatRoom?.theme]);
 
-  // Scroll-based tracking to determine which messages should be in sticky area
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container || filteredMessages.length === 0) return;
-
-    let rafId: number | null = null;
-
-    const handleScroll = () => {
-      // Cancel any pending frame
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-      }
-
-      // Use requestAnimationFrame for smoother updates
-      rafId = requestAnimationFrame(() => {
-        // Skip sticky updates while inserting older messages to prevent layout shifts
-        if (isInsertingRef.current) {
-          return;
-        }
-
-        // Get the chat header element as our fixed reference point
-        const chatHeader = document.querySelector('[data-chat-header]') as HTMLElement;
-        let headerBottom = 0;
-
-        if (chatHeader) {
-          // Get the bottom edge of the header relative to container
-          const headerRect = chatHeader.getBoundingClientRect();
-          const containerRect = container.getBoundingClientRect();
-          headerBottom = headerRect.bottom - containerRect.top;
-        } else {
-          // Fallback: estimate based on typical header size
-          headerBottom = 60;
-        }
-
-        // Hysteresis buffer to prevent flickering at the boundary
-        const ENTER_BUFFER = 20; // Message must be 20px past header to leave sticky
-        const EXIT_BUFFER = 5;   // Message must be 5px above header to enter sticky
-
-        // Update visible messages
-        setVisibleMessageIds((prev) => {
-          const newVisibleIds = new Set<string>();
-          let hasChanges = false;
-
-          // Check each message that should be observed
-          idsToObserve.forEach((messageId) => {
-            const messageElement = container.querySelector(`[data-message-id="${messageId}"]`);
-            if (messageElement) {
-              const rect = messageElement.getBoundingClientRect();
-              const containerRect = container.getBoundingClientRect();
-              const relativeTop = rect.top - containerRect.top;
-              const messageBottom = relativeTop + messageElement.clientHeight;
-
-              const wasVisible = prev.has(messageId);
-
-              if (wasVisible) {
-                // Message is currently visible in scroll - keep it visible unless it scrolls well past header
-                // Use EXIT_BUFFER to prevent premature exit
-                if (messageBottom > headerBottom - EXIT_BUFFER) {
-                  newVisibleIds.add(messageId);
-                }
-              } else {
-                // Message is currently in sticky - only make it visible if it scrolls well below header
-                // Use ENTER_BUFFER to prevent premature entry
-                if (messageBottom > headerBottom + ENTER_BUFFER) {
-                  newVisibleIds.add(messageId);
-                }
-              }
-            }
-          });
-
-          // Check if there are any changes
-          if (newVisibleIds.size !== prev.size) {
-            hasChanges = true;
-          } else {
-            newVisibleIds.forEach(id => {
-              if (!prev.has(id)) {
-                hasChanges = true;
-              }
-            });
-          }
-
-          return hasChanges ? newVisibleIds : prev;
-        });
-
-        // Update above-viewport messages (for host message sticky logic)
-        setAboveViewportMessageIds((prev) => {
-          const newAboveViewportIds = new Set<string>();
-          let hasChanges = false;
-
-          // Hysteresis thresholds for above-viewport detection (prevents jitter)
-          const ABOVE_ENTER_THRESHOLD = 50; // Message must be 50px above header to enter set
-          const ABOVE_EXIT_THRESHOLD = -20; // Message must be 20px below header to leave set
-
-          // Get all host messages
-          const allHostMessages = filteredMessages.filter(m => m.is_from_host);
-
-          // Check each host message
-          allHostMessages.forEach((message) => {
-            const messageElement = container.querySelector(`[data-message-id="${message.id}"]`);
-            if (messageElement) {
-              const rect = messageElement.getBoundingClientRect();
-              const containerRect = container.getBoundingClientRect();
-              const relativeTop = rect.top - containerRect.top;
-              const messageBottom = relativeTop + messageElement.clientHeight;
-
-              const wasAboveViewport = prev.has(message.id);
-
-              if (wasAboveViewport) {
-                // Keep it in set unless it scrolls well below header
-                if (messageBottom < headerBottom + ABOVE_EXIT_THRESHOLD) {
-                  newAboveViewportIds.add(message.id);
-                }
-              } else {
-                // Add to set only if it's well above header
-                if (messageBottom < headerBottom - ABOVE_ENTER_THRESHOLD) {
-                  newAboveViewportIds.add(message.id);
-                }
-              }
-            }
-          });
-
-          // Check if there are any changes
-          if (newAboveViewportIds.size !== prev.size) {
-            hasChanges = true;
-          } else {
-            newAboveViewportIds.forEach(id => {
-              if (!prev.has(id)) {
-                hasChanges = true;
-              }
-            });
-          }
-
-          return hasChanges ? newAboveViewportIds : prev;
-        });
-      });
-    };
-
-    // Initial check and add scroll listener
-    handleScroll();
-    container.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-      }
-      container.removeEventListener('scroll', handleScroll);
-    };
-  }, [filteredMessages.length, idsToObserve, activeView]);
+  // Note: Scroll-based visibility tracking for sticky host messages was removed.
+  // We now always show the latest host message in the sticky area, which is simpler
+  // and eliminates the flickering that occurred when multiple messages crossed
+  // the visibility threshold (especially problematic in Focus mode where all
+  // messages are from the host).
 
   if (loading) {
     const currentDesign = convertThemeToCamelCase(participationTheme || chatRoom?.theme || defaultTheme);
