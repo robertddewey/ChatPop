@@ -226,7 +226,7 @@ function MainChatView({
     // Watch for size changes
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.offsetHeight;
+        const height = entry.borderBoxSize?.[0]?.blockSize ?? (entry.target as HTMLElement).offsetHeight;
         setStickyHeight(height);
       }
     });

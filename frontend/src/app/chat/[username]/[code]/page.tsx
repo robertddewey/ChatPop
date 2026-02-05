@@ -436,98 +436,69 @@ export default function ChatPage() {
     });
   }, [filterMode, activeView]);
 
-  // Load chat room details
+  // Load chat room details - run independent API calls in parallel for faster load
   useEffect(() => {
     const loadChatRoom = async () => {
       try {
-        const room = await chatApi.getChatByCode(code, roomUsername);
-        setChatRoom(room);
-
-        // Check if user is already logged in
         const token = localStorage.getItem('auth_token');
-        let fpValue: string | undefined;
 
-        if (token) {
-          try {
-            const currentUser = await authApi.getCurrentUser();
-            setCurrentUserId(currentUser.id);
+        // Run independent operations in parallel
+        const [room, fpValue, currentUser] = await Promise.all([
+          chatApi.getChatByCode(code, roomUsername),
+          getFingerprint().catch(() => undefined),
+          token ? authApi.getCurrentUser().catch(() => null) : Promise.resolve(null),
+        ]);
+
+        setChatRoom(room);
+        if (fpValue) setFingerprint(fpValue);
+
+        // Now fetch participation (depends on fingerprint)
+        const participation = await chatApi.getMyParticipation(code, fpValue, roomUsername);
+
+        if (participation.theme) {
+          setParticipationTheme(participation.theme);
+        }
+
+        if (currentUser) {
+          // Logged-in user
+          setCurrentUserId(currentUser.id);
+
+          if (participation.has_joined && participation.username) {
+            // Returning user - use their locked username
+            setUsername(participation.username);
+            setHasJoinedBefore(true);
+            setIsBlocked(participation.is_blocked || false);
+            setHasReservedUsername(participation.username_is_reserved || false);
+          } else {
+            // First-time user - pre-fill with reserved_username
+            setUsername(currentUser.reserved_username || '');
+            setHasJoinedBefore(false);
+            setIsBlocked(false);
             setHasReservedUsername(!!currentUser.reserved_username);
-
-            // Get fingerprint for logged-in users too
-            try {
-              fpValue = await getFingerprint();
-              setFingerprint(fpValue);
-            } catch (fpErr) {
-              // Fingerprint error - continue without it
-            }
-
-            // Check ChatParticipation to see if they've joined before
-            const participation = await chatApi.getMyParticipation(code, fpValue, roomUsername);
-
-            // Store participation theme if present
-            if (participation.theme) {
-              setParticipationTheme(participation.theme);
-            }
-
-            if (participation.has_joined && participation.username) {
-              // Returning user - use their locked username
-              setUsername(participation.username);
-              setHasJoinedBefore(true);
-              setIsBlocked(participation.is_blocked || false);
-              setHasReservedUsername(participation.username_is_reserved || false);
-            } else {
-              // First-time user - pre-fill with reserved_username (they can change it)
-              setUsername(currentUser.reserved_username || '');
-              setHasJoinedBefore(false);
-              setIsBlocked(false);
-              // Badge shows if they have a reserved username
-              setHasReservedUsername(!!currentUser.reserved_username);
-            }
-          } catch (userErr) {
-            // If getting user fails, just proceed as guest
           }
         } else {
-          // Anonymous user - check fingerprint participation
-          try {
-            fpValue = await getFingerprint();
-            setFingerprint(fpValue);
-            const participation = await chatApi.getMyParticipation(code, fpValue, roomUsername);
-
-            // Store participation theme if present
-            if (participation.theme) {
-              setParticipationTheme(participation.theme);
-            }
-
-            if (participation.has_joined && participation.username) {
-              // Returning anonymous user
-              setUsername(participation.username);
-              setHasJoinedBefore(true);
-              setIsBlocked(participation.is_blocked || false);
-              setHasReservedUsername(participation.username_is_reserved || false);
-            } else {
-              // First-time anonymous user - check if blocked by fingerprint
-              setHasJoinedBefore(false);
-              setIsBlocked(participation.is_blocked || false);
-              setHasReservedUsername(false);
-            }
-          } catch (err) {
+          // Anonymous user
+          if (participation.has_joined && participation.username) {
+            setUsername(participation.username);
+            setHasJoinedBefore(true);
+            setIsBlocked(participation.is_blocked || false);
+            setHasReservedUsername(participation.username_is_reserved || false);
+          } else {
             setHasJoinedBefore(false);
+            setIsBlocked(participation.is_blocked || false);
+            setHasReservedUsername(false);
           }
         }
 
-        // Load session token if it exists (needed for WebSocket auth after join)
-        // But don't auto-join - always show modal to require user gesture for audio permissions
+        // Load session token if it exists
         const existingSessionToken = localStorage.getItem(`chat_session_${code}`);
         setSessionToken(existingSessionToken);
 
         setLoading(false);
       } catch (err: unknown) {
         const error = err as ApiError;
-        // If chat returns 404, do a hard redirect to homepage
-        // Using window.location.href instead of router.replace to ensure full page reload
-        // and clear any chat page styles that might bleed into the homepage
         if (error.response?.status === 404) {
-                    window.location.href = '/';
+          window.location.href = '/';
           return;
         }
 

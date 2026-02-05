@@ -56,7 +56,8 @@ const lanIp = getLanIpAddress();
 //   /media/* → Backend target group
 //   /ws/* → Backend target group (WebSocket)
 //   /* → Frontend target group
-const ENABLE_PROXY = dev;
+// Enable proxy in dev mode OR when FORCE_PROXY=true (for local production testing)
+const ENABLE_PROXY = dev || process.env.FORCE_PROXY === 'true';
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();

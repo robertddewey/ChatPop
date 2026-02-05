@@ -7,6 +7,7 @@
     "dev:https": "node server.js",
     "build": "next build --turbopack",
     "start": "next start -p 4000",
+    "start:local": "NODE_ENV=production FORCE_PROXY=true node server.js",
     "lint": "eslint",
     "test": "jest",
     "test:watch": "jest --watch"
