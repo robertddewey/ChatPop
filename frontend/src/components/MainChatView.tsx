@@ -201,24 +201,33 @@ function MainChatView({
   const stickySectionRef = useRef<HTMLDivElement>(null);
   const [stickyHeight, setStickyHeight] = useState(0);
 
+  // Track if initial render is complete - skip all animations until then
+  const initialRenderDoneRef = useRef(false);
+  // State version for sticky section animations (refs don't trigger re-renders)
+  const [allowAnimations, setAllowAnimations] = useState(false);
+
   // Track message IDs we've already seen to only animate new messages
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
 
   // Measure sticky section height dynamically
   useLayoutEffect(() => {
     const stickyEl = stickySectionRef.current;
-    if (!stickyEl) {
+    const hasSticky = stickyHostMessages.length > 0 || stickyPinnedMessage;
+
+    if (!stickyEl || !hasSticky) {
       setStickyHeight(0);
       return;
     }
 
     // Initial measurement
-    setStickyHeight(stickyEl.offsetHeight);
+    const height = stickyEl.offsetHeight;
+    setStickyHeight(height);
 
     // Watch for size changes
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setStickyHeight(entry.contentRect.height);
+        const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.offsetHeight;
+        setStickyHeight(height);
       }
     });
 
@@ -234,7 +243,12 @@ function MainChatView({
   }, [currentDesign?.messagesAreaBg]);
 
   // Track new message IDs for animation (computed during render)
+  // Skip ALL animations during initial render to prevent page bouncing
   const newMessageIds = useMemo(() => {
+    // Don't animate anything until initial render is complete
+    if (!initialRenderDoneRef.current) {
+      return new Set<string>();
+    }
     const newIds = new Set<string>();
     for (const message of filteredMessages) {
       if (!seenMessageIdsRef.current.has(message.id)) {
@@ -245,9 +259,18 @@ function MainChatView({
   }, [filteredMessages]);
 
   // After render, mark all current messages as "seen" so they won't animate again
+  // Also mark initial render as complete after first effect run
   useEffect(() => {
     for (const message of filteredMessages) {
       seenMessageIdsRef.current.add(message.id);
+    }
+    // Mark initial render as done after first batch of messages is seen
+    if (!initialRenderDoneRef.current && filteredMessages.length > 0) {
+      // Use a small delay to ensure DOM has settled before allowing animations
+      setTimeout(() => {
+        initialRenderDoneRef.current = true;
+        setAllowAnimations(true);
+      }, 100);
     }
   }, [filteredMessages]);
 
@@ -274,7 +297,7 @@ function MainChatView({
               onReact={handleReactionToggle}
             >
               <div
-                className={`${currentDesign.stickyHostMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
+                className={`${currentDesign.stickyHostMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
                 onClick={() => scrollToMessage(message.id)}
               >
                 <div className="flex items-center gap-1 mb-1">
@@ -370,7 +393,7 @@ function MainChatView({
               onReact={handleReactionToggle}
             >
               <div
-                className={`${currentDesign.stickyPinnedMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity animate-bounce-in`}
+                className={`${currentDesign.stickyPinnedMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
                 onClick={() => scrollToMessage(stickyPinnedMessage.id)}
               >
                 <div className="flex items-center gap-1 mb-1">
@@ -800,7 +823,8 @@ function MainChatView({
           </div>
           );
         })}
-        <div ref={messagesEndRef} style={{ overflowAnchor: 'none' }} />
+        {/* Spacer to ensure last message is visible above input */}
+        <div ref={messagesEndRef} className="h-4" style={{ overflowAnchor: 'none' }} />
         </div>
       </div>
     </div>

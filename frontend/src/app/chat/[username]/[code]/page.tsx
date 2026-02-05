@@ -390,12 +390,10 @@ export default function ChatPage() {
   }, []);
 
   // Handle visibility changes (mobile app switching)
-  const handleVisibilityChange = useCallback((isVisible: boolean) => {
-    if (isVisible && hasJoined) {
-      // Refetch messages to get any updates missed while away
-      loadMessages();
-    }
-  }, [hasJoined]);
+  // WebSocket handles real-time messages, no need to refetch on tab return
+  const handleVisibilityChange = useCallback((_isVisible: boolean) => {
+    // No action needed - WebSocket delivers messages in real-time
+  }, []);
 
   // WebSocket connection
   const { sendMessage: wsSendMessage, sendRawMessage, isConnected } = useChatWebSocket({
@@ -667,12 +665,15 @@ export default function ChatPage() {
 
   // Load messages
   const loadMessages = async () => {
+    if (isLoadingMessagesRef.current) return;
+    isLoadingMessagesRef.current = true;
+
     try {
       const msgs = await messageApi.getMessages(code, roomUsername, sessionToken || undefined);
       setMessages(msgs);
-      setHasMoreMessages(true); // Reset when loading fresh messages
+      setHasMoreMessages(true);
 
-      // Extract reactions from messages and populate messageReactions state
+      // Extract reactions from messages
       const reactions: Record<string, ReactionSummary[]> = {};
       msgs.forEach((msg) => {
         if (msg.reactions && msg.reactions.length > 0) {
@@ -681,41 +682,24 @@ export default function ChatPage() {
       });
       setMessageReactions(reactions);
 
-      // Wait for DOM to fully render before scrolling to bottom
-      // This prevents race conditions on mobile/small viewports
+      // Scroll to bottom after React renders
+      shouldAutoScrollRef.current = true;
+      initialScrollDoneRef.current = false; // Reset before scroll
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          shouldAutoScrollRef.current = true;
-
-          // Use INSTANT scroll to bottom (not smooth) so we can preload after
-          const container = messagesContainerRef.current;
-          if (container) {
-            container.scrollTop = container.scrollHeight;
-          }
-
-          // Mark initial scroll as done AFTER instant scroll
-          // This prevents the auto-scroll useEffect from interfering with smooth scroll
-          initialScrollDoneRef.current = true;
-
-          // Scroll again after a short delay to catch any async layout changes
-          // (sticky section height, ResizeObserver updates, etc.)
-          setTimeout(() => {
-            if (container) {
-              container.scrollTop = container.scrollHeight;
-            }
-          }, 50);
-
-          // Preload next batch of messages AFTER scroll is complete
-          // Small delay ensures scroll position is stable
-          if (msgs.length > 0) {
-            setTimeout(() => {
-              preloadOlderMessages(msgs);
-            }, 150); // Increased to run after the second scroll
-          }
-        });
+        const container = messagesContainerRef.current;
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+        initialScrollDoneRef.current = true; // Mark scroll complete
+        // Preload older messages
+        if (msgs.length > 0) {
+          setTimeout(() => preloadOlderMessages(msgs), 100);
+        }
       });
     } catch (err) {
       console.error('Failed to load messages:', err);
+    } finally {
+      isLoadingMessagesRef.current = false;
     }
   };
 
@@ -724,39 +708,29 @@ export default function ChatPage() {
     const container = messagesContainerRef.current;
     if (!container) return;
 
-    // Use ref-based lock (synchronous) to prevent double preload
-    // State-based lock doesn't work because setState is async
-    if (preloadLockRef.current || loadingOlder) {
-      return;
-    }
-
-    // Set ref lock immediately (synchronous)
+    if (preloadLockRef.current || loadingOlder) return;
     preloadLockRef.current = true;
 
     try {
-      setLoadingOlder(true); // Also set state to block loadOlderMessages
+      setLoadingOlder(true);
 
       const oldestMessage = currentMessages[0];
       const beforeTimestamp = new Date(oldestMessage.created_at).getTime() / 1000;
 
       const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(
-        code, beforeTimestamp, 100, roomUsername  // Preload 100 messages for smooth momentum scrolling
+        code, beforeTimestamp, 100, roomUsername
       );
 
       if (olderMessages.length > 0) {
-        // Filter out any duplicates (in case of overlap)
         const existingIds = new Set(currentMessages.map(m => m.id));
         const uniqueOlderMessages = olderMessages.filter(m => !existingIds.has(m.id));
 
         if (uniqueOlderMessages.length > 0) {
-          // Freeze sticky state during insert
           isInsertingRef.current = true;
 
-          // Capture scroll position RIGHT BEFORE flushSync
           const previousScrollHeight = container.scrollHeight;
           const previousScrollTop = container.scrollTop;
 
-          // Use flushSync for synchronous DOM update (same as loadOlderMessages)
           flushSync(() => {
             setMessages(prev => {
               const prevIds = new Set(prev.map(m => m.id));
@@ -765,12 +739,10 @@ export default function ChatPage() {
             });
           });
 
-          // IMMEDIATELY adjust scroll after flushSync (no RAF delay)
           const newScrollHeight = container.scrollHeight;
           const heightDifference = newScrollHeight - previousScrollHeight;
           container.scrollTop = previousScrollTop + heightDifference;
 
-          // Unfreeze sticky after adjustment settles
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               isInsertingRef.current = false;
@@ -782,10 +754,10 @@ export default function ChatPage() {
       setHasMoreMessages(hasMore);
     } catch (err) {
       console.error('Failed to preload older messages:', err);
-      isInsertingRef.current = false; // Ensure we unfreeze on error
+      isInsertingRef.current = false;
     } finally {
-      preloadLockRef.current = false; // Release ref lock
-      setLoadingOlder(false); // Release state lock
+      preloadLockRef.current = false;
+      setLoadingOlder(false);
     }
   };
 
@@ -819,8 +791,13 @@ export default function ChatPage() {
         const previousScrollTop = container.scrollTop;
 
         // Use flushSync to force synchronous state update and DOM mutation
+        // Filter duplicates in case preload already loaded some of these
         flushSync(() => {
-          setMessages(prev => [...olderMessages, ...prev]);
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const uniqueOlderMessages = olderMessages.filter(m => !existingIds.has(m.id));
+            return [...uniqueOlderMessages, ...prev];
+          });
         });
 
         // IMMEDIATELY adjust scroll after flushSync (no RAF delay)
@@ -1183,8 +1160,6 @@ export default function ChatPage() {
   }, [sending, username, code, chatRoom, roomUsername, replyingTo?.id, sendRawMessage]);
 
   const scrollToBottom = () => {
-    // Use instant scroll for reliability at high message rates
-    // Visual feedback is handled by CSS animation on new messages instead
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
@@ -1209,6 +1184,12 @@ export default function ChatPage() {
 
   // Ref-based lock for preload (synchronous, unlike state)
   const preloadLockRef = useRef(false);
+
+  // Track last message ID to detect NEW messages vs prepended old ones
+  const lastMessageIdRef = useRef<string | null>(null);
+
+  // Prevent double loadMessages calls
+  const isLoadingMessagesRef = useRef(false);
 
   // Debounce timer for infinite scroll trigger (prevents momentum scroll interruption)
   const loadOlderDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -1604,13 +1585,21 @@ export default function ChatPage() {
     handleScrollImplRef.current();
   }, []);
 
-  // Only auto-scroll if user is near bottom (but NOT during initial load)
+  // Only auto-scroll if user is near bottom AND a NEW message arrived (at the end)
   // Initial scroll is handled directly in loadMessages with instant scroll
+  // Prepending old messages (preload/infinite scroll) should NOT trigger auto-scroll
   useEffect(() => {
+    const currentLastId = messages.length > 0 ? messages[messages.length - 1]?.id : null;
+    const previousLastId = lastMessageIdRef.current;
+
+    lastMessageIdRef.current = currentLastId;
+
     // Skip during initial load - loadMessages handles that with instant scroll
-    if (!initialScrollDoneRef.current) {
-      return;
-    }
+    if (!initialScrollDoneRef.current) return;
+
+    // Only scroll if the LAST message changed (new message arrived)
+    if (currentLastId === previousLastId) return;
+
     if (shouldAutoScrollRef.current) {
       scrollToBottom();
     }
