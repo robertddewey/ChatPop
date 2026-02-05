@@ -19,7 +19,7 @@ export interface RecordingMetadata {
 export class WaveformAnalyzer {
   private audioContext: AudioContext;
   private analyser: AnalyserNode;
-  private dataArray: Uint8Array;
+  private dataArray: Uint8Array<ArrayBuffer>;
   private amplitudes: number[] = [];
   private sampleInterval: number;
   private intervalId: NodeJS.Timeout | null = null;

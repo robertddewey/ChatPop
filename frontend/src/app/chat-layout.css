@@ -70,3 +70,19 @@ html {
 .no-scroll-anchor * {
   overflow-anchor: none !important;
 }
+
+/* New message animation - subtle slide up and fade in */
+@keyframes message-appear {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-message-appear {
+  animation: message-appear 0.15s ease-out;
+}

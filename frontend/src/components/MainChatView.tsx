@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState, useLayoutEffect } from 'react';
+import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
 import { BadgeCheck, Reply, Crown, Pin } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
@@ -20,7 +20,7 @@ function extractInlineStyles(classString: string): { classes: string; style: Rea
     const opacityMatch = cls.match(/^opacity-(?:\[([0-9.]+)\]|(\d+))$/);
     if (opacityMatch) {
       const value = opacityMatch[1] || (parseInt(opacityMatch[2]) / 100);
-      style.opacity = parseFloat(value);
+      style.opacity = typeof value === 'string' ? parseFloat(value) : value;
       return;
     }
 
@@ -36,7 +36,7 @@ function extractInlineStyles(classString: string): { classes: string; style: Rea
     // Match [mix-blend-mode:...] arbitrary value
     const blendModeMatch = cls.match(/^\[mix-blend-mode:(.+)\]$/);
     if (blendModeMatch) {
-      style.mixBlendMode = blendModeMatch[1] as any;
+      style.mixBlendMode = blendModeMatch[1] as React.CSSProperties['mixBlendMode'];
       return;
     }
 
@@ -130,16 +130,17 @@ function getTextColor(classString: string | undefined): string | undefined {
 
 interface MainChatViewProps {
   chatRoom: ChatRoom | null;
-  currentUserId: number | null;
+  currentUserId: string | null;
   username: string;
   hasJoined: boolean;
   sessionToken: string | null;
   filteredMessages: Message[];
   stickyHostMessages: Message[];
   stickyPinnedMessage: Message | null;
-  messagesContainerRef: React.RefObject<HTMLDivElement>;
-  messagesEndRef: React.RefObject<HTMLDivElement>;
-  currentDesign: any;
+  messagesContainerRef: React.RefObject<HTMLDivElement | null>;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  currentDesign: Record<string, any>;
   themeIsDarkMode?: boolean;
   handleScroll: () => void;
   scrollToMessage: (messageId: string) => void;
@@ -148,9 +149,14 @@ interface MainChatViewProps {
   handleAddToPin: (messageId: string, amountCents: number) => Promise<boolean>;
   getPinRequirements: (messageId: string) => Promise<{
     current_pin_cents: number;
-    minimum_cents: number;
-    required_cents: number;
+    minimum_cents?: number;
+    required_cents?: number;
+    minimum_required_cents?: number;
     duration_minutes: number;
+    tiers?: { amount_cents: number; duration_minutes: number }[];
+    is_pinned?: boolean;
+    is_expired?: boolean;
+    time_remaining_seconds?: number;
   }>;
   // Legacy (deprecated)
   handlePinSelf?: (messageId: string) => void;
@@ -163,7 +169,7 @@ interface MainChatViewProps {
   loadingOlder?: boolean;
 }
 
-export default function MainChatView({
+function MainChatView({
   chatRoom,
   currentUserId,
   username,
@@ -195,6 +201,9 @@ export default function MainChatView({
   const stickySectionRef = useRef<HTMLDivElement>(null);
   const [stickyHeight, setStickyHeight] = useState(0);
 
+  // Track message IDs we've already seen to only animate new messages
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
+
   // Measure sticky section height dynamically
   useLayoutEffect(() => {
     const stickyEl = stickySectionRef.current;
@@ -220,9 +229,27 @@ export default function MainChatView({
   // Extract inline styles from messagesAreaBg for dynamic opacity/filter support
   const backgroundStyles = useMemo(() => {
     if (!currentDesign?.messagesAreaBg) return { classes: '', style: {} };
-    const result = extractInlineStyles(currentDesign.messagesAreaBg);
+    const result = extractInlineStyles(currentDesign.messagesAreaBg as string);
     return result;
   }, [currentDesign?.messagesAreaBg]);
+
+  // Track new message IDs for animation (computed during render)
+  const newMessageIds = useMemo(() => {
+    const newIds = new Set<string>();
+    for (const message of filteredMessages) {
+      if (!seenMessageIdsRef.current.has(message.id)) {
+        newIds.add(message.id);
+      }
+    }
+    return newIds;
+  }, [filteredMessages]);
+
+  // After render, mark all current messages as "seen" so they won't animate again
+  useEffect(() => {
+    for (const message of filteredMessages) {
+      seenMessageIdsRef.current.add(message.id);
+    }
+  }, [filteredMessages]);
 
   return (
     <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-white'}`}>
@@ -500,7 +527,7 @@ export default function MainChatView({
           }
 
           return (
-            <div key={message.id} data-message-id={message.id}>
+            <div key={message.id} data-message-id={message.id} className={newMessageIds.has(message.id) ? 'animate-message-appear' : undefined}>
               {/* Show username header for first message in thread */}
               {isFirstInThread && !message.is_from_host && !message.is_pinned && (
                 <div className="mb-1 flex items-center gap-1">
@@ -606,12 +633,12 @@ export default function MainChatView({
                   currentUsername={username}
                   isHost={chatRoom?.host.id === currentUserId}
                   themeIsDarkMode={themeIsDarkMode}
-                  isOutbid={
+                  isOutbid={!!(
                     message.is_pinned &&
                     message.sticky_until &&
                     new Date(message.sticky_until) > new Date() &&
                     stickyPinnedMessage?.id !== message.id
-                  }
+                  )}
                   onReply={handleReply}
                   onPin={handlePin}
                   onAddToPin={handleAddToPin}
@@ -779,3 +806,6 @@ export default function MainChatView({
     </div>
   );
 }
+
+// Memoize to prevent re-renders when parent re-renders but props haven't changed
+export default memo(MainChatView);

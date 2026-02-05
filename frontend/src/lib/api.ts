@@ -125,11 +125,20 @@ export interface ChatTheme {
   my_username: string;
   regular_username: string;
   host_username: string;
+  my_host_username: string;
   pinned_username: string;
+  sticky_host_username: string;
+  sticky_pinned_username: string;
   my_timestamp: string;
   regular_timestamp: string;
   host_timestamp: string;
   pinned_timestamp: string;
+  reply_preview_container: string;
+  reply_preview_icon: string;
+  reply_preview_username: string;
+  reply_preview_content: string;
+  reply_preview_close_button: string;
+  reply_preview_close_icon: string;
   reaction_highlight_bg: string;
   reaction_highlight_border: string;
   reaction_highlight_text: string;
@@ -143,6 +152,7 @@ export interface ChatRoom {
   host: User;
   url: string;
   access_mode: 'public' | 'private';
+  is_private?: boolean;
   voice_enabled: boolean;
   video_enabled: boolean;
   photo_enabled: boolean;
@@ -151,6 +161,7 @@ export interface ChatRoom {
   message_count: number;
   is_active: boolean;
   created_at: string;
+  has_back_room?: boolean;
 }
 
 export interface ReplyToMessage {
@@ -369,6 +380,8 @@ export const chatApi = {
   suggestUsername: async (code: string, fingerprint?: string, roomUsername?: string): Promise<{
     username: string;
     remaining: number;
+    generation_remaining?: number;
+    is_returning?: boolean;
   }> => {
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/suggest-username/`, {
       fingerprint,
@@ -981,3 +994,23 @@ export const adminApi = {
   },
 };
 
+// Back Room API (for premium back room feature - stub for now)
+export interface BackRoom {
+  id: string;
+  chat_room: string;
+  name: string;
+  description: string;
+  price_per_seat: number;
+  max_seats: number;
+  seats_available: number;
+  is_full: boolean;
+  is_active: boolean;
+}
+
+export const backRoomApi = {
+  getBackRoom: async (code: string): Promise<BackRoom | null> => {
+    // TODO: Implement back room API when backend is ready
+    console.warn('backRoomApi.getBackRoom is not yet implemented');
+    return null;
+  },
+};

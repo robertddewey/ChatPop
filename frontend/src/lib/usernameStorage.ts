@@ -8,7 +8,7 @@ import FingerprintJS from '@fingerprintjs/fingerprintjs';
 // Use relative URL to leverage Next.js proxy (server.js proxies /api/ to backend)
 const API_URL = '/api';
 
-let fpPromise: Promise<any> | null = null;
+let fpPromise: ReturnType<typeof FingerprintJS.load> | null = null;
 
 /**
  * Get browser fingerprint (lazy loaded)

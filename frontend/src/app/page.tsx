@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import RegisterModal from "@/components/RegisterModal";
@@ -10,16 +10,16 @@ import PhotoAnalysisModal from "@/components/PhotoAnalysisModal";
 import AudioRecordingModal from "@/components/AudioRecordingModal";
 import LocationSuggestionsModal from "@/components/LocationSuggestionsModal";
 import { MARKETING } from "@/lib/marketing";
-import { messageApi } from "@/lib/api";
+import { messageApi, type PhotoAnalysisResponse } from "@/lib/api";
 import { getFingerprint } from "@/lib/usernameStorage";
 
-export default function Home() {
+function HomeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const authMode = searchParams.get('auth');
   const modalMode = searchParams.get('modal');
   const [isMobile, setIsMobile] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [analysisResult, setAnalysisResult] = useState<PhotoAnalysisResponse | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showAudioModal, setShowAudioModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
@@ -78,11 +78,12 @@ export default function Home() {
             setAnalysisResult(result);
             setIsAnalyzing(false);
 
-          } catch (err: any) {
-            console.error('❌ Photo analysis failed:', err.response?.data || err.message);
+          } catch (err: unknown) {
+            const error = err as { response?: { data?: { detail?: string } }; message?: string };
+            console.error('❌ Photo analysis failed:', error.response?.data || error.message);
             setIsAnalyzing(false);
             // TODO: Show error in modal or toast notification
-            alert(`Photo analysis failed: ${err.response?.data?.detail || err.message}`);
+            alert(`Photo analysis failed: ${error.response?.data?.detail || error.message}`);
           }
         }
       };
@@ -120,11 +121,12 @@ export default function Home() {
             setAnalysisResult(result);
             setIsAnalyzing(false);
 
-          } catch (err: any) {
-            console.error('❌ Photo analysis failed:', err.response?.data || err.message);
+          } catch (err: unknown) {
+            const error = err as { response?: { data?: { detail?: string } }; message?: string };
+            console.error('❌ Photo analysis failed:', error.response?.data || error.message);
             setIsAnalyzing(false);
             // TODO: Show error in modal or toast notification
-            alert(`Photo analysis failed: ${err.response?.data?.detail || err.message}`);
+            alert(`Photo analysis failed: ${error.response?.data?.detail || error.message}`);
           }
         }
       };
@@ -344,5 +346,18 @@ export default function Home() {
         <LocationSuggestionsModal onClose={() => setShowLocationModal(false)} />
       )}
     </div>
+  );
+}
+
+// Wrap in Suspense for Next.js static generation with useSearchParams
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 from-5% via-purple-900 via-30% to-[#404eed] to-60% flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }

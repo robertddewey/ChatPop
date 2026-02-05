@@ -14,6 +14,7 @@ interface JoinChatModalProps {
   chatRoom: ChatRoom;
   currentUserDisplayName: string;
   hasJoinedBefore: boolean;
+  isBlocked?: boolean;
   isLoggedIn: boolean;
   hasReservedUsername?: boolean;
   themeIsDarkMode?: boolean;
@@ -74,15 +75,20 @@ export default function JoinChatModal({
   const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>('manual');
   const [diceUsername, setDiceUsername] = useState<string | null>(null);
   const [isReturningUser, setIsReturningUser] = useState(false);
-  const audioContextRef = React.useRef<AudioContext>();
-  const validationTimeoutRef = React.useRef<NodeJS.Timeout>();
+  const audioContextRef = React.useRef<AudioContext | null>(null);
+  const validationTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  // Import the audio functions
-  const { initAudioContext, playJoinSound } = React.useMemo(() => {
-    return typeof window !== 'undefined'
-      ? require('@/lib/sounds')
-      : { initAudioContext: () => {}, playJoinSound: () => {} };
+  // Import the audio functions lazily
+  const [soundModule, setSoundModule] = React.useState<{ initAudioContext: () => void; playJoinSound: () => void } | null>(null);
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      import('@/lib/sounds').then((mod) => {
+        setSoundModule({ initAudioContext: mod.initAudioContext, playJoinSound: mod.playJoinSound });
+      });
+    }
   }, []);
+  const initAudioContext = soundModule?.initAudioContext ?? (() => {});
+  const playJoinSound = soundModule?.playJoinSound ?? (() => {});
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css
@@ -192,8 +198,9 @@ export default function JoinChatModal({
 
     try {
       await onJoin(finalUsername.trim(), accessCode.trim() || undefined);
-    } catch (err: any) {
-      setError(err.message || 'Failed to join chat');
+    } catch (err: unknown) {
+      const error = err as Error;
+      setError(error.message || 'Failed to join chat');
       setIsJoining(false);
     }
   };
@@ -238,13 +245,14 @@ export default function JoinChatModal({
           setIsReturningUser(true);
         }
       }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.error || err.message;
-      const statusCode = err.response?.status;
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string; generation_remaining?: number | null }; status?: number }; message?: string };
+      const errorMessage = error.response?.data?.error || error.message;
+      const statusCode = error.response?.status;
 
       // Handle rate limit errors specifically
       if (statusCode === 429) {
-        const remaining = err.response?.data?.generation_remaining ?? null;
+        const remaining = error.response?.data?.generation_remaining ?? null;
         setError(errorMessage || 'Maximum username generation attempts exceeded. No previously generated usernames are available.');
         setGenerationRemaining(remaining);
       } else {
@@ -304,7 +312,7 @@ export default function JoinChatModal({
             // Returning user (logged-in or anonymous) - show locked username
             <div className="text-center mb-8">
               <div className="flex items-center justify-center gap-1">
-                <p className={`text-sm ${modalStyles.subtitle}`}>You'll join as: <span className={`font-semibold ${modalStyles.title}`}>{currentUserDisplayName}</span></p>
+                <p className={`text-sm ${modalStyles.subtitle}`}>You&apos;ll join as: <span className={`font-semibold ${modalStyles.title}`}>{currentUserDisplayName}</span></p>
                 {hasReservedUsername && isLoggedIn && (
                   <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
                 )}

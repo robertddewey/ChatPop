@@ -1,13 +1,20 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { Message } from '@/lib/api';
 
+interface ReactionEventData {
+  type: 'reaction';
+  message_id: string;
+  action: 'add' | 'remove';
+  emoji: string;
+}
+
 interface UseChatWebSocketOptions {
   chatCode: string;
   sessionToken: string | null;
   onMessage?: (message: Message) => void;
   onUserBlocked?: (message: string) => void;
   onUserKicked?: (message: string) => void;
-  onReaction?: (data: any) => void;
+  onReaction?: (data: ReactionEventData) => void;
   onMessageDeleted?: (messageId: string) => void;
   onMessagePinned?: (message: Message, isTopPin: boolean) => void;
   onError?: (error: Event) => void;

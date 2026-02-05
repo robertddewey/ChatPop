@@ -139,7 +139,8 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, d
       // CRITICAL: Immediately create NEW AudioContext and connect stream
       // This tells iOS Safari we're actively using the microphone - keeps stream alive!
       console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - Creating AudioContext to keep stream alive...`);
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const audioContext = new AudioContextClass();
       audioContextRef.current = audioContext;
       const microphone = audioContext.createMediaStreamSource(stream);
       console.log(`[VoiceRecorder] ⏱️ t=${Math.round(performance.now() - startTime)}ms - AudioContext created, stream actively being used`);
@@ -255,7 +256,7 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, d
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error accessing microphone:', error);
 
       // Reset state on error
@@ -265,14 +266,15 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, d
         clearInterval(timerRef.current);
       }
 
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      const err = error as Error & { name: string };
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         alert('Microphone permission denied. Please allow microphone access and try again.');
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         alert('No microphone found. Please connect a microphone and try again.');
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
         alert('Microphone is already in use by another application.');
       } else {
-        alert(`Could not access microphone: ${error.message || 'Unknown error'}`);
+        alert(`Could not access microphone: ${err.message || 'Unknown error'}`);
       }
     }
   };
@@ -336,11 +338,12 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, d
 
   // Expose send method to parent via a method they can call
   useEffect(() => {
-    (window as any).__voiceRecorderSendMethod = sendRecording;
+    const win = window as Window & { __voiceRecorderSendMethod?: typeof sendRecording };
+    win.__voiceRecorderSendMethod = sendRecording;
     return () => {
-      delete (window as any).__voiceRecorderSendMethod;
+      delete win.__voiceRecorderSendMethod;
     };
-  }, [audioBlob, recordingMetadata]);
+  }, [audioBlob, recordingMetadata, sendRecording]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

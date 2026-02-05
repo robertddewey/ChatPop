@@ -223,11 +223,12 @@ export default function MediaPicker({
       }
     };
 
-    (window as any).__mediaPickerSendMethod = sendMedia;
-    (window as any).__mediaPickerHasMedia = mediaState !== 'idle' && selectedFile !== null;
+    const win = window as Window & { __mediaPickerSendMethod?: () => void; __mediaPickerHasMedia?: boolean };
+    win.__mediaPickerSendMethod = sendMedia;
+    win.__mediaPickerHasMedia = mediaState !== 'idle' && selectedFile !== null;
     return () => {
-      delete (window as any).__mediaPickerSendMethod;
-      delete (window as any).__mediaPickerHasMedia;
+      delete win.__mediaPickerSendMethod;
+      delete win.__mediaPickerHasMedia;
     };
   }, [selectedFile, mediaState, photoDimensions, videoDuration, videoThumbnail]);
 

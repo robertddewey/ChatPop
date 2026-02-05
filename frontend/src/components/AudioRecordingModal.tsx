@@ -144,7 +144,7 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
         }
       }, recordingDuration * 1000);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ Microphone access denied:', err);
       setError('Microphone access denied. Please allow microphone access and try again.');
     }
@@ -169,9 +169,10 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
       console.log('✅ Song recognized:', response.data);
       setResult(response.data);
 
-    } catch (err: any) {
-      console.error('❌ Audio recognition failed:', err.response?.data || err.message);
-      const errorMessage = err.response?.data?.error || err.response?.data?.detail || 'Recognition failed';
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string; detail?: string } }; message?: string };
+      console.error('❌ Audio recognition failed:', error.response?.data || error.message);
+      const errorMessage = error.response?.data?.error || error.response?.data?.detail || 'Recognition failed';
       setError(errorMessage);
       setResult(null);
     } finally {
@@ -204,9 +205,10 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
 
       // Navigate to the chat room
       router.push(response.chat_room.url);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
       console.error('Failed to join music chat room:', err);
-      setSelectionError(err.response?.data?.detail || err.message || 'Failed to join room');
+      setSelectionError(error.response?.data?.detail || error.message || 'Failed to join room');
       setSelectingIndex(null);
     }
   };

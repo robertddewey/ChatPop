@@ -178,9 +178,10 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
               // Clear saved form data AFTER successful creation
               localStorage.removeItem(FORM_STORAGE_KEY);
               router.push(chatRoom.url);
-            } catch (err: any) {
+            } catch (err: unknown) {
+              const error = err as { response?: { data?: { detail?: string } } };
               console.error('[CreateChatModal] Failed to create chat:', err);
-              setError(err.response?.data?.detail || 'Failed to create chat room');
+              setError(error.response?.data?.detail || 'Failed to create chat room');
               setLoading(false);
             }
           })();
@@ -237,9 +238,10 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
 
       // Redirect to the chat room
       router.push(chatRoom.url);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } } };
       console.error('[CreateChatModal] Error creating chat room:', err);
-      setError(err.response?.data?.detail || 'Failed to create chat room');
+      setError(error.response?.data?.detail || 'Failed to create chat room');
       setLoading(false);
     }
   };

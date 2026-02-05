@@ -16,9 +16,9 @@ export function useLongPress({
   cancelOnMove = true,
 }: UseLongPressOptions) {
   const [longPressTriggered, setLongPressTriggered] = useState(false);
-  const timeout = useRef<NodeJS.Timeout>();
-  const target = useRef<EventTarget>();
-  const startPos = useRef<{ x: number; y: number }>();
+  const timeout = useRef<NodeJS.Timeout | undefined>(undefined);
+  const target = useRef<EventTarget | undefined>(undefined);
+  const startPos = useRef<{ x: number; y: number } | undefined>(undefined);
 
   const start = useCallback(
     (event: React.MouseEvent | React.TouchEvent) => {

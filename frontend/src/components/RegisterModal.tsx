@@ -162,23 +162,25 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
         router.push(redirect);
       }
       // Modal will be closed by auth-change listener for chat routes
-    } catch (err: any) {
-      const errorData = err.response?.data;
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: unknown } };
+      const errorData = axiosError.response?.data;
 
       if (typeof errorData === 'object' && errorData !== null) {
-        const hasFieldErrors = Object.keys(errorData).some(key =>
+        const errorObj = errorData as Record<string, unknown>;
+        const hasFieldErrors = Object.keys(errorObj).some(key =>
           ['email', 'password', 'reserved_username'].includes(key)
         );
 
         if (hasFieldErrors) {
           const errors: Record<string, string> = {};
-          Object.entries(errorData).forEach(([field, msgs]: [string, any]) => {
+          Object.entries(errorObj).forEach(([field, msgs]) => {
             const errorList = Array.isArray(msgs) ? msgs : [msgs];
-            errors[field] = errorList.join('. ');
+            errors[field] = errorList.map(String).join('. ');
           });
           setFieldErrors(errors);
-        } else if (errorData.detail) {
-          setError(errorData.detail);
+        } else if ('detail' in errorObj && typeof errorObj.detail === 'string') {
+          setError(errorObj.detail);
         } else {
           setError('Failed to create account');
         }

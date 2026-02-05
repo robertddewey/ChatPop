@@ -5,27 +5,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { messageApi } from '@/lib/api';
 
-interface Suggestion {
-  id: number;
-  name: string;
-  key: string;
-  description: string;
-  source: string;
-  usage_count: number;
-  has_room: boolean;
-  active_users: number;
-  is_proper_noun: boolean;
-}
+import type { PhotoAnalysisResponse, PhotoSuggestion } from '@/lib/api';
 
-interface Analysis {
-  id: number;
-  suggestions: Suggestion[];
-}
-
-interface PhotoAnalysisResult {
-  cached: boolean;
-  analysis: Analysis;
-}
+type PhotoAnalysisResult = PhotoAnalysisResponse;
 
 interface PhotoAnalysisModalProps {
   result: PhotoAnalysisResult | null;
@@ -46,7 +28,7 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
     };
   }, []);
 
-  const handleSuggestionClick = async (suggestion: Suggestion, index: number) => {
+  const handleSuggestionClick = async (suggestion: PhotoSuggestion, index: number) => {
     if (!result || selectingIndex !== null) return;
 
     setSelectingIndex(index);
@@ -64,9 +46,10 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
       // Navigate to the room
       // URL will be /chat/discover/{key} for AI rooms
       router.push(response.chat_room.url);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
       console.error('Failed to create/join room:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to join room');
+      setError(error.response?.data?.detail || error.message || 'Failed to join room');
       setSelectingIndex(null);
     }
   };
@@ -123,7 +106,7 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
 
                       return (
                         <button
-                          key={suggestion.id}
+                          key={suggestion.key}
                           onClick={() => handleSuggestionClick(suggestion, idx)}
                           disabled={selectingIndex !== null}
                           className={`w-full text-left p-4 bg-zinc-900/50 border rounded-lg transition-all ${

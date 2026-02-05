@@ -31,6 +31,10 @@ export const MARKETING = {
       title: "Group Sharing",
       description: "Voice, video, and photo streams with your group or community",
     },
+    exclusiveAccess: {
+      title: "Exclusive Access",
+      description: "Monetize your community with paid back rooms and premium content",
+    },
   },
 
   // Authentication

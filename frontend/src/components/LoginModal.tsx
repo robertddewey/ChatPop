@@ -56,8 +56,9 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
         router.push(redirect);
       }
       // Modal will be closed by auth-change listener for chat routes
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Invalid email or password');
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } } };
+      setError(error.response?.data?.detail || 'Invalid email or password');
       setLoading(false);
     }
   };

@@ -12,9 +12,9 @@ let globalAudioContext: AudioContext | null = null;
 
 // Audio element pools for iOS compatibility (rotate through to allow consecutive plays)
 const POOL_SIZE = 4;
-let receiveAudioPool: HTMLAudioElement[] = [];
+const receiveAudioPool: HTMLAudioElement[] = [];
 let receivePoolIndex = 0;
-let sendAudioPool: HTMLAudioElement[] = [];
+const sendAudioPool: HTMLAudioElement[] = [];
 let sendPoolIndex = 0;
 
 // Initialize and unlock the AudioContext (call this from a user gesture)
@@ -22,7 +22,7 @@ let sendPoolIndex = 0;
 export const initAudioContext = async (): Promise<AudioContext | null> => {
   try {
     if (!globalAudioContext) {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioContextClass) {
         return null;
       }
@@ -55,7 +55,7 @@ export const initAudioContext = async (): Promise<AudioContext | null> => {
     }
 
     return globalAudioContext;
-  } catch (error) {
+  } catch {
     return null;
   }
 };

@@ -234,7 +234,8 @@ export default function MessageActionsModal({
           handleClose();
         }
       }
-    } catch (error: any) {
+    } catch (err: unknown) {
+      const error = err as Error;
       setPinError(error.message || 'Failed to pin message');
     } finally {
       setIsPinning(false);
@@ -419,7 +420,7 @@ export default function MessageActionsModal({
   return (
     <>
       {/* Trigger: Long-press enabled message */}
-      {React.cloneElement(children as React.ReactElement, {
+      {React.cloneElement(children as React.ReactElement<{ onContextMenu?: (e: React.MouseEvent) => void }>, {
         ...longPressHandlers,
         onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
       })}

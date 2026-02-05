@@ -231,7 +231,7 @@ export default function ReplyPreviewDemoPage() {
           <div className={`space-y-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'} font-mono`}>
             <div><span className="text-blue-500">reply_preview_container</span> - Outer container with background/border</div>
             <div><span className="text-blue-500">reply_preview_icon</span> - Reply arrow icon (↩️)</div>
-            <div><span className="text-blue-500">reply_preview_username</span> - "Replying to {'{username}'}" text</div>
+            <div><span className="text-blue-500">reply_preview_username</span> - &quot;Replying to {'{username}'}&quot; text</div>
             <div><span className="text-blue-500">reply_preview_content</span> - Message preview text</div>
             <div><span className="text-blue-500">reply_preview_close_button</span> - X button to cancel reply</div>
             <div><span className="text-blue-500">reply_preview_close_icon</span> - X icon styling</div>
@@ -262,7 +262,7 @@ export default function ReplyPreviewDemoPage() {
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-500 font-bold">✓</span>
-              <span><strong>Context:</strong> Username and content preview help user remember what they're replying to</span>
+              <span><strong>Context:</strong> Username and content preview help user remember what they&apos;re replying to</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-500 font-bold">✓</span>

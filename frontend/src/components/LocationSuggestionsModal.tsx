@@ -103,9 +103,10 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
       setNearbyChatsOffset(offset + response.chats.length);
       setNearbyChatsHasMore(response.has_more);
       setNearbyChatsTotal(response.total_count);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
       console.error('❌ Error fetching nearby chats:', err);
-      setNearbyChatsError(err.response?.data?.error || 'Failed to load nearby chats');
+      setNearbyChatsError(error.response?.data?.error || 'Failed to load nearby chats');
     } finally {
       setNearbyChatsLoading(false);
     }
@@ -173,20 +174,21 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
       // Also fetch nearby discoverable chats
       fetchNearbyChats({ latitude, longitude }, selectedRadius, 0, false);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { code?: number; response?: { data?: { error?: string; detail?: string } } };
       console.error('❌ Location error:', err);
 
       // Handle geolocation errors
-      if (err.code === 1) {
+      if (error.code === 1) {
         setError('Location access denied. Please allow location access in your browser settings and try again.');
         setLocationPermission('denied');
-      } else if (err.code === 2) {
+      } else if (error.code === 2) {
         setError('Unable to determine your location. Please try again.');
-      } else if (err.code === 3) {
+      } else if (error.code === 3) {
         setError('Location request timed out. Please try again.');
       } else {
         // Handle API errors
-        const errorMessage = err.response?.data?.error || err.response?.data?.detail || 'Failed to get nearby chats. Please try again.';
+        const errorMessage = error.response?.data?.error || error.response?.data?.detail || 'Failed to get nearby chats. Please try again.';
         setError(errorMessage);
       }
       setResult(null);
@@ -210,9 +212,10 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
 
       console.log('Location room created/joined:', response);
       router.push(response.chat_room.url);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
       console.error('Failed to create/join location room:', err);
-      setSelectionError(err.response?.data?.detail || err.message || 'Failed to join room');
+      setSelectionError(error.response?.data?.detail || error.message || 'Failed to join room');
       setSelectingAreaIndex(null);
     }
   };
@@ -232,9 +235,10 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
 
       console.log('Location room created/joined:', response);
       router.push(response.chat_room.url);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
       console.error('Failed to create/join location room:', err);
-      setSelectionError(err.response?.data?.detail || err.message || 'Failed to join room');
+      setSelectionError(error.response?.data?.detail || error.message || 'Failed to join room');
       setSelectingVenueIndex(null);
     }
   };

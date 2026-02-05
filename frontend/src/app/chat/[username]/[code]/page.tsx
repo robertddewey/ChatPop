@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { chatApi, messageApi, authApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary } from '@/lib/api';
+import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
@@ -14,17 +14,90 @@ import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
 import LoginModal from '@/components/LoginModal';
 import RegisterModal from '@/components/RegisterModal';
-import VoiceRecorder from '@/components/VoiceRecorder';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
-import MediaPicker from '@/components/MediaPicker';
+import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
 import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft, Reply, X } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 
+// Type for Axios-style errors
+interface ApiError {
+  response?: {
+    data?: { detail?: string; error?: string; non_field_errors?: string[] } | string | string[];
+    status?: number;
+  };
+  message?: string;
+}
+
+// Type for window extensions used by global methods
+interface ChatPopWindow extends Window {
+  __voiceRecorderSendMethod?: () => void;
+  __mediaPickerHasMedia?: boolean;
+  __mediaPickerSendMethod?: () => void;
+}
+
+// Type for camelCase theme (used by components)
+interface CamelCaseTheme {
+  themeColor: ChatTheme['theme_color'];
+  container: string;
+  header: string;
+  headerTitle: string;
+  headerTitleFade: string;
+  headerSubtitle: string;
+  stickySection: string;
+  messagesArea: string;
+  messagesAreaContainer: string;
+  messagesAreaBg: string;
+  hostMessage: string;
+  stickyHostMessage: string;
+  hostText: string;
+  hostMessageFade: string;
+  pinnedMessage: string;
+  stickyPinnedMessage: string;
+  pinnedText: string;
+  pinnedMessageFade: string;
+  regularMessage: string;
+  regularText: string;
+  myMessage: string;
+  myText: string;
+  voiceMessageStyles: Record<string, unknown>;
+  myVoiceMessageStyles: Record<string, unknown>;
+  hostVoiceMessageStyles: Record<string, unknown>;
+  pinnedVoiceMessageStyles: Record<string, unknown>;
+  filterButtonActive: string;
+  filterButtonInactive: string;
+  inputArea: string;
+  inputField: string;
+  pinIconColor: string;
+  crownIconColor: string;
+  badgeIconColor: string;
+  replyIconColor: string;
+  myUsername: string;
+  regularUsername: string;
+  hostUsername: string;
+  myHostUsername: string;
+  pinnedUsername: string;
+  stickyHostUsername: string;
+  stickyPinnedUsername: string;
+  myTimestamp: string;
+  regularTimestamp: string;
+  hostTimestamp: string;
+  pinnedTimestamp: string;
+  replyPreviewContainer: string;
+  replyPreviewIcon: string;
+  replyPreviewUsername: string;
+  replyPreviewContent: string;
+  replyPreviewCloseButton: string;
+  replyPreviewCloseIcon: string;
+  reactionHighlightBg: string;
+  reactionHighlightBorder: string;
+  reactionHighlightText: string;
+}
+
 // Convert snake_case API theme to camelCase for component compatibility
-function convertThemeToCamelCase(theme: ChatTheme): any {
+function convertThemeToCamelCase(theme: ChatTheme): CamelCaseTheme {
   return {
     themeColor: theme.theme_color,
     container: theme.container,
@@ -148,11 +221,20 @@ const defaultTheme: ChatTheme = {
   my_username: "text-xs font-semibold text-emerald-300",
   regular_username: "text-xs font-semibold text-zinc-300",
   host_username: "text-xs font-semibold text-teal-300",
+  my_host_username: "text-xs font-semibold text-emerald-300",
   pinned_username: "text-xs font-semibold text-amber-300",
+  sticky_host_username: "text-xs font-semibold text-teal-300",
+  sticky_pinned_username: "text-xs font-semibold text-amber-300",
   my_timestamp: "text-xs text-emerald-200",
   regular_timestamp: "text-xs text-zinc-400",
   host_timestamp: "text-xs text-teal-200",
   pinned_timestamp: "text-xs text-amber-200",
+  reply_preview_container: "bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2",
+  reply_preview_icon: "text-emerald-400",
+  reply_preview_username: "text-xs font-semibold text-zinc-300",
+  reply_preview_content: "text-xs text-zinc-400 truncate",
+  reply_preview_close_button: "p-1 rounded hover:bg-zinc-700",
+  reply_preview_close_icon: "text-zinc-400",
   reaction_highlight_bg: "bg-zinc-700",
   reaction_highlight_border: "border border-zinc-500",
   reaction_highlight_text: "text-zinc-200",
@@ -195,16 +277,13 @@ export default function ChatPage() {
   const [accessCode, setAccessCode] = useState('');
   const [joinError, setJoinError] = useState('');
 
-  // Message input
-  const [newMessage, setNewMessage] = useState('');
+  // Message input state (message text is managed locally in MessageInput component)
   const [sending, setSending] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // Infinite scroll state
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
-  const [hasMediaSelected, setHasMediaSelected] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // Message filter
   const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
@@ -230,8 +309,6 @@ export default function ChatPage() {
 
   // Handle incoming WebSocket messages
   const handleWebSocketMessage = useCallback((message: Message) => {
-    console.log('[WebSocket] Received message:', JSON.stringify(message, null, 2));
-    console.log('[WebSocket] voice_url present?', !!message.voice_url, message.voice_url);
     setMessages((prev) => {
       // Check if message already exists (avoid duplicates)
       if (prev.some((m) => m.id === message.id)) {
@@ -249,8 +326,6 @@ export default function ChatPage() {
 
   // Handle user blocked event (eviction)
   const handleUserBlocked = useCallback((message: string) => {
-    console.log('[WebSocket] User blocked:', message);
-
     // Clear local state
     localStorage.removeItem(`chat_session_${code}`);
     setSessionToken(null);
@@ -264,8 +339,6 @@ export default function ChatPage() {
 
   // Handle user kicked event (host removed user from chat)
   const handleUserKicked = useCallback((message: string) => {
-    console.log('[WebSocket] User kicked:', message);
-
     // Clear local state
     localStorage.removeItem(`chat_session_${code}`);
     setSessionToken(null);
@@ -278,9 +351,8 @@ export default function ChatPage() {
   }, [code]);
 
   // Handle reaction WebSocket events
-  const handleReactionEvent = useCallback(async (data: any) => {
-    const { message_id, action, emoji } = data;
-    console.log('[Reactions] WebSocket event:', { message_id, action, emoji });
+  const handleReactionEvent = useCallback(async (data: { message_id: string; action: string; emoji: string }) => {
+    const { message_id } = data;
 
     // Fetch fresh reaction summary for this message (with sessionToken for has_reacted)
     try {
@@ -296,8 +368,6 @@ export default function ChatPage() {
 
   // Handle message deletion WebSocket events
   const handleMessageDeleted = useCallback((messageId: string) => {
-    console.log('[Message Delete] WebSocket event - removing message:', messageId);
-
     // Remove message from local state
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
 
@@ -311,8 +381,6 @@ export default function ChatPage() {
 
   // Handle message pinned WebSocket events
   const handleMessagePinned = useCallback((message: Message, isTopPin: boolean) => {
-    console.log('[Message Pin] WebSocket event - updating message:', message.id, 'isTopPin:', isTopPin);
-
     // Update the message in local state with new pin data
     setMessages(prev => prev.map(msg =>
       msg.id === message.id
@@ -324,7 +392,6 @@ export default function ChatPage() {
   // Handle visibility changes (mobile app switching)
   const handleVisibilityChange = useCallback((isVisible: boolean) => {
     if (isVisible && hasJoined) {
-      console.log('[Visibility] Page visible, refreshing messages...');
       // Refetch messages to get any updates missed while away
       loadMessages();
     }
@@ -353,7 +420,6 @@ export default function ChatPage() {
   // Load messages when user auto-joins (has session token on page load)
   useEffect(() => {
     if (hasJoined && sessionToken && messages.length === 0) {
-      console.log('[Auto-Join] Loading messages for returning user');
       loadMessages();
     }
   }, [hasJoined, sessionToken]);
@@ -383,9 +449,6 @@ export default function ChatPage() {
         const token = localStorage.getItem('auth_token');
         let fpValue: string | undefined;
 
-        console.log('=== Chat Session Debug Info ===');
-        console.log('Logged In:', !!token);
-
         if (token) {
           try {
             const currentUser = await authApi.getCurrentUser();
@@ -396,9 +459,8 @@ export default function ChatPage() {
             try {
               fpValue = await getFingerprint();
               setFingerprint(fpValue);
-              console.log('Fingerprint:', fpValue);
             } catch (fpErr) {
-              console.error('❌ Error getting fingerprint:', fpErr);
+              // Fingerprint error - continue without it
             }
 
             // Check ChatParticipation to see if they've joined before
@@ -415,9 +477,6 @@ export default function ChatPage() {
               setHasJoinedBefore(true);
               setIsBlocked(participation.is_blocked || false);
               setHasReservedUsername(participation.username_is_reserved || false);
-              console.log('Username (from participation):', participation.username);
-              console.log('Blocked Status:', participation.is_blocked || false);
-              console.log('Reserved Username Badge:', participation.username_is_reserved || false);
             } else {
               // First-time user - pre-fill with reserved_username (they can change it)
               setUsername(currentUser.reserved_username || '');
@@ -425,19 +484,15 @@ export default function ChatPage() {
               setIsBlocked(false);
               // Badge shows if they have a reserved username
               setHasReservedUsername(!!currentUser.reserved_username);
-              console.log('Username (pre-filled from account):', currentUser.reserved_username || '(none)');
-              console.log('Reserved Username Badge:', !!currentUser.reserved_username);
             }
           } catch (userErr) {
             // If getting user fails, just proceed as guest
-            console.error('❌ Failed to load user:', userErr);
           }
         } else {
           // Anonymous user - check fingerprint participation
           try {
             fpValue = await getFingerprint();
             setFingerprint(fpValue);
-            console.log('Fingerprint:', fpValue);
             const participation = await chatApi.getMyParticipation(code, fpValue, roomUsername);
 
             // Store participation theme if present
@@ -451,24 +506,16 @@ export default function ChatPage() {
               setHasJoinedBefore(true);
               setIsBlocked(participation.is_blocked || false);
               setHasReservedUsername(participation.username_is_reserved || false);
-              console.log('Username (from participation):', participation.username);
-              console.log('Blocked Status:', participation.is_blocked || false);
-              console.log('Reserved Username Badge:', participation.username_is_reserved || false);
             } else {
               // First-time anonymous user - check if blocked by fingerprint
               setHasJoinedBefore(false);
               setIsBlocked(participation.is_blocked || false);
               setHasReservedUsername(false);
-              console.log('Username: (not set - first time anonymous user)');
-              console.log('Blocked Status (first-time):', participation.is_blocked || false);
             }
           } catch (err) {
-            console.error('❌ Error checking participation:', err);
             setHasJoinedBefore(false);
           }
         }
-
-        console.log('==============================');
 
         // Load session token if it exists (needed for WebSocket auth after join)
         // But don't auto-join - always show modal to require user gesture for audio permissions
@@ -476,17 +523,21 @@ export default function ChatPage() {
         setSessionToken(existingSessionToken);
 
         setLoading(false);
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const error = err as ApiError;
         // If chat returns 404, do a hard redirect to homepage
         // Using window.location.href instead of router.replace to ensure full page reload
         // and clear any chat page styles that might bleed into the homepage
-        if (err.response?.status === 404) {
-          console.log('[Chat Load] Chat not found (404) - hard redirect to homepage');
-          window.location.href = '/';
+        if (error.response?.status === 404) {
+                    window.location.href = '/';
           return;
         }
 
-        setError(err.response?.data?.detail || 'Failed to load chat room');
+        const errorData = error.response?.data;
+        const errorMessage = typeof errorData === 'object' && errorData && 'detail' in errorData
+          ? errorData.detail
+          : 'Failed to load chat room';
+        setError(errorMessage || 'Failed to load chat room');
         setLoading(false);
       }
     };
@@ -552,8 +603,7 @@ export default function ChatPage() {
   // Redirect blocked users to home page immediately
   useEffect(() => {
     if (isBlocked) {
-      console.log('[Blocked] User is blocked from this chat - redirecting to home page');
-      router.replace('/'); // Use replace to avoid adding to browser history
+            router.replace('/'); // Use replace to avoid adding to browser history
     }
   }, [isBlocked, router]);
 
@@ -591,28 +641,29 @@ export default function ChatPage() {
 
   // No theme switching - body background set in layout.tsx
 
+  // TODO: Back Room feature - uncomment when backend is ready
   // Load Back Room data if it exists
-  useEffect(() => {
-    const loadBackRoom = async () => {
-      if (!chatRoom?.has_back_room || !hasJoined) return;
-
-      try {
-        const backRoomData = await backRoomApi.getBackRoom(code);
-        setBackRoom(backRoomData);
-
-        // Host always has access; for non-hosts, we'll check via GameRoomView's permission handling
-        const isHost = currentUserId && chatRoom.host.id === currentUserId;
-        if (isHost) {
-          setIsBackRoomMember(true);
-        }
-        // For non-hosts, membership will be determined when they try to view messages
-      } catch (error) {
-        console.error('Failed to load back room:', error);
-      }
-    };
-
-    loadBackRoom();
-  }, [chatRoom, hasJoined, code, currentUserId, username]);
+  // useEffect(() => {
+  //   const loadBackRoom = async () => {
+  //     if (!chatRoom?.has_back_room || !hasJoined) return;
+  //
+  //     try {
+  //       const backRoomData = await backRoomApi.getBackRoom(code);
+  //       setBackRoom(backRoomData);
+  //
+  //       // Host always has access; for non-hosts, we'll check via GameRoomView's permission handling
+  //       const isHost = currentUserId && chatRoom.host.id === currentUserId;
+  //       if (isHost) {
+  //         setIsBackRoomMember(true);
+  //       }
+  //       // For non-hosts, membership will be determined when they try to view messages
+  //     } catch (error) {
+  //       console.error('Failed to load back room:', error);
+  //     }
+  //   };
+  //
+  //   loadBackRoom();
+  // }, [chatRoom, hasJoined, code, currentUserId, username]);
 
   // Load messages
   const loadMessages = async () => {
@@ -676,7 +727,6 @@ export default function ChatPage() {
     // Use ref-based lock (synchronous) to prevent double preload
     // State-based lock doesn't work because setState is async
     if (preloadLockRef.current || loadingOlder) {
-      console.log('[Preload] Skipping - already loading');
       return;
     }
 
@@ -689,20 +739,14 @@ export default function ChatPage() {
       const oldestMessage = currentMessages[0];
       const beforeTimestamp = new Date(oldestMessage.created_at).getTime() / 1000;
 
-      console.log('[Preload] Fetching messages before:', oldestMessage.id, 'timestamp:', beforeTimestamp);
-
       const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(
         code, beforeTimestamp, 100, roomUsername  // Preload 100 messages for smooth momentum scrolling
       );
-
-      console.log('[Preload] Received', olderMessages.length, 'messages, hasMore:', hasMore);
 
       if (olderMessages.length > 0) {
         // Filter out any duplicates (in case of overlap)
         const existingIds = new Set(currentMessages.map(m => m.id));
         const uniqueOlderMessages = olderMessages.filter(m => !existingIds.has(m.id));
-
-        console.log('[Preload] Unique messages to add:', uniqueOlderMessages.length);
 
         if (uniqueOlderMessages.length > 0) {
           // Freeze sticky state during insert
@@ -725,7 +769,6 @@ export default function ChatPage() {
           const newScrollHeight = container.scrollHeight;
           const heightDifference = newScrollHeight - previousScrollHeight;
           container.scrollTop = previousScrollTop + heightDifference;
-          console.log('[Preload] Scroll adjusted by', heightDifference);
 
           // Unfreeze sticky after adjustment settles
           requestAnimationFrame(() => {
@@ -775,13 +818,6 @@ export default function ChatPage() {
         const previousScrollHeight = container.scrollHeight;
         const previousScrollTop = container.scrollTop;
 
-        console.log('[Scroll Debug] BEFORE flushSync', {
-          previousScrollHeight,
-          previousScrollTop,
-          messagesCount: messages.length,
-          olderMessagesCount: olderMessages.length,
-        });
-
         // Use flushSync to force synchronous state update and DOM mutation
         flushSync(() => {
           setMessages(prev => [...olderMessages, ...prev]);
@@ -793,13 +829,6 @@ export default function ChatPage() {
         const heightDifference = newScrollHeight - previousScrollHeight;
         const targetScrollTop = previousScrollTop + heightDifference;
         container.scrollTop = targetScrollTop;
-
-        console.log('[Scroll Debug] Scroll adjusted immediately', {
-          previousScrollTop,
-          targetScrollTop,
-          actualScrollTop: container.scrollTop,
-          heightDifference,
-        });
 
         // Unfreeze sticky after a short delay
         requestAnimationFrame(() => {
@@ -852,55 +881,56 @@ export default function ChatPage() {
 
       // Add history entry so back button shows join modal again
       window.history.pushState({ joined: true }, '', window.location.href);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const apiErr = err as ApiError;
       // Log the full error structure for debugging
       console.error('[Join Error] Full error:', err);
-      console.error('[Join Error] Response data:', err.response?.data);
-      console.error('[Join Error] Status:', err.response?.status);
+      console.error('[Join Error] Response data:', apiErr.response?.data);
+      console.error('[Join Error] Status:', apiErr.response?.status);
 
       // Extract error message from various DRF error formats
       let errorMessage = 'Failed to join chat';
 
-      if (err.response?.data) {
-        const data = err.response.data;
+      if (apiErr.response?.data) {
+        const data = apiErr.response.data;
 
         // Direct array response: ["error message"]
         if (Array.isArray(data) && data.length > 0) {
-          errorMessage = data[0];
+          errorMessage = String(data[0]);
         }
         // PermissionDenied: { detail: "message" }
-        else if (data.detail) {
-          errorMessage = data.detail;
+        else if (typeof data === 'object' && data !== null && 'detail' in data && data.detail) {
+          errorMessage = String(data.detail);
         }
         // ValidationError: { non_field_errors: ["message"] }
-        else if (data.non_field_errors && Array.isArray(data.non_field_errors)) {
-          errorMessage = data.non_field_errors[0];
+        else if (typeof data === 'object' && data !== null && 'non_field_errors' in data && Array.isArray(data.non_field_errors)) {
+          errorMessage = String(data.non_field_errors[0]);
         }
         // ValidationError: direct string message
         else if (typeof data === 'string') {
           errorMessage = data;
         }
         // Check for field-specific errors (e.g., { username: ["error"] })
-        else if (typeof data === 'object') {
+        else if (typeof data === 'object' && data !== null) {
           // Get first error from any field
-          const firstField = Object.keys(data)[0];
-          if (firstField && Array.isArray(data[firstField])) {
-            errorMessage = data[firstField][0];
+          const dataObj = data as Record<string, unknown>;
+          const firstField = Object.keys(dataObj)[0];
+          if (firstField && Array.isArray(dataObj[firstField])) {
+            errorMessage = String((dataObj[firstField] as unknown[])[0]);
           }
         }
       }
 
       // Check if user is blocked - trigger redirect
       if (errorMessage.includes('blocked from this chat')) {
-        console.log('[Blocked] User blocked from chat - setting isBlocked to trigger redirect');
-        setIsBlocked(true);
+                setIsBlocked(true);
         // Don't throw error - the redirect will happen via useEffect
         return;
       }
 
       // If this is a username persistence error, extract the username and store it for pre-population
       const usernameMatch = errorMessage.match(/already joined this chat as '([^']+)'/);
-      if (usernameMatch) {
+      if (usernameMatch && chatRoom) {
         const existingUsername = usernameMatch[1];
         // Store the suggested username in localStorage so the modal can pick it up
         localStorage.setItem(`chat_${chatRoom.code}_suggested_username`, existingUsername);
@@ -928,35 +958,25 @@ export default function ChatPage() {
       await UsernameStorage.saveUsername(code, username.trim(), isLoggedIn);
       setHasJoined(true);
       await loadMessages();
-    } catch (err: any) {
-      setJoinError(err.response?.data?.detail || 'Failed to join chat');
+    } catch (err: unknown) {
+      const error = err as ApiError;
+      const errorData = error.response?.data;
+      const errorMessage = typeof errorData === 'object' && errorData && 'detail' in errorData
+        ? String(errorData.detail)
+        : 'Failed to join chat';
+      setJoinError(errorMessage);
     }
   };
 
-  // Send message
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // If there's a voice recording ready, send it via the global method
-    if (hasVoiceRecording && (window as any).__voiceRecorderSendMethod) {
-      (window as any).__voiceRecorderSendMethod();
-      return;
-    }
-
-    // If there's media selected, send it via the global method
-    if ((window as any).__mediaPickerHasMedia && (window as any).__mediaPickerSendMethod) {
-      (window as any).__mediaPickerSendMethod();
-      return;
-    }
-
-    if (!newMessage.trim() || sending) return;
+  // Send text message - receives message text from MessageInput component
+  const handleSubmitText = useCallback(async (messageText: string) => {
+    if (!messageText.trim() || sending) return;
 
     setSending(true);
     try {
       // Send via WebSocket if connected, fallback to REST API
       if (isConnected && wsSendMessage) {
-        wsSendMessage(newMessage.trim(), replyingTo?.id);
-        setNewMessage('');
+        wsSendMessage(messageText, replyingTo?.id);
         shouldAutoScrollRef.current = true; // Always scroll when sending a message
         playSendMessageSound(); // Play send sound
       } else {
@@ -981,21 +1001,20 @@ export default function ChatPage() {
           return;
         }
 
-        await messageApi.sendMessage(code, messageUsername, newMessage.trim(), roomUsername);
-        setNewMessage('');
+        await messageApi.sendMessage(code, messageUsername, messageText, roomUsername);
         shouldAutoScrollRef.current = true;
         await loadMessages();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to send message:', err);
     } finally {
       setSending(false);
       setReplyingTo(null); // Clear reply state after sending (success or failure)
     }
-  };
+  }, [sending, isConnected, wsSendMessage, replyingTo?.id, username, code, chatRoom, roomUsername, loadMessages]);
 
   // Handle voice message upload
-  const handleVoiceRecording = async (audioBlob: Blob, metadata: RecordingMetadata) => {
+  const handleVoiceRecording = useCallback(async (audioBlob: Blob, metadata: RecordingMetadata) => {
     if (sending) return;
 
     setSending(true);
@@ -1024,12 +1043,6 @@ export default function ChatPage() {
       // Upload voice message file and get the URL
       const { voice_url } = await messageApi.uploadVoiceMessage(code, audioBlob, messageUsername, roomUsername);
 
-      console.log('[Voice Upload] Sending voice message with metadata:', {
-        voice_url,
-        duration: metadata.duration,
-        waveformSamples: metadata.waveformData.length
-      });
-
       // Send the voice message via WebSocket with metadata
       sendRawMessage({
         message: '', // Empty message text for voice-only messages
@@ -1041,24 +1054,27 @@ export default function ChatPage() {
 
       // Auto-scroll to show new message
       shouldAutoScrollRef.current = true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as ApiError & { stack?: string };
       console.error('Failed to upload voice message:', err);
       console.error('Error details:', {
-        message: err.message,
-        response: err.response?.data,
-        status: err.response?.status,
-        stack: err.stack
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        stack: error.stack
       });
-      const errorMsg = err.response?.data?.error || err.message || 'Unknown error occurred';
+      const errorData = error.response?.data;
+      const errorMsg = (typeof errorData === 'object' && errorData && 'error' in errorData ? String(errorData.error) : null)
+        || error.message || 'Unknown error occurred';
       alert(`Failed to send voice message: ${errorMsg}`);
     } finally {
       setSending(false);
       setReplyingTo(null); // Clear reply state after sending (success or failure)
     }
-  };
+  }, [sending, username, code, chatRoom, roomUsername, replyingTo?.id, sendRawMessage]);
 
   // Handle photo message upload
-  const handlePhotoSelected = async (file: File, width: number, height: number) => {
+  const handlePhotoSelected = useCallback(async (file: File) => {
     if (sending) return;
 
     setSending(true);
@@ -1087,12 +1103,6 @@ export default function ChatPage() {
       // Upload photo and get the URL
       const { photo_url, width: uploadedWidth, height: uploadedHeight } = await messageApi.uploadPhoto(code, file, roomUsername);
 
-      console.log('[Photo Upload] Sending photo message:', {
-        photo_url,
-        width: uploadedWidth,
-        height: uploadedHeight
-      });
-
       // Send the photo message via WebSocket
       sendRawMessage({
         message: '', // Empty message text for photo-only messages
@@ -1104,19 +1114,22 @@ export default function ChatPage() {
 
       // Auto-scroll to show new message
       shouldAutoScrollRef.current = true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as ApiError;
       console.error('Failed to upload photo:', err);
-      const errorMsg = err.response?.data?.error || err.message || 'Unknown error occurred';
+      const errorData = error.response?.data;
+      const errorMsg = (typeof errorData === 'object' && errorData && 'error' in errorData ? String(errorData.error) : null)
+        || error.message || 'Unknown error occurred';
       alert(`Failed to send photo: ${errorMsg}`);
     } finally {
       setSending(false);
       setReplyingTo(null);
-      setHasMediaSelected(false);
     }
-  };
+  }, [sending, username, code, chatRoom, roomUsername, replyingTo?.id, sendRawMessage]);
 
   // Handle video message upload
-  const handleVideoSelected = async (file: File, duration: number, thumbnail: Blob | null) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleVideoSelected = useCallback(async (file: File, duration: number, thumbnail: Blob | null) => {
     if (sending) return;
 
     setSending(true);
@@ -1145,12 +1158,6 @@ export default function ChatPage() {
       // Upload video and get URLs
       const { video_url, duration: uploadedDuration, thumbnail_url } = await messageApi.uploadVideo(code, file, roomUsername);
 
-      console.log('[Video Upload] Sending video message:', {
-        video_url,
-        duration: uploadedDuration,
-        thumbnail_url
-      });
-
       // Send the video message via WebSocket
       sendRawMessage({
         message: '', // Empty message text for video-only messages
@@ -1162,24 +1169,26 @@ export default function ChatPage() {
 
       // Auto-scroll to show new message
       shouldAutoScrollRef.current = true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as ApiError;
       console.error('Failed to upload video:', err);
-      const errorMsg = err.response?.data?.error || err.message || 'Unknown error occurred';
+      const errorData = error.response?.data;
+      const errorMsg = (typeof errorData === 'object' && errorData && 'error' in errorData ? String(errorData.error) : null)
+        || error.message || 'Unknown error occurred';
       alert(`Failed to send video: ${errorMsg}`);
     } finally {
       setSending(false);
       setReplyingTo(null);
-      setHasMediaSelected(false);
     }
-  };
+  }, [sending, username, code, chatRoom, roomUsername, replyingTo?.id, sendRawMessage]);
 
   const scrollToBottom = () => {
-    // Use instant scroll (not smooth) to keep up with rapid message arrival
-    // Smooth animation can't complete before next message at high rates (10+ msg/sec)
+    // Use instant scroll for reliability at high message rates
+    // Visual feedback is handled by CSS animation on new messages instead
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
-  const scrollToMessage = (messageId: string) => {
+  const scrollToMessage = useCallback((messageId: string) => {
     const element = document.querySelector(`[data-message-id="${messageId}"]`);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1189,7 +1198,7 @@ export default function ChatPage() {
         element.classList.remove('animate-pulse-scale');
       }, 2000);
     }
-  };
+  }, []);
 
   // Track if user is near bottom
   const shouldAutoScrollRef = useRef(true);
@@ -1204,41 +1213,33 @@ export default function ChatPage() {
   // Debounce timer for infinite scroll trigger (prevents momentum scroll interruption)
   const loadOlderDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Cleanup debounce timer on unmount
+  // RAF throttling for scroll handler (prevents 60+ calls/sec)
+  const scrollRAFRef = useRef<number | null>(null);
+
+  // Refs to track state values in scroll handler (avoids recreating callback on state change)
+  const hasMoreMessagesRef = useRef(hasMoreMessages);
+  const loadingOlderRef = useRef(loadingOlder);
+  const messagesLengthRef = useRef(messages.length);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    hasMoreMessagesRef.current = hasMoreMessages;
+    loadingOlderRef.current = loadingOlder;
+    messagesLengthRef.current = messages.length;
+  }, [hasMoreMessages, loadingOlder, messages.length]);
+
+  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       if (loadOlderDebounceRef.current) {
         clearTimeout(loadOlderDebounceRef.current);
       }
+      if (scrollRAFRef.current) {
+        cancelAnimationFrame(scrollRAFRef.current);
+      }
     };
   }, []);
 
-  // Debug: Track all scroll position changes
-  const lastScrollTopRef = useRef<number>(0);
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    const trackScroll = () => {
-      const currentScrollTop = container.scrollTop;
-      const diff = currentScrollTop - lastScrollTopRef.current;
-
-      // Only log significant changes (> 50px jump or direction change)
-      if (Math.abs(diff) > 50) {
-        console.log('[Scroll Track]', {
-          from: lastScrollTopRef.current,
-          to: currentScrollTop,
-          diff: diff,
-          jump: Math.abs(diff) > 500 ? '⚠️ BIG JUMP' : '',
-          timestamp: performance.now().toFixed(0),
-        });
-      }
-      lastScrollTopRef.current = currentScrollTop;
-    };
-
-    container.addEventListener('scroll', trackScroll, { passive: true });
-    return () => container.removeEventListener('scroll', trackScroll);
-  }, [hasJoined]);
 
 
   // Note: We previously tracked scroll-based visibility for sticky host messages,
@@ -1264,14 +1265,17 @@ export default function ChatPage() {
   // Pin a message (or outbid existing pin)
   const handlePin = useCallback(async (messageId: string, amountCents: number): Promise<boolean> => {
     try {
-      const result = await messageApi.pinMessage(code, messageId, amountCents, roomUsername);
-      console.log('Pin result:', result);
-      // Reload messages to get updated pin status
+      await messageApi.pinMessage(code, messageId, amountCents, roomUsername);
+            // Reload messages to get updated pin status
       await loadMessages();
       return true;
-    } catch (error: any) {
+    } catch (err: unknown) {
+      const error = err as ApiError;
       console.error('Pin failed:', error);
-      const errorMsg = error.response?.data?.error || error.response?.data?.detail || 'Failed to pin message';
+      const errorData = error.response?.data;
+      const errorMsg = (typeof errorData === 'object' && errorData && 'error' in errorData ? String(errorData.error) : null)
+        || (typeof errorData === 'object' && errorData && 'detail' in errorData ? String(errorData.detail) : null)
+        || 'Failed to pin message';
       alert(errorMsg);
       return false;
     }
@@ -1280,22 +1284,28 @@ export default function ChatPage() {
   // Add to an existing pin (increase value without resetting timer)
   const handleAddToPin = useCallback(async (messageId: string, amountCents: number): Promise<boolean> => {
     try {
-      const result = await messageApi.addToPin(code, messageId, amountCents, roomUsername);
-      console.log('Add to pin result:', result);
-      // Reload messages to get updated pin amount
+      await messageApi.addToPin(code, messageId, amountCents, roomUsername);
+            // Reload messages to get updated pin amount
       await loadMessages();
       return true;
-    } catch (error: any) {
+    } catch (err: unknown) {
+      const error = err as ApiError;
       console.error('Add to pin failed:', error);
-      const errorMsg = error.response?.data?.error || error.response?.data?.detail || 'Failed to add to pin';
+      const errorData = error.response?.data;
+      const errorMsg = (typeof errorData === 'object' && errorData && 'error' in errorData ? String(errorData.error) : null)
+        || (typeof errorData === 'object' && errorData && 'detail' in errorData ? String(errorData.detail) : null)
+        || 'Failed to add to pin';
       alert(errorMsg);
       return false;
     }
   }, [code, roomUsername]);
 
   const handleReply = useCallback((message: Message) => {
-    console.log('Replying to message:', message);
-    setReplyingTo(message);
+        setReplyingTo(message);
+  }, []);
+
+  const handleCancelReply = useCallback(() => {
+    setReplyingTo(null);
   }, []);
 
   const handleBlockUser = useCallback(async (username: string) => {
@@ -1315,25 +1325,24 @@ export default function ChatPage() {
       if (userIsHost) {
         // Host can ban users from the chat (ChatBlock)
         await messageApi.blockUser(code, { blocked_username: username }, roomUsername);
-        console.log(`Successfully banned user from chat: ${username}`);
-        alert(`Banned ${username} from this chat. They will no longer be able to join or send messages.`);
+                alert(`Banned ${username} from this chat. They will no longer be able to join or send messages.`);
       } else {
         // Non-hosts can only mute users site-wide (UserBlock)
         await messageApi.blockUserSiteWide(username);
-        console.log(`Successfully blocked user site-wide: ${username}`);
-        alert(`Blocked ${username}. You will no longer see their messages anywhere on ChatPop.`);
+                alert(`Blocked ${username}. You will no longer see their messages anywhere on ChatPop.`);
       }
       // TODO: Update local state to filter out blocked user's messages
-    } catch (error: any) {
+    } catch (err: unknown) {
+      const error = err as ApiError & { response?: { data?: { username?: string[]; message?: string } } };
       console.error('Failed to block user:', error);
-      const errorMsg = error.response?.data?.username?.[0] || error.response?.data?.message || 'Failed to block user. Please try again.';
+      const errorData = error.response?.data;
+      const errorMsg = errorData?.username?.[0] || errorData?.message || 'Failed to block user. Please try again.';
       alert(errorMsg);
     }
   }, [currentUserId, chatRoom, code]);
 
   const handleTipUser = useCallback((username: string) => {
-    console.log('Tip user:', username);
-    // TODO: Implement tip user logic with payment
+        // TODO: Implement tip user logic with payment
   }, []);
 
   const handleDeleteMessage = useCallback(async (messageId: string) => {
@@ -1345,8 +1354,7 @@ export default function ChatPage() {
 
     try {
       await messageApi.deleteMessage(code, messageId, roomUsername);
-      console.log(`Successfully deleted message: ${messageId}`);
-      // The WebSocket will handle real-time removal for all users
+            // The WebSocket will handle real-time removal for all users
     } catch (error) {
       console.error('Failed to delete message:', error);
       alert('Failed to delete message. Please try again.');
@@ -1369,8 +1377,7 @@ export default function ChatPage() {
         roomUsername
       );
 
-      console.log('[Reactions] Toggle result:', result);
-
+      
       // Optimistically update local state
       if (result.action === 'removed') {
         setMessageReactions(prev => {
@@ -1415,24 +1422,26 @@ export default function ChatPage() {
     }
   }, [code, username, fingerprint]);
 
-  // Filter messages based on mode
-  const filteredMessages = filterMode === 'focus'
-    ? messages.filter(msg => {
-        // Show host messages
-        if (msg.is_from_host) return true;
+  // Filter messages based on mode (memoized to prevent recalculation on unrelated state changes)
+  const filteredMessages = useMemo(() => {
+    if (filterMode !== 'focus') return messages;
 
-        // Show my messages (use username from state)
-        if (msg.username === username) return true;
+    return messages.filter(msg => {
+      // Show host messages
+      if (msg.is_from_host) return true;
 
-        // Show messages that host replied to
-        const hostRepliedToThis = messages.some(
-          m => m.is_from_host && m.reply_to === msg.id
-        );
-        if (hostRepliedToThis) return true;
+      // Show my messages (use username from state)
+      if (msg.username === username) return true;
 
-        return false;
-      })
-    : messages;
+      // Show messages that host replied to
+      const hostRepliedToThis = messages.some(
+        m => m.is_from_host && m.reply_to === msg.id
+      );
+      if (hostRepliedToThis) return true;
+
+      return false;
+    });
+  }, [messages, filterMode, username]);
 
   // Filter messages for sticky section (useMemo to prevent infinite loops)
   const allStickyHostMessages = useMemo(() => {
@@ -1465,8 +1474,7 @@ export default function ChatPage() {
   const stickyHostMessages = useMemo(() => {
     // If inserting older messages, return frozen value to prevent flash
     if (isInsertingRef.current) {
-      console.log('[Sticky Debug] Returning FROZEN host messages', prevStickyHostRef.current.length);
-      return prevStickyHostRef.current;
+            return prevStickyHostRef.current;
     }
 
     // Save for future freeze
@@ -1503,8 +1511,7 @@ export default function ChatPage() {
 
     // Set timer to trigger re-computation when pin expires
     const timer = setTimeout(() => {
-      console.log('[Pin Expiry] Pin expired, removing from sticky section');
-      setPinExpiryTick(t => t + 1);
+            setPinExpiryTick(t => t + 1);
     }, timeRemaining);
 
     return () => clearTimeout(timer);
@@ -1520,67 +1527,82 @@ export default function ChatPage() {
     return position < threshold;
   };
 
-  // Handle scroll events
-  const handleScroll = () => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
+  // Scroll handler implementation (stored in ref so handleScroll has stable reference)
+  const handleScrollImpl = () => {
+    // Throttle to once per animation frame (~60fps max)
+    if (scrollRAFRef.current !== null) return;
 
-    const wasAutoScroll = shouldAutoScrollRef.current;
-    const nearBottom = checkIfNearBottom();
-    const scrolledFarFromBottom = container.scrollTop < container.scrollHeight - container.clientHeight - 200;
+    scrollRAFRef.current = requestAnimationFrame(() => {
+      scrollRAFRef.current = null;
 
-    // Update shouldAutoScrollRef based on scroll position
-    if (nearBottom) {
-      // Always enable auto-scroll when near bottom
-      shouldAutoScrollRef.current = true;
+      const container = messagesContainerRef.current;
+      if (!container) return;
 
-      // Mark initial scroll as complete once we reach bottom for the first time
-      if (!initialScrollDoneRef.current) {
-        initialScrollDoneRef.current = true;
-      }
-    } else if (scrolledFarFromBottom && wasAutoScroll) {
-      // User manually scrolled up significantly while auto-scroll was on
-      // Disable auto-scroll
-      shouldAutoScrollRef.current = false;
-    }
-    // If we're just temporarily not at bottom (e.g., content added), keep auto-scroll enabled
+      const wasAutoScroll = shouldAutoScrollRef.current;
+      const nearBottom = checkIfNearBottom();
+      const scrolledFarFromBottom = container.scrollTop < container.scrollHeight - container.clientHeight - 200;
 
-    // Infinite scroll - load older messages when near top
-    // Use debouncing to avoid interrupting momentum scroll
-    // Only trigger after 150ms of scroll inactivity in the trigger zone
-    if (
-      initialScrollDoneRef.current &&
-      container.scrollTop < 3000 &&
-      hasMoreMessages &&
-      !loadingOlder &&
-      messages.length > 0
-    ) {
-      // Clear any existing debounce timer
-      if (loadOlderDebounceRef.current) {
-        clearTimeout(loadOlderDebounceRef.current);
-      }
+      // Update shouldAutoScrollRef based on scroll position
+      if (nearBottom) {
+        // Always enable auto-scroll when near bottom
+        shouldAutoScrollRef.current = true;
 
-      // Set new debounce timer - wait for scroll to settle before loading
-      loadOlderDebounceRef.current = setTimeout(() => {
-        // Re-check conditions after debounce (user may have scrolled away)
-        const currentContainer = messagesContainerRef.current;
-        if (
-          currentContainer &&
-          currentContainer.scrollTop < 3000 &&
-          hasMoreMessages &&
-          !loadingOlder
-        ) {
-          loadOlderMessages();
+        // Mark initial scroll as complete once we reach bottom for the first time
+        if (!initialScrollDoneRef.current) {
+          initialScrollDoneRef.current = true;
         }
-      }, 150);
-    } else {
-      // User scrolled out of trigger zone - cancel pending load
-      if (loadOlderDebounceRef.current) {
-        clearTimeout(loadOlderDebounceRef.current);
-        loadOlderDebounceRef.current = null;
+      } else if (scrolledFarFromBottom && wasAutoScroll) {
+        // User manually scrolled up significantly while auto-scroll was on
+        // Disable auto-scroll
+        shouldAutoScrollRef.current = false;
       }
-    }
+      // If we're just temporarily not at bottom (e.g., content added), keep auto-scroll enabled
+
+      // Infinite scroll - load older messages when near top
+      // Use debouncing to avoid interrupting momentum scroll
+      // Only trigger after 150ms of scroll inactivity in the trigger zone
+      if (
+        initialScrollDoneRef.current &&
+        container.scrollTop < 3000 &&
+        hasMoreMessagesRef.current &&
+        !loadingOlderRef.current &&
+        messagesLengthRef.current > 0
+      ) {
+        // Clear any existing debounce timer
+        if (loadOlderDebounceRef.current) {
+          clearTimeout(loadOlderDebounceRef.current);
+        }
+
+        // Set new debounce timer - wait for scroll to settle before loading
+        loadOlderDebounceRef.current = setTimeout(() => {
+          // Re-check conditions after debounce (user may have scrolled away)
+          const currentContainer = messagesContainerRef.current;
+          if (
+            currentContainer &&
+            currentContainer.scrollTop < 3000 &&
+            hasMoreMessagesRef.current &&
+            !loadingOlderRef.current
+          ) {
+            loadOlderMessages();
+          }
+        }, 150);
+      } else {
+        // User scrolled out of trigger zone - cancel pending load
+        if (loadOlderDebounceRef.current) {
+          clearTimeout(loadOlderDebounceRef.current);
+          loadOlderDebounceRef.current = null;
+        }
+      }
+    });
   };
+
+  // Stable reference wrapper for scroll handler (prevents MainChatView re-renders)
+  const handleScrollImplRef = useRef(handleScrollImpl);
+  handleScrollImplRef.current = handleScrollImpl;
+
+  const handleScroll = useCallback(() => {
+    handleScrollImplRef.current();
+  }, []);
 
   // Only auto-scroll if user is near bottom (but NOT during initial load)
   // Initial scroll is handled directly in loadMessages with instant scroll
@@ -1608,6 +1630,23 @@ export default function ChatPage() {
   // Calculate theme dark mode setting (used by modals)
   const activeTheme = participationTheme || chatRoom?.theme;
   const themeIsDarkMode = activeTheme?.is_dark_mode ?? true; // Default to dark if no theme
+
+  // Memoize currentDesign to prevent expensive recalculation on every render
+  const currentDesign = useMemo(() => {
+    return convertThemeToCamelCase(participationTheme || chatRoom?.theme || defaultTheme);
+  }, [participationTheme, chatRoom?.theme]);
+
+  // Memoized design prop for MessageInput to prevent re-renders
+  const messageInputDesign = useMemo(() => ({
+    inputArea: currentDesign.inputArea as string,
+    inputField: currentDesign.inputField as string,
+    replyPreviewContainer: currentDesign.replyPreviewContainer as string,
+    replyPreviewIcon: currentDesign.replyPreviewIcon as string,
+    replyPreviewUsername: currentDesign.replyPreviewUsername as string,
+    replyPreviewContent: currentDesign.replyPreviewContent as string,
+    replyPreviewCloseButton: currentDesign.replyPreviewCloseButton as string,
+    replyPreviewCloseIcon: currentDesign.replyPreviewCloseIcon as string,
+  }), [currentDesign]);
 
   // Update theme-color meta tags when theme changes
   useEffect(() => {
@@ -1669,7 +1708,6 @@ export default function ChatPage() {
   // messages are from the host).
 
   if (loading) {
-    const currentDesign = convertThemeToCamelCase(participationTheme || chatRoom?.theme || defaultTheme);
     return (
       <div className={`${currentDesign.container} flex items-center justify-center`}>
         <div className="text-gray-600 dark:text-gray-400">Loading chat...</div>
@@ -1678,7 +1716,6 @@ export default function ChatPage() {
   }
 
   if (error) {
-    const currentDesign = convertThemeToCamelCase(participationTheme || chatRoom?.theme || defaultTheme);
     return (
       <div className={currentDesign.container}>
         <Header />
@@ -1690,8 +1727,6 @@ export default function ChatPage() {
       </div>
     );
   }
-
-  const currentDesign = convertThemeToCamelCase(participationTheme || chatRoom?.theme || defaultTheme);
 
   // Main chat interface
   return (
@@ -1780,7 +1815,7 @@ export default function ChatPage() {
         {activeView === 'main' && (
           <MainChatView
             chatRoom={chatRoom}
-            currentUserId={currentUserId}
+            currentUserId={currentUserId ?? null}
             username={username}
             hasJoined={hasJoined}
             sessionToken={sessionToken}
@@ -1806,7 +1841,7 @@ export default function ChatPage() {
           />
         )}
 
-        {activeView === 'backroom' && hasJoined && (
+        {activeView === 'backroom' && hasJoined && chatRoom && (
           <GameRoomView
             chatRoom={chatRoom}
             username={username}
@@ -1819,76 +1854,19 @@ export default function ChatPage() {
 
       {/* Message Input - Only show in main chat view */}
       {activeView === 'main' && (
-        <div className={currentDesign.inputArea}>
-          {/* Reply Preview Bar */}
-          {replyingTo && (
-            <div className={currentDesign.replyPreviewContainer}>
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <Reply className={currentDesign.replyPreviewIcon} />
-                <div className="flex-1 min-w-0">
-                  <div className={currentDesign.replyPreviewUsername}>
-                    Replying to {replyingTo.username}
-                  </div>
-                  <div className={currentDesign.replyPreviewContent}>
-                    {replyingTo.content}
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setReplyingTo(null)}
-                className={currentDesign.replyPreviewCloseButton}
-                aria-label="Cancel reply"
-              >
-                <X className={currentDesign.replyPreviewCloseIcon} />
-              </button>
-            </div>
-          )}
-          <form onSubmit={handleSendMessage} className={`flex gap-2 ${replyingTo ? 'mt-2' : ''}`}>
-          <div className="relative flex-1">
-            {isHost && (
-              <Crown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-yellow-500 pointer-events-none z-10" />
-            )}
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message..."
-              className={`w-full ${currentDesign.inputField} ${isHost ? 'pl-10' : ''}`}
-              disabled={sending}
-              style={{
-                WebkitUserSelect: 'text',
-                userSelect: 'text',
-              }}
-            />
-          </div>
-          {chatRoom?.voice_enabled && (
-            <VoiceRecorder
-              onRecordingComplete={handleVoiceRecording}
-              onRecordingReady={setHasVoiceRecording}
-              disabled={sending || !hasJoined}
-            />
-          )}
-          {(chatRoom?.photo_enabled || chatRoom?.video_enabled) && (
-            <MediaPicker
-              onPhotoSelected={handlePhotoSelected}
-              onVideoSelected={handleVideoSelected}
-              onMediaReady={setHasMediaSelected}
-              photoEnabled={chatRoom?.photo_enabled}
-              videoEnabled={chatRoom?.video_enabled}
-              disabled={sending || !hasJoined}
-              maxVideoDuration={30}
-            />
-          )}
-          <button
-            type="submit"
-            disabled={sending || (!newMessage.trim() && !hasVoiceRecording && !hasMediaSelected)}
-            className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
-        </form>
-      </div>
+        <MessageInput
+          chatRoom={chatRoom}
+          isHost={isHost}
+          hasJoined={hasJoined}
+          sending={sending}
+          replyingTo={replyingTo}
+          onCancelReply={handleCancelReply}
+          onSubmitText={handleSubmitText}
+          onVoiceRecording={handleVoiceRecording}
+          onPhotoSelected={handlePhotoSelected}
+          onVideoSelected={handleVideoSelected}
+          design={messageInputDesign}
+        />
       )}
 
       {/* Crown Button - Grid centered at 50%, first icon at top of grid */}
@@ -1909,7 +1887,6 @@ export default function ChatPage() {
           icon={Gamepad2}
           toggledIcon={MessageSquare}
           onClick={() => {
-            console.log('🖱️ GameRoomTab clicked! Toggling from', activeView, 'to', activeView === 'backroom' ? 'main' : 'backroom');
             if (activeView === 'backroom') {
               // Going back to main - use history.back() to properly handle browser history
               window.history.back();
