@@ -69,9 +69,18 @@ function MessageInputComponent({
     }
   }, [message, isExpanded]);
 
-  // Handle focus - expand the input
+  // Handle focus - expand the input and move cursor to end
   const handleFocus = useCallback(() => {
     setIsExpanded(true);
+    // Move cursor to end of text
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const len = textarea.value.length;
+      // Use setTimeout to ensure it happens after focus
+      setTimeout(() => {
+        textarea.setSelectionRange(len, len);
+      }, 0);
+    }
   }, []);
 
   // Handle blur - collapse the input
