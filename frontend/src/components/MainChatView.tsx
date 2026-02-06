@@ -63,8 +63,8 @@ function formatTimestamp(dateString: string): string {
   const daysDiff = Math.floor((todayOnly.getTime() - dateOnly.getTime()) / (1000 * 60 * 60 * 24));
 
   if (dateOnly.getTime() === todayOnly.getTime()) {
-    // Today - just show time
-    return time;
+    // Today - show "Today" prefix
+    return `Today ${time}`;
   } else if (dateOnly.getTime() === yesterdayOnly.getTime()) {
     // Yesterday
     return `Yesterday ${time}`;
@@ -588,28 +588,30 @@ function MainChatView({
                 <div className="flex-1 min-w-0">
                   {/* Username header for first regular message in thread */}
                   {isRegularMessage && isFirstInThread && (
-                    <div className="mb-1 flex items-center gap-1">
-                      <span
-                        className={(() => {
-                          const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                          return isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
-                        })() || 'text-sm font-semibold'}
-                        style={{
-                          color: (() => {
+                    <div className="mb-1">
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={(() => {
                             const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                            const field = isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
-                            const color = getTextColor(field) || '#ffffff';
-                            return color;
-                          })()
-                        }}
-                      >
-                        {message.username}
-                      </span>
-                      {message.username_is_reserved && (
-                        <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
-                      )}
+                            return isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
+                          })() || 'text-sm font-semibold'}
+                          style={{
+                            color: (() => {
+                              const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                              const field = isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
+                              const color = getTextColor(field) || '#ffffff';
+                              return color;
+                            })()
+                          }}
+                        >
+                          {message.username}
+                        </span>
+                        {message.username_is_reserved && (
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                        )}
+                      </div>
                       <span
-                        className="text-xs opacity-60"
+                        className="text-xs opacity-60 -mt-0.5 block"
                         style={{
                           color: getTextColor(
                             message.username.toLowerCase() === username.toLowerCase()
@@ -624,28 +626,30 @@ function MainChatView({
                   )}
                   {/* Host message header - OUTSIDE bubble */}
                   {message.is_from_host && (
-                    <div className="mb-1 flex items-center gap-1">
+                    <div className="mb-1">
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={(() => {
+                            const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                            return isMyMessage
+                              ? (currentDesign.myHostUsername || currentDesign.hostUsername || 'text-sm font-semibold')
+                              : (currentDesign.hostUsername || 'text-sm font-semibold');
+                          })()}
+                          style={{
+                            color: message.username.toLowerCase() === username.toLowerCase()
+                              ? getTextColor(currentDesign.myHostUsername) || '#ef4444'  // Your own host messages
+                              : getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff'
+                          }}
+                        >
+                          {message.username}
+                        </span>
+                        {message.username_is_reserved && (
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                        )}
+                        <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                      </div>
                       <span
-                        className={(() => {
-                          const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                          return isMyMessage
-                            ? (currentDesign.myHostUsername || currentDesign.hostUsername || 'text-sm font-semibold')
-                            : (currentDesign.hostUsername || 'text-sm font-semibold');
-                        })()}
-                        style={{
-                          color: message.username.toLowerCase() === username.toLowerCase()
-                            ? getTextColor(currentDesign.myHostUsername) || '#ef4444'  // Your own host messages
-                            : getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff'
-                        }}
-                      >
-                        {message.username}
-                      </span>
-                      {message.username_is_reserved && (
-                        <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
-                      )}
-                      <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                      <span
-                        className="text-xs opacity-60"
+                        className="text-xs opacity-60 -mt-0.5 block"
                         style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
                       >
                         {formatTimestamp(message.created_at)}
@@ -655,28 +659,30 @@ function MainChatView({
 
                   {/* Pinned message header - OUTSIDE bubble (no $ value - only shown in sticky section) */}
                   {message.is_pinned && !message.is_from_host && (
-                    <div className="mb-1 flex items-center gap-1">
+                    <div className="mb-1">
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={(() => {
+                            const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                            return isMyMessage ? currentDesign.myUsername : currentDesign.pinnedUsername;
+                          })() || 'text-sm font-semibold'}
+                          style={{
+                            color: getTextColor(
+                              message.username.toLowerCase() === username.toLowerCase()
+                                ? currentDesign.myUsername
+                                : currentDesign.pinnedUsername
+                            ) || getTextColor(currentDesign.pinnedText) || '#ffffff'
+                          }}
+                        >
+                          {message.username}
+                        </span>
+                        {message.username_is_reserved && (
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                        )}
+                        <Pin size={14} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                      </div>
                       <span
-                        className={(() => {
-                          const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                          return isMyMessage ? currentDesign.myUsername : currentDesign.pinnedUsername;
-                        })() || 'text-sm font-semibold'}
-                        style={{
-                          color: getTextColor(
-                            message.username.toLowerCase() === username.toLowerCase()
-                              ? currentDesign.myUsername
-                              : currentDesign.pinnedUsername
-                          ) || getTextColor(currentDesign.pinnedText) || '#ffffff'
-                        }}
-                      >
-                        {message.username}
-                      </span>
-                      {message.username_is_reserved && (
-                        <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
-                      )}
-                      <Pin size={14} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
-                      <span
-                        className="text-xs opacity-60"
+                        className="text-xs opacity-60 -mt-0.5 block"
                         style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
                       >
                         {formatTimestamp(message.created_at)}
@@ -716,7 +722,11 @@ function MainChatView({
                         ? currentDesign.myMessage
                         : currentDesign.regularMessage;
 
-                      return selectedStyle;
+                      // Add extra margin for media-only messages (no text caption)
+                      const hasMedia = message.voice_url || message.photo_url || message.video_url;
+                      const hasCaption = message.content && message.content.trim().length > 0;
+                      const isMediaOnly = hasMedia && !hasCaption;
+                      return isMediaOnly ? `${selectedStyle} mt-2` : selectedStyle;
                     })()}
                   >
 
