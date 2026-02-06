@@ -448,6 +448,7 @@ class MessageCache:
         Get all active pinned messages for a chat, ordered by pin_amount_paid (highest first).
 
         Automatically filters out expired pins (sticky_until < now).
+        Falls back to database if Redis cache is empty.
         """
         try:
             redis_client = cls._get_redis_client()
@@ -458,7 +459,8 @@ class MessageCache:
             message_ids = redis_client.zrevrange(order_key, 0, -1)
 
             if not message_ids:
-                return []
+                # Fallback to database and repopulate cache
+                return cls._get_pinned_messages_from_db(room_id)
 
             # Build keys for all pinned messages
             data_keys = [
@@ -509,6 +511,39 @@ class MessageCache:
 
         except Exception as e:
             print(f"Redis cache error (get_pinned_messages): {e}")
+            # Fallback to database on Redis error
+            return cls._get_pinned_messages_from_db(room_id)
+
+    @classmethod
+    def _get_pinned_messages_from_db(cls, room_id: Union[str, UUID]) -> List[Dict[str, Any]]:
+        """
+        Fallback method to get pinned messages from database and repopulate Redis cache.
+        """
+        from django.utils import timezone
+
+        try:
+            # Query database for active pinned messages
+            pinned_messages = Message.objects.filter(
+                chat_room_id=room_id,
+                is_pinned=True,
+                sticky_until__gt=timezone.now(),
+                is_deleted=False
+            ).select_related('user', 'chat_room', 'reply_to').order_by('-current_pin_amount')
+
+            messages = []
+            for message in pinned_messages:
+                # Serialize and add to cache
+                username_is_reserved = cls._compute_username_is_reserved(message)
+                msg_data = cls._serialize_message(message, username_is_reserved)
+                messages.append(msg_data)
+
+                # Repopulate Redis cache
+                cls.add_pinned_message(message)
+
+            return messages
+
+        except Exception as e:
+            print(f"Database fallback error (get_pinned_messages): {e}")
             return []
 
     @classmethod

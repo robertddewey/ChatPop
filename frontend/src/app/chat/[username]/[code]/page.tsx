@@ -640,13 +640,41 @@ export default function ChatPage() {
     isLoadingMessagesRef.current = true;
 
     try {
-      const msgs = await messageApi.getMessages(code, roomUsername, sessionToken || undefined);
-      setMessages(msgs);
+      const { messages: msgs, pinnedMessages } = await messageApi.getMessages(code, roomUsername, sessionToken || undefined);
+
+      // Create a map of pinned messages for quick lookup
+      const pinnedMap = new Map(pinnedMessages.map(pm => [pm.id, pm]));
+
+      // Update messages with pinned data, or add if not present
+      const updatedMessages = msgs.map(msg => {
+        const pinnedVersion = pinnedMap.get(msg.id);
+        if (pinnedVersion) {
+          // Merge pinned fields into the message
+          return {
+            ...msg,
+            is_pinned: pinnedVersion.is_pinned,
+            pinned_at: pinnedVersion.pinned_at,
+            sticky_until: pinnedVersion.sticky_until,
+            pin_amount_paid: pinnedVersion.pin_amount_paid,
+            current_pin_amount: pinnedVersion.current_pin_amount,
+          };
+        }
+        return msg;
+      });
+
+      // Add any pinned messages not already in main array
+      const messageIds = new Set(msgs.map(m => m.id));
+      const uniquePinnedMessages = pinnedMessages.filter(pm => !messageIds.has(pm.id));
+      const allMessages = [...updatedMessages, ...uniquePinnedMessages].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+
+      setMessages(allMessages);
       setHasMoreMessages(true);
 
       // Extract reactions from messages
       const reactions: Record<string, ReactionSummary[]> = {};
-      msgs.forEach((msg) => {
+      allMessages.forEach((msg) => {
         if (msg.reactions && msg.reactions.length > 0) {
           reactions[msg.id] = msg.reactions;
         }
@@ -663,8 +691,8 @@ export default function ChatPage() {
         }
         initialScrollDoneRef.current = true; // Mark scroll complete
         // Preload older messages
-        if (msgs.length > 0) {
-          setTimeout(() => preloadOlderMessages(msgs), 100);
+        if (allMessages.length > 0) {
+          setTimeout(() => preloadOlderMessages(allMessages), 100);
         }
       });
     } catch (err) {

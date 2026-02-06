@@ -446,7 +446,7 @@ export const chatApi = {
 };
 
 export const messageApi = {
-  getMessages: async (code: string, roomUsername?: string, sessionToken?: string): Promise<Message[]> => {
+  getMessages: async (code: string, roomUsername?: string, sessionToken?: string): Promise<{ messages: Message[], pinnedMessages: Message[] }> => {
     const params: Record<string, string> = {};
     if (sessionToken) {
       params.session_token = sessionToken;
@@ -455,7 +455,9 @@ export const messageApi = {
     // Support new Redis cache response format: { messages: [...], pinned_messages: [...], source: "redis" }
     // Fallback to old paginated format: { results: [...] }
     // Fallback to direct array: [...]
-    return response.data.messages || response.data.results || response.data;
+    const messages = response.data.messages || response.data.results || response.data;
+    const pinnedMessages = response.data.pinned_messages || [];
+    return { messages, pinnedMessages };
   },
 
   getMessagesBefore: async (code: string, beforeTimestamp: number, limit: number = 50, roomUsername?: string): Promise<{ messages: Message[], hasMore: boolean }> => {
