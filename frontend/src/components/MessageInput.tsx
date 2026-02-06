@@ -19,9 +19,9 @@ interface MessageInputProps {
   replyingTo: Message | null;
   onCancelReply: () => void;
   onSubmitText: (message: string) => void;
-  onVoiceRecording: (audioBlob: Blob, metadata: RecordingMetadata) => void;
-  onPhotoSelected: (file: File) => void;
-  onVideoSelected: (file: File, duration: number, thumbnail: Blob | null) => void;
+  onVoiceRecording: (audioBlob: Blob, metadata: RecordingMetadata, caption: string) => void;
+  onPhotoSelected: (file: File, width: number, height: number, caption: string) => void;
+  onVideoSelected: (file: File, duration: number, thumbnail: Blob | null, caption: string) => void;
   design: {
     inputArea: string;
     inputField: string;
@@ -217,29 +217,31 @@ function MessageInputComponent({
           )}
         </div>
 
-        {/* Media buttons - only show when collapsed */}
-        {showMediaButtons && (
-          <>
-            {hasVoiceButton && (
-              <VoiceRecorder
-                onRecordingComplete={onVoiceRecording}
-                onRecordingReady={setHasVoiceRecording}
-                disabled={sending || !hasJoined}
-              />
-            )}
-            {hasMediaButton && (
-              <MediaPicker
-                onPhotoSelected={onPhotoSelected}
-                onVideoSelected={onVideoSelected}
-                onMediaReady={setHasMediaSelected}
-                photoEnabled={chatRoom?.photo_enabled}
-                videoEnabled={chatRoom?.video_enabled}
-                disabled={sending || !hasJoined}
-                maxVideoDuration={30}
-              />
-            )}
-          </>
-        )}
+        {/* Media buttons - hidden when expanded but not unmounted to preserve state */}
+        <div className={showMediaButtons ? 'flex items-center gap-2' : 'hidden'}>
+          {hasVoiceButton && (
+            <VoiceRecorder
+              onRecordingComplete={onVoiceRecording}
+              onRecordingReady={setHasVoiceRecording}
+              onSendComplete={() => setMessage('')}
+              caption={message}
+              disabled={sending || !hasJoined}
+            />
+          )}
+          {hasMediaButton && (
+            <MediaPicker
+              onPhotoSelected={onPhotoSelected}
+              onVideoSelected={onVideoSelected}
+              onMediaReady={setHasMediaSelected}
+              onSendComplete={() => setMessage('')}
+              caption={message}
+              photoEnabled={chatRoom?.photo_enabled}
+              videoEnabled={chatRoom?.video_enabled}
+              disabled={sending || !hasJoined}
+              maxVideoDuration={30}
+            />
+          )}
+        </div>
 
         {/* Collapse button - only show when expanded, positioned between text and Send */}
         {isExpanded && (

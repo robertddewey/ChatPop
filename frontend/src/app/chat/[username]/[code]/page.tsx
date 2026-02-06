@@ -191,28 +191,36 @@ const defaultTheme: ChatTheme = {
   input_area: "border-t border-zinc-800 bg-zinc-900 px-4 py-3 flex-shrink-0",
   input_field: "flex-1 px-4 py-2 border border-zinc-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-zinc-800 text-zinc-100 placeholder-zinc-500",
   voice_message_styles: {
-    playButton: "bg-zinc-600/40",
-    playIconColor: "text-white",
-    waveformActive: "bg-white/80",
-    waveformInactive: "bg-white/20",
+    containerBg: "bg-white/10",
+    playButton: "bg-white hover:bg-white/90",
+    playIconColor: "text-zinc-800",
+    waveformActive: "bg-white",
+    waveformInactive: "bg-white/40",
+    durationTextColor: "text-white/80",
   },
   my_voice_message_styles: {
-    playButton: "bg-emerald-800/70",
-    playIconColor: "text-white",
-    waveformActive: "bg-white/80",
-    waveformInactive: "bg-white/20",
+    containerBg: "bg-white/10",
+    playButton: "bg-white hover:bg-white/90",
+    playIconColor: "text-zinc-800",
+    waveformActive: "bg-white",
+    waveformInactive: "bg-white/40",
+    durationTextColor: "text-white/80",
   },
   host_voice_message_styles: {
-    playButton: "bg-teal-800",
-    playIconColor: "text-white",
-    waveformActive: "bg-white/80",
-    waveformInactive: "bg-white/20",
+    containerBg: "bg-white/10",
+    playButton: "bg-white hover:bg-white/90",
+    playIconColor: "text-zinc-800",
+    waveformActive: "bg-white",
+    waveformInactive: "bg-white/40",
+    durationTextColor: "text-white/80",
   },
   pinned_voice_message_styles: {
-    playButton: "bg-amber-800",
-    playIconColor: "text-white",
-    waveformActive: "bg-white/80",
-    waveformInactive: "bg-white/20",
+    containerBg: "bg-white/10",
+    playButton: "bg-white hover:bg-white/90",
+    playIconColor: "text-zinc-800",
+    waveformActive: "bg-white",
+    waveformInactive: "bg-white/40",
+    durationTextColor: "text-white/80",
   },
   pin_icon_color: "text-amber-400",
   crown_icon_color: "text-teal-400",
@@ -990,7 +998,7 @@ export default function ChatPage() {
   }, [sending, isConnected, wsSendMessage, replyingTo?.id, username, code, chatRoom, roomUsername, loadMessages]);
 
   // Handle voice message upload
-  const handleVoiceRecording = useCallback(async (audioBlob: Blob, metadata: RecordingMetadata) => {
+  const handleVoiceRecording = useCallback(async (audioBlob: Blob, metadata: RecordingMetadata, caption: string) => {
     if (sending) return;
 
     setSending(true);
@@ -1021,7 +1029,7 @@ export default function ChatPage() {
 
       // Send the voice message via WebSocket with metadata
       sendRawMessage({
-        message: '', // Empty message text for voice-only messages
+        message: caption, // Caption text for voice messages
         voice_url: voice_url,
         voice_duration: metadata.duration,
         voice_waveform: metadata.waveformData,
@@ -1050,7 +1058,7 @@ export default function ChatPage() {
   }, [sending, username, code, chatRoom, roomUsername, replyingTo?.id, sendRawMessage]);
 
   // Handle photo message upload
-  const handlePhotoSelected = useCallback(async (file: File) => {
+  const handlePhotoSelected = useCallback(async (file: File, width: number, height: number, caption: string) => {
     if (sending) return;
 
     setSending(true);
@@ -1081,7 +1089,7 @@ export default function ChatPage() {
 
       // Send the photo message via WebSocket
       sendRawMessage({
-        message: '', // Empty message text for photo-only messages
+        message: caption, // Caption text for photo messages
         photo_url: photo_url,
         photo_width: uploadedWidth,
         photo_height: uploadedHeight,
@@ -1105,7 +1113,7 @@ export default function ChatPage() {
 
   // Handle video message upload
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleVideoSelected = useCallback(async (file: File, duration: number, thumbnail: Blob | null) => {
+  const handleVideoSelected = useCallback(async (file: File, duration: number, thumbnail: Blob | null, caption: string) => {
     if (sending) return;
 
     setSending(true);
@@ -1136,7 +1144,7 @@ export default function ChatPage() {
 
       // Send the video message via WebSocket
       sendRawMessage({
-        message: '', // Empty message text for video-only messages
+        message: caption, // Caption text for video messages
         video_url: video_url,
         video_duration: uploadedDuration,
         video_thumbnail_url: thumbnail_url,

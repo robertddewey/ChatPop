@@ -4,9 +4,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Video, X, Play, Pause } from 'lucide-react';
 
 interface MediaPickerProps {
-  onPhotoSelected?: (file: File, width: number, height: number) => void;
-  onVideoSelected?: (file: File, duration: number, thumbnail: Blob | null) => void;
+  onPhotoSelected?: (file: File, width: number, height: number, caption: string) => void;
+  onVideoSelected?: (file: File, duration: number, thumbnail: Blob | null, caption: string) => void;
   onMediaReady?: (hasMedia: boolean) => void;
+  onSendComplete?: () => void;
+  caption?: string;
   photoEnabled?: boolean;
   videoEnabled?: boolean;
   disabled?: boolean;
@@ -20,6 +22,8 @@ export default function MediaPicker({
   onPhotoSelected,
   onVideoSelected,
   onMediaReady,
+  onSendComplete,
+  caption = '',
   photoEnabled = true,
   videoEnabled = true,
   disabled = false,
@@ -199,14 +203,18 @@ export default function MediaPicker({
     setIsVideoPlaying(!isVideoPlaying);
   };
 
-  // Use refs to store latest callbacks to avoid stale closures
+  // Use refs to store latest callbacks and caption to avoid stale closures
   const onPhotoSelectedRef = useRef(onPhotoSelected);
   const onVideoSelectedRef = useRef(onVideoSelected);
+  const onSendCompleteRef = useRef(onSendComplete);
+  const captionRef = useRef(caption);
 
   useEffect(() => {
     onPhotoSelectedRef.current = onPhotoSelected;
     onVideoSelectedRef.current = onVideoSelected;
-  }, [onPhotoSelected, onVideoSelected]);
+    onSendCompleteRef.current = onSendComplete;
+    captionRef.current = caption;
+  }, [onPhotoSelected, onVideoSelected, onSendComplete, caption]);
 
   // Expose send method to parent via a method they can call
   useEffect(() => {
@@ -214,11 +222,13 @@ export default function MediaPicker({
       if (!selectedFile) return;
 
       if (mediaState === 'photo_preview' && photoDimensions && onPhotoSelectedRef.current) {
-        onPhotoSelectedRef.current(selectedFile, photoDimensions.width, photoDimensions.height);
+        onPhotoSelectedRef.current(selectedFile, photoDimensions.width, photoDimensions.height, captionRef.current || '');
+        onSendCompleteRef.current?.();
         clearSelection();
       } else if (mediaState === 'video_preview' && videoDuration !== null && onVideoSelectedRef.current) {
         // Thumbnail is optional - backend will generate if not provided
-        onVideoSelectedRef.current(selectedFile, videoDuration, videoThumbnail || null);
+        onVideoSelectedRef.current(selectedFile, videoDuration, videoThumbnail || null, captionRef.current || '');
+        onSendCompleteRef.current?.();
         clearSelection();
       }
     };

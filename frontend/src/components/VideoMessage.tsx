@@ -7,6 +7,8 @@ interface VideoMessageProps {
   videoUrl: string;
   thumbnailUrl: string;
   duration: number;
+  caption?: string;
+  captionClassName?: string;
   className?: string;
   maxDisplayWidth?: number;
   maxDisplayHeight?: number;
@@ -40,6 +42,8 @@ export default function VideoMessage({
   videoUrl,
   thumbnailUrl,
   duration,
+  caption,
+  captionClassName = '',
   className = '',
   maxDisplayWidth = 280,
   maxDisplayHeight = 320,
@@ -161,11 +165,20 @@ export default function VideoMessage({
 
   return (
     <>
-      {/* Inline video player */}
-      <div
-        className={`relative rounded-lg overflow-hidden bg-black max-w-full ${className}`}
-        style={{ width: displayWidth, height: displayHeight, maxWidth: '100%' }}
-      >
+      {/* Video container with optional caption */}
+      <div className="flex flex-col gap-1.5">
+        {/* Caption - above the video like regular text messages */}
+        {caption && (
+          <p className={`text-sm ${captionClassName}`}>
+            {caption}
+          </p>
+        )}
+
+        {/* Inline video player */}
+        <div
+          className={`relative rounded-lg overflow-hidden bg-black max-w-full ${className}`}
+          style={{ width: displayWidth, height: displayHeight, maxWidth: '100%' }}
+        >
         {/* Video element (hidden until playing) */}
         <video
           ref={videoRef}
@@ -247,6 +260,7 @@ export default function VideoMessage({
             />
           </div>
         )}
+        </div>
       </div>
 
       {/* Fullscreen video player */}

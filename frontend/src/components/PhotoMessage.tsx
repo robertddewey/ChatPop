@@ -7,6 +7,8 @@ interface PhotoMessageProps {
   photoUrl: string;
   width: number;
   height: number;
+  caption?: string;
+  captionClassName?: string;
   className?: string;
   maxDisplayWidth?: number;
   maxDisplayHeight?: number;
@@ -16,6 +18,8 @@ export default function PhotoMessage({
   photoUrl,
   width,
   height,
+  caption,
+  captionClassName = '',
   className = '',
   maxDisplayWidth = 280,
   maxDisplayHeight = 320,
@@ -72,26 +76,36 @@ export default function PhotoMessage({
 
   return (
     <>
-      {/* Thumbnail in message */}
-      <div
-        className={`relative rounded-lg overflow-hidden cursor-pointer group max-w-full ${className}`}
-        style={{ width: displayWidth, height: displayHeight, maxWidth: '100%' }}
-        onClick={openFullscreen}
-      >
-        {isLoading && (
-          <div className="absolute inset-0 bg-gray-100 dark:bg-zinc-800 animate-pulse" />
+      {/* Photo container with optional caption */}
+      <div className="flex flex-col gap-1.5">
+        {/* Caption - above the photo like regular text messages */}
+        {caption && (
+          <p className={`text-sm ${captionClassName}`}>
+            {caption}
+          </p>
         )}
-        <img
-          src={photoUrl}
-          alt="Photo message"
-          className={`w-full h-full object-cover transition-opacity ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-          onLoad={handleImageLoad}
-          onError={handleImageError}
-          loading="lazy"
-        />
-        {/* Zoom overlay on hover */}
-        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <ZoomIn size={24} className="text-white" />
+
+        {/* Thumbnail in message */}
+        <div
+          className={`relative rounded-lg overflow-hidden cursor-pointer group max-w-full ${className}`}
+          style={{ width: displayWidth, height: displayHeight, maxWidth: '100%' }}
+          onClick={openFullscreen}
+        >
+          {isLoading && (
+            <div className="absolute inset-0 bg-gray-100 dark:bg-zinc-800 animate-pulse" />
+          )}
+          <img
+            src={photoUrl}
+            alt="Photo message"
+            className={`w-full h-full object-cover transition-opacity ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+            loading="lazy"
+          />
+          {/* Zoom overlay on hover */}
+          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <ZoomIn size={24} className="text-white" />
+          </div>
         </div>
       </div>
 

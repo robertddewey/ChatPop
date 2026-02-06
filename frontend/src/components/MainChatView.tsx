@@ -330,22 +330,22 @@ function MainChatView({
                 {message.voice_url ? (
                   <div className="flex items-center gap-2">
                     <Mic size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.hostText} opacity-70`}>
-                      Audio {message.voice_duration ? `(${Math.floor(message.voice_duration / 60)}:${String(Math.floor(message.voice_duration % 60)).padStart(2, '0')})` : ''}
+                    <span className={`text-sm ${currentDesign.hostText} opacity-70 truncate`}>
+                      Voice{message.content ? `: ${message.content}` : message.voice_duration ? ` (${Math.floor(message.voice_duration / 60)}:${String(Math.floor(message.voice_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
                 ) : message.photo_url ? (
                   <div className="flex items-center gap-2">
                     <ImageIcon size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.hostText} opacity-70`}>
-                      Photo
+                    <span className={`text-sm ${currentDesign.hostText} opacity-70 truncate`}>
+                      Photo{message.content ? `: ${message.content}` : ''}
                     </span>
                   </div>
                 ) : message.video_url ? (
                   <div className="flex items-center gap-2">
                     <Video size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.hostText} opacity-70`}>
-                      Video {message.video_duration ? `(${Math.floor(message.video_duration / 60)}:${String(Math.floor(message.video_duration % 60)).padStart(2, '0')})` : ''}
+                    <span className={`text-sm ${currentDesign.hostText} opacity-70 truncate`}>
+                      Video{message.content ? `: ${message.content}` : message.video_duration ? ` (${Math.floor(message.video_duration / 60)}:${String(Math.floor(message.video_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
                 ) : (
@@ -403,22 +403,22 @@ function MainChatView({
                 {stickyPinnedMessage.voice_url ? (
                   <div className="flex items-center gap-2">
                     <Mic size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70`}>
-                      Audio {stickyPinnedMessage.voice_duration ? `(${Math.floor(stickyPinnedMessage.voice_duration / 60)}:${String(Math.floor(stickyPinnedMessage.voice_duration % 60)).padStart(2, '0')})` : ''}
+                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70 truncate`}>
+                      Voice{stickyPinnedMessage.content ? `: ${stickyPinnedMessage.content}` : stickyPinnedMessage.voice_duration ? ` (${Math.floor(stickyPinnedMessage.voice_duration / 60)}:${String(Math.floor(stickyPinnedMessage.voice_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
                 ) : stickyPinnedMessage.photo_url ? (
                   <div className="flex items-center gap-2">
                     <ImageIcon size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70`}>
-                      Photo
+                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70 truncate`}>
+                      Photo{stickyPinnedMessage.content ? `: ${stickyPinnedMessage.content}` : ''}
                     </span>
                   </div>
                 ) : stickyPinnedMessage.video_url ? (
                   <div className="flex items-center gap-2">
                     <Video size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70`}>
-                      Video {stickyPinnedMessage.video_duration ? `(${Math.floor(stickyPinnedMessage.video_duration / 60)}:${String(Math.floor(stickyPinnedMessage.video_duration % 60)).padStart(2, '0')})` : ''}
+                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70 truncate`}>
+                      Video{stickyPinnedMessage.content ? `: ${stickyPinnedMessage.content}` : stickyPinnedMessage.video_duration ? ` (${Math.floor(stickyPinnedMessage.video_duration / 60)}:${String(Math.floor(stickyPinnedMessage.video_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
                 ) : (
@@ -665,69 +665,83 @@ function MainChatView({
                       </div>
                     )}
 
+                    {/* Caption text - shown above media when message has both */}
+                    {message.content && (message.voice_url || message.photo_url || message.video_url) && (
+                      <p className={`text-sm mb-2 ${
+                        message.is_from_host
+                          ? currentDesign.hostText
+                          : message.is_pinned
+                          ? currentDesign.pinnedText
+                          : message.username.toLowerCase() === username.toLowerCase()
+                          ? currentDesign.myText
+                          : currentDesign.regularText
+                      }`}>
+                        {message.content}
+                      </p>
+                    )}
+
                     {/* Message content */}
                     {message.voice_url ? (
-                      <div className={`px-3 py-2 rounded-lg ${
-                        message.is_from_host
-                          ? currentDesign.hostVoiceMessageStyles?.containerBg || 'bg-teal-800'
-                          : message.is_pinned
-                          ? currentDesign.pinnedVoiceMessageStyles?.containerBg || 'bg-teal-800'
-                          : message.username.toLowerCase() === username.toLowerCase()
-                          ? currentDesign.myVoiceMessageStyles?.containerBg || 'bg-emerald-800/70'
-                          : currentDesign.voiceMessageStyles?.containerBg || 'bg-zinc-600/40'
-                      }`}>
-                        <VoiceMessagePlayer
-                          voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                          duration={message.voice_duration || 0}
-                          waveformData={message.voice_waveform || []}
-                          isMyMessage={message.username.toLowerCase() === username.toLowerCase()}
-                          voicePlayButton={
-                            message.is_from_host
-                              ? currentDesign.hostVoiceMessageStyles?.playButton
-                              : message.is_pinned
-                              ? currentDesign.pinnedVoiceMessageStyles?.playButton
-                              : message.username.toLowerCase() === username.toLowerCase()
-                              ? currentDesign.myVoiceMessageStyles?.playButton
-                              : currentDesign.voiceMessageStyles?.playButton
-                          }
-                          voicePlayIconColor={
-                            message.is_from_host
-                              ? currentDesign.hostVoiceMessageStyles?.playIconColor
-                              : message.is_pinned
-                              ? currentDesign.pinnedVoiceMessageStyles?.playIconColor
-                              : message.username.toLowerCase() === username.toLowerCase()
-                              ? currentDesign.myVoiceMessageStyles?.playIconColor
-                              : currentDesign.voiceMessageStyles?.playIconColor
-                          }
-                          voiceWaveformActive={
-                            message.is_from_host
-                              ? currentDesign.hostVoiceMessageStyles?.waveformActive
-                              : message.is_pinned
-                              ? currentDesign.pinnedVoiceMessageStyles?.waveformActive
-                              : message.username.toLowerCase() === username.toLowerCase()
-                              ? currentDesign.myVoiceMessageStyles?.waveformActive
-                              : currentDesign.voiceMessageStyles?.waveformActive
-                          }
-                          voiceWaveformInactive={
-                            message.is_from_host
-                              ? currentDesign.hostVoiceMessageStyles?.waveformInactive
-                              : message.is_pinned
-                              ? currentDesign.pinnedVoiceMessageStyles?.waveformInactive
-                              : message.username.toLowerCase() === username.toLowerCase()
-                              ? currentDesign.myVoiceMessageStyles?.waveformInactive
-                              : currentDesign.voiceMessageStyles?.waveformInactive
-                          }
-                          durationTextColor={
-                            message.is_from_host
-                              ? currentDesign.hostVoiceMessageStyles?.durationTextColor
-                              : message.is_pinned
-                              ? currentDesign.pinnedVoiceMessageStyles?.durationTextColor
-                              : message.username.toLowerCase() === username.toLowerCase()
-                              ? currentDesign.myVoiceMessageStyles?.durationTextColor
-                              : currentDesign.voiceMessageStyles?.durationTextColor
-                          }
-                        />
-                      </div>
+                      <VoiceMessagePlayer
+                        voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+                        duration={message.voice_duration || 0}
+                        waveformData={message.voice_waveform || []}
+                        isMyMessage={message.username.toLowerCase() === username.toLowerCase()}
+                        voiceContainerBg={
+                          message.is_from_host
+                            ? currentDesign.hostVoiceMessageStyles?.containerBg
+                            : message.is_pinned
+                            ? currentDesign.pinnedVoiceMessageStyles?.containerBg
+                            : message.username.toLowerCase() === username.toLowerCase()
+                            ? currentDesign.myVoiceMessageStyles?.containerBg
+                            : currentDesign.voiceMessageStyles?.containerBg
+                        }
+                        voicePlayButton={
+                          message.is_from_host
+                            ? currentDesign.hostVoiceMessageStyles?.playButton
+                            : message.is_pinned
+                            ? currentDesign.pinnedVoiceMessageStyles?.playButton
+                            : message.username.toLowerCase() === username.toLowerCase()
+                            ? currentDesign.myVoiceMessageStyles?.playButton
+                            : currentDesign.voiceMessageStyles?.playButton
+                        }
+                        voicePlayIconColor={
+                          message.is_from_host
+                            ? currentDesign.hostVoiceMessageStyles?.playIconColor
+                            : message.is_pinned
+                            ? currentDesign.pinnedVoiceMessageStyles?.playIconColor
+                            : message.username.toLowerCase() === username.toLowerCase()
+                            ? currentDesign.myVoiceMessageStyles?.playIconColor
+                            : currentDesign.voiceMessageStyles?.playIconColor
+                        }
+                        voiceWaveformActive={
+                          message.is_from_host
+                            ? currentDesign.hostVoiceMessageStyles?.waveformActive
+                            : message.is_pinned
+                            ? currentDesign.pinnedVoiceMessageStyles?.waveformActive
+                            : message.username.toLowerCase() === username.toLowerCase()
+                            ? currentDesign.myVoiceMessageStyles?.waveformActive
+                            : currentDesign.voiceMessageStyles?.waveformActive
+                        }
+                        voiceWaveformInactive={
+                          message.is_from_host
+                            ? currentDesign.hostVoiceMessageStyles?.waveformInactive
+                            : message.is_pinned
+                            ? currentDesign.pinnedVoiceMessageStyles?.waveformInactive
+                            : message.username.toLowerCase() === username.toLowerCase()
+                            ? currentDesign.myVoiceMessageStyles?.waveformInactive
+                            : currentDesign.voiceMessageStyles?.waveformInactive
+                        }
+                        durationTextColor={
+                          message.is_from_host
+                            ? currentDesign.hostVoiceMessageStyles?.durationTextColor
+                            : message.is_pinned
+                            ? currentDesign.pinnedVoiceMessageStyles?.durationTextColor
+                            : message.username.toLowerCase() === username.toLowerCase()
+                            ? currentDesign.myVoiceMessageStyles?.durationTextColor
+                            : currentDesign.voiceMessageStyles?.durationTextColor
+                        }
+                      />
                     ) : message.photo_url ? (
                       <PhotoMessage
                         photoUrl={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}

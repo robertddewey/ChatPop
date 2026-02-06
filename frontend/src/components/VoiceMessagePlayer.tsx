@@ -7,8 +7,11 @@ interface VoiceMessagePlayerProps {
   voiceUrl: string;
   duration: number;
   waveformData: number[];
+  caption?: string;
+  captionClassName?: string;
   className?: string;
   isMyMessage?: boolean;
+  voiceContainerBg?: string;
   voicePlayButton?: string;
   voicePlayIconColor?: string;
   voiceWaveformActive?: string;
@@ -45,8 +48,11 @@ export default function VoiceMessagePlayer({
   voiceUrl,
   duration,
   waveformData,
+  caption,
+  captionClassName = '',
   className = '',
   isMyMessage = false,
+  voiceContainerBg = 'bg-white/20',
   voicePlayButton = 'bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600',
   voicePlayIconColor = 'white',
   voiceWaveformActive = 'bg-gradient-to-t from-purple-500 to-blue-500',
@@ -276,35 +282,31 @@ export default function VoiceMessagePlayer({
     displayWaveform = Array(FIXED_BAR_COUNT).fill(0).map(() => Math.random() * 0.8 + 0.2);
   }
 
-  // Debug logging removed - component renders multiple times during page load which is normal React behavior
-
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg ${voiceContainerBg} ${className}`}>
       {/* Play/Pause Button */}
       <button
         onClick={togglePlayPause}
-        className={`flex-shrink-0 w-8 h-8 rounded-full transition-all flex items-center justify-center shadow-sm ${voicePlayButton}`}
+        className={`flex-shrink-0 w-7 h-7 rounded-full transition-all flex items-center justify-center ${voicePlayButton}`}
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isPlaying ? (
-          <Pause size={13} className={voicePlayIconColor} fill="currentColor" strokeWidth={0} />
+          <Pause size={12} className={voicePlayIconColor} fill="currentColor" strokeWidth={0} />
         ) : (
-          <Play size={13} className={`${voicePlayIconColor} ml-0.5`} fill="currentColor" strokeWidth={0} />
+          <Play size={12} className={`${voicePlayIconColor} ml-0.5`} fill="currentColor" strokeWidth={0} />
         )}
       </button>
 
-      {/* Waveform Visualization - Fixed width */}
+      {/* Waveform Visualization */}
       <div
-        className="h-8 flex items-center gap-[1px] cursor-pointer"
-        style={{ width: '150px' }}
+        className="h-7 flex-1 min-w-[100px] max-w-[150px] flex items-center gap-[1px] cursor-pointer"
         onClick={handleWaveformClick}
       >
         {displayWaveform.map((amplitude, index) => {
           const barProgress = index / displayWaveform.length;
           const isActive = barProgress <= progress;
-          // Use square root to expand variation (makes quiet sounds quieter, loud sounds louder)
           const enhancedAmplitude = Math.sqrt(amplitude);
-          const height = Math.max(4, enhancedAmplitude * 40); // Min 4px, max 40px
+          const height = Math.max(3, enhancedAmplitude * 28);
 
           return (
             <div

@@ -6,15 +6,17 @@ import { Mic, Square, Play, Trash2 } from 'lucide-react';
 import { WaveformAnalyzer, downsampleWaveform, type RecordingMetadata } from '@/lib/waveform';
 
 interface VoiceRecorderProps {
-  onRecordingComplete: (audioBlob: Blob, metadata: RecordingMetadata) => void;
+  onRecordingComplete: (audioBlob: Blob, metadata: RecordingMetadata, caption: string) => void;
   onRecordingReady?: (hasRecording: boolean) => void;
+  onSendComplete?: () => void;
+  caption?: string;
   disabled?: boolean;
   className?: string;
 }
 
 type RecordingState = 'idle' | 'recording' | 'preview';
 
-export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, disabled, className }: VoiceRecorderProps) {
+export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, onSendComplete, caption = '', disabled, className }: VoiceRecorderProps) {
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -329,8 +331,11 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, d
   const sendRecording = () => {
     if (!audioBlob || !recordingMetadata) return;
 
-    // Call parent callback with the blob and metadata
-    onRecordingComplete(audioBlob, recordingMetadata);
+    // Call parent callback with the blob, metadata, and caption
+    onRecordingComplete(audioBlob, recordingMetadata, caption);
+
+    // Notify parent that send is complete (so they can clear caption)
+    onSendComplete?.();
 
     // Reset to idle state
     deleteRecording();
