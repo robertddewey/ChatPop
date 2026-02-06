@@ -373,6 +373,7 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, o
       {recordingState === 'recording' && (
         <>
           <button
+            type="button"
             onClick={stopRecording}
             className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
             title="Stop recording"

@@ -251,7 +251,7 @@ function MessageInputComponent({
               e.preventDefault(); // Prevent blur before click registers
               handleCollapse();
             }}
-            className="w-9 h-9 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-zinc-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-zinc-600 transition-colors flex-shrink-0"
+            className="w-9 h-9 flex items-center justify-center rounded-lg bg-zinc-700 text-gray-400 hover:bg-zinc-600 transition-colors flex-shrink-0"
             aria-label="Collapse input"
           >
             <ChevronLeft className="w-5 h-5" />
