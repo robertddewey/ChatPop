@@ -62,8 +62,8 @@ export default function PhotoMessage({
   if (hasError) {
     return (
       <div
-        className={`flex items-center justify-center bg-gray-100 dark:bg-zinc-800 rounded-lg text-gray-500 dark:text-gray-400 text-sm ${className}`}
-        style={{ width: displayWidth, height: displayHeight }}
+        className={`flex items-center justify-center bg-gray-100 dark:bg-zinc-800 rounded-lg text-gray-500 dark:text-gray-400 text-sm max-w-full ${className}`}
+        style={{ width: displayWidth, height: displayHeight, maxWidth: '100%' }}
       >
         Failed to load image
       </div>
@@ -74,8 +74,8 @@ export default function PhotoMessage({
     <>
       {/* Thumbnail in message */}
       <div
-        className={`relative rounded-lg overflow-hidden cursor-pointer group ${className}`}
-        style={{ width: displayWidth, height: displayHeight }}
+        className={`relative rounded-lg overflow-hidden cursor-pointer group max-w-full ${className}`}
+        style={{ width: displayWidth, height: displayHeight, maxWidth: '100%' }}
         onClick={openFullscreen}
       >
         {isLoading && (

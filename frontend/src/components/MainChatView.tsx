@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
@@ -319,52 +319,24 @@ function MainChatView({
                   {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
                 {message.voice_url ? (
-                  <div className={`px-3 py-2 rounded-lg ${currentDesign.hostVoiceMessageStyles?.containerBg || 'bg-teal-800'}`}>
-                    <VoiceMessagePlayer
-                      voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                      duration={message.voice_duration || 0}
-                      waveformData={message.voice_waveform || []}
-                      isMyMessage={false}
-                      voicePlayButton={currentDesign.hostVoiceMessageStyles?.playButton}
-                      voicePlayIconColor={currentDesign.hostVoiceMessageStyles?.playIconColor}
-                      voiceWaveformActive={currentDesign.hostVoiceMessageStyles?.waveformActive}
-                      voiceWaveformInactive={currentDesign.hostVoiceMessageStyles?.waveformInactive}
-                      durationTextColor={currentDesign.hostVoiceMessageStyles?.durationTextColor}
-                    />
+                  <div className="flex items-center gap-2">
+                    <Mic size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
+                    <span className={`text-sm ${currentDesign.hostText} opacity-70`}>
+                      Audio {message.voice_duration ? `(${Math.floor(message.voice_duration / 60)}:${String(Math.floor(message.voice_duration % 60)).padStart(2, '0')})` : ''}
+                    </span>
                   </div>
                 ) : message.photo_url ? (
                   <div className="flex items-center gap-2">
-                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                      <img
-                        src={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                        alt="Host photo"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
+                    <ImageIcon size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
                     <span className={`text-sm ${currentDesign.hostText} opacity-70`}>
                       Photo
                     </span>
                   </div>
                 ) : message.video_url ? (
                   <div className="flex items-center gap-2">
-                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 relative bg-black">
-                      {message.video_thumbnail_url ? (
-                        <img
-                          src={`${message.video_thumbnail_url}${message.video_thumbnail_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                          alt="Video thumbnail"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-zinc-700" />
-                      )}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-6 h-6 rounded-full bg-black/50 flex items-center justify-center">
-                          <div className="w-0 h-0 border-l-[6px] border-l-white border-y-[4px] border-y-transparent ml-0.5" />
-                        </div>
-                      </div>
-                    </div>
+                    <Video size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
                     <span className={`text-sm ${currentDesign.hostText} opacity-70`}>
-                      Video
+                      Video {message.video_duration ? `(${Math.floor(message.video_duration / 60)}:${String(Math.floor(message.video_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
                 ) : (
@@ -420,52 +392,24 @@ function MainChatView({
                   {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
                 {stickyPinnedMessage.voice_url ? (
-                  <div className={`px-3 py-2 rounded-lg ${currentDesign.pinnedVoiceMessageStyles?.containerBg || 'bg-teal-800'}`}>
-                    <VoiceMessagePlayer
-                      voiceUrl={`${stickyPinnedMessage.voice_url}${stickyPinnedMessage.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                      duration={stickyPinnedMessage.voice_duration || 0}
-                      waveformData={stickyPinnedMessage.voice_waveform || []}
-                      isMyMessage={false}
-                      voicePlayButton={currentDesign.pinnedVoiceMessageStyles?.playButton}
-                      voicePlayIconColor={currentDesign.pinnedVoiceMessageStyles?.playIconColor}
-                      voiceWaveformActive={currentDesign.pinnedVoiceMessageStyles?.waveformActive}
-                      voiceWaveformInactive={currentDesign.pinnedVoiceMessageStyles?.waveformInactive}
-                      durationTextColor={currentDesign.pinnedVoiceMessageStyles?.durationTextColor}
-                    />
+                  <div className="flex items-center gap-2">
+                    <Mic size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
+                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70`}>
+                      Audio {stickyPinnedMessage.voice_duration ? `(${Math.floor(stickyPinnedMessage.voice_duration / 60)}:${String(Math.floor(stickyPinnedMessage.voice_duration % 60)).padStart(2, '0')})` : ''}
+                    </span>
                   </div>
                 ) : stickyPinnedMessage.photo_url ? (
                   <div className="flex items-center gap-2">
-                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                      <img
-                        src={`${stickyPinnedMessage.photo_url}${stickyPinnedMessage.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                        alt="Pinned photo"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
+                    <ImageIcon size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
                     <span className={`text-sm ${currentDesign.pinnedText} opacity-70`}>
                       Photo
                     </span>
                   </div>
                 ) : stickyPinnedMessage.video_url ? (
                   <div className="flex items-center gap-2">
-                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 relative bg-black">
-                      {stickyPinnedMessage.video_thumbnail_url ? (
-                        <img
-                          src={`${stickyPinnedMessage.video_thumbnail_url}${stickyPinnedMessage.video_thumbnail_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                          alt="Video thumbnail"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-zinc-700" />
-                      )}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-6 h-6 rounded-full bg-black/50 flex items-center justify-center">
-                          <div className="w-0 h-0 border-l-[6px] border-l-white border-y-[4px] border-y-transparent ml-0.5" />
-                        </div>
-                      </div>
-                    </div>
+                    <Video size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
                     <span className={`text-sm ${currentDesign.pinnedText} opacity-70`}>
-                      Video
+                      Video {stickyPinnedMessage.video_duration ? `(${Math.floor(stickyPinnedMessage.video_duration / 60)}:${String(Math.floor(stickyPinnedMessage.video_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
                 ) : (
