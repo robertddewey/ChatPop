@@ -47,6 +47,15 @@ function extractInlineStyles(classString: string): { classes: string; style: Rea
   return { classes: classes.join(' '), style };
 }
 
+// Format timestamp with date (M/D) and time
+function formatTimestamp(dateString: string): string {
+  const date = new Date(dateString);
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${month}/${day} ${time}`;
+}
+
 // Tailwind color lookup table for icon colors
 const tailwindColors: Record<string, string> = {
   'text-amber-400': '#fbbf24',
@@ -316,7 +325,7 @@ function MainChatView({
                   className="absolute top-3 right-3 text-xs opacity-60"
                   style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
                 >
-                  {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {formatTimestamp(message.created_at)}
                 </span>
                 {message.voice_url ? (
                   <div className="flex items-center gap-2">
@@ -389,7 +398,7 @@ function MainChatView({
                   className="absolute top-3 right-3 text-xs opacity-60"
                   style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
                 >
-                  {new Date(stickyPinnedMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {formatTimestamp(stickyPinnedMessage.created_at)}
                 </span>
                 {stickyPinnedMessage.voice_url ? (
                   <div className="flex items-center gap-2">
@@ -525,7 +534,7 @@ function MainChatView({
                       ) || '#ffffff'
                     }}
                   >
-                    {new Date(lastMessageInThread.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                    {formatTimestamp(lastMessageInThread.created_at)}
                   </span>
                 </div>
               )}
@@ -560,7 +569,7 @@ function MainChatView({
                         className="text-xs opacity-60"
                         style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
                       >
-                        {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        {formatTimestamp(message.created_at)}
                       </span>
                     </div>
                   )}
@@ -589,7 +598,7 @@ function MainChatView({
                         className="text-xs opacity-60"
                         style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
                       >
-                        {new Date(message.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        {formatTimestamp(message.created_at)}
                       </span>
                     </div>
                   )}
