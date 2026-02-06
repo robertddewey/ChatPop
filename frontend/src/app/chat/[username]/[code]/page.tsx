@@ -246,6 +246,11 @@ const defaultTheme: ChatTheme = {
   reaction_highlight_bg: "bg-zinc-700",
   reaction_highlight_border: "border border-zinc-500",
   reaction_highlight_text: "text-zinc-200",
+  // Avatar settings
+  avatar_style: "pixel-art",
+  avatar_size: "w-10 h-10",
+  avatar_border: null,
+  avatar_spacing: "mr-3",
 };
 
 export default function ChatPage() {

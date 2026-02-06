@@ -589,6 +589,18 @@ Response JSON:
         'Maximum time extension per Add-to-Pin (caps duration for tiers beyond explicit list). Default: 60 minutes',
         int
     ),
+
+    # Avatar Settings (DiceBear)
+    'DICEBEAR_STYLE': (
+        'pixel-art',
+        'Default DiceBear avatar style for anonymous users. Options: pixel-art, initials, avataaars, bottts, lorelei, thumbs, identicon, adventurer, fun-emoji, notionists',
+        str
+    ),
+    'DICEBEAR_SIZE': (
+        40,
+        'Default avatar size in pixels for DiceBear avatars',
+        int
+    ),
 }
 
 # Custom User Model

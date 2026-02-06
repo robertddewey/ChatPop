@@ -142,6 +142,11 @@ export interface ChatTheme {
   reaction_highlight_bg: string;
   reaction_highlight_border: string;
   reaction_highlight_text: string;
+  // Avatar settings
+  avatar_style: string;
+  avatar_size: string;
+  avatar_border: string | null;
+  avatar_spacing: string;
 }
 
 export interface ChatRoom {

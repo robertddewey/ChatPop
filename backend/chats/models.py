@@ -83,6 +83,12 @@ class ChatTheme(models.Model):
     reaction_highlight_border = models.CharField(max_length=100, default='border border-zinc-500', help_text="Border classes for highlighted reaction pill")
     reaction_highlight_text = models.CharField(max_length=100, default='text-zinc-200', help_text="Text color classes for highlighted reaction count")
 
+    # Avatar Styling (DiceBear profile photos)
+    avatar_style = models.CharField(max_length=50, null=True, blank=True, help_text="DiceBear avatar style override (e.g., 'pixel-art', 'initials'). Null = use Constance default")
+    avatar_size = models.CharField(max_length=50, null=True, blank=True, help_text="Tailwind size classes for avatar (e.g., 'w-10 h-10'). Null = use Constance default")
+    avatar_border = models.CharField(max_length=100, null=True, blank=True, help_text="Optional border/ring classes (e.g., 'ring-2 ring-zinc-700')")
+    avatar_spacing = models.CharField(max_length=50, default='mr-3', help_text="Spacing between avatar and message content")
+
     # Username Styling (per message type)
     my_username = models.CharField(max_length=200, default='text-xs font-semibold text-white', help_text="Tailwind classes for current user's username")
     regular_username = models.CharField(max_length=200, default='text-xs font-semibold text-white', help_text="Tailwind classes for other users' usernames")

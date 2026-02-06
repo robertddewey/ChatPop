@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.utils import timezone
 from django.core.exceptions import ValidationError as DjangoValidationError
+from constance import config
 from .models import ChatRoom, Message, Transaction, ChatParticipation, ChatTheme, MessageReaction
 from .utils.username.validators import validate_username
 from accounts.serializers import UserSerializer
@@ -9,6 +10,9 @@ from accounts.serializers import UserSerializer
 class ChatThemeSerializer(serializers.ModelSerializer):
     """Serializer for ChatTheme model"""
     theme_color = serializers.SerializerMethodField()
+    # Avatar fields with Constance fallbacks
+    avatar_style = serializers.SerializerMethodField()
+    avatar_size = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatTheme
@@ -29,7 +33,8 @@ class ChatThemeSerializer(serializers.ModelSerializer):
             'my_timestamp', 'regular_timestamp', 'host_timestamp', 'pinned_timestamp',
             'reply_preview_container', 'reply_preview_icon', 'reply_preview_username',
             'reply_preview_content', 'reply_preview_close_button', 'reply_preview_close_icon',
-            'reaction_highlight_bg', 'reaction_highlight_border', 'reaction_highlight_text'
+            'reaction_highlight_bg', 'reaction_highlight_border', 'reaction_highlight_text',
+            'avatar_style', 'avatar_size', 'avatar_border', 'avatar_spacing'
         ]
 
     def get_theme_color(self, obj):
@@ -38,6 +43,20 @@ class ChatThemeSerializer(serializers.ModelSerializer):
             'light': obj.theme_color_light,
             'dark': obj.theme_color_dark
         }
+
+    def get_avatar_style(self, obj):
+        """Return avatar style with Constance fallback"""
+        return obj.avatar_style or config.DICEBEAR_STYLE
+
+    def get_avatar_size(self, obj):
+        """Return avatar size with Constance fallback (as Tailwind classes)"""
+        if obj.avatar_size:
+            return obj.avatar_size
+        # Convert Constance pixel size to Tailwind classes
+        size_px = config.DICEBEAR_SIZE
+        # Map common sizes to Tailwind
+        size_map = {24: 'w-6 h-6', 32: 'w-8 h-8', 40: 'w-10 h-10', 48: 'w-12 h-12'}
+        return size_map.get(size_px, f'w-10 h-10')
 
 
 class ChatRoomSerializer(serializers.ModelSerializer):

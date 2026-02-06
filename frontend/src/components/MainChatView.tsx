@@ -161,6 +161,11 @@ function getTextColor(classString: string | undefined): string | undefined {
   return undefined;
 }
 
+// Generate DiceBear avatar URL
+function getDiceBearUrl(style: string, seed: string, size: number = 80): string {
+  return `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
+}
+
 interface MainChatViewProps {
   chatRoom: ChatRoom | null;
   currentUserId: string | null;
@@ -333,18 +338,27 @@ function MainChatView({
                 className={`${currentDesign.stickyHostMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
                 onClick={() => scrollToMessage(message.id)}
               >
-                <div className="flex items-center gap-1 mb-1">
-                  <span
-                    className={currentDesign.stickyHostUsername || 'text-sm font-semibold'}
-                    style={{ color: getTextColor(currentDesign.stickyHostUsername || currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff' }}
-                  >
-                    {message.username}
-                  </span>
-                  {message.username_is_reserved && (
-                    <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
-                  )}
-                  <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                </div>
+                <div className="flex gap-3">
+                  {/* Avatar */}
+                  <img
+                    src={getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
+                    alt={message.username}
+                    className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 flex-shrink-0 ${currentDesign.avatarBorder || ''}`}
+                  />
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1 mb-1">
+                      <span
+                        className={currentDesign.stickyHostUsername || 'text-sm font-semibold'}
+                        style={{ color: getTextColor(currentDesign.stickyHostUsername || currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff' }}
+                      >
+                        {message.username}
+                      </span>
+                      {message.username_is_reserved && (
+                        <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                      )}
+                      <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                    </div>
                 <span
                   className="absolute top-3 right-3 text-xs opacity-60"
                   style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
@@ -377,6 +391,8 @@ function MainChatView({
                     {message.content}
                   </p>
                 )}
+                  </div>
+                </div>
               </div>
             </MessageActionsModal>
           ))}
@@ -401,13 +417,22 @@ function MainChatView({
                 className={`${currentDesign.stickyPinnedMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
                 onClick={() => scrollToMessage(stickyPinnedMessage.id)}
               >
-                <div className="flex items-center gap-1 mb-1">
-                  <span
-                    className={currentDesign.stickyPinnedUsername || 'text-sm font-semibold'}
-                    style={{ color: getTextColor(currentDesign.stickyPinnedUsername || currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
-                  >
-                    {stickyPinnedMessage.username}
-                  </span>
+                <div className="flex gap-3">
+                  {/* Avatar */}
+                  <img
+                    src={getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', stickyPinnedMessage.username, 80)}
+                    alt={stickyPinnedMessage.username}
+                    className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 flex-shrink-0 ${currentDesign.avatarBorder || ''}`}
+                  />
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1 mb-1">
+                      <span
+                        className={currentDesign.stickyPinnedUsername || 'text-sm font-semibold'}
+                        style={{ color: getTextColor(currentDesign.stickyPinnedUsername || currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
+                      >
+                        {stickyPinnedMessage.username}
+                      </span>
                   {stickyPinnedMessage.username_is_reserved && (
                     <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
                   )}
@@ -450,6 +475,8 @@ function MainChatView({
                     {stickyPinnedMessage.content}
                   </p>
                 )}
+                  </div>
+                </div>
               </div>
             </MessageActionsModal>
           )}
@@ -471,7 +498,7 @@ function MainChatView({
       >
         {/* Dynamic padding-top to avoid overlap with sticky section */}
         <div
-          className="space-y-3 relative z-10"
+          className="relative z-10"
           style={{ paddingTop: stickyHeight > 0 ? `${stickyHeight + 8}px` : undefined }}
         >
         {/* Loading indicator for infinite scroll */}
@@ -526,54 +553,75 @@ function MainChatView({
             }
           }
 
+          // Get avatar settings from theme
+          const avatarStyle = currentDesign.avatarStyle || 'pixel-art';
+          const avatarSize = currentDesign.avatarSize || 'w-10 h-10';
+          const avatarSpacing = currentDesign.avatarSpacing || 'mr-3';
+          const avatarBorder = currentDesign.avatarBorder || '';
+          const isRegularMessage = !message.is_from_host && !message.is_pinned;
+
+          // Determine spacing: first message in thread gets more margin, consecutive messages get minimal
+          const showAvatar = isFirstInThread || message.is_from_host || message.is_pinned;
+          const messageMargin = showAvatar ? 'mt-3' : 'mt-0.5';
+
           return (
-            <div key={message.id} data-message-id={message.id} className={newMessageIds.has(message.id) ? 'animate-message-appear' : undefined}>
-              {/* Show username header for first message in thread */}
-              {isFirstInThread && !message.is_from_host && !message.is_pinned && (
-                <div className="mb-1 flex items-center gap-1">
-                  <span
-                    className={(() => {
-                      const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                      return isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
-                    })() || 'text-sm font-semibold'}
-                    style={{
-                      color: (() => {
-                        const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                        const field = isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
-                        const color = getTextColor(field) || '#ffffff';
-                        return color;
-                      })()
-                    }}
-                  >
-                    {message.username}
-                  </span>
-                  {message.username_is_reserved && (
-                    <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+            <div key={message.id} data-message-id={message.id} className={`${messageMargin} ${newMessageIds.has(message.id) ? 'animate-message-appear' : ''}`}>
+              {/* Main message layout - flex with avatar column */}
+              <div className="flex">
+                {/* Avatar column - for all messages */}
+                <div className={`${avatarSize} flex-shrink-0 ${avatarSpacing}`}>
+                  {showAvatar ? (
+                    <img
+                      src={getDiceBearUrl(avatarStyle, message.username, 80)}
+                      alt={message.username}
+                      className={`${avatarSize} rounded-full bg-zinc-700 ${avatarBorder}`}
+                    />
+                  ) : (
+                    /* Continuous thread line for consecutive messages - extends exactly to bridge mt-0.5 gap */
+                    <div className="w-full h-full flex justify-center relative">
+                      <div className="w-0.5 bg-zinc-600/30 absolute -top-0.5 bottom-0"></div>
+                    </div>
                   )}
-                  <span
-                    className="text-xs opacity-60"
-                    style={{
-                      color: getTextColor(
-                        message.username.toLowerCase() === username.toLowerCase()
-                          ? currentDesign.myTimestamp
-                          : currentDesign.regularTimestamp
-                      ) || '#ffffff'
-                    }}
-                  >
-                    {formatTimestamp(lastMessageInThread.created_at)}
-                  </span>
                 </div>
-              )}
 
-              {/* Message with threading line */}
-              <div className="flex gap-0">
-                {/* Vertical thread line for consecutive messages */}
-                {!isFirstInThread && !message.is_from_host && !message.is_pinned && (
-                  <div className="w-0.5 mr-2 bg-gray-400 dark:bg-gray-600 opacity-30"></div>
-                )}
-
-                {/* Wrapper for header + bubble */}
-                <div className="flex-1">
+                {/* Content column */}
+                <div className="flex-1 min-w-0">
+                  {/* Username header for first regular message in thread */}
+                  {isRegularMessage && isFirstInThread && (
+                    <div className="mb-1 flex items-center gap-1">
+                      <span
+                        className={(() => {
+                          const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                          return isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
+                        })() || 'text-sm font-semibold'}
+                        style={{
+                          color: (() => {
+                            const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                            const field = isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
+                            const color = getTextColor(field) || '#ffffff';
+                            return color;
+                          })()
+                        }}
+                      >
+                        {message.username}
+                      </span>
+                      {message.username_is_reserved && (
+                        <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                      )}
+                      <span
+                        className="text-xs opacity-60"
+                        style={{
+                          color: getTextColor(
+                            message.username.toLowerCase() === username.toLowerCase()
+                              ? currentDesign.myTimestamp
+                              : currentDesign.regularTimestamp
+                          ) || '#ffffff'
+                        }}
+                      >
+                        {formatTimestamp(lastMessageInThread.created_at)}
+                      </span>
+                    </div>
+                  )}
                   {/* Host message header - OUTSIDE bubble */}
                   {message.is_from_host && (
                     <div className="mb-1 flex items-center gap-1">
