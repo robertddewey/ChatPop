@@ -1,6 +1,11 @@
 import type { Viewport } from "next";
 import Script from "next/script";
+import { Figtree } from "next/font/google";
 import '../chat-layout.css';
+
+const figtree = Figtree({
+  subsets: ["latin"],
+});
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -109,7 +114,9 @@ export default function ChatLayout({
           })();
         `}
       </Script>
-      {children}
+      <div className={figtree.className}>
+        {children}
+      </div>
     </>
   );
 }

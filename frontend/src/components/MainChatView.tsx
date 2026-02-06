@@ -50,10 +50,34 @@ function extractInlineStyles(classString: string): { classes: string; style: Rea
 // Format timestamp with date (M/D) and time
 function formatTimestamp(dateString: string): string {
   const date = new Date(dateString);
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
+  const now = new Date();
   const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  return `${month}/${day} ${time}`;
+
+  // Get date-only values for comparison (strip time)
+  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayOnly = new Date(todayOnly);
+  yesterdayOnly.setDate(yesterdayOnly.getDate() - 1);
+
+  // Calculate days difference
+  const daysDiff = Math.floor((todayOnly.getTime() - dateOnly.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (dateOnly.getTime() === todayOnly.getTime()) {
+    // Today - just show time
+    return time;
+  } else if (dateOnly.getTime() === yesterdayOnly.getTime()) {
+    // Yesterday
+    return `Yesterday ${time}`;
+  } else if (daysDiff < 7 && daysDiff > 0) {
+    // Within last week - show abbreviated day name
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+    return `${dayName} ${time}`;
+  } else {
+    // Older - show month/day
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return `${month}/${day} ${time}`;
+  }
 }
 
 // Tailwind color lookup table for icon colors
@@ -508,9 +532,11 @@ function MainChatView({
               {isFirstInThread && !message.is_from_host && !message.is_pinned && (
                 <div className="mb-1 flex items-center gap-1">
                   <span
+                    className={(() => {
+                      const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                      return isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
+                    })() || 'text-sm font-semibold'}
                     style={{
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
                       color: (() => {
                         const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
                         const field = isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
@@ -552,7 +578,12 @@ function MainChatView({
                   {message.is_from_host && (
                     <div className="mb-1 flex items-center gap-1">
                       <span
-                        className="text-xs font-semibold"
+                        className={(() => {
+                          const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                          return isMyMessage
+                            ? (currentDesign.myHostUsername || currentDesign.hostUsername || 'text-sm font-semibold')
+                            : (currentDesign.hostUsername || 'text-sm font-semibold');
+                        })()}
                         style={{
                           color: message.username.toLowerCase() === username.toLowerCase()
                             ? getTextColor(currentDesign.myHostUsername) || '#ef4444'  // Your own host messages
@@ -578,9 +609,11 @@ function MainChatView({
                   {message.is_pinned && !message.is_from_host && (
                     <div className="mb-1 flex items-center gap-1">
                       <span
+                        className={(() => {
+                          const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                          return isMyMessage ? currentDesign.myUsername : currentDesign.pinnedUsername;
+                        })() || 'text-sm font-semibold'}
                         style={{
-                          fontSize: '0.75rem',
-                          fontWeight: '600',
                           color: getTextColor(
                             message.username.toLowerCase() === username.toLowerCase()
                               ? currentDesign.myUsername
@@ -667,7 +700,7 @@ function MainChatView({
 
                     {/* Caption text - shown above media when message has both */}
                     {message.content && (message.voice_url || message.photo_url || message.video_url) && (
-                      <p className={`text-sm mb-2 ${
+                      <p className={`mb-2 ${
                         message.is_from_host
                           ? currentDesign.hostText
                           : message.is_pinned
@@ -755,7 +788,7 @@ function MainChatView({
                         duration={message.video_duration || 0}
                       />
                     ) : message.content ? (
-                      <p className={`text-sm ${
+                      <p className={
                         message.is_from_host
                           ? currentDesign.hostText
                           : message.is_pinned
@@ -763,7 +796,7 @@ function MainChatView({
                           : message.username.toLowerCase() === username.toLowerCase()
                           ? currentDesign.myText
                           : currentDesign.regularText
-                      }`}>
+                      }>
                         {message.content}
                       </p>
                     ) : (
