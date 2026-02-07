@@ -282,9 +282,14 @@ function MainChatView({
 
   // Track new message IDs for animation (computed during render)
   // Skip ALL animations during initial render to prevent page bouncing
+  // Skip animations when loading older messages (infinite scroll) to prevent jump
   const newMessageIds = useMemo(() => {
     // Don't animate anything until initial render is complete
     if (!initialRenderDoneRef.current) {
+      return new Set<string>();
+    }
+    // Don't animate prepended older messages from infinite scroll
+    if (loadingOlder) {
       return new Set<string>();
     }
     const newIds = new Set<string>();
@@ -294,7 +299,7 @@ function MainChatView({
       }
     }
     return newIds;
-  }, [filteredMessages]);
+  }, [filteredMessages, loadingOlder]);
 
   // After render, mark all current messages as "seen" so they won't animate again
   // Also mark initial render as complete after first effect run
@@ -501,10 +506,10 @@ function MainChatView({
           className="relative z-10"
           style={{ paddingTop: stickyHeight > 0 ? `${stickyHeight + 8}px` : undefined }}
         >
-        {/* Loading indicator for infinite scroll */}
+        {/* Loading indicator for infinite scroll - positioned absolutely to avoid layout shift */}
         {loadingOlder && (
-          <div className="flex justify-center py-2">
-            <div className="animate-pulse text-gray-400 text-sm">Loading older messages...</div>
+          <div className="absolute top-0 left-0 right-0 flex justify-center py-2 pointer-events-none z-30">
+            <div className="animate-pulse text-gray-400 text-sm bg-black/50 px-3 py-1 rounded-full">Loading...</div>
           </div>
         )}
         {hasJoined && filteredMessages.map((message, index) => {

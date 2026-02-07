@@ -703,73 +703,11 @@ export default function ChatPage() {
           container.scrollTop = container.scrollHeight;
         }
         initialScrollDoneRef.current = true; // Mark scroll complete
-        // Preload older messages
-        if (allMessages.length > 0) {
-          setTimeout(() => preloadOlderMessages(allMessages), 100);
-        }
       });
     } catch (err) {
       console.error('Failed to load messages:', err);
     } finally {
       isLoadingMessagesRef.current = false;
-    }
-  };
-
-  // Preload older messages silently (called after initial load)
-  const preloadOlderMessages = async (currentMessages: Message[]) => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    if (preloadLockRef.current || loadingOlder) return;
-    preloadLockRef.current = true;
-
-    try {
-      setLoadingOlder(true);
-
-      const oldestMessage = currentMessages[0];
-      const beforeTimestamp = new Date(oldestMessage.created_at).getTime() / 1000;
-
-      const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(
-        code, beforeTimestamp, 100, roomUsername
-      );
-
-      if (olderMessages.length > 0) {
-        const existingIds = new Set(currentMessages.map(m => m.id));
-        const uniqueOlderMessages = olderMessages.filter(m => !existingIds.has(m.id));
-
-        if (uniqueOlderMessages.length > 0) {
-          isInsertingRef.current = true;
-
-          const previousScrollHeight = container.scrollHeight;
-          const previousScrollTop = container.scrollTop;
-
-          flushSync(() => {
-            setMessages(prev => {
-              const prevIds = new Set(prev.map(m => m.id));
-              const filtered = uniqueOlderMessages.filter(m => !prevIds.has(m.id));
-              return [...filtered, ...prev];
-            });
-          });
-
-          const newScrollHeight = container.scrollHeight;
-          const heightDifference = newScrollHeight - previousScrollHeight;
-          container.scrollTop = previousScrollTop + heightDifference;
-
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              isInsertingRef.current = false;
-            });
-          });
-        }
-      }
-
-      setHasMoreMessages(hasMore);
-    } catch (err) {
-      console.error('Failed to preload older messages:', err);
-      isInsertingRef.current = false;
-    } finally {
-      preloadLockRef.current = false;
-      setLoadingOlder(false);
     }
   };
 
@@ -819,15 +757,7 @@ export default function ChatPage() {
         const targetScrollTop = previousScrollTop + heightDifference;
         container.scrollTop = targetScrollTop;
 
-        // Unfreeze sticky after a short delay
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            isInsertingRef.current = false;
-          });
-        });
-
-        // Unfreeze sticky state after scroll adjustment settles
-        // Unfreeze sticky after adjustment settles
+        // Unfreeze sticky after scroll adjustment settles
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             isInsertingRef.current = false;
@@ -1193,9 +1123,6 @@ export default function ChatPage() {
 
   // Track if we're inserting older messages (to freeze sticky during insert)
   const isInsertingRef = useRef(false);
-
-  // Ref-based lock for preload (synchronous, unlike state)
-  const preloadLockRef = useRef(false);
 
   // Track last message ID to detect NEW messages vs prepended old ones
   const lastMessageIdRef = useRef<string | null>(null);
