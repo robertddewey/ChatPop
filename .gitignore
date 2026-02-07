@@ -23,6 +23,7 @@ htmlcov/
 db.sqlite3
 *.log
 media/
+!backend/chatpop/utils/media/
 staticfiles/
 
 # Environment variables
