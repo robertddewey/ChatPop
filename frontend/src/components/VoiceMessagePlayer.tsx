@@ -283,7 +283,7 @@ export default function VoiceMessagePlayer({
   }
 
   return (
-    <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg ${voiceContainerBg} ${className}`}>
+    <div className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg max-w-[280px] ${voiceContainerBg} ${className}`}>
       {/* Play/Pause Button */}
       <button
         onClick={togglePlayPause}
