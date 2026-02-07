@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, Dices } from 'lucide-react';
+import { BadgeCheck, Dices, RotateCcw } from 'lucide-react';
 import type { ChatRoom } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
@@ -18,6 +18,7 @@ interface JoinChatModalProps {
   isLoggedIn: boolean;
   hasReservedUsername?: boolean;
   themeIsDarkMode?: boolean;
+  userAvatarUrl?: string | null;
   onJoin: (username: string, accessCode?: string) => void;
 }
 
@@ -28,6 +29,7 @@ export default function JoinChatModal({
   isLoggedIn,
   hasReservedUsername = false,
   themeIsDarkMode = true,
+  userAvatarUrl,
   onJoin,
 }: JoinChatModalProps) {
   const router = useRouter();
@@ -60,7 +62,10 @@ export default function JoinChatModal({
     error: 'text-red-600',
   };
 
-  const [username, setUsername] = useState('');
+  // Initialize username with reserved username for logged-in users
+  const [username, setUsername] = useState(
+    isLoggedIn && hasReservedUsername && currentUserDisplayName ? currentUserDisplayName : ''
+  );
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
@@ -89,6 +94,33 @@ export default function JoinChatModal({
   }, []);
   const initAudioContext = soundModule?.initAudioContext ?? (() => {});
   const playJoinSound = soundModule?.playJoinSound ?? (() => {});
+
+  // Helper to generate DiceBear avatar URL
+  const getDiceBearUrl = (seed: string, size: number = 80): string => {
+    return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
+  };
+
+  // Get the current avatar URL based on username
+  const getCurrentAvatarUrl = (): string => {
+    // If using reserved username and we have a stored avatar, use it
+    if (hasReservedUsername && userAvatarUrl && username.toLowerCase() === currentUserDisplayName.toLowerCase()) {
+      return userAvatarUrl;
+    }
+    // Otherwise generate from username seed
+    return getDiceBearUrl(username || currentUserDisplayName || 'anonymous');
+  };
+
+  // Check if reset button should be enabled (username differs from reserved)
+  const isResetEnabled = hasReservedUsername && username.toLowerCase() !== currentUserDisplayName.toLowerCase();
+
+  // Handle reset to reserved username
+  const handleResetUsername = () => {
+    if (hasReservedUsername && currentUserDisplayName) {
+      setUsername(currentUserDisplayName);
+      setUsernameSource('manual');
+      setDiceUsername(null);
+    }
+  };
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css
@@ -305,6 +337,17 @@ export default function JoinChatModal({
           )}
         </div>
 
+        {/* Avatar Preview */}
+        {!hasJoinedBefore && !isReturningUser && (
+          <div className="flex justify-center mb-6">
+            <img
+              src={getCurrentAvatarUrl()}
+              alt="Your avatar"
+              className="w-20 h-20 rounded-full bg-zinc-700"
+            />
+          </div>
+        )}
+
         {/* Form */}
         <form onSubmit={handleJoin} className="space-y-4">
           {/* Username Display or Input */}
@@ -319,56 +362,46 @@ export default function JoinChatModal({
               </div>
             </div>
           ) : isLoggedIn ? (
-            // Logged-in first-time user - editable username pre-filled with reserved_username
+            // Logged-in first-time user - read-only username with dice/reset buttons
             <div>
               <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
-                Pick a username
-                {hasReservedUsername && currentUserDisplayName && (
-                  <>
-                    {' '}(
-                    <span
-                      onClick={() => {
-                        setUsername(currentUserDisplayName);
-                        setUsernameSource('manual');
-                      }}
-                      className="cursor-pointer hover:text-cyan-400 transition-colors"
-                    >
-                      {currentUserDisplayName}
-                    </span>
-                    )
-                  </>
-                )}
+                Your username
               </label>
               <div className="relative">
                 <input
                   type="text"
                   value={username}
-                  onChange={(e) => {
-                    const newValue = e.target.value;
-                    setUsername(newValue);
-                    // If user edits back to the original dice username, restore dice mode
-                    if (diceUsername && newValue === diceUsername) {
-                      setUsernameSource('dice');
-                    } else {
-                      setUsernameSource('manual');  // Mark as manually typed
-                    }
-                  }}
-                  placeholder={currentUserDisplayName || "Enter username"}
-                  className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors focus:outline-none ${
+                  readOnly
+                  placeholder={currentUserDisplayName || "Your username"}
+                  className={`w-full px-4 py-3 pr-24 rounded-xl ${modalStyles.input} transition-colors focus:outline-none cursor-default ${
                     usernameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
                   }`}
                   maxLength={15}
-                  disabled={isJoining || isSuggestingUsername}
                 />
-                <button
-                  type="button"
-                  onClick={handleSuggestUsername}
-                  disabled={isJoining || isSuggestingUsername}
-                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
-                  title="Suggest random username"
-                >
-                  <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
-                </button>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {/* Reset button - always visible for logged-in users with reserved username */}
+                  {hasReservedUsername && (
+                    <button
+                      type="button"
+                      onClick={handleResetUsername}
+                      disabled={!isResetEnabled || isJoining || isSuggestingUsername}
+                      className={`p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer`}
+                      title="Reset to your username"
+                    >
+                      <RotateCcw size={20} />
+                    </button>
+                  )}
+                  {/* Dice button */}
+                  <button
+                    type="button"
+                    onClick={handleSuggestUsername}
+                    disabled={isJoining || isSuggestingUsername}
+                    className={`p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+                    title="Suggest random username"
+                  >
+                    <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
+                  </button>
+                </div>
               </div>
               {usernameError && (
                 <p className={`text-xs text-red-500 mt-1`}>

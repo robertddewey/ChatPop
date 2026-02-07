@@ -302,7 +302,7 @@ CONSTANCE_CONFIG = {
         int
     ),
     'MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL': (
-        10,
+        100,
         'Maximum number of NEW username generations per fingerprint per hour (global, across all chats). After limit is reached, users can still rotate through previously generated usernames.',
         int
     ),
@@ -314,12 +314,12 @@ CONSTANCE_CONFIG = {
 
     # Username Reservation TTL Settings
     'USERNAME_RESERVATION_TTL_MINUTES': (
-        60,
+        1,
         'How long generated usernames are reserved in Redis (minutes). Gives users time to complete registration/join chat. Used for both anonymous and registered user flows.',
         int
     ),
     'USERNAME_VALIDATION_TTL_MINUTES': (
-        10,
+        5,
         'How long custom usernames are reserved after real-time validation (minutes). Prevents race conditions during form submission where two users try to register the same username.',
         int
     ),

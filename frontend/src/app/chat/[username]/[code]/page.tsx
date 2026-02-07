@@ -275,6 +275,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   const [hasReservedUsername, setHasReservedUsername] = useState(false);
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [fingerprint, setFingerprint] = useState<string | undefined>(undefined);
@@ -475,6 +476,7 @@ export default function ChatPage() {
         if (currentUser) {
           // Logged-in user
           setCurrentUserId(currentUser.id);
+          setUserAvatarUrl(currentUser.avatar_url || null);
 
           if (participation.has_joined && participation.username) {
             // Returning user - use their locked username
@@ -537,6 +539,7 @@ export default function ChatPage() {
           const currentUser = await authApi.getCurrentUser();
           setCurrentUserId(currentUser.id);
           setHasReservedUsername(!!currentUser.reserved_username);
+          setUserAvatarUrl(currentUser.avatar_url || null);
 
           // Get fingerprint
           let fpValue: string | undefined;
@@ -1670,6 +1673,7 @@ export default function ChatPage() {
           isLoggedIn={!!currentUserId}
           hasReservedUsername={hasReservedUsername}
           themeIsDarkMode={themeIsDarkMode}
+          userAvatarUrl={userAvatarUrl}
           onJoin={handleJoinChat}
         />
       )}

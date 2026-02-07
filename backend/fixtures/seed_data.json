@@ -4,7 +4,7 @@
   "pk": 1,
   "fields": {
     "key": "USERNAME_RESERVATION_TTL_MINUTES",
-    "value": "{\"__type__\": \"default\", \"__value__\": 60}"
+    "value": "{\"__type__\": \"default\", \"__value__\": 1}"
   }
 },
 {
@@ -68,7 +68,7 @@
   "pk": 36,
   "fields": {
     "key": "MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL",
-    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+    "value": "{\"__type__\": \"default\", \"__value__\": 100}"
   }
 },
 {
@@ -100,7 +100,7 @@
   "pk": 40,
   "fields": {
     "key": "USERNAME_VALIDATION_TTL_MINUTES",
-    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
   }
 },
 {

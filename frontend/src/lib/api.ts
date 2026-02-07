@@ -51,6 +51,7 @@ export interface User {
   subscription_count: number;
   created_at: string;
   last_active: string;
+  avatar_url: string | null;
 }
 
 export interface ChatTheme {

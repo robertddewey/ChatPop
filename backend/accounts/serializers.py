@@ -17,9 +17,9 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'reserved_username', 'first_name', 'last_name',
             'email_notifications', 'push_notifications',
             'subscriber_count', 'subscription_count',
-            'created_at', 'last_active'
+            'created_at', 'last_active', 'avatar_url'
         ]
-        read_only_fields = ['id', 'created_at', 'last_active', 'subscriber_count', 'subscription_count']
+        read_only_fields = ['id', 'created_at', 'last_active', 'subscriber_count', 'subscription_count', 'avatar_url']
 
     def get_subscriber_count(self, obj):
         return obj.subscribers.count()
