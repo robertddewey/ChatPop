@@ -4,7 +4,7 @@ from .views import (
     ChatConfigView, NearbyDiscoverableChatsView,
     MessageListView, MessageCreateView, MessagePinView, AddToPinView, MessageDeleteView, PinTiersView,
     FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
-    VoiceUploadView, VoiceStreamView, PhotoUploadView, VideoUploadView,
+    VoiceUploadView, VoiceStreamView, PhotoUploadView, VideoUploadView, UserAvatarView,
     MessageReactionToggleView, MessageReactionsListView,
     BlockUserView, UnblockUserView, BlockedUsersListView,
     UserBlockView, UserUnblockView, UserBlockListView,
@@ -44,8 +44,11 @@ urlpatterns = [
     path('create/', ChatRoomCreateView.as_view(), name='chat-create'),
     path('my-chats/', MyChatsView.as_view(), name='my-chats'),
 
-    # Voice Streaming (global endpoint)
-    path('media/<path:storage_path>', VoiceStreamView.as_view(), name='voice-stream'),
+    # User Avatar Proxy (must come before generic media path)
+    path('media/avatars/user/<uuid:user_id>', UserAvatarView.as_view(), name='user-avatar'),
+
+    # Voice/Media Streaming (global endpoint)
+    path('media/<path:storage_path>', VoiceStreamView.as_view(), name='media-stream'),
 
     # AI-Generated Rooms (globally unique, /discover/{code}/)
     # MUST come before username-based routes to avoid 'discover' being treated as username

@@ -5,6 +5,8 @@ from constance import config
 from .models import ChatRoom, Message, Transaction, ChatParticipation, ChatTheme, MessageReaction
 from .utils.username.validators import validate_username
 from accounts.serializers import UserSerializer
+from accounts.models import User
+from chatpop.utils.media import get_fallback_dicebear_url
 
 
 class ChatThemeSerializer(serializers.ModelSerializer):
@@ -200,11 +202,33 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
         chat_room = super().create(validated_data)
 
         # Auto-join host to their own chat
-        ChatParticipation.objects.create(
+        host_username = request.user.reserved_username or request.user.email.split('@')[0]
+        participation = ChatParticipation.objects.create(
             chat_room=chat_room,
             user=request.user,
-            username=request.user.reserved_username or request.user.email.split('@')[0]
+            username=host_username
         )
+
+        # Generate avatar for host at join time
+        from chatpop.utils.media import generate_and_store_avatar
+
+        avatar_style = None
+        if chat_room.theme and chat_room.theme.avatar_style:
+            avatar_style = chat_room.theme.avatar_style
+
+        # If using reserved_username, store on User model
+        if request.user.reserved_username and host_username.lower() == request.user.reserved_username.lower():
+            if not request.user.avatar_url:
+                avatar_url = generate_and_store_avatar(host_username, style=avatar_style)
+                if avatar_url:
+                    request.user.avatar_url = avatar_url
+                    request.user.save(update_fields=['avatar_url'])
+        else:
+            # Otherwise store on ChatParticipation
+            avatar_url = generate_and_store_avatar(host_username, style=avatar_style)
+            if avatar_url:
+                participation.avatar_url = avatar_url
+                participation.save(update_fields=['avatar_url'])
 
         return chat_room
 
@@ -287,6 +311,7 @@ class MessageSerializer(serializers.ModelSerializer):
     username_is_reserved = serializers.SerializerMethodField()
     time_until_unpin = serializers.SerializerMethodField()
     reply_to_message = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -297,7 +322,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'video_url', 'video_duration', 'video_thumbnail_url',
             'reply_to', 'reply_to_message',
             'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount',
-            'is_from_host', 'username_is_reserved', 'time_until_unpin', 'created_at', 'is_deleted'
+            'is_from_host', 'username_is_reserved', 'time_until_unpin', 'avatar_url', 'created_at', 'is_deleted'
         ]
         read_only_fields = [
             'id', 'user', 'message_type',
@@ -334,6 +359,34 @@ class MessageSerializer(serializers.ModelSerializer):
                 'is_from_host': obj.reply_to.user == obj.reply_to.chat_room.host if obj.reply_to.user else False
             }
         return None
+
+    def get_avatar_url(self, obj):
+        """
+        Return avatar URL from ChatParticipation.
+
+        ChatParticipation.avatar_url is ALWAYS populated at join time with:
+        - Proxy URL for registered users using reserved_username
+        - Direct storage URL for anonymous users or different usernames
+
+        Fallback to DiceBear for orphaned/legacy data only.
+        """
+        # Look up ChatParticipation - avatar_url should always be populated
+        try:
+            participation = ChatParticipation.objects.get(
+                chat_room=obj.chat_room,
+                username__iexact=obj.username
+            )
+            if participation.avatar_url:
+                return participation.avatar_url
+        except ChatParticipation.DoesNotExist:
+            pass
+
+        # Fallback to DiceBear for orphaned/legacy data
+        avatar_style = None
+        if obj.chat_room.theme and obj.chat_room.theme.avatar_style:
+            avatar_style = obj.chat_room.theme.avatar_style
+
+        return get_fallback_dicebear_url(obj.username, style=avatar_style)
 
 
 class MessageCreateSerializer(serializers.ModelSerializer):
@@ -429,9 +482,9 @@ class ChatParticipationSerializer(serializers.ModelSerializer):
         model = ChatParticipation
         fields = [
             'id', 'chat_room', 'user', 'fingerprint', 'username', 'theme',
-            'first_joined_at', 'last_seen_at', 'is_active'
+            'avatar_url', 'first_joined_at', 'last_seen_at', 'is_active'
         ]
-        read_only_fields = ['id', 'chat_room', 'user', 'first_joined_at', 'last_seen_at']
+        read_only_fields = ['id', 'chat_room', 'user', 'avatar_url', 'first_joined_at', 'last_seen_at']
 
 
 class MessageReactionSerializer(serializers.ModelSerializer):

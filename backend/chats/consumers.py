@@ -303,6 +303,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         Includes username_is_reserved flag computed from participation.
         """
+        from chatpop.utils.media import get_fallback_dicebear_url
+
         # Compute username_is_reserved
         username_is_reserved = MessageCache._compute_username_is_reserved(message)
 
@@ -315,6 +317,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'content': message.reply_to.content[:100],  # Truncate for preview
                 'is_from_host': message.reply_to.user == message.reply_to.chat_room.host if message.reply_to.user else False
             }
+
+        # Get avatar_url from ChatParticipation (always populated at join time)
+        avatar_url = None
+        try:
+            participation = ChatParticipation.objects.get(
+                chat_room=message.chat_room,
+                username__iexact=message.username
+            )
+            if participation.avatar_url:
+                avatar_url = participation.avatar_url
+        except ChatParticipation.DoesNotExist:
+            pass
+
+        # Fallback to DiceBear for orphaned/legacy data
+        if not avatar_url:
+            avatar_style = None
+            if message.chat_room.theme and message.chat_room.theme.avatar_style:
+                avatar_style = message.chat_room.theme.avatar_style
+            avatar_url = get_fallback_dicebear_url(message.username, style=avatar_style)
 
         return {
             'id': str(message.id),
@@ -337,6 +358,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'reply_to_id': str(message.reply_to.id) if message.reply_to else None,
             'reply_to_message': reply_to_message,
             'is_pinned': message.is_pinned,
+            'avatar_url': avatar_url,
             'created_at': message.created_at.isoformat(),
             'is_deleted': message.is_deleted,
         }

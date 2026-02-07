@@ -386,6 +386,14 @@ class ChatParticipation(models.Model):
     # Username locked for this chat
     username = models.CharField(max_length=100, help_text="Username chosen for this chat (locked)")
 
+    # Avatar (stored in S3/local storage, per-chat for anonymous users)
+    avatar_url = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text='URL to avatar image for this chat participation (stored in S3 or local storage)'
+    )
+
     # Theme preference (nullable - if null, use chat room's theme)
     theme = models.ForeignKey(
         'ChatTheme',

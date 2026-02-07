@@ -61,7 +61,38 @@ class MessageCache:
         return cache.client.get_client()
 
     @classmethod
-    def _serialize_message(cls, message: Message, username_is_reserved: bool = False) -> Dict[str, Any]:
+    def _get_avatar_url(cls, message: Message) -> str:
+        """
+        Get avatar URL for a message.
+
+        ChatParticipation.avatar_url is ALWAYS populated at join time with:
+        - Proxy URL for registered users using reserved_username
+        - Direct storage URL for anonymous users or different usernames
+
+        Fallback to DiceBear for orphaned/legacy data only.
+        """
+        from chatpop.utils.media import get_fallback_dicebear_url
+
+        # Look up ChatParticipation - avatar_url should always be populated
+        try:
+            participation = ChatParticipation.objects.get(
+                chat_room=message.chat_room,
+                username__iexact=message.username
+            )
+            if participation.avatar_url:
+                return participation.avatar_url
+        except ChatParticipation.DoesNotExist:
+            pass
+
+        # Fallback to DiceBear for orphaned/legacy data
+        avatar_style = None
+        if message.chat_room.theme and message.chat_room.theme.avatar_style:
+            avatar_style = message.chat_room.theme.avatar_style
+
+        return get_fallback_dicebear_url(message.username, style=avatar_style)
+
+    @classmethod
+    def _serialize_message(cls, message: Message, username_is_reserved: bool = False, avatar_url: str = None) -> Dict[str, Any]:
         """
         Serialize a Message instance to JSON-compatible dict.
 
@@ -76,6 +107,10 @@ class MessageCache:
                 "content": message.reply_to.content[:100] if message.reply_to.content else "",
                 "is_from_host": message.reply_to.message_type == "host",
             }
+
+        # Get avatar_url if not provided
+        if avatar_url is None:
+            avatar_url = cls._get_avatar_url(message)
 
         return {
             "id": str(message.id),
@@ -102,6 +137,7 @@ class MessageCache:
             "sticky_until": message.sticky_until.isoformat() if message.sticky_until else None,
             "pin_amount_paid": str(message.pin_amount_paid) if message.pin_amount_paid else "0.00",
             "current_pin_amount": str(message.current_pin_amount) if message.current_pin_amount else "0.00",
+            "avatar_url": avatar_url,
             "created_at": message.created_at.isoformat(),
             "is_deleted": message.is_deleted,
         }

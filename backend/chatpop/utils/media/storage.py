@@ -278,3 +278,31 @@ def get_video_message_url(storage_path: str) -> str:
 def delete_video_message(storage_path: str) -> bool:
     """Delete a video message file."""
     return MediaStorage.delete_file(storage_path)
+
+
+# Convenience functions for avatars
+def save_avatar(file_obj: BinaryIO, filename: Optional[str] = None) -> tuple[str, str]:
+    """
+    Save an avatar image file.
+
+    Args:
+        file_obj: Avatar image file object (typically SVG from DiceBear)
+        filename: Optional custom filename (if not provided, auto-generated)
+
+    Returns:
+        tuple: (storage_path, storage_type)
+    """
+    if filename is None:
+        filename = f"{uuid.uuid4()}.svg"
+
+    return MediaStorage.save_file(file_obj, 'avatars', filename)
+
+
+def get_avatar_url(storage_path: str) -> str:
+    """Get the proxy URL for an avatar."""
+    return MediaStorage.get_file_url(storage_path)
+
+
+def delete_avatar(storage_path: str) -> bool:
+    """Delete an avatar file."""
+    return MediaStorage.delete_file(storage_path)

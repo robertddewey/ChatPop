@@ -466,6 +466,10 @@ class ChatRoomJoinView(APIView):
                 participation.fingerprint = fingerprint
                 participation.ip_address = ip_address
                 participation.save()
+
+            # Generate avatar at join time for logged-in users
+            if created:
+                self._generate_avatar_for_participation(participation, chat_room, request.user)
         elif fingerprint:
             # Anonymous user - find/create by fingerprint
             participation, created = ChatParticipation.objects.get_or_create(
@@ -482,6 +486,10 @@ class ChatRoomJoinView(APIView):
                 participation.ip_address = ip_address
                 participation.save()
 
+            # Generate avatar at join time for anonymous users
+            if created and not participation.avatar_url:
+                self._generate_avatar_for_participation(participation, chat_room)
+
         # Create JWT session token
         session_token = ChatSessionValidator.create_session_token(
             chat_code=code,
@@ -497,6 +505,45 @@ class ChatRoomJoinView(APIView):
             'session_token': session_token,
             'message': 'Successfully joined chat room'
         })
+
+    def _generate_avatar_for_participation(self, participation, chat_room, user=None):
+        """
+        Generate and store avatar at join time.
+
+        ALWAYS populates ChatParticipation.avatar_url with the appropriate URL:
+        - Registered user using reserved_username: proxy URL (allows avatar changes)
+        - Registered user using different username: direct storage URL
+        - Anonymous user: direct storage URL
+        """
+        from chatpop.utils.media import generate_and_store_avatar
+
+        # Get avatar style from theme
+        avatar_style = None
+        if chat_room.theme and chat_room.theme.avatar_style:
+            avatar_style = chat_room.theme.avatar_style
+
+        # If logged-in user using their reserved_username
+        if user and user.reserved_username:
+            if participation.username.lower() == user.reserved_username.lower():
+                # Ensure User.avatar_url exists (the actual avatar file)
+                if not user.avatar_url:
+                    avatar_url = generate_and_store_avatar(participation.username, style=avatar_style)
+                    if avatar_url:
+                        user.avatar_url = avatar_url
+                        user.save(update_fields=['avatar_url'])
+
+                # Store proxy URL in ChatParticipation (points to User.avatar_url)
+                participation.avatar_url = f'/api/chats/media/avatars/user/{user.id}'
+                participation.save(update_fields=['avatar_url'])
+                return
+
+        # For anonymous users or registered users using different username:
+        # Generate and store direct URL on ChatParticipation
+        if not participation.avatar_url:
+            avatar_url = generate_and_store_avatar(participation.username, style=avatar_style)
+            if avatar_url:
+                participation.avatar_url = avatar_url
+                participation.save(update_fields=['avatar_url'])
 
 
 class MyChatsView(generics.ListAPIView):
@@ -722,10 +769,32 @@ class MessageListView(APIView):
                     user_reactions[msg_id] = set()
                 user_reactions[msg_id].add(record['emoji'])
 
-        # Serialize (with username_is_reserved computation)
+        # Batch fetch avatar URLs (ONE query - solves N+1 problem)
+        # ChatParticipation.avatar_url is always populated at join time
+        unique_usernames = list(set(msg.username for msg in messages))
+        participations = ChatParticipation.objects.filter(
+            chat_room=chat_room,
+            username__in=unique_usernames
+        )
+
+        # Build avatar_map: username (lowercase) -> avatar_url
+        from chatpop.utils.media import get_fallback_dicebear_url
+        avatar_style = None
+        if chat_room.theme and chat_room.theme.avatar_style:
+            avatar_style = chat_room.theme.avatar_style
+
+        avatar_map = {}
+        for p in participations:
+            if p.avatar_url:
+                avatar_map[p.username.lower()] = p.avatar_url
+            # else: not in map, will fallback to DiceBear (orphaned data)
+
+        # Serialize (with username_is_reserved and avatar_url)
         serialized = []
         for msg in messages:
             username_is_reserved = MessageCache._compute_username_is_reserved(msg)
+            # Lookup avatar from map, fallback to DiceBear if not found
+            avatar_url = avatar_map.get(msg.username.lower()) or get_fallback_dicebear_url(msg.username, style=avatar_style)
 
             # Convert relative voice_url to absolute URL if present
             voice_url = msg.voice_url
@@ -790,6 +859,7 @@ class MessageListView(APIView):
                 'sticky_until': msg.sticky_until.isoformat() if msg.sticky_until else None,
                 'pin_amount_paid': str(msg.pin_amount_paid) if msg.pin_amount_paid else "0.00",
                 'current_pin_amount': str(msg.current_pin_amount) if msg.current_pin_amount else "0.00",
+                'avatar_url': avatar_url,
                 'created_at': msg.created_at.isoformat(),
                 'is_deleted': msg.is_deleted,
                 'reactions': top_reactions,
@@ -2165,28 +2235,40 @@ class VoiceStreamView(APIView):
         logger.info(f"🎵 [VoiceStream] Range header: {request.META.get('HTTP_RANGE', 'NONE')}")
         logger.info(f"🎵 [VoiceStream] User-Agent: {request.META.get('HTTP_USER_AGENT', 'NONE')[:100]}")
 
-        # Extract chat code and validate session
-        # Storage path format: voice_messages/<uuid>.webm
-        # We need to validate that user has access to the chat
+        # Check if this is a public file (avatars are public - no auth required)
+        is_public_file = storage_path.startswith('avatars/')
 
-        # Get session token from query params or headers
-        session_token = request.GET.get('session_token') or request.headers.get('X-Chat-Session-Token')
+        if is_public_file:
+            logger.info(f"🎵 [VoiceStream] Public file access (avatar): {storage_path}")
+        else:
+            # Extract chat code and validate session for non-public files
+            # Storage path format: voice_messages/<uuid>.webm
+            # We need to validate that user has access to the chat
 
-        if not session_token:
-            logger.warning(f"🎵 [VoiceStream] No session token provided for: {storage_path}")
-            return JsonResponse({
-                'error': 'Session token required to access voice messages'
-            }, status=401)
+            # Get session token from query params or headers
+            session_token = request.GET.get('session_token') or request.headers.get('X-Chat-Session-Token')
 
-        # Validate session (this will raise PermissionDenied if invalid)
+            if not session_token:
+                logger.warning(f"🎵 [VoiceStream] No session token provided for: {storage_path}")
+                return JsonResponse({
+                    'error': 'Session token required to access voice messages'
+                }, status=401)
+
+            # Validate session (this will raise PermissionDenied if invalid)
+            try:
+                session_data = ChatSessionValidator.validate_session_token(session_token)
+                chat_code = session_data.get('chat_code')
+                logger.info(f"🎵 [VoiceStream] Session validated for chat: {chat_code}")
+
+                # Get chat room to verify it exists
+                chat_room = get_object_or_404(ChatRoom, code=chat_code)
+            except PermissionDenied:
+                logger.error(f"🎵 [VoiceStream] Permission denied for: {storage_path}")
+                return JsonResponse({
+                    'error': 'Invalid session token'
+                }, status=401)
+
         try:
-            session_data = ChatSessionValidator.validate_session_token(session_token)
-            chat_code = session_data.get('chat_code')
-            logger.info(f"🎵 [VoiceStream] Session validated for chat: {chat_code}")
-
-            # Get chat room to verify it exists
-            chat_room = get_object_or_404(ChatRoom, code=chat_code)
-
             # Check if file exists in storage
             if not MediaStorage.file_exists(storage_path):
                 logger.error(f"🎵 [VoiceStream] File not found: {storage_path}")
@@ -2224,6 +2306,8 @@ class VoiceStreamView(APIView):
                 content_type = 'image/gif'
             elif ext in ('heic', 'heif'):
                 content_type = 'image/heic'
+            elif ext == 'svg':
+                content_type = 'image/svg+xml'
             # Video types
             elif ext == 'mp4':
                 content_type = 'video/mp4'
@@ -2284,7 +2368,11 @@ class VoiceStreamView(APIView):
 
             # Common headers for all responses
             response['Content-Disposition'] = f'inline; filename="{storage_path.split("/")[-1]}"'
-            response['Cache-Control'] = 'private, max-age=3600'  # Cache for 1 hour
+            # Public files (avatars) can be cached publicly, other files are private
+            if is_public_file:
+                response['Cache-Control'] = 'public, max-age=86400'  # Cache avatars for 24 hours
+            else:
+                response['Cache-Control'] = 'private, max-age=3600'  # Cache for 1 hour
             response['Accept-Ranges'] = 'bytes'
 
             # Add CORS headers for audio element playback
@@ -2313,6 +2401,43 @@ class VoiceStreamView(APIView):
             return JsonResponse({
                 'error': f'Failed to stream voice message: {str(e)}'
             }, status=500)
+
+
+class UserAvatarView(APIView):
+    """
+    Proxy endpoint for registered user avatars.
+
+    URL: /api/chats/media/avatars/user/{user_id}
+
+    This endpoint allows registered users to change their avatar without
+    invalidating cached messages. The URL stays constant, but the underlying
+    avatar file can change.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, user_id):
+        from django.http import HttpResponseRedirect, Http404
+        from accounts.models import User
+        from chatpop.utils.media import get_fallback_dicebear_url
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            raise Http404("User not found")
+
+        # If user has stored avatar, redirect to it
+        if user.avatar_url:
+            # avatar_url is stored as relative path like /api/chats/media/avatars/uuid.svg
+            # Redirect to the actual file
+            return HttpResponseRedirect(user.avatar_url)
+
+        # Fallback to DiceBear URL if no stored avatar
+        if user.reserved_username:
+            fallback_url = get_fallback_dicebear_url(user.reserved_username)
+            return HttpResponseRedirect(fallback_url)
+
+        # No reserved_username either - return 404
+        raise Http404("User has no avatar")
 
 
 class PhotoUploadView(APIView):

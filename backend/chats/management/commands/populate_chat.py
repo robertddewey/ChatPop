@@ -239,20 +239,37 @@ class Command(BaseCommand):
 
         host = chat_room.host
 
-        # Get or create some test users
+        # Get or create some test users (with reserved_username and avatar)
+        from chatpop.utils.media import generate_and_store_avatar
+
         test_users = []
-        for i in range(3):
+        test_usernames = ['TestUser1', 'TestUser2', 'TestUser3']
+        for i, reserved_username in enumerate(test_usernames):
             email = f"testuser{i+1}@test.com"
             user, created = User.objects.get_or_create(
                 email=email,
                 defaults={
                     'first_name': f'Test{i+1}',
-                    'last_name': 'User'
+                    'last_name': 'User',
+                    'reserved_username': reserved_username,
                 }
             )
             if created:
                 user.set_password('demo123')
                 user.save()
+
+            # Ensure user has reserved_username (for existing users)
+            if not user.reserved_username:
+                user.reserved_username = reserved_username
+                user.save(update_fields=['reserved_username'])
+
+            # Ensure user has avatar
+            if not user.avatar_url:
+                avatar_url = generate_and_store_avatar(user.reserved_username)
+                if avatar_url:
+                    user.avatar_url = avatar_url
+                    user.save(update_fields=['avatar_url'])
+
             test_users.append(user)
 
         # Check if continuous mode is requested
@@ -284,6 +301,65 @@ class Command(BaseCommand):
             }
         )
 
+    def _ensure_participation(self, chat_room, username, user=None):
+        """
+        Ensure ChatParticipation exists with avatar_url for a username.
+
+        ALWAYS populates ChatParticipation.avatar_url with:
+        - Proxy URL for registered users using reserved_username
+        - Direct storage URL for anonymous users or different usernames
+        """
+        from chatpop.utils.media import generate_and_store_avatar
+        from chats.models import ChatParticipation
+
+        # Get avatar style from theme
+        avatar_style = None
+        if chat_room.theme and chat_room.theme.avatar_style:
+            avatar_style = chat_room.theme.avatar_style
+
+        if user:
+            # Registered user
+            participation, created = ChatParticipation.objects.get_or_create(
+                chat_room=chat_room,
+                user=user,
+                defaults={'username': username}
+            )
+
+            if user.reserved_username and username.lower() == user.reserved_username.lower():
+                # Using reserved_username - ensure User.avatar_url exists
+                if not user.avatar_url:
+                    avatar_url = generate_and_store_avatar(username, style=avatar_style)
+                    if avatar_url:
+                        user.avatar_url = avatar_url
+                        user.save(update_fields=['avatar_url'])
+
+                # Store proxy URL in ChatParticipation
+                if not participation.avatar_url:
+                    participation.avatar_url = f'/api/chats/media/avatars/user/{user.id}'
+                    participation.save(update_fields=['avatar_url'])
+            else:
+                # Using different username - direct URL on participation
+                if not participation.avatar_url:
+                    avatar_url = generate_and_store_avatar(username, style=avatar_style)
+                    if avatar_url:
+                        participation.avatar_url = avatar_url
+                        participation.save(update_fields=['avatar_url'])
+        else:
+            # Anonymous user - direct URL on participation
+            participation, created = ChatParticipation.objects.get_or_create(
+                chat_room=chat_room,
+                username=username,
+                user__isnull=True,
+                defaults={'fingerprint': f'test-fingerprint-{username.lower()}'}
+            )
+            if not participation.avatar_url:
+                avatar_url = generate_and_store_avatar(username, style=avatar_style)
+                if avatar_url:
+                    participation.avatar_url = avatar_url
+                    participation.save(update_fields=['avatar_url'])
+
+        return participation
+
     def _create_random_message(self, chat_room, host, test_users, broadcast=False):
         """Create a random message with realistic distribution"""
         # Distribution: 70% anonymous, 20% logged-in users, 8% host, 2% photo
@@ -291,10 +367,12 @@ class Command(BaseCommand):
 
         if roll < 0.02:
             # 2% chance: Photo message (anonymous)
+            username = random.choice(ANONYMOUS_USERNAMES)
+            self._ensure_participation(chat_room, username, user=None)
             msg = Message.objects.create(
                 chat_room=chat_room,
                 user=None,
-                username=random.choice(ANONYMOUS_USERNAMES),
+                username=username,
                 content="",
                 message_type=Message.MESSAGE_NORMAL,
                 photo_url=random.choice(PLACEHOLDER_IMAGES)
@@ -302,10 +380,12 @@ class Command(BaseCommand):
             msg_type = "📷 PHOTO"
         elif roll < 0.10:
             # 8% chance: Host message
+            username = host.get_display_name()
+            self._ensure_participation(chat_room, username, user=host)
             msg = Message.objects.create(
                 chat_room=chat_room,
                 user=host,
-                username=host.get_display_name(),
+                username=username,
                 content=random.choice(HOST_MESSAGES),
                 message_type=Message.MESSAGE_HOST
             )
@@ -313,20 +393,24 @@ class Command(BaseCommand):
         elif roll < 0.30:
             # 20% chance: Logged-in user
             user = random.choice(test_users)
+            username = user.get_display_name()
+            self._ensure_participation(chat_room, username, user=user)
             msg = Message.objects.create(
                 chat_room=chat_room,
                 user=user,
-                username=user.get_display_name(),
+                username=username,
                 content=random.choice(REALISTIC_MESSAGES),
                 message_type=Message.MESSAGE_NORMAL
             )
             msg_type = "👤 USER"
         else:
             # 70% chance: Anonymous user
+            username = random.choice(ANONYMOUS_USERNAMES)
+            self._ensure_participation(chat_room, username, user=None)
             msg = Message.objects.create(
                 chat_room=chat_room,
                 user=None,
-                username=random.choice(ANONYMOUS_USERNAMES),
+                username=username,
                 content=random.choice(REALISTIC_MESSAGES),
                 message_type=Message.MESSAGE_NORMAL
             )
@@ -410,6 +494,8 @@ class Command(BaseCommand):
 
         # 1. HOST MESSAGES (should appear at the very top)
         self.stdout.write("📌 Creating host messages...")
+        host_display_name = host.get_display_name()
+        self._ensure_participation(chat_room, host_display_name, user=host)
         host_messages = [
             "Welcome to the chat! 👋",
             "Remember to be respectful to everyone here.",
@@ -419,7 +505,7 @@ class Command(BaseCommand):
             msg = Message.objects.create(
                 chat_room=chat_room,
                 user=host,
-                username=host.get_display_name(),
+                username=host_display_name,
                 message_type=Message.MESSAGE_HOST,
                 content=content
             )
@@ -429,11 +515,13 @@ class Command(BaseCommand):
         # 2. PINNED MESSAGES by logged-in users
         self.stdout.write("\n📍 Creating pinned messages from logged-in users...")
         for i, user in enumerate(test_users[:2]):  # First 2 test users
+            user_display_name = user.get_display_name()
+            self._ensure_participation(chat_room, user_display_name, user=user)
             msg = Message.objects.create(
                 chat_room=chat_room,
                 user=user,
-                username=user.get_display_name(),
-                content=f"This is an important announcement from {user.get_display_name()}!"
+                username=user_display_name,
+                content=f"This is an important announcement from {user_display_name}!"
             )
             # Pin the message (amount in cents)
             msg.pin_message(
@@ -441,7 +529,7 @@ class Command(BaseCommand):
                 duration_minutes=120
             )
             messages_created.append(msg)
-            self.stdout.write(self.style.SUCCESS(f"  ✅ {user.get_display_name()}: {msg.content} (Pinned)"))
+            self.stdout.write(self.style.SUCCESS(f"  ✅ {user_display_name}: {msg.content} (Pinned)"))
 
         # 3. PINNED MESSAGES by anonymous users
         self.stdout.write("\n📍 Creating pinned messages from anonymous users...")
@@ -450,6 +538,7 @@ class Command(BaseCommand):
             ("SarahK", "Important: Event starts at 3PM!"),
         ]
         for anon_username, content in anonymous_pinned:
+            self._ensure_participation(chat_room, anon_username, user=None)
             msg = Message.objects.create(
                 chat_room=chat_room,
                 user=None,
@@ -473,14 +562,16 @@ class Command(BaseCommand):
             (test_users[1], "Yes! It's amazing!"),
         ]
         for user, content in logged_in_messages:
+            user_display_name = user.get_display_name()
+            self._ensure_participation(chat_room, user_display_name, user=user)
             msg = Message.objects.create(
                 chat_room=chat_room,
                 user=user,
-                username=user.get_display_name(),
+                username=user_display_name,
                 content=content
             )
             messages_created.append(msg)
-            self.stdout.write(self.style.SUCCESS(f"  ✅ {user.get_display_name()}: {content}"))
+            self.stdout.write(self.style.SUCCESS(f"  ✅ {user_display_name}: {content}"))
 
         # 5. REGULAR MESSAGES by anonymous users (different usernames)
         self.stdout.write("\n💬 Creating regular messages from anonymous users...")
@@ -497,6 +588,7 @@ class Command(BaseCommand):
             ("Anonymous", "Just stopping by to say hi 👋"),
         ]
         for anon_username, content in anonymous_messages:
+            self._ensure_participation(chat_room, anon_username, user=None)
             msg = Message.objects.create(
                 chat_room=chat_room,
                 user=None,
@@ -521,6 +613,7 @@ class Command(BaseCommand):
                 # Anonymous message: (None, username, content)
                 _, anon_username, content = item
                 msg_type = Message.MESSAGE_NORMAL
+                self._ensure_participation(chat_room, anon_username, user=None)
                 msg = Message.objects.create(
                     chat_room=chat_room,
                     user=None,
@@ -533,6 +626,7 @@ class Command(BaseCommand):
                 # Logged-in user message: (user, content, msg_type)
                 user_val, content, msg_type = item
                 display_username = user_val.get_display_name()
+                self._ensure_participation(chat_room, display_username, user=user_val)
                 msg = Message.objects.create(
                     chat_room=chat_room,
                     user=user_val,

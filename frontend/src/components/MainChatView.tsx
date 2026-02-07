@@ -341,7 +341,7 @@ function MainChatView({
                 <div className="flex gap-3">
                   {/* Avatar */}
                   <img
-                    src={getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
+                    src={message.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
                     alt={message.username}
                     className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 flex-shrink-0 ${currentDesign.avatarBorder || ''}`}
                   />
@@ -420,7 +420,7 @@ function MainChatView({
                 <div className="flex gap-3">
                   {/* Avatar */}
                   <img
-                    src={getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', stickyPinnedMessage.username, 80)}
+                    src={stickyPinnedMessage.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', stickyPinnedMessage.username, 80)}
                     alt={stickyPinnedMessage.username}
                     className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 flex-shrink-0 ${currentDesign.avatarBorder || ''}`}
                   />
@@ -572,7 +572,7 @@ function MainChatView({
                 <div className={`${avatarSize} flex-shrink-0 ${avatarSpacing}`}>
                   {showAvatar ? (
                     <img
-                      src={getDiceBearUrl(avatarStyle, message.username, 80)}
+                      src={message.avatar_url || getDiceBearUrl(avatarStyle, message.username, 80)}
                       alt={message.username}
                       className={`${avatarSize} rounded-full bg-zinc-700 ${avatarBorder}`}
                     />

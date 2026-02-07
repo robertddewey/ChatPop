@@ -218,6 +218,7 @@ export interface Message {
   is_from_host: boolean;
   username_is_reserved: boolean;
   time_until_unpin: number | null;
+  avatar_url: string;
   created_at: string;
   is_deleted: boolean;
   reactions?: ReactionSummary[]; // Top 3 reactions for display

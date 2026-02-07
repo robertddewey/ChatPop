@@ -62,6 +62,15 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', '')
         )
+
+        # Generate avatar at registration time if user has reserved_username
+        if user.reserved_username:
+            from chatpop.utils.media import generate_and_store_avatar
+            avatar_url = generate_and_store_avatar(user.reserved_username)
+            if avatar_url:
+                user.avatar_url = avatar_url
+                user.save(update_fields=['avatar_url'])
+
         return user
 
 

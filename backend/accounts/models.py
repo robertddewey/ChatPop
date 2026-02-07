@@ -56,6 +56,14 @@ class User(AbstractUser):
         help_text='Optional reserved username (alphanumeric only, no spaces or special characters)'
     )
 
+    # Avatar (stored in S3/local storage)
+    avatar_url = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text='URL to user avatar image (stored in S3 or local storage)'
+    )
+
     # Notification preferences
     email_notifications = models.BooleanField(default=True)
     push_notifications = models.BooleanField(default=False)
