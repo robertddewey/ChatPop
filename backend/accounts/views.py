@@ -143,7 +143,7 @@ class CheckUsernameView(APIView):
 
         # If available, reserve it temporarily in Redis to prevent race conditions
         if available:
-            cache_ttl = config.USERNAME_VALIDATION_TTL_MINUTES * 60  # Convert minutes to seconds
+            cache_ttl = config.USERNAME_REGISTRATION_HOLD_TTL_MINUTES * 60  # Convert minutes to seconds
             reservation_key = f"username:reserved:{username.lower()}"
             cache.set(reservation_key, True, cache_ttl)
 
@@ -198,7 +198,7 @@ class SuggestUsernameView(APIView):
                 rotated_username = usernames_list[current_index % len(usernames_list)]
 
                 # Update rotation index for next click
-                cache_ttl = int(config.USERNAME_RESERVATION_TTL_MINUTES * 60)
+                cache_ttl = int(config.USERNAME_REGISTRATION_HOLD_TTL_MINUTES * 60)
                 cache.set(rotation_key, (current_index + 1) % len(usernames_list), cache_ttl)
 
                 return Response({

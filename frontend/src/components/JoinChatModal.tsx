@@ -372,9 +372,10 @@ export default function JoinChatModal({
                   type="text"
                   value={username}
                   readOnly
+                  tabIndex={-1}
                   placeholder={currentUserDisplayName || "Your username"}
-                  className={`w-full px-4 py-3 pr-24 rounded-xl ${modalStyles.input} transition-colors focus:outline-none cursor-default ${
-                    usernameError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
+                  className={`w-full px-4 py-3 pr-24 rounded-xl ${modalStyles.input} transition-colors pointer-events-none select-none cursor-default ${
+                    usernameError ? 'border-red-500' : ''
                   }`}
                   maxLength={15}
                 />
@@ -427,8 +428,9 @@ export default function JoinChatModal({
                   type="text"
                   value={username}
                   readOnly
+                  tabIndex={-1}
                   placeholder={isSuggestingUsername ? "Generating..." : "Click the dice to generate"}
-                  className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors focus:outline-none cursor-default`}
+                  className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors pointer-events-none select-none cursor-default`}
                   maxLength={15}
                 />
                 <button

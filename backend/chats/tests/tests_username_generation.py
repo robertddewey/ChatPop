@@ -878,7 +878,7 @@ class CheckUsernameRedisReservationTestCase(TestCase):
     @allure.title("Available username reserved in Redis")
     @allure.description("Test that available username is reserved in Redis after validation")
     @allure.severity(allure.severity_level.CRITICAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_REGISTRATION_HOLD_TTL_MINUTES=10)
     def test_available_username_reserved_in_redis(self):
         """Test that available username is reserved in Redis after validation"""
         username = 'ValidUser123'
@@ -898,7 +898,7 @@ class CheckUsernameRedisReservationTestCase(TestCase):
     @allure.title("Unavailable username not reserved")
     @allure.description("Test that unavailable username is NOT reserved in Redis")
     @allure.severity(allure.severity_level.NORMAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_REGISTRATION_HOLD_TTL_MINUTES=10)
     def test_unavailable_username_not_reserved(self):
         """Test that unavailable username is NOT reserved in Redis"""
         # Create a user with reserved username
@@ -927,7 +927,7 @@ class CheckUsernameRedisReservationTestCase(TestCase):
     @allure.title("Invalid username not reserved")
     @allure.description("Test that invalid username (too short) is NOT reserved in Redis")
     @allure.severity(allure.severity_level.NORMAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_REGISTRATION_HOLD_TTL_MINUTES=10)
     def test_invalid_username_not_reserved(self):
         """Test that invalid username (too short) is NOT reserved in Redis"""
         response = self.client.get(
@@ -945,7 +945,7 @@ class CheckUsernameRedisReservationTestCase(TestCase):
     @allure.title("Race condition prevention")
     @allure.description("Test that two users checking same username see it as taken after first check")
     @allure.severity(allure.severity_level.CRITICAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_REGISTRATION_HOLD_TTL_MINUTES=10)
     def test_race_condition_prevention(self):
         """Test that two users checking same username see it as taken after first check"""
         username = 'RaceTest123'
@@ -969,11 +969,11 @@ class CheckUsernameRedisReservationTestCase(TestCase):
         self.assertFalse(response2.data['available'])
 
     @allure.title("Constance TTL setting used")
-    @allure.description("Test that Constance USERNAME_VALIDATION_TTL_MINUTES setting is used")
+    @allure.description("Test that Constance USERNAME_REGISTRATION_HOLD_TTL_MINUTES setting is used")
     @allure.severity(allure.severity_level.NORMAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=5)
+    @override_config(USERNAME_REGISTRATION_HOLD_TTL_MINUTES=5)
     def test_constance_ttl_setting_used(self):
-        """Test that Constance USERNAME_VALIDATION_TTL_MINUTES setting is used"""
+        """Test that Constance USERNAME_REGISTRATION_HOLD_TTL_MINUTES setting is used"""
         username = 'TTLTest123'
 
         response = self.client.get(
@@ -996,7 +996,7 @@ class CheckUsernameRedisReservationTestCase(TestCase):
     @allure.title("Case insensitive reservation")
     @allure.description("Test that username reservation is case-insensitive")
     @allure.severity(allure.severity_level.CRITICAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_REGISTRATION_HOLD_TTL_MINUTES=10)
     def test_case_insensitive_reservation(self):
         """Test that username reservation is case-insensitive"""
         # Reserve username with mixed case
@@ -1057,7 +1057,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
     @allure.title("Available username reserved in Redis")
     @allure.description("Test that available username is reserved in Redis after validation")
     @allure.severity(allure.severity_level.CRITICAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES=10)
     def test_available_username_reserved_in_redis(self):
         """Test that available username is reserved in Redis after validation"""
         username = 'ChatUser123'
@@ -1078,7 +1078,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
     @allure.title("Unavailable username not reserved")
     @allure.description("Test that unavailable username is NOT reserved in Redis")
     @allure.severity(allure.severity_level.NORMAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES=10)
     def test_unavailable_username_not_reserved(self):
         """Test that unavailable username is NOT reserved in Redis"""
         # Create participation with username
@@ -1101,7 +1101,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
     @allure.title("Invalid username not reserved")
     @allure.description("Test that invalid username (profanity) is NOT reserved in Redis")
     @allure.severity(allure.severity_level.NORMAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES=10)
     def test_invalid_username_not_reserved(self):
         """Test that invalid username (profanity) is NOT reserved in Redis"""
         response = self.client.post(
@@ -1119,7 +1119,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
     @allure.title("Race condition prevention")
     @allure.description("Test that two users validating same username see it as taken after first validation")
     @allure.severity(allure.severity_level.CRITICAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES=10)
     def test_race_condition_prevention(self):
         """Test that two users validating same username see it as taken after first validation"""
         username = 'RaceChatTest'
@@ -1145,11 +1145,11 @@ class UsernameValidationRedisReservationTestCase(TestCase):
         self.assertFalse(response2.data['available'])
 
     @allure.title("Constance TTL setting used")
-    @allure.description("Test that Constance USERNAME_VALIDATION_TTL_MINUTES setting is used")
+    @allure.description("Test that Constance USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES setting is used")
     @allure.severity(allure.severity_level.NORMAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=5)
+    @override_config(USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES=5)
     def test_constance_ttl_setting_used(self):
-        """Test that Constance USERNAME_VALIDATION_TTL_MINUTES setting is used"""
+        """Test that Constance USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES setting is used"""
         username = 'TTLChatTest'
 
         response = self.client.post(
@@ -1168,7 +1168,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
     @allure.title("Case insensitive reservation")
     @allure.description("Test that username reservation is case-insensitive")
     @allure.severity(allure.severity_level.CRITICAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES=10)
     def test_case_insensitive_reservation(self):
         """Test that username reservation is case-insensitive"""
         # Reserve username with mixed case
@@ -1204,7 +1204,7 @@ class UsernameValidationRedisReservationTestCase(TestCase):
     @allure.title("Reserved username detected")
     @allure.description("Test that User.reserved_username is checked")
     @allure.severity(allure.severity_level.CRITICAL)
-    @override_config(USERNAME_VALIDATION_TTL_MINUTES=10)
+    @override_config(USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES=10)
     def test_reserved_username_detected(self):
         """Test that User.reserved_username is checked"""
         # User has reserved_username='HostUser'

@@ -1720,7 +1720,7 @@ class UsernameValidationView(APIView):
 
         # If available, reserve it temporarily in Redis to prevent race conditions
         if available:
-            cache_ttl = config.USERNAME_VALIDATION_TTL_MINUTES * 60  # Convert minutes to seconds
+            cache_ttl = config.USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES * 60  # Convert minutes to seconds
             reservation_key = f"username:reserved:{username_lower}"
             cache.set(reservation_key, True, cache_ttl)
 

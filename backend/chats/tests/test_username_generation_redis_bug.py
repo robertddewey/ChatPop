@@ -87,10 +87,10 @@ class UsernameGenerationRedisBugTest(TestCase):
 
     def test_fingerprint_set_has_correct_ttl(self):
         """
-        BUG TEST: The fingerprint set should have a TTL matching USERNAME_RESERVATION_TTL_MINUTES.
+        BUG TEST: The fingerprint set should have a TTL matching USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES.
 
         Expected behavior:
-        - The set should be created with TTL = 60 minutes (3600 seconds)
+        - The set should be created with TTL = 1 minute (60 seconds) for chat dice generation
 
         Current behavior:
         - Key doesn't exist, so TTL is irrelevant

@@ -48,7 +48,11 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None):
     attempts_key = f"username:generation_attempts:{fingerprint}"
     generated_key = f"username:generated_for_fingerprint:{fingerprint}"  # Global tracking (for API bypass prevention)
     generated_per_chat_key = f"username:generated_for_chat:{chat_code}:{fingerprint}" if chat_code else None  # Per-chat tracking (for rotation)
-    cache_ttl = int(config.USERNAME_RESERVATION_TTL_MINUTES * 60)  # Convert minutes to seconds
+    # Use different TTL based on context: registration (longer) vs chat (shorter)
+    if chat_code is None:
+        cache_ttl = int(config.USERNAME_REGISTRATION_HOLD_TTL_MINUTES * 60)  # Registration: 5 min
+    else:
+        cache_ttl = int(config.USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES * 60)  # Chat: 1 min
 
     # Check current attempt count
     current_attempts = cache.get(attempts_key, 0)
