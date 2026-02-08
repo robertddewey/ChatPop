@@ -23,17 +23,16 @@ Why this is needed:
     ensuring all vectors are comparable in semantic space.
 """
 import logging
-from constance import config
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from media_analysis.models import PhotoAnalysis
-from media_analysis.utils.embedding import generate_embedding, generate_suggestions_embedding
+from media_analysis.utils.embedding import generate_suggestions_embedding
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = 'Regenerate caption and suggestions embeddings for existing PhotoAnalysis records'
+    help = 'Regenerate suggestions embeddings for existing PhotoAnalysis records'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -66,10 +65,6 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING('\nDRY RUN MODE - No changes will be made\n'))
 
-        # Display constance settings status
-        caption_embedding_enabled = config.PHOTO_ANALYSIS_ENABLE_CAPTION_EMBEDDING
-        self.stdout.write(f'Caption embedding generation: {"ENABLED" if caption_embedding_enabled else "DISABLED (config setting)"}\n')
-
         # Build queryset
         if photo_id:
             # Single photo regeneration
@@ -95,7 +90,6 @@ class Command(BaseCommand):
         # Statistics
         stats = {
             'total': total_count,
-            'caption_updated': 0,
             'suggestions_updated': 0,
             'skipped': 0,
             'failed': 0,
@@ -108,7 +102,7 @@ class Command(BaseCommand):
             batch = queryset[i:i + batch_size]
 
             for photo in batch:
-                self.stdout.write(f'[{stats["caption_updated"] + stats["suggestions_updated"] + stats["skipped"] + stats["failed"] + 1}/{total_count}] Processing {photo.id}...')
+                self.stdout.write(f'[{stats["suggestions_updated"] + stats["skipped"] + stats["failed"] + 1}/{total_count}] Processing {photo.id}...')
 
                 try:
                     # Check if photo has required caption data
@@ -117,32 +111,7 @@ class Command(BaseCommand):
                         stats['skipped'] += 1
                         continue
 
-                    # Regenerate caption embedding (Embedding 1: Semantic/Content)
-                    # Only if PHOTO_ANALYSIS_ENABLE_CAPTION_EMBEDDING is enabled
-                    caption_updated = False
-                    if photo.caption_full and config.PHOTO_ANALYSIS_ENABLE_CAPTION_EMBEDDING:
-                        try:
-                            if not dry_run:
-                                caption_embedding_data = generate_embedding(
-                                    caption_full=photo.caption_full or '',
-                                    caption_visible_text=photo.caption_visible_text or '',
-                                    caption_title=photo.caption_title or '',
-                                    caption_category=photo.caption_category or '',
-                                    model="text-embedding-3-small"
-                                )
-                                photo.caption_embedding = caption_embedding_data.embedding
-                                photo.caption_embedding_generated_at = timezone.now()
-                                caption_updated = True
-                                self.stdout.write(f'  ✓ Caption embedding regenerated')
-                            else:
-                                self.stdout.write(f'  ✓ Caption embedding (DRY RUN)')
-                                caption_updated = True
-                        except Exception as e:
-                            self.stdout.write(self.style.ERROR(f'  ✗ Caption embedding failed: {str(e)}'))
-                    elif photo.caption_full and not config.PHOTO_ANALYSIS_ENABLE_CAPTION_EMBEDDING:
-                        self.stdout.write(f'  ⊘ Caption embedding skipped (disabled in config)')
-
-                    # Regenerate suggestions embedding (Embedding 2: Conversational/Topic - PRIMARY)
+                    # Regenerate suggestions embedding (Conversational/Topic - PRIMARY)
                     suggestions_updated = False
                     if photo.caption_full and photo.suggestions:
                         try:
@@ -177,12 +146,10 @@ class Command(BaseCommand):
                             self.stdout.write(self.style.ERROR(f'  ✗ Suggestions embedding failed: {str(e)}'))
 
                     # Save changes
-                    if not dry_run and (caption_updated or suggestions_updated):
+                    if not dry_run and suggestions_updated:
                         photo.save()
 
                     # Update stats
-                    if caption_updated:
-                        stats['caption_updated'] += 1
                     if suggestions_updated:
                         stats['suggestions_updated'] += 1
 
@@ -196,7 +163,6 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Summary'))
         self.stdout.write('=' * 70)
         self.stdout.write(f'Total processed:           {stats["total"]}')
-        self.stdout.write(f'Caption embeddings:        {stats["caption_updated"]} updated')
         self.stdout.write(f'Suggestions embeddings:    {stats["suggestions_updated"]} updated')
         self.stdout.write(f'Skipped (no data):         {stats["skipped"]}')
         self.stdout.write(f'Failed:                    {stats["failed"]}')

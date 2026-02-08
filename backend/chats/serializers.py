@@ -435,7 +435,7 @@ class MessagePinSerializer(serializers.Serializer):
     """
     Serializer for pinning a message.
 
-    Note: duration is now controlled by Constance config.PIN_DURATION_MINUTES,
+    Note: duration is now controlled by Constance config.PIN_NEW_PIN_DURATION_MINUTES,
     not user-specified. Amount must exceed current highest pin value for the chat.
     """
     amount_cents = serializers.IntegerField(
