@@ -34,6 +34,7 @@ from .utils.image_processing import resize_image_if_needed
 from .utils.suggestion_blending import blend_suggestions
 from .utils.suggestion_matching import match_suggestions_to_existing, discover_related_suggestions
 from .utils.performance import PerformanceTracker
+from .utils.room_activity import get_active_users_for_rooms
 from chatpop.utils.media import MediaStorage
 
 logger = logging.getLogger(__name__)
@@ -306,32 +307,68 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
 
             logger.info(f"\nMatching complete: {len(matched_suggestions)} suggestions processed")
 
-            # STEP 2: Sort by proper noun + popularity, take top 5
-            # - Priority 1: Proper nouns (always included first)
-            # - Priority 2: Most popular suggestions (highest usage_count)
+            # STEP 2: Sort by room activity (active users in last 24h)
+            # - Priority 1: AI-suggested proper nouns first (in AI order)
+            # - Priority 2: Other proper nouns sorted by active_users, then usage_count
+            # - Priority 3: Generics sorted by active_users, then usage_count
             logger.info("\n" + "="*80)
-            logger.info("STEP 2: Sorting by proper noun priority + popularity")
+            logger.info("STEP 2: Sorting by room activity (active users in 24h)")
             logger.info("="*80)
 
+            # Get room info for all suggestions (to map keys -> room IDs)
+            from chats.models import ChatRoom
+            suggestion_keys = [s.get('key') for s in matched_suggestions if s.get('key')]
+            rooms_by_code = {
+                room.code: room
+                for room in ChatRoom.objects.filter(
+                    code__in=suggestion_keys,
+                    is_active=True
+                )
+            }
+
+            # Get active user counts for rooms
+            room_ids = [str(room.id) for room in rooms_by_code.values()]
+            active_users_by_room_id = get_active_users_for_rooms(room_ids) if room_ids else {}
+
+            # Map suggestion key -> active_users count
+            active_users_by_key = {}
+            for code, room in rooms_by_code.items():
+                active_users_by_key[code] = active_users_by_room_id.get(str(room.id), 0)
+
+            # Attach active_users to each suggestion
+            for s in matched_suggestions:
+                s['active_users'] = active_users_by_key.get(s.get('key'), 0)
+                s['has_room'] = s.get('key') in rooms_by_code
+
+            # Split proper nouns and generics
             proper_nouns = [s for s in matched_suggestions if s.get('is_proper_noun', False)]
             non_proper_nouns = [s for s in matched_suggestions if not s.get('is_proper_noun', False)]
 
-            # Sort non-proper nouns by usage_count (descending)
-            non_proper_nouns_sorted = sorted(
-                non_proper_nouns,
-                key=lambda s: s.get('usage_count', 0),
-                reverse=True
-            )
+            # Sort function: active_users DESC, then usage_count DESC
+            def sort_by_activity(s):
+                return (-s.get('active_users', 0), -s.get('usage_count', 0))
 
-            logger.info(f"\nProper nouns: {len(proper_nouns)}")
+            # Sort non-proper nouns by activity
+            non_proper_nouns_sorted = sorted(non_proper_nouns, key=sort_by_activity)
+
+            # Proper nouns: keep AI order (they're already in seed order)
+            # We'll sort discovered proper nouns by activity in STEP 3
+
+            logger.info(f"\nProper nouns (AI order): {len(proper_nouns)}")
             for pn in proper_nouns:
-                logger.info(f"  ✓ '{pn['name']}' (usage: {pn.get('usage_count', 0)}x)")
+                logger.info(
+                    f"  ✓ '{pn['name']}' (active: {pn.get('active_users', 0)}, "
+                    f"usage: {pn.get('usage_count', 0)}x, has_room: {pn.get('has_room', False)})"
+                )
 
-            logger.info(f"\nNon-proper nouns (sorted by popularity): {len(non_proper_nouns_sorted)}")
+            logger.info(f"\nNon-proper nouns (sorted by activity): {len(non_proper_nouns_sorted)}")
             for npn in non_proper_nouns_sorted[:5]:  # Show top 5
-                logger.info(f"  → '{npn['name']}' (usage: {npn.get('usage_count', 0)}x, source: {npn.get('source', 'unknown')})")
+                logger.info(
+                    f"  → '{npn['name']}' (active: {npn.get('active_users', 0)}, "
+                    f"usage: {npn.get('usage_count', 0)}x, has_room: {npn.get('has_room', False)})"
+                )
 
-            # Combine: proper nouns first, then most popular
+            # Combine: proper nouns first, then most active generics
             final_suggestions_list = (proper_nouns + non_proper_nouns_sorted)[:5]
 
             logger.info(
@@ -359,10 +396,86 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                 )
 
                 if discovered_suggestions:
-                    logger.info(f"Added {len(discovered_suggestions)} discovered suggestions")
-                    final_suggestions_list = final_suggestions_list + discovered_suggestions
+                    # Get active user counts for discovered suggestions
+                    discovered_keys = [s.get('key') for s in discovered_suggestions if s.get('key')]
+                    discovered_rooms = {
+                        room.code: room
+                        for room in ChatRoom.objects.filter(
+                            code__in=discovered_keys,
+                            is_active=True
+                        )
+                    }
+                    discovered_room_ids = [str(room.id) for room in discovered_rooms.values()]
+                    discovered_active_users = get_active_users_for_rooms(discovered_room_ids) if discovered_room_ids else {}
+
+                    # Attach active_users to discovered suggestions
+                    for s in discovered_suggestions:
+                        key = s.get('key')
+                        if key in discovered_rooms:
+                            room_id = str(discovered_rooms[key].id)
+                            s['active_users'] = discovered_active_users.get(room_id, 0)
+                            s['has_room'] = True
+                        else:
+                            s['active_users'] = 0
+                            s['has_room'] = False
+
+                    # Sort discovered suggestions by activity (proper nouns with rooms first)
+                    discovered_suggestions_sorted = sorted(
+                        discovered_suggestions,
+                        key=lambda s: (
+                            -1 if s.get('is_proper_noun') and s.get('has_room') else 0,  # Proper nouns with rooms first
+                            -s.get('active_users', 0),  # Then by active users
+                            -s.get('usage_count', 0)  # Then by usage count
+                        )
+                    )
+
+                    logger.info(f"Discovered {len(discovered_suggestions_sorted)} suggestions:")
+                    for ds in discovered_suggestions_sorted:
+                        logger.info(
+                            f"  → '{ds['name']}' (active: {ds.get('active_users', 0)}, "
+                            f"usage: {ds.get('usage_count', 0)}x, proper_noun: {ds.get('is_proper_noun', False)}, "
+                            f"has_room: {ds.get('has_room', False)})"
+                        )
+
+                    # Combine all suggestions for final re-sort
+                    all_suggestions = final_suggestions_list + discovered_suggestions_sorted
                 else:
                     logger.info("No related suggestions discovered")
+                    all_suggestions = final_suggestions_list
+
+                # STEP 4: Final re-sort to ensure proper ordering
+                # Order: AI proper nouns → Other proper nouns by activity → Generics by activity
+                logger.info("\n" + "="*80)
+                logger.info("STEP 4: Final re-sort (AI proper nouns → Other proper nouns → Generics)")
+                logger.info("="*80)
+
+                # Separate into categories
+                ai_proper_nouns = [s for s in all_suggestions if s.get('is_proper_noun') and s.get('source') != 'discovered']
+                discovered_proper_nouns = [s for s in all_suggestions if s.get('is_proper_noun') and s.get('source') == 'discovered']
+                generics = [s for s in all_suggestions if not s.get('is_proper_noun')]
+
+                # Sort discovered proper nouns by activity
+                discovered_proper_nouns_sorted = sorted(
+                    discovered_proper_nouns,
+                    key=lambda s: (-s.get('active_users', 0), -s.get('usage_count', 0))
+                )
+
+                # Sort generics by activity
+                generics_sorted = sorted(
+                    generics,
+                    key=lambda s: (-s.get('active_users', 0), -s.get('usage_count', 0))
+                )
+
+                # Final order: AI proper nouns first, then discovered proper nouns, then generics
+                final_suggestions_list = ai_proper_nouns + discovered_proper_nouns_sorted + generics_sorted
+
+                logger.info(f"Final order ({len(final_suggestions_list)} total):")
+                for i, s in enumerate(final_suggestions_list, 1):
+                    category = "AI proper noun" if s in ai_proper_nouns else ("Discovered proper noun" if s.get('is_proper_noun') else "Generic")
+                    logger.info(
+                        f"  #{i} '{s['name']}' [{category}] "
+                        f"(active: {s.get('active_users', 0)}, usage: {s.get('usage_count', 0)}x, has_room: {s.get('has_room', False)})"
+                    )
 
                 logger.info("="*80 + "\n")
 
