@@ -125,6 +125,7 @@ class CheckUsernameView(APIView):
 
     def get(self, request):
         username = request.query_params.get('username', '').strip()
+        fingerprint = request.query_params.get('fingerprint', '').strip()
 
         if not username:
             return Response({'available': False, 'message': 'Username is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -138,14 +139,23 @@ class CheckUsernameView(APIView):
                 'message': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check global username availability (User.reserved_username + ChatParticipation.username + Redis reservations)
-        available = is_username_globally_available(username)
+        # Fallback fingerprint to IP if not provided
+        if not fingerprint:
+            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+            if x_forwarded_for:
+                fingerprint = x_forwarded_for.split(',')[0]
+            else:
+                fingerprint = request.META.get('REMOTE_ADDR', 'unknown')
 
-        # If available, reserve it temporarily in Redis to prevent race conditions
+        # Check global username availability (User.reserved_username + ChatParticipation.username + Redis reservations)
+        # Pass fingerprint to allow same user to re-check their own reservation
+        available = is_username_globally_available(username, fingerprint=fingerprint)
+
+        # If available, reserve it temporarily in Redis with fingerprint ownership
         if available:
             cache_ttl = config.USERNAME_REGISTRATION_HOLD_TTL_MINUTES * 60  # Convert minutes to seconds
             reservation_key = f"username:reserved:{username.lower()}"
-            cache.set(reservation_key, True, cache_ttl)
+            cache.set(reservation_key, fingerprint, cache_ttl)  # Store fingerprint, not True
 
         return Response({
             'available': available,

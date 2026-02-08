@@ -112,8 +112,9 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None):
         # Valid username found! Track it and update caches
         # STEP 4: Reserve username globally to prevent race conditions
         # This prevents two users from getting the same username simultaneously
+        # Store fingerprint (not True) so same user can re-check via manual typing
         reservation_key = f"username:reserved:{username.lower()}"
-        cache.set(reservation_key, True, cache_ttl)  # 1 hour TTL (same as fingerprint tracking)
+        cache.set(reservation_key, fingerprint, cache_ttl)
 
         # Add to fingerprint's generated usernames set (for API bypass prevention)
         generated_usernames.add(username)

@@ -78,17 +78,19 @@ def validate_username(value, skip_badwords_check=False):
     return value
 
 
-def is_username_globally_available(username):
+def is_username_globally_available(username, fingerprint=None):
     """
     Check if a username is available globally (across entire platform).
 
     A username is considered TAKEN if:
     - Reserved by any registered user (User.reserved_username)
     - Used in any chat room (ChatParticipation.username)
-    - Temporarily reserved in Redis (pending registration/chat join)
+    - Temporarily reserved in Redis (pending registration/chat join) by a DIFFERENT user
 
     Args:
         username: The username to check (case-insensitive)
+        fingerprint: Optional fingerprint of the user checking. If provided and matches
+                     the reservation owner, the username is considered available (same user).
 
     Returns:
         bool: True if available, False if taken
@@ -110,7 +112,11 @@ def is_username_globally_available(username):
 
     # Check if temporarily reserved in Redis (prevents race conditions)
     reservation_key = f"username:reserved:{username_lower}"
-    if cache.get(reservation_key):
-        return False
+    reservation_owner = cache.get(reservation_key)
+    if reservation_owner:
+        # If fingerprint provided and matches reservation owner, it's the same user
+        if fingerprint and reservation_owner == fingerprint:
+            return True  # Same user can re-check their own reservation
+        return False  # Reserved by someone else
 
     return True

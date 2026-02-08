@@ -295,9 +295,9 @@ export const authApi = {
     return response.data;
   },
 
-  checkUsername: async (username: string): Promise<{ available: boolean; message: string }> => {
+  checkUsername: async (username: string, fingerprint?: string): Promise<{ available: boolean; message: string }> => {
     const response = await api.get('/api/auth/check-username/', {
-      params: { username },
+      params: { username, fingerprint },
     });
     return response.data;
   },

@@ -48,6 +48,9 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   const [avatarBaseSeed] = useState(() => crypto.randomUUID().slice(0, 8));
   const [avatarIndex, setAvatarIndex] = useState(0);
 
+  // Fingerprint state - cached for username availability checks
+  const [fingerprint, setFingerprint] = useState<string | null>(null);
+
   // Generate avatar seed based on index
   const getAvatarSeed = (baseSeed: string, index: number): string => {
     if (index === 0) return baseSeed;
@@ -67,6 +70,11 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   // Avatar navigation
   const handleAvatarPrev = () => setAvatarIndex(prev => prev - 1);
   const handleAvatarNext = () => setAvatarIndex(prev => prev + 1);
+
+  // Fetch fingerprint on mount for username availability checks
+  useEffect(() => {
+    getFingerprint().then(setFingerprint);
+  }, []);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css
@@ -120,11 +128,17 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
       return;
     }
 
+    // Wait for fingerprint to be loaded before checking
+    if (!fingerprint) {
+      return;
+    }
+
     setUsernameStatus({ checking: true, available: null, message: 'Checking...' });
 
     const timeoutId = setTimeout(async () => {
       try {
-        const result = await authApi.checkUsername(username);
+        // Pass fingerprint to allow same user to re-check previously checked usernames
+        const result = await authApi.checkUsername(username, fingerprint);
         setUsernameStatus({
           checking: false,
           available: result.available,
@@ -141,7 +155,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [formData.reserved_username, usernameValidation.valid, usernameSource]);
+  }, [formData.reserved_username, usernameValidation.valid, usernameSource, fingerprint]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
