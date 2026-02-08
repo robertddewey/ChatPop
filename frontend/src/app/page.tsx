@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import RegisterModal from "@/components/RegisterModal";
@@ -23,6 +23,114 @@ function HomeContent() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showAudioModal, setShowAudioModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+
+  // Persistent refs for file inputs to prevent garbage collection
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const libraryInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Shared photo processing logic
+  const processPhoto = useCallback(async (file: File, source: 'camera' | 'library') => {
+    const emoji = source === 'camera' ? '📸' : '🖼️';
+    const label = source === 'camera' ? 'Camera photo captured' : 'Photo selected from library';
+    console.log(`${emoji} ${label}:`, file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
+
+    try {
+      // Show modal with loading state immediately
+      setIsAnalyzing(true);
+      setAnalysisResult(null);
+
+      // Get fingerprint for tracking
+      const fingerprint = await getFingerprint();
+
+      // Analyze photo
+      const result = await messageApi.analyzePhoto(file, fingerprint);
+      console.log('✅ Analysis complete:', result);
+
+      // Update modal with result
+      setAnalysisResult(result);
+      setIsAnalyzing(false);
+
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
+      console.error('❌ Photo analysis failed:', error.response?.data || error.message);
+      setIsAnalyzing(false);
+      alert(`Photo analysis failed: ${error.response?.data?.detail || error.message}`);
+    }
+  }, []);
+
+  // Initialize persistent file inputs on mount
+  useEffect(() => {
+    // Create camera input (with capture attribute for direct camera access)
+    const cameraInput = document.createElement('input');
+    cameraInput.type = 'file';
+    cameraInput.accept = 'image/*';
+    cameraInput.capture = 'environment';
+    cameraInput.style.display = 'none';
+    cameraInput.id = 'camera-input-persistent';
+    document.body.appendChild(cameraInput);
+    cameraInputRef.current = cameraInput;
+
+    // Create library input (no capture = allows library selection)
+    const libraryInput = document.createElement('input');
+    libraryInput.type = 'file';
+    libraryInput.accept = 'image/*';
+    libraryInput.style.display = 'none';
+    libraryInput.id = 'library-input-persistent';
+    document.body.appendChild(libraryInput);
+    libraryInputRef.current = libraryInput;
+
+    // Cleanup on unmount
+    return () => {
+      if (cameraInputRef.current) {
+        document.body.removeChild(cameraInputRef.current);
+        cameraInputRef.current = null;
+      }
+      if (libraryInputRef.current) {
+        document.body.removeChild(libraryInputRef.current);
+        libraryInputRef.current = null;
+      }
+    };
+  }, []);
+
+  // Attach event handlers separately to avoid stale closure issues
+  useEffect(() => {
+    const cameraInput = cameraInputRef.current;
+    const libraryInput = libraryInputRef.current;
+
+    const handleCameraChange = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        processPhoto(file, 'camera');
+      }
+      // Reset input so same file can be selected again
+      if (cameraInput) cameraInput.value = '';
+    };
+
+    const handleLibraryChange = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        processPhoto(file, 'library');
+      }
+      // Reset input so same file can be selected again
+      if (libraryInput) libraryInput.value = '';
+    };
+
+    if (cameraInput) {
+      cameraInput.addEventListener('change', handleCameraChange);
+    }
+    if (libraryInput) {
+      libraryInput.addEventListener('change', handleLibraryChange);
+    }
+
+    return () => {
+      if (cameraInput) {
+        cameraInput.removeEventListener('change', handleCameraChange);
+      }
+      if (libraryInput) {
+        libraryInput.removeEventListener('change', handleLibraryChange);
+      }
+    };
+  }, [processPhoto]);
 
   useEffect(() => {
     // Detect if device is mobile
@@ -50,88 +158,14 @@ function HomeContent() {
   };
 
   const handleCameraClick = () => {
-    if (isMobile) {
-      // Create a hidden file input to trigger camera
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*'; // Accept images only
-      input.capture = 'environment'; // Force camera mode (rear camera)
-
-      input.onchange = async (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (file) {
-          console.log('📸 Photo captured from camera:', file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
-
-          try {
-            // Show modal with loading state immediately
-            setIsAnalyzing(true);
-            setAnalysisResult(null);
-
-            // Get fingerprint for tracking
-            const fingerprint = await getFingerprint();
-
-            // Analyze photo
-            const result = await messageApi.analyzePhoto(file, fingerprint);
-            console.log('✅ Analysis complete:', result);
-
-            // Update modal with result
-            setAnalysisResult(result);
-            setIsAnalyzing(false);
-
-          } catch (err: unknown) {
-            const error = err as { response?: { data?: { detail?: string } }; message?: string };
-            console.error('❌ Photo analysis failed:', error.response?.data || error.message);
-            setIsAnalyzing(false);
-            // TODO: Show error in modal or toast notification
-            alert(`Photo analysis failed: ${error.response?.data?.detail || error.message}`);
-          }
-        }
-      };
-
-      input.click();
+    if (isMobile && cameraInputRef.current) {
+      cameraInputRef.current.click();
     }
   };
 
   const handleLibraryClick = () => {
-    if (isMobile) {
-      // Create a hidden file input to trigger photo library
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*'; // Accept images only
-      // No capture attribute = allows library selection
-
-      input.onchange = async (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (file) {
-          console.log('🖼️ Photo selected from library:', file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
-
-          try {
-            // Show modal with loading state immediately
-            setIsAnalyzing(true);
-            setAnalysisResult(null);
-
-            // Get fingerprint for tracking
-            const fingerprint = await getFingerprint();
-
-            // Analyze photo
-            const result = await messageApi.analyzePhoto(file, fingerprint);
-            console.log('✅ Analysis complete:', result);
-
-            // Update modal with result
-            setAnalysisResult(result);
-            setIsAnalyzing(false);
-
-          } catch (err: unknown) {
-            const error = err as { response?: { data?: { detail?: string } }; message?: string };
-            console.error('❌ Photo analysis failed:', error.response?.data || error.message);
-            setIsAnalyzing(false);
-            // TODO: Show error in modal or toast notification
-            alert(`Photo analysis failed: ${error.response?.data?.detail || error.message}`);
-          }
-        }
-      };
-
-      input.click();
+    if (isMobile && libraryInputRef.current) {
+      libraryInputRef.current.click();
     }
   };
 
