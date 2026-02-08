@@ -32,10 +32,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     """Serializer for user registration"""
     password = serializers.CharField(write_only=True, min_length=8)
     fingerprint = serializers.CharField(write_only=True, required=False)
+    avatar_seed = serializers.CharField(write_only=True, required=False, max_length=50)
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'reserved_username', 'first_name', 'last_name', 'fingerprint']
+        fields = ['email', 'password', 'reserved_username', 'first_name', 'last_name', 'fingerprint', 'avatar_seed']
 
     def validate_reserved_username(self, value):
         """Validate reserved username format and uniqueness"""
@@ -52,8 +53,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        # Remove fingerprint from validated_data (it's only used for security validation)
+        # Remove non-model fields from validated_data
         validated_data.pop('fingerprint', None)
+        avatar_seed = validated_data.pop('avatar_seed', None)
 
         user = User.objects.create_user(
             email=validated_data['email'],
@@ -63,10 +65,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             last_name=validated_data.get('last_name', '')
         )
 
-        # Generate avatar at registration time if user has reserved_username
-        if user.reserved_username:
+        # Generate avatar using provided seed, or fall back to reserved_username
+        seed = avatar_seed or user.reserved_username
+        if seed:
             from chatpop.utils.media import generate_and_store_avatar
-            avatar_url = generate_and_store_avatar(user.reserved_username)
+            avatar_url = generate_and_store_avatar(seed)
             if avatar_url:
                 user.avatar_url = avatar_url
                 user.save(update_fields=['avatar_url'])

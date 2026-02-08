@@ -6,7 +6,7 @@ import { authApi, chatApi } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
 import { MARKETING } from '@/lib/marketing';
 import { getFingerprint } from '@/lib/usernameStorage';
-import { X, Dices } from 'lucide-react';
+import { X, Dices, ChevronLeft, ChevronRight } from 'lucide-react';
 import { isDarkTheme } from '@/lib/themes';
 
 interface RegisterModalProps {
@@ -43,6 +43,30 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>('manual');
   const [diceUsername, setDiceUsername] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(false);
+
+  // Avatar state - random seed independent of username
+  const [avatarBaseSeed] = useState(() => crypto.randomUUID().slice(0, 8));
+  const [avatarIndex, setAvatarIndex] = useState(0);
+
+  // Generate avatar seed based on index
+  const getAvatarSeed = (baseSeed: string, index: number): string => {
+    if (index === 0) return baseSeed;
+    if (index > 0) return `${baseSeed}+${index}`;
+    return `${baseSeed}${index}`; // negative includes minus sign
+  };
+
+  // Get DiceBear avatar URL
+  const getAvatarUrl = (seed: string, size: number = 80): string => {
+    return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
+  };
+
+  // Current avatar seed and URL
+  const currentAvatarSeed = getAvatarSeed(avatarBaseSeed, avatarIndex);
+  const currentAvatarUrl = getAvatarUrl(currentAvatarSeed);
+
+  // Avatar navigation
+  const handleAvatarPrev = () => setAvatarIndex(prev => prev - 1);
+  const handleAvatarNext = () => setAvatarIndex(prev => prev + 1);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css
@@ -148,10 +172,11 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
       // Get fingerprint for API bypass prevention validation
       const fingerprint = await getFingerprint();
 
-      // Send registration with fingerprint
+      // Send registration with fingerprint and avatar seed
       await authApi.register({
         ...formData,
         fingerprint,
+        avatar_seed: currentAvatarSeed,
       });
       await authApi.login(formData.email, formData.password);
 
@@ -263,9 +288,36 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
         </button>
 
         {/* Header */}
-        <h1 className={`text-2xl md:text-3xl font-bold ${styles.title} mb-4`}>
+        <h1 className={`text-2xl md:text-3xl font-bold ${styles.title} mb-4 text-center`}>
           {MARKETING.auth.register.title}
         </h1>
+
+        {/* Avatar Preview */}
+        <div className="text-center mb-4">
+          <img
+            src={currentAvatarUrl}
+            alt="Avatar preview"
+            className="w-20 h-20 rounded-full border-2 border-zinc-600 mx-auto mb-3"
+          />
+          <div className="inline-flex items-center gap-4">
+            <button
+              type="button"
+              onClick={handleAvatarPrev}
+              className={`p-2 rounded-lg ${styles.diceButton} transition-all active:scale-95 cursor-pointer`}
+              title="Previous avatar"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <button
+              type="button"
+              onClick={handleAvatarNext}
+              className={`p-2 rounded-lg ${styles.diceButton} transition-all active:scale-95 cursor-pointer`}
+              title="Next avatar"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </div>
 
         {/* Error Message */}
         {error && (

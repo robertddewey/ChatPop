@@ -257,7 +257,7 @@ export interface PhotoAnalysisResponse {
 
 // API Functions
 export const authApi = {
-  register: async (data: { email: string; password: string; reserved_username?: string; fingerprint?: string }) => {
+  register: async (data: { email: string; password: string; reserved_username?: string; fingerprint?: string; avatar_seed?: string }) => {
     const response = await api.post('/api/auth/register/', data);
     return response.data;
   },
