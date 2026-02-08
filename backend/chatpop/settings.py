@@ -488,7 +488,7 @@ Response JSON:
 
     # Suggestion Discovery Settings (K-NN based discovery of related suggestions)
     'SUGGESTION_DISCOVERY_EXTRA_COUNT': (
-        0,
+        5,
         'Number of additional suggestions to discover via K-NN search after LLM suggestions. Set to 0 to disable discovery. These are existing suggestions semantically similar to the LLM suggestions.',
         int
     ),
@@ -546,7 +546,7 @@ Response JSON:
 
     # Location API Provider Settings
     'PLACES_PROVIDER': (
-        'google',
+        'tomtom',
         'Primary location API provider for venue discovery. Options: "google" (Google Places API) or "tomtom" (TomTom Search API). Requires corresponding API key.',
         str
     ),
