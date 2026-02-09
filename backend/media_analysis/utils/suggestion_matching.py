@@ -667,7 +667,8 @@ def _create_or_get_suggestion(
             'source': 'created',
             'is_proper_noun': is_proper_noun,
             'usage_count': 1,
-            'suggestion_id': str(suggestion.id)
+            'suggestion_id': str(suggestion.id),
+            'similarity_score': 1.0  # Direct AI suggestion = 100% relevant
         }
 
     except Exception as e:
@@ -679,7 +680,8 @@ def _create_or_get_suggestion(
             'description': description,
             'source': 'seed',
             'is_proper_noun': is_proper_noun,
-            'usage_count': 0
+            'usage_count': 0,
+            'similarity_score': 1.0  # Direct AI suggestion = 100% relevant
         }
 
 

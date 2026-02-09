@@ -114,9 +114,19 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
             - 429: Rate limit exceeded
             - 500: Server error (OpenAI API failure, storage error, etc.)
         """
+        # Debug: Log incoming request data
+        logger.info(f"Photo upload request - Content-Type: {request.content_type}")
+        logger.info(f"Photo upload request - Data keys: {list(request.data.keys()) if hasattr(request.data, 'keys') else 'not dict'}")
+        if 'image' in request.data:
+            img = request.data.get('image')
+            logger.info(f"Photo upload request - Image: name={getattr(img, 'name', 'N/A')}, size={getattr(img, 'size', 'N/A')}, content_type={getattr(img, 'content_type', 'N/A')}")
+        else:
+            logger.warning("Photo upload request - No 'image' field in request data")
+
         # Validate upload data
         upload_serializer = PhotoUploadSerializer(data=request.data)
         if not upload_serializer.is_valid():
+            logger.warning(f"Photo upload validation failed: {upload_serializer.errors}")
             return Response(
                 upload_serializer.errors,
                 status=status.HTTP_400_BAD_REQUEST
@@ -344,32 +354,30 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
             proper_nouns = [s for s in matched_suggestions if s.get('is_proper_noun', False)]
             non_proper_nouns = [s for s in matched_suggestions if not s.get('is_proper_noun', False)]
 
-            # Sort function: active_users DESC, then usage_count DESC
-            def sort_by_activity(s):
-                return (-s.get('active_users', 0), -s.get('usage_count', 0))
+            # Sort function: similarity_score DESC (higher = more relevant to this photo)
+            def sort_by_similarity(s):
+                return -s.get('similarity_score', 1.0)  # Default 1.0 for created suggestions
 
-            # Sort non-proper nouns by activity
-            non_proper_nouns_sorted = sorted(non_proper_nouns, key=sort_by_activity)
+            # Sort both groups by similarity score
+            proper_nouns_sorted = sorted(proper_nouns, key=sort_by_similarity)
+            non_proper_nouns_sorted = sorted(non_proper_nouns, key=sort_by_similarity)
 
-            # Proper nouns: keep AI order (they're already in seed order)
-            # We'll sort discovered proper nouns by activity in STEP 3
-
-            logger.info(f"\nProper nouns (AI order): {len(proper_nouns)}")
-            for pn in proper_nouns:
+            logger.info(f"\nProper nouns (sorted by similarity): {len(proper_nouns_sorted)}")
+            for pn in proper_nouns_sorted:
                 logger.info(
-                    f"  ✓ '{pn['name']}' (active: {pn.get('active_users', 0)}, "
-                    f"usage: {pn.get('usage_count', 0)}x, has_room: {pn.get('has_room', False)})"
+                    f"  ✓ '{pn['name']}' (similarity: {pn.get('similarity_score', 1.0):.1%}, "
+                    f"active: {pn.get('active_users', 0)}, has_room: {pn.get('has_room', False)})"
                 )
 
-            logger.info(f"\nNon-proper nouns (sorted by activity): {len(non_proper_nouns_sorted)}")
+            logger.info(f"\nNon-proper nouns (sorted by similarity): {len(non_proper_nouns_sorted)}")
             for npn in non_proper_nouns_sorted[:5]:  # Show top 5
                 logger.info(
-                    f"  → '{npn['name']}' (active: {npn.get('active_users', 0)}, "
-                    f"usage: {npn.get('usage_count', 0)}x, has_room: {npn.get('has_room', False)})"
+                    f"  → '{npn['name']}' (similarity: {npn.get('similarity_score', 1.0):.1%}, "
+                    f"active: {npn.get('active_users', 0)}, has_room: {npn.get('has_room', False)})"
                 )
 
-            # Combine: proper nouns first, then most active generics
-            final_suggestions_list = (proper_nouns + non_proper_nouns_sorted)[:5]
+            # Combine: proper nouns first (sorted by similarity), then generics (sorted by similarity)
+            final_suggestions_list = (proper_nouns_sorted + non_proper_nouns_sorted)[:5]
 
             logger.info(
                 f"\nFinal selection: {len(final_suggestions_list)} suggestions "
@@ -419,21 +427,17 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                             s['active_users'] = 0
                             s['has_room'] = False
 
-                    # Sort discovered suggestions by activity (proper nouns with rooms first)
+                    # Sort discovered suggestions by similarity score
                     discovered_suggestions_sorted = sorted(
                         discovered_suggestions,
-                        key=lambda s: (
-                            -1 if s.get('is_proper_noun') and s.get('has_room') else 0,  # Proper nouns with rooms first
-                            -s.get('active_users', 0),  # Then by active users
-                            -s.get('usage_count', 0)  # Then by usage count
-                        )
+                        key=lambda s: -s.get('similarity_score', 0)  # Higher similarity = more relevant
                     )
 
                     logger.info(f"Discovered {len(discovered_suggestions_sorted)} suggestions:")
                     for ds in discovered_suggestions_sorted:
                         logger.info(
-                            f"  → '{ds['name']}' (active: {ds.get('active_users', 0)}, "
-                            f"usage: {ds.get('usage_count', 0)}x, proper_noun: {ds.get('is_proper_noun', False)}, "
+                            f"  → '{ds['name']}' (similarity: {ds.get('similarity_score', 0):.1%}, "
+                            f"active: {ds.get('active_users', 0)}, proper_noun: {ds.get('is_proper_noun', False)}, "
                             f"has_room: {ds.get('has_room', False)})"
                         )
 
@@ -444,37 +448,35 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
                     all_suggestions = final_suggestions_list
 
                 # STEP 4: Final re-sort to ensure proper ordering
-                # Order: AI proper nouns → Other proper nouns by activity → Generics by activity
+                # Order: Proper nouns by similarity → Generics by similarity
                 logger.info("\n" + "="*80)
-                logger.info("STEP 4: Final re-sort (AI proper nouns → Other proper nouns → Generics)")
+                logger.info("STEP 4: Final re-sort (Proper nouns → Generics, both by similarity)")
                 logger.info("="*80)
 
                 # Separate into categories
-                ai_proper_nouns = [s for s in all_suggestions if s.get('is_proper_noun') and s.get('source') != 'discovered']
-                discovered_proper_nouns = [s for s in all_suggestions if s.get('is_proper_noun') and s.get('source') == 'discovered']
+                all_proper_nouns = [s for s in all_suggestions if s.get('is_proper_noun')]
                 generics = [s for s in all_suggestions if not s.get('is_proper_noun')]
 
-                # Sort discovered proper nouns by activity
-                discovered_proper_nouns_sorted = sorted(
-                    discovered_proper_nouns,
-                    key=lambda s: (-s.get('active_users', 0), -s.get('usage_count', 0))
+                # Sort both groups by similarity score (higher = more relevant)
+                proper_nouns_final = sorted(
+                    all_proper_nouns,
+                    key=lambda s: -s.get('similarity_score', 1.0)
                 )
 
-                # Sort generics by activity
-                generics_sorted = sorted(
+                generics_final = sorted(
                     generics,
-                    key=lambda s: (-s.get('active_users', 0), -s.get('usage_count', 0))
+                    key=lambda s: -s.get('similarity_score', 1.0)
                 )
 
-                # Final order: AI proper nouns first, then discovered proper nouns, then generics
-                final_suggestions_list = ai_proper_nouns + discovered_proper_nouns_sorted + generics_sorted
+                # Final order: proper nouns first (by similarity), then generics (by similarity)
+                final_suggestions_list = proper_nouns_final + generics_final
 
                 logger.info(f"Final order ({len(final_suggestions_list)} total):")
                 for i, s in enumerate(final_suggestions_list, 1):
-                    category = "AI proper noun" if s in ai_proper_nouns else ("Discovered proper noun" if s.get('is_proper_noun') else "Generic")
+                    category = "Proper noun" if s.get('is_proper_noun') else "Generic"
                     logger.info(
                         f"  #{i} '{s['name']}' [{category}] "
-                        f"(active: {s.get('active_users', 0)}, usage: {s.get('usage_count', 0)}x, has_room: {s.get('has_room', False)})"
+                        f"(similarity: {s.get('similarity_score', 1.0):.1%}, active: {s.get('active_users', 0)}, has_room: {s.get('has_room', False)})"
                     )
 
                 logger.info("="*80 + "\n")
