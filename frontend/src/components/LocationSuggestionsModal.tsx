@@ -4,6 +4,12 @@ import { X, MapPin, Navigation, Lock, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { locationApi, chatApi, messageApi, LocationSuggestion, LocationAnalysisResponse, NearbyDiscoverableChat } from '@/lib/api';
+import dynamic from 'next/dynamic';
+
+// Only load DevLocationPicker in development mode
+const DevLocationPicker = process.env.NODE_ENV === 'development'
+  ? dynamic(() => import('./DevLocationPicker'), { ssr: false })
+  : null;
 
 interface LocationSuggestionsModalProps {
   onClose: () => void;
@@ -38,6 +44,11 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
   // Ref for infinite scroll
   const nearbyChatsEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Dev mode location picker state (only in development)
+  const [showDevPicker, setShowDevPicker] = useState(false);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isDev = process.env.NODE_ENV === 'development';
 
   // Check if any selection is in progress
   const isSelecting = selectingAreaIndex !== null || selectingVenueIndex !== null || selectingNearbyIndex !== null;
@@ -197,6 +208,54 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
     }
   };
 
+  // Dev mode: Handle location selected from map picker
+  const handleDevLocationSelect = async (coords: { latitude: number; longitude: number }) => {
+    setShowDevPicker(false);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log('🗺️ [DEV] Using debug location:', coords.latitude, coords.longitude);
+
+      // Store coordinates for reuse
+      setUserCoords(coords);
+
+      // Fetch suggestions from API with the selected coordinates
+      const response = await locationApi.getSuggestions(coords.latitude, coords.longitude);
+      console.log('✅ Location suggestions received:', response);
+      setResult(response);
+
+      // Also fetch nearby discoverable chats
+      fetchNearbyChats(coords, selectedRadius, 0, false);
+
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string; detail?: string } } };
+      console.error('❌ Location error:', err);
+      const errorMessage = error.response?.data?.error || error.response?.data?.detail || 'Failed to get nearby chats. Please try again.';
+      setError(errorMessage);
+      setResult(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Long-press handlers for dev mode
+  const handleLongPressStart = () => {
+    if (!isDev) return;
+
+    longPressTimerRef.current = setTimeout(() => {
+      console.log('🗺️ [DEV] Long press detected - opening location picker');
+      setShowDevPicker(true);
+    }, 1500); // 1.5 second long press
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   // Handle Area Chat Room click (AI-generated, needs API call)
   const handleAreaClick = async (suggestion: LocationSuggestion, index: number) => {
     if (!result || isSelecting) return;
@@ -285,6 +344,12 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
               <button
                 onClick={requestLocation}
                 disabled={locationPermission === 'denied'}
+                onMouseDown={handleLongPressStart}
+                onMouseUp={handleLongPressEnd}
+                onMouseLeave={handleLongPressEnd}
+                onTouchStart={handleLongPressStart}
+                onTouchEnd={handleLongPressEnd}
+                onTouchCancel={handleLongPressEnd}
                 className={`w-24 h-24 rounded-full flex items-center justify-center transition-all transform shadow-xl ${
                   locationPermission === 'denied'
                     ? 'bg-zinc-600 text-zinc-400 cursor-not-allowed'
@@ -609,6 +674,14 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
           </button>
         </div>
       </div>
+
+      {/* Dev Mode Location Picker */}
+      {isDev && DevLocationPicker && showDevPicker && (
+        <DevLocationPicker
+          onSelect={handleDevLocationSelect}
+          onClose={() => setShowDevPicker(false)}
+        />
+      )}
     </div>
   );
 }

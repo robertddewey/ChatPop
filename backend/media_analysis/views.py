@@ -930,6 +930,143 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='dev/recent-songs'
+    )
+    def dev_recent_songs(self, request):
+        """
+        [DEV ONLY] Get last 10 unique songs for debug location picker.
+        Only accessible when DEBUG=True.
+
+        Response:
+            [
+                {
+                    "id": "uuid",
+                    "song": "Song Title",
+                    "artist": "Artist Name",
+                    "album": "Album Name",
+                    "created_at": "2024-01-01T12:00:00Z"
+                },
+                ...
+            ]
+        """
+        from django.conf import settings
+
+        if not settings.DEBUG:
+            return Response(
+                {"error": "This endpoint is only available in development mode"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Get last 50 analyses, then deduplicate by song+artist to get 10 unique
+        recent_analyses = MusicAnalysis.objects.order_by('-created_at')[:50]
+
+        seen_songs = set()
+        unique_songs = []
+
+        for analysis in recent_analyses:
+            # Create a key for deduplication
+            song_key = f"{analysis.song_title.lower()}|{analysis.artist.lower()}"
+
+            if song_key not in seen_songs:
+                seen_songs.add(song_key)
+                unique_songs.append({
+                    "id": str(analysis.id),
+                    "song": analysis.song_title,
+                    "artist": analysis.artist,
+                    "album": analysis.album,
+                    "created_at": analysis.created_at.isoformat(),
+                })
+
+            if len(unique_songs) >= 10:
+                break
+
+        return Response(unique_songs)
+
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='dev/replay'
+    )
+    def dev_replay(self, request, pk=None):
+        """
+        [DEV ONLY] Replay a music analysis - returns the same format as recognize.
+        Only accessible when DEBUG=True.
+
+        This allows testing the music suggestion UI without re-recording audio.
+
+        Response (same as recognize):
+            {
+                "success": true,
+                "id": "uuid",
+                "song": "Song Title",
+                ...
+                "suggestions": [...]
+            }
+        """
+        from django.conf import settings
+
+        if not settings.DEBUG:
+            return Response(
+                {"error": "This endpoint is only available in development mode"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            analysis = MusicAnalysis.objects.get(pk=pk)
+
+            # Get linked suggestions with type info
+            suggestions_list = []
+            for suggestion in analysis.suggestions.all():
+                # Determine type based on suggestion characteristics
+                suggestion_type = "artist"  # default
+                if suggestion.key == analysis.song_title.lower().replace(" ", "-"):
+                    suggestion_type = "song"
+                elif "music" in suggestion.key:
+                    suggestion_type = "genre"
+
+                suggestions_list.append({
+                    "name": suggestion.name,
+                    "key": suggestion.key,
+                    "type": suggestion_type,
+                })
+
+            # Get genres from metadata cache if available
+            genres = []
+            if analysis.acr_id:
+                from .models import MusicMetadataCache
+                try:
+                    metadata_cache = MusicMetadataCache.objects.get(acr_id=analysis.acr_id)
+                    genres = metadata_cache.genres or []
+                except MusicMetadataCache.DoesNotExist:
+                    pass
+
+            # Return same format as recognize endpoint
+            return Response({
+                "success": True,
+                "id": str(analysis.id),
+                "song": analysis.song_title,
+                "artist": analysis.artist,
+                "album": analysis.album,
+                "release_date": analysis.release_date,
+                "duration_ms": analysis.duration_ms or 0,
+                "score": analysis.confidence_score,
+                "external_ids": {
+                    "spotify": analysis.spotify_track_id,
+                    "youtube": analysis.youtube_video_id,
+                },
+                "genres": genres,
+                "suggestions": suggestions_list,
+            })
+
+        except MusicAnalysis.DoesNotExist:
+            return Response(
+                {"error": "Music analysis not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
 
 class LocationAnalysisViewSet(viewsets.GenericViewSet):
     """

@@ -4,6 +4,12 @@ import { X, Music, Mic, Loader2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, messageApi } from '@/lib/api';
+import dynamic from 'next/dynamic';
+
+// Only load DevMusicPicker in development mode
+const DevMusicPicker = process.env.NODE_ENV === 'development'
+  ? dynamic(() => import('./DevMusicPicker'), { ssr: false })
+  : null;
 
 interface MusicSuggestion {
   name: string;
@@ -51,6 +57,11 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
   const audioChunksRef = useRef<Blob[]>([]);
   const autoStopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Dev mode music picker state (only in development)
+  const [showDevPicker, setShowDevPicker] = useState(false);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isDev = process.env.NODE_ENV === 'development';
 
   // Fetch config and cleanup on unmount
   useEffect(() => {
@@ -181,6 +192,29 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
     }
   };
 
+  // Dev mode: Handle song selected from picker
+  const handleDevSongSelect = (devResult: AudioRecognitionResult) => {
+    setShowDevPicker(false);
+    setResult(devResult);
+  };
+
+  // Long-press handlers for dev mode
+  const handleLongPressStart = () => {
+    if (!isDev || isRecording) return;
+
+    longPressTimerRef.current = setTimeout(() => {
+      console.log('🎵 [DEV] Long press detected - opening music picker');
+      setShowDevPicker(true);
+    }, 1500); // 1.5 second long press
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   const getSuggestionDescription = (suggestion: MusicSuggestion, result: AudioRecognitionResult): string => {
     if (suggestion.type === 'artist') {
       return `Chat about music by ${suggestion.name}`;
@@ -247,6 +281,12 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
               <button
                 onClick={startRecording}
                 disabled={isRecording}
+                onMouseDown={handleLongPressStart}
+                onMouseUp={handleLongPressEnd}
+                onMouseLeave={handleLongPressEnd}
+                onTouchStart={handleLongPressStart}
+                onTouchEnd={handleLongPressEnd}
+                onTouchCancel={handleLongPressEnd}
                 className={`w-24 h-24 rounded-full flex items-center justify-center transition-all transform shadow-xl ${
                   isRecording
                     ? 'bg-red-500 text-white animate-pulse cursor-not-allowed'
@@ -407,6 +447,14 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
           </button>
         </div>
       </div>
+
+      {/* Dev Mode Music Picker */}
+      {isDev && DevMusicPicker && showDevPicker && (
+        <DevMusicPicker
+          onSelect={handleDevSongSelect}
+          onClose={() => setShowDevPicker(false)}
+        />
+      )}
     </div>
   );
 }
