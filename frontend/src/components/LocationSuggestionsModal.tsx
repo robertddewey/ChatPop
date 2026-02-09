@@ -4,6 +4,7 @@ import { X, MapPin, Navigation, Lock, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { locationApi, chatApi, messageApi, LocationSuggestion, LocationAnalysisResponse, NearbyDiscoverableChat } from '@/lib/api';
+import { saveModalState, setFreshNavigation } from '@/lib/modalState';
 import dynamic from 'next/dynamic';
 
 // Only load DevLocationPicker in development mode
@@ -13,12 +14,18 @@ const DevLocationPicker = process.env.NODE_ENV === 'development'
 
 interface LocationSuggestionsModalProps {
   onClose: () => void;
+  // Optional initial state for restoring modal after back navigation
+  initialState?: {
+    result: LocationAnalysisResponse;
+    nearbyChats: NearbyDiscoverableChat[];
+    selectedRadius: number;
+  };
 }
 
-export default function LocationSuggestionsModal({ onClose }: LocationSuggestionsModalProps) {
+export default function LocationSuggestionsModal({ onClose, initialState }: LocationSuggestionsModalProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<LocationAnalysisResponse | null>(null);
+  const [result, setResult] = useState<LocationAnalysisResponse | null>(initialState?.result || null);
   const [error, setError] = useState<string | null>(null);
   const [locationPermission, setLocationPermission] = useState<'prompt' | 'granted' | 'denied' | 'unknown'>('unknown');
 
@@ -32,10 +39,10 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
   const [selectionError, setSelectionError] = useState<string | null>(null);
 
   // Nearby discoverable chats state
-  const [nearbyChats, setNearbyChats] = useState<NearbyDiscoverableChat[]>([]);
+  const [nearbyChats, setNearbyChats] = useState<NearbyDiscoverableChat[]>(initialState?.nearbyChats || []);
   const [nearbyChatsLoading, setNearbyChatsLoading] = useState(false);
   const [nearbyChatsError, setNearbyChatsError] = useState<string | null>(null);
-  const [selectedRadius, setSelectedRadius] = useState(1);
+  const [selectedRadius, setSelectedRadius] = useState(initialState?.selectedRadius || 1);
   const [radiusOptions, setRadiusOptions] = useState<number[]>([1, 5, 10, 25, 50]);
   const [nearbyChatsOffset, setNearbyChatsOffset] = useState(0);
   const [nearbyChatsHasMore, setNearbyChatsHasMore] = useState(false);
@@ -88,7 +95,7 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
     });
 
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, []);
 
@@ -240,8 +247,11 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
   };
 
   // Long-press handlers for dev mode
-  const handleLongPressStart = () => {
+  const handleLongPressStart = (e: React.TouchEvent | React.MouseEvent) => {
     if (!isDev) return;
+
+    // Prevent text selection / context menu on long press
+    e.preventDefault();
 
     longPressTimerRef.current = setTimeout(() => {
       console.log('🗺️ [DEV] Long press detected - opening location picker');
@@ -270,6 +280,10 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
       });
 
       console.log('Location room created/joined:', response);
+      // Save modal state before navigating so back button can restore
+      saveModalState('location', { result, nearbyChats, selectedRadius });
+      // Mark this as a fresh navigation (prevents browser forward from returning here)
+      setFreshNavigation();
       router.push(response.chat_room.url);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } }; message?: string };
@@ -293,6 +307,10 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
       });
 
       console.log('Location room created/joined:', response);
+      // Save modal state before navigating so back button can restore
+      saveModalState('location', { result, nearbyChats, selectedRadius });
+      // Mark this as a fresh navigation (prevents browser forward from returning here)
+      setFreshNavigation();
       router.push(response.chat_room.url);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } }; message?: string };
@@ -307,6 +325,10 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
     if (isSelecting) return;
 
     setSelectingNearbyIndex(index);
+    // Save modal state before navigating so back button can restore
+    saveModalState('location', { result, nearbyChats, selectedRadius });
+    // Mark this as a fresh navigation (prevents browser forward from returning here)
+    setFreshNavigation();
     // Navigate directly to the existing room
     router.push(chat.url);
   };
@@ -350,11 +372,13 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                 onTouchStart={handleLongPressStart}
                 onTouchEnd={handleLongPressEnd}
                 onTouchCancel={handleLongPressEnd}
-                className={`w-24 h-24 rounded-full flex items-center justify-center transition-all transform shadow-xl ${
+                onContextMenu={(e) => isDev && e.preventDefault()}
+                className={`w-24 h-24 rounded-full flex items-center justify-center transition-all transform shadow-xl select-none ${
                   locationPermission === 'denied'
                     ? 'bg-zinc-600 text-zinc-400 cursor-not-allowed'
                     : 'bg-cyan-500 hover:bg-cyan-600 hover:scale-105 text-white cursor-pointer'
                 }`}
+                style={{ WebkitTouchCallout: 'none' }}
               >
                 <Navigation className="w-10 h-10" />
               </button>

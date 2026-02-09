@@ -36,7 +36,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
     }
     return () => {
       if (!isChatRoute) {
-        document.body.style.overflow = 'unset';
+        document.body.style.overflow = '';
       }
     };
   }, []);

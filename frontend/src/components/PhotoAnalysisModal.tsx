@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { messageApi } from '@/lib/api';
+import { saveModalState, setFreshNavigation } from '@/lib/modalState';
 
 import type { PhotoAnalysisResponse, PhotoSuggestion } from '@/lib/api';
 
@@ -24,7 +25,7 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, []);
 
@@ -42,6 +43,12 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
       });
 
       console.log('Room created/joined:', response);
+
+      // Save modal state before navigating so back button can restore
+      saveModalState('photo', { result });
+
+      // Mark this as a fresh navigation (prevents browser forward from returning here)
+      setFreshNavigation();
 
       // Navigate to the room
       // URL will be /chat/discover/{key} for AI rooms

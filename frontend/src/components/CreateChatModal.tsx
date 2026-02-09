@@ -63,7 +63,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, []);
 

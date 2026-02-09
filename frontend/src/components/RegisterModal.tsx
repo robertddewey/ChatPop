@@ -85,7 +85,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     }
     return () => {
       if (!isChatRoute) {
-        document.body.style.overflow = 'unset';
+        document.body.style.overflow = '';
       }
     };
   }, []);

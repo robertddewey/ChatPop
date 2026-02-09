@@ -10,8 +10,9 @@ import PhotoAnalysisModal from "@/components/PhotoAnalysisModal";
 import AudioRecordingModal from "@/components/AudioRecordingModal";
 import LocationSuggestionsModal from "@/components/LocationSuggestionsModal";
 import { MARKETING } from "@/lib/marketing";
-import { messageApi, type PhotoAnalysisResponse } from "@/lib/api";
+import { messageApi, type PhotoAnalysisResponse, type LocationAnalysisResponse, type NearbyDiscoverableChat } from "@/lib/api";
 import { getFingerprint } from "@/lib/usernameStorage";
+import { getModalState, clearModalState, type ModalState } from "@/lib/modalState";
 
 function HomeContent() {
   const searchParams = useSearchParams();
@@ -19,10 +20,50 @@ function HomeContent() {
   const authMode = searchParams.get('auth');
   const modalMode = searchParams.get('modal');
   const [isMobile, setIsMobile] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<PhotoAnalysisResponse | null>(null);
+
+  // Check for saved modal state synchronously to avoid flash
+  const [restoredModalState] = useState<ModalState | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return getModalState();
+  });
+
+  // Initialize state based on restored modal (synchronous to avoid flash)
+  const [analysisResult, setAnalysisResult] = useState<PhotoAnalysisResponse | null>(() => {
+    if (restoredModalState?.type === 'photo') {
+      const data = restoredModalState.results as { result: PhotoAnalysisResponse };
+      return data?.result || null;
+    }
+    return null;
+  });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showAudioModal, setShowAudioModal] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showAudioModal, setShowAudioModal] = useState(() => {
+    return restoredModalState?.type === 'audio';
+  });
+  const [showLocationModal, setShowLocationModal] = useState(() => {
+    return restoredModalState?.type === 'location';
+  });
+
+  // State for restoring modals after back navigation
+  const [audioModalInitialState, setAudioModalInitialState] = useState<{ result: unknown } | undefined>(() => {
+    if (restoredModalState?.type === 'audio') {
+      return restoredModalState.results as { result: unknown };
+    }
+    return undefined;
+  });
+  const [locationModalInitialState, setLocationModalInitialState] = useState<{
+    result: LocationAnalysisResponse;
+    nearbyChats: NearbyDiscoverableChat[];
+    selectedRadius: number;
+  } | undefined>(() => {
+    if (restoredModalState?.type === 'location') {
+      return restoredModalState.results as {
+        result: LocationAnalysisResponse;
+        nearbyChats: NearbyDiscoverableChat[];
+        selectedRadius: number;
+      };
+    }
+    return undefined;
+  });
 
   // Persistent refs for file inputs to prevent garbage collection
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -140,8 +181,10 @@ function HomeContent() {
     checkMobile();
 
     // Defensive cleanup: ensure body overflow is reset when homepage loads
-    // This handles cases where modals didn't properly unmount during navigation
-    document.body.style.overflow = 'unset';
+    // Skip if a modal is being restored (modal will set overflow: hidden on its own mount)
+    if (!restoredModalState) {
+      document.body.style.overflow = '';
+    }
   }, []);
 
   const closeModal = () => {
@@ -151,6 +194,7 @@ function HomeContent() {
   const closeAnalysisModal = () => {
     setAnalysisResult(null);
     setIsAnalyzing(false);
+    clearModalState(); // Clear saved state when user manually closes
   };
 
   const openCreateModal = () => {
@@ -374,10 +418,24 @@ function HomeContent() {
         />
       )}
       {showAudioModal && (
-        <AudioRecordingModal onClose={() => setShowAudioModal(false)} />
+        <AudioRecordingModal
+          onClose={() => {
+            setShowAudioModal(false);
+            setAudioModalInitialState(undefined);
+            clearModalState(); // Clear saved state when user manually closes
+          }}
+          initialState={audioModalInitialState}
+        />
       )}
       {showLocationModal && (
-        <LocationSuggestionsModal onClose={() => setShowLocationModal(false)} />
+        <LocationSuggestionsModal
+          onClose={() => {
+            setShowLocationModal(false);
+            setLocationModalInitialState(undefined);
+            clearModalState(); // Clear saved state when user manually closes
+          }}
+          initialState={locationModalInitialState}
+        />
       )}
     </div>
   );

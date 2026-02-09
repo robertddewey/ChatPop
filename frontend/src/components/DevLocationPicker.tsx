@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, MapPin, Check } from 'lucide-react';
+import { X, MapPin } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
 
@@ -28,15 +28,32 @@ interface DevLocationPickerProps {
   onClose: () => void;
 }
 
-// Component to handle map click events
-function MapClickHandler({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
-  const { useMapEvents } = require('react-leaflet');
+// Component to handle map click events and fly-to commands
+function MapController({
+  onLocationSelect,
+  flyToCoords
+}: {
+  onLocationSelect: (lat: number, lng: number) => void;
+  flyToCoords: { lat: number; lng: number } | null;
+}) {
+  const { useMapEvents, useMap } = require('react-leaflet');
+  const map = useMap();
 
+  // Handle click events
   useMapEvents({
     click(e: { latlng: { lat: number; lng: number } }) {
       onLocationSelect(e.latlng.lat, e.latlng.lng);
     },
   });
+
+  // Fly to coordinates when they change
+  useEffect(() => {
+    if (flyToCoords && map) {
+      map.flyTo([flyToCoords.lat, flyToCoords.lng], 17, {
+        duration: 1.5
+      });
+    }
+  }, [flyToCoords, map]);
 
   return null;
 }
@@ -51,10 +68,12 @@ const CITY_PRESETS = [
   { name: 'Seattle', lat: 47.6062, lng: -122.3321 },
   { name: 'Austin', lat: 30.2672, lng: -97.7431 },
   { name: 'Denver', lat: 39.7392, lng: -104.9903 },
+  { name: 'Detroit', lat: 42.3314, lng: -83.0458 },
 ];
 
 export default function DevLocationPicker({ onSelect, onClose }: DevLocationPickerProps) {
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [flyToCoords, setFlyToCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [customIcon, setCustomIcon] = useState<L.Icon | null>(null);
 
@@ -88,6 +107,7 @@ export default function DevLocationPicker({ onSelect, onClose }: DevLocationPick
 
   const handlePresetClick = (preset: typeof CITY_PRESETS[0]) => {
     setSelectedCoords({ lat: preset.lat, lng: preset.lng });
+    setFlyToCoords({ lat: preset.lat, lng: preset.lng });
   };
 
   return (
@@ -120,7 +140,7 @@ export default function DevLocationPicker({ onSelect, onClose }: DevLocationPick
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-              <MapClickHandler onLocationSelect={handleLocationSelect} />
+              <MapController onLocationSelect={handleLocationSelect} flyToCoords={flyToCoords} />
               {selectedCoords && customIcon && (
                 <Marker position={[selectedCoords.lat, selectedCoords.lng]} icon={customIcon} />
               )}
@@ -152,36 +172,17 @@ export default function DevLocationPicker({ onSelect, onClose }: DevLocationPick
           </div>
         </div>
 
-        {/* Selected Coordinates Display */}
-        {selectedCoords && (
-          <div className="px-4 pb-2">
-            <div className="flex items-center gap-2 text-sm text-zinc-400">
-              <MapPin className="w-4 h-4" />
-              <span>
-                {selectedCoords.lat.toFixed(4)}, {selectedCoords.lng.toFixed(4)}
-              </span>
-            </div>
-          </div>
-        )}
-
         {/* Footer */}
-        <div className="p-4 border-t border-zinc-700 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-3 bg-zinc-700 text-white font-semibold rounded-lg hover:bg-zinc-600 cursor-pointer transition-colors"
-          >
-            Cancel
-          </button>
+        <div className="p-4 border-t border-zinc-700">
           <button
             onClick={handleConfirm}
             disabled={!selectedCoords}
-            className={`flex-1 px-4 py-3 font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors ${
+            className={`w-full px-6 py-3 bg-zinc-700 text-white font-semibold rounded-lg transition-all ${
               selectedCoords
-                ? 'bg-cyan-600 text-white hover:bg-cyan-500 cursor-pointer'
-                : 'bg-zinc-600 text-zinc-400 cursor-not-allowed'
+                ? 'hover:bg-zinc-600 cursor-pointer'
+                : 'opacity-50 cursor-not-allowed'
             }`}
           >
-            <Check className="w-5 h-5" />
             Use This Location
           </button>
         </div>

@@ -1,10 +1,11 @@
-/* Chat-specific styles - only applies to /chat routes */
+/* Chat-specific styles - only applies when .chat-layout class is on body */
 
 :root {
   color-scheme: light dark; /* Tell Safari we support both schemes */
 }
 
-body {
+/* Scoped to .chat-layout class - added/removed via JavaScript on route change */
+body.chat-layout {
   overflow: hidden;
   width: 100%;
   max-width: 100vw;
@@ -20,7 +21,7 @@ body {
   /* Keep transparent/default before joining to show JoinChatModal properly */
 }
 
-html {
+html:has(body.chat-layout) {
   overflow: hidden;
   width: 100%;
   height: 100vh;
@@ -31,7 +32,7 @@ html {
 }
 
 /* Prevent pinch-to-zoom and pull-to-refresh on all elements within chat */
-* {
+body.chat-layout * {
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }

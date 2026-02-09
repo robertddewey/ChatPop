@@ -127,7 +127,7 @@ export default function MessageActionsModal({
       }
       return () => {
         if (!isChatRoute) {
-          document.body.style.overflow = 'unset';
+          document.body.style.overflow = '';
         }
       };
     }

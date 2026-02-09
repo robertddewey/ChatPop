@@ -4,6 +4,7 @@ import { X, Music, Mic, Loader2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, messageApi } from '@/lib/api';
+import { saveModalState, setFreshNavigation } from '@/lib/modalState';
 import dynamic from 'next/dynamic';
 
 // Only load DevMusicPicker in development mode
@@ -37,15 +38,19 @@ interface AudioRecognitionResult {
 
 interface AudioRecordingModalProps {
   onClose: () => void;
+  // Optional initial state for restoring modal after back navigation
+  initialState?: {
+    result: AudioRecognitionResult;
+  };
 }
 
 const DEFAULT_RECORDING_DURATION = 8; // Fallback if config fetch fails
 
-export default function AudioRecordingModal({ onClose }: AudioRecordingModalProps) {
+export default function AudioRecordingModal({ onClose, initialState }: AudioRecordingModalProps) {
   const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<AudioRecognitionResult | null>(null);
+  const [result, setResult] = useState<AudioRecognitionResult | null>(initialState?.result || null);
   const [error, setError] = useState<string | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(DEFAULT_RECORDING_DURATION);
 
@@ -81,7 +86,7 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
     fetchConfig();
 
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
       cleanupRecording();
     };
   }, []);
@@ -199,8 +204,11 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
   };
 
   // Long-press handlers for dev mode
-  const handleLongPressStart = () => {
+  const handleLongPressStart = (e: React.TouchEvent | React.MouseEvent) => {
     if (!isDev || isRecording) return;
+
+    // Prevent text selection / context menu on long press
+    e.preventDefault();
 
     longPressTimerRef.current = setTimeout(() => {
       console.log('🎵 [DEV] Long press detected - opening music picker');
@@ -238,6 +246,10 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
         room_code: suggestion.key,
       });
 
+      // Save modal state before navigating so back button can restore
+      saveModalState('audio', { result });
+      // Mark this as a fresh navigation (prevents browser forward from returning here)
+      setFreshNavigation();
       // Navigate to the chat room
       router.push(response.chat_room.url);
     } catch (err: unknown) {
@@ -287,11 +299,13 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
                 onTouchStart={handleLongPressStart}
                 onTouchEnd={handleLongPressEnd}
                 onTouchCancel={handleLongPressEnd}
-                className={`w-24 h-24 rounded-full flex items-center justify-center transition-all transform shadow-xl ${
+                onContextMenu={(e) => isDev && e.preventDefault()}
+                className={`w-24 h-24 rounded-full flex items-center justify-center transition-all transform shadow-xl select-none ${
                   isRecording
                     ? 'bg-red-500 text-white animate-pulse cursor-not-allowed'
                     : 'bg-cyan-500 hover:bg-cyan-600 hover:scale-105 text-white cursor-pointer'
                 }`}
+                style={{ WebkitTouchCallout: 'none' }}
               >
                 <Mic className="w-10 h-10" />
               </button>

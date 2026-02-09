@@ -21,6 +21,7 @@ import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
 import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft, Reply, X } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
+import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited, hasModalState } from '@/lib/modalState';
 
 // Type for Axios-style errors
 interface ApiError {
@@ -423,6 +424,40 @@ export default function ChatPage() {
     enabled: hasJoined && !!sessionToken,
   });
 
+  // Detect forward navigation and redirect back to home
+  // This prevents users from using browser forward to return to chat join modal
+  useEffect(() => {
+    const isFreshNavigation = consumeFreshNavigation();
+
+    if (isFreshNavigation) {
+      // Valid navigation from modal - allow (don't mark visited yet, that happens on leave)
+      return;
+    }
+
+    // Not a fresh navigation - check if this is forward navigation
+    const existingSession = localStorage.getItem(`chat_session_${code}`);
+
+    if (!existingSession && hasChatBeenVisited(code)) {
+      // User has visited this chat page before in this session,
+      // has no existing session, and didn't come from modal
+      // This is forward navigation - redirect to home
+      console.log('[ChatPage] Forward navigation detected, redirecting to home');
+      router.replace('/');
+      return;
+    }
+
+    // First-time visit via direct URL or existing session - allow
+  }, [code, router]);
+
+  // Add chat-layout class to body on mount, remove on unmount
+  // This enables the chat-specific CSS (position: fixed, overflow: hidden, etc.)
+  useEffect(() => {
+    document.body.classList.add('chat-layout');
+    return () => {
+      document.body.classList.remove('chat-layout');
+    };
+  }, []);
+
   // Load session token from localStorage on mount and when joining
   useEffect(() => {
     const token = localStorage.getItem(`chat_session_${code}`);
@@ -613,16 +648,26 @@ export default function ChatPage() {
         setHasJoinedBefore(true); // They've joined, so mark as returning user
         setMessages([]); // Clear messages to show fresh state
         setJoinModalKey(prev => prev + 1); // Force modal remount
+        // Push new state to clear forward history - prevents forward button from being available
+        window.history.pushState({ modal: true }, '', window.location.href);
       } else {
-        // User is on join modal - navigate to homepage with full reload
-        // Full reload needed to remove chat-layout.css styles (overflow: hidden, position: fixed)
-        window.location.href = '/';
+        // User is on join modal and leaving - mark as visited for forward navigation detection
+        markChatVisited(code);
+
+        // Check if they came from suggestions modal
+        if (hasModalState()) {
+          // User came from suggestions - go back to restore modal
+          router.back();
+        } else {
+          // User came from direct URL - go to homepage
+          router.replace('/');
+        }
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, activeView, showSettingsSheet]);
+  }, [hasJoined, activeView, showSettingsSheet, router, code]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -799,6 +844,7 @@ export default function ChatPage() {
       await UsernameStorage.saveUsername(code, username, isLoggedIn);
       setUsername(username);
       setHasJoined(true);
+      clearChatVisited(code); // Clear visit tracking since user joined
       await loadMessages();
 
       // Add history entry so back button shows join modal again
@@ -879,6 +925,7 @@ export default function ChatPage() {
       const isLoggedIn = !!token;
       await UsernameStorage.saveUsername(code, username.trim(), isLoggedIn);
       setHasJoined(true);
+      clearChatVisited(code); // Clear visit tracking since user joined
       await loadMessages();
     } catch (err: unknown) {
       const error = err as ApiError;
@@ -1662,6 +1709,23 @@ export default function ChatPage() {
   // Main chat interface
   return (
     <>
+      {/* Floating Back Button - ONLY this is clickable above the modal */}
+      {chatRoom && !hasJoined && (
+        <button
+          onClick={() => {
+            if (hasModalState()) {
+              router.back();
+            } else {
+              router.replace('/');
+            }
+          }}
+          className={`fixed top-3 left-4 z-[10000] p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
+          aria-label="Back"
+        >
+          <ArrowLeft size={18} />
+        </button>
+      )}
+
       {/* Join Modal - rendered when user hasn't joined and auth modal is not open */}
       {!hasJoined && chatRoom && !authMode && (
         <JoinChatModal
@@ -1689,58 +1753,62 @@ export default function ChatPage() {
       >
         {/* Chat Header */}
         <div data-chat-header className={currentDesign.header}>
-        <div className="flex items-center justify-between gap-3">
-          {chatRoom && (
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              <button
-                onClick={() => {
-                  if (activeView !== 'main') {
-                    setActiveView('main');  // Return to main chat
-                  } else if (hasJoined) {
-                    // In chat - go back to join modal
-                    setHasJoined(false);
-                    setHasJoinedBefore(true);
-                    setMessages([]);
-                    setJoinModalKey(prev => prev + 1);
-                  } else {
-                    // On join modal - go to homepage with full reload
-                    window.location.href = '/';
-                  }
-                }}
-                className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
-                aria-label="Back"
-              >
-                <ArrowLeft size={18} />
-              </button>
-              <h1 className={`${currentDesign.headerTitle} truncate text-base`}>
-                {chatRoom.name}
-              </h1>
-            </div>
-          )}
-          {/* Filter Toggle */}
-          <button
-            onClick={() => {
-              const newMode = filterMode === 'all' ? 'focus' : 'all';
-              setFilterMode(newMode);
+          <div className="flex items-center justify-between gap-3">
+            {chatRoom && (
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <button
+                  onClick={() => {
+                    if (activeView !== 'main') {
+                      setActiveView('main');  // Return to main chat
+                    } else if (hasJoined) {
+                      // In chat - use browser back to return to previous page
+                      // This allows returning to modal with suggestions if user came from there
+                      router.back();
+                    } else {
+                      // On join modal - check if user came from suggestions modal
+                      if (hasModalState()) {
+                        // User came from suggestions - go back to restore modal
+                        router.back();
+                      } else {
+                        // User came from direct URL - go to homepage
+                        router.replace('/');
+                      }
+                    }
+                  }}
+                  className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
+                  aria-label="Back"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <h1 className={`${currentDesign.headerTitle} truncate text-base`}>
+                  {chatRoom.name}
+                </h1>
+              </div>
+            )}
+            {/* Filter Toggle */}
+            <button
+              onClick={() => {
+                const newMode = filterMode === 'all' ? 'focus' : 'all';
+                setFilterMode(newMode);
 
-              // Reset scroll to top when changing filter to prevent weird jumps
-              setTimeout(() => {
-                if (messagesContainerRef.current) {
-                  messagesContainerRef.current.scrollTop = 0;
-                }
-              }, 0);
-            }}
-            className={`transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              filterMode === 'focus'
-                ? currentDesign.filterButtonActive
-                : currentDesign.filterButtonInactive
-            }`}
-          >
-            <Sparkles size={16} />
-            Focus
-          </button>
+                // Reset scroll to top when changing filter to prevent weird jumps
+                setTimeout(() => {
+                  if (messagesContainerRef.current) {
+                    messagesContainerRef.current.scrollTop = 0;
+                  }
+                }, 0);
+              }}
+              className={`transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                filterMode === 'focus'
+                  ? currentDesign.filterButtonActive
+                  : currentDesign.filterButtonInactive
+              }`}
+            >
+              <Sparkles size={16} />
+              Focus
+            </button>
+          </div>
         </div>
-      </div>
 
       {/* Content Area Wrapper - View Router for Main Chat, Back Room, and future features */}
       <div className="flex-1 relative overflow-hidden">

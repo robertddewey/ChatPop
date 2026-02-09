@@ -136,6 +136,7 @@ export default function VideoMessage({
       videoRef.current.pause();
     }
     setIsFullscreen(true);
+    // Prevent body scroll when fullscreen is open
     document.body.style.overflow = 'hidden';
   };
 
