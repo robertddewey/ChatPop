@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { X, MapPin } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
 
@@ -18,45 +18,17 @@ const Marker = dynamic(
   () => import('react-leaflet').then((mod) => mod.Marker),
   { ssr: false }
 );
-const useMapEvents = dynamic(
-  () => import('react-leaflet').then((mod) => mod.useMapEvents),
-  { ssr: false }
-) as unknown as typeof import('react-leaflet').useMapEvents;
 
 interface DevLocationPickerProps {
   onSelect: (coords: { latitude: number; longitude: number }) => void;
   onClose: () => void;
 }
 
-// Component to handle map click events and fly-to commands
-function MapController({
-  onLocationSelect,
-  flyToCoords
-}: {
-  onLocationSelect: (lat: number, lng: number) => void;
-  flyToCoords: { lat: number; lng: number } | null;
-}) {
-  const { useMapEvents, useMap } = require('react-leaflet');
-  const map = useMap();
-
-  // Handle click events
-  useMapEvents({
-    click(e: { latlng: { lat: number; lng: number } }) {
-      onLocationSelect(e.latlng.lat, e.latlng.lng);
-    },
-  });
-
-  // Fly to coordinates when they change
-  useEffect(() => {
-    if (flyToCoords && map) {
-      map.flyTo([flyToCoords.lat, flyToCoords.lng], 17, {
-        duration: 1.5
-      });
-    }
-  }, [flyToCoords, map]);
-
-  return null;
-}
+// Dynamically import the MapController to avoid SSR issues with react-leaflet hooks
+const MapController = dynamic(
+  () => import('./DevLocationPickerMapController'),
+  { ssr: false }
+);
 
 // Popular city presets for quick selection
 const CITY_PRESETS = [

@@ -570,6 +570,50 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path='dev/recent-photos'
+    )
+    def dev_recent_photos(self, request):
+        """
+        [DEV ONLY] Get last 10 photos for debug photo picker.
+        Only accessible when DEBUG=True.
+
+        Response:
+            [
+                {
+                    "id": "uuid",
+                    "image_url": "/api/chats/media/media_analysis/...",
+                    "created_at": "2024-01-01T12:00:00Z"
+                },
+                ...
+            ]
+        """
+        from django.conf import settings
+
+        if not settings.DEBUG:
+            return Response(
+                {"error": "This endpoint is only available in development mode"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Get last 12 photos ordered by creation date (for 4x3 grid)
+        recent_photos = PhotoAnalysis.objects.order_by('-created_at')[:12]
+
+        photos = []
+        for photo in recent_photos:
+            # Generate image URL using MediaStorage
+            image_url = MediaStorage.get_file_url(photo.image_path)
+
+            photos.append({
+                "id": str(photo.id),
+                "image_url": image_url,
+                "created_at": photo.created_at.isoformat(),
+            })
+
+        return Response(photos)
+
 
 def _get_or_create_suggestion(name: str, key: str, description: str = '', is_proper_noun: bool = True) -> Suggestion:
     """

@@ -2269,7 +2269,11 @@ class VoiceStreamView(APIView):
         logger.info(f"🎵 [VoiceStream] User-Agent: {request.META.get('HTTP_USER_AGENT', 'NONE')[:100]}")
 
         # Check if this is a public file (avatars are public - no auth required)
-        is_public_file = storage_path.startswith('avatars/')
+        # In DEBUG mode, also allow media_analysis files (for dev photo picker)
+        from django.conf import settings
+        is_public_file = storage_path.startswith('avatars/') or (
+            settings.DEBUG and storage_path.startswith('media_analysis/')
+        )
 
         if is_public_file:
             logger.info(f"🎵 [VoiceStream] Public file access (avatar): {storage_path}")

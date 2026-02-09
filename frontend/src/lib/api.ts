@@ -1027,3 +1027,18 @@ export const backRoomApi = {
     return null;
   },
 };
+
+// Dev-only API endpoints (only accessible when backend DEBUG=True)
+export interface DevRecentPhoto {
+  id: string;
+  image_url: string;
+  created_at: string;
+}
+
+export const devApi = {
+  // Get recent photos for dev photo picker
+  getRecentPhotos: async (): Promise<DevRecentPhoto[]> => {
+    const response = await api.get('/api/media-analysis/photo/dev/recent-photos/');
+    return response.data;
+  },
+};

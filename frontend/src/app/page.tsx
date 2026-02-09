@@ -2,6 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import dynamic from "next/dynamic";
 import Header from "@/components/Header";
 import LoginModal from "@/components/LoginModal";
 import RegisterModal from "@/components/RegisterModal";
@@ -13,6 +14,11 @@ import { MARKETING } from "@/lib/marketing";
 import { messageApi, type PhotoAnalysisResponse, type LocationAnalysisResponse, type NearbyDiscoverableChat } from "@/lib/api";
 import { getFingerprint } from "@/lib/usernameStorage";
 import { getModalState, clearModalState, type ModalState } from "@/lib/modalState";
+
+// Only load DevPhotoPicker in development mode
+const DevPhotoPicker = process.env.NODE_ENV === 'development'
+  ? dynamic(() => import("@/components/DevPhotoPicker"), { ssr: false })
+  : null;
 
 function HomeContent() {
   const searchParams = useSearchParams();
@@ -69,10 +75,15 @@ function HomeContent() {
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const libraryInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Dev mode photo picker state (only in development)
+  const [showDevPhotoPicker, setShowDevPhotoPicker] = useState(false);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isDev = process.env.NODE_ENV === 'development';
+
   // Shared photo processing logic
-  const processPhoto = useCallback(async (file: File, source: 'camera' | 'library') => {
-    const emoji = source === 'camera' ? '📸' : '🖼️';
-    const label = source === 'camera' ? 'Camera photo captured' : 'Photo selected from library';
+  const processPhoto = useCallback(async (file: File, source: 'camera' | 'library' | 'dev-cache') => {
+    const emoji = source === 'camera' ? '📸' : source === 'library' ? '🖼️' : '🔄';
+    const label = source === 'camera' ? 'Camera photo captured' : source === 'library' ? 'Photo selected from library' : 'Dev cache photo selected';
     console.log(`${emoji} ${label}:`, file.name, file.type, `${(file.size / 1024).toFixed(1)}KB`);
 
     try {
@@ -213,6 +224,32 @@ function HomeContent() {
     }
   };
 
+  // Dev mode: Long-press handlers for camera button
+  const handleCameraLongPressStart = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!isDev || !isMobile) return;
+
+    // Prevent text selection / context menu on long press
+    e.preventDefault();
+
+    longPressTimerRef.current = setTimeout(() => {
+      console.log('📸 [DEV] Long press detected - opening photo picker');
+      setShowDevPhotoPicker(true);
+    }, 1500); // 1.5 second long press
+  };
+
+  const handleCameraLongPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  // Dev mode: Handle photo selected from dev picker
+  const handleDevPhotoSelect = (file: File) => {
+    setShowDevPhotoPicker(false);
+    processPhoto(file, 'dev-cache');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 from-5% via-purple-900 via-30% to-[#404eed] to-60%">
       <Header backgroundClass="bg-gray-900/80" />
@@ -257,11 +294,19 @@ function HomeContent() {
                 <button
                   onClick={handleCameraClick}
                   disabled={!isMobile}
-                  className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                  onMouseDown={handleCameraLongPressStart}
+                  onMouseUp={handleCameraLongPressEnd}
+                  onMouseLeave={handleCameraLongPressEnd}
+                  onTouchStart={handleCameraLongPressStart}
+                  onTouchEnd={handleCameraLongPressEnd}
+                  onTouchCancel={handleCameraLongPressEnd}
+                  onContextMenu={(e) => isDev && e.preventDefault()}
+                  className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg select-none ${
                     isMobile
                       ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
                       : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
                   }`}
+                  style={{ WebkitTouchCallout: 'none' }}
                 >
                   <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -282,11 +327,19 @@ function HomeContent() {
                 <button
                   onClick={handleLibraryClick}
                   disabled={!isMobile}
-                  className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg ${
+                  onMouseDown={handleCameraLongPressStart}
+                  onMouseUp={handleCameraLongPressEnd}
+                  onMouseLeave={handleCameraLongPressEnd}
+                  onTouchStart={handleCameraLongPressStart}
+                  onTouchEnd={handleCameraLongPressEnd}
+                  onTouchCancel={handleCameraLongPressEnd}
+                  onContextMenu={(e) => isDev && e.preventDefault()}
+                  className={`inline-flex items-center justify-center w-14 h-14 rounded-full transition-all shadow-lg select-none ${
                     isMobile
                       ? 'bg-white text-gray-900 hover:bg-gray-100 transform hover:scale-105 shadow-lg hover:shadow-xl cursor-pointer'
                       : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
                   }`}
+                  style={{ WebkitTouchCallout: 'none' }}
                 >
                   <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -435,6 +488,13 @@ function HomeContent() {
             clearModalState(); // Clear saved state when user manually closes
           }}
           initialState={locationModalInitialState}
+        />
+      )}
+      {/* Dev Mode Photo Picker */}
+      {isDev && DevPhotoPicker && showDevPhotoPicker && (
+        <DevPhotoPicker
+          onSelect={handleDevPhotoSelect}
+          onClose={() => setShowDevPhotoPicker(false)}
         />
       )}
     </div>
