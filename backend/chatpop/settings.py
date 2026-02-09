@@ -397,13 +397,43 @@ Response JSON:
         int
     ),
     'PHOTO_ANALYSIS_RATE_LIMIT_ANONYMOUS': (
-        5,
+        10,
         'Maximum photo uploads per hour for anonymous users (tracked by fingerprint + IP)',
         int
     ),
     'PHOTO_ANALYSIS_ENABLE_RATE_LIMITING': (
         True,
         'Enable rate limiting for photo analysis uploads',
+        bool
+    ),
+    'MUSIC_ANALYSIS_RATE_LIMIT_AUTHENTICATED': (
+        20,
+        'Maximum music recognition requests per hour for authenticated users',
+        int
+    ),
+    'MUSIC_ANALYSIS_RATE_LIMIT_ANONYMOUS': (
+        10,
+        'Maximum music recognition requests per hour for anonymous users',
+        int
+    ),
+    'MUSIC_ANALYSIS_ENABLE_RATE_LIMITING': (
+        True,
+        'Enable rate limiting for music recognition',
+        bool
+    ),
+    'LOCATION_ANALYSIS_RATE_LIMIT_AUTHENTICATED': (
+        20,
+        'Maximum location analysis requests per hour for authenticated users',
+        int
+    ),
+    'LOCATION_ANALYSIS_RATE_LIMIT_ANONYMOUS': (
+        10,
+        'Maximum location analysis requests per hour for anonymous users',
+        int
+    ),
+    'LOCATION_ANALYSIS_ENABLE_RATE_LIMITING': (
+        True,
+        'Enable rate limiting for location analysis',
         bool
     ),
     'PHOTO_ANALYSIS_MAX_FILE_SIZE_MB': (

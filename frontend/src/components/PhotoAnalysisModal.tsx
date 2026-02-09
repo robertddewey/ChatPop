@@ -93,7 +93,7 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
               {/* Suggestions */}
               <div>
                 <h2 className="text-lg font-bold text-zinc-200 mb-3">
-                  Choose a Chat Room
+                  Suggested Rooms
                 </h2>
 
                 {result.analysis.suggestions.length === 0 ? (
@@ -117,42 +117,35 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
                               : 'border-zinc-600 hover:border-cyan-400 hover:bg-zinc-800/50 cursor-pointer'
                           }`}
                         >
-                          {/* Name and Badge */}
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
-                              <h3 className="text-base font-bold text-zinc-50">{suggestion.name}</h3>
-                              {suggestion.is_proper_noun && (
-                                <span className="px-2 py-0.5 bg-purple-900/40 border border-purple-700 text-purple-300 text-xs font-semibold rounded">
-                                  PROPER NOUN
-                                </span>
-                              )}
-                            </div>
+                          {/* Name Row */}
+                          <div className="flex items-start justify-between mb-1">
+                            <h3 className="text-base font-bold text-zinc-50">{suggestion.name}</h3>
                             {isSelecting && (
                               <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
                             )}
                           </div>
 
-                          {/* Description */}
-                          <p className="text-sm text-zinc-300 mb-3">{suggestion.description}</p>
-
-                          {/* Stats Row */}
-                          <div className="flex items-center gap-4 text-xs">
-                            {suggestion.has_room ? (
-                              <span className="px-2 py-1 bg-emerald-900/40 border border-emerald-700 text-emerald-300 rounded font-medium">
-                                {suggestion.active_users > 0 ? `${suggestion.active_users} active` : 'Room exists'}
-                              </span>
+                          {/* Activity Indicator */}
+                          <div className="flex items-center gap-2 mb-2">
+                            {suggestion.active_users > 0 ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                                <span className="text-xs text-emerald-400 font-medium">
+                                  {suggestion.active_users} active today
+                                </span>
+                              </>
                             ) : (
-                              <span className="px-2 py-1 bg-zinc-700/40 border border-zinc-600 text-zinc-400 rounded font-medium">
-                                New room
-                              </span>
-                            )}
-                            {suggestion.usage_count > 1 && (
-                              <span className="text-zinc-400">
-                                {suggestion.usage_count}x matched
-                              </span>
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                <span className="text-xs text-zinc-400">
+                                  Discover this chat
+                                </span>
+                              </>
                             )}
                           </div>
+
+                          {/* Description */}
+                          <p className="text-sm text-zinc-300 line-clamp-2">{suggestion.description}</p>
                         </button>
                       );
                     })}

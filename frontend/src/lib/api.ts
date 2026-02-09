@@ -779,6 +779,8 @@ export interface LocationSuggestion {
   description: string;
   address?: string;
   rating?: number;
+  participant_count?: number;
+  active_users?: number;
 }
 
 export interface LocationAnalysisResponse {
@@ -803,10 +805,12 @@ export interface NearbyDiscoverableChat {
   id: string;
   code: string;
   name: string;
+  description: string;
   url: string;
   access_mode: 'public' | 'private';
   host_username: string;
   participant_count: number;
+  active_users: number;
   distance_miles: number;
 }
 

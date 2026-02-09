@@ -297,16 +297,16 @@ def check_location_rate_limit(
     """
     Check if the client has exceeded the location rate limit.
 
-    Uses LOCATION_RATE_LIMIT_* settings instead of PHOTO_ANALYSIS_* settings.
+    Uses LOCATION_ANALYSIS_RATE_LIMIT_* settings.
 
     Returns:
         Tuple of (allowed, current_count, max_limit)
     """
     # Determine rate limit based on authentication
     if user_id:
-        max_limit = config.LOCATION_RATE_LIMIT_AUTHENTICATED
+        max_limit = config.LOCATION_ANALYSIS_RATE_LIMIT_AUTHENTICATED
     else:
-        max_limit = config.LOCATION_RATE_LIMIT_ANONYMOUS
+        max_limit = config.LOCATION_ANALYSIS_RATE_LIMIT_ANONYMOUS
 
     # Generate cache key
     cache_key = get_location_rate_limit_key(user_id, fingerprint, ip_address)
@@ -364,6 +364,10 @@ def location_rate_limit_check(view_func):
     """
     @wraps(view_func)
     def wrapper(self, request: Request, *args, **kwargs):
+        # Skip rate limiting if disabled in settings
+        if not config.LOCATION_ANALYSIS_ENABLE_RATE_LIMITING:
+            return view_func(self, request, *args, **kwargs)
+
         # Get client identifiers
         user_id, fingerprint, ip_address = get_client_identifier(request)
 
@@ -394,6 +398,141 @@ def location_rate_limit_check(view_func):
         # Add rate limit headers to response
         response['X-RateLimit-Limit'] = str(max_limit)
         response['X-RateLimit-Remaining'] = str(max(0, max_limit - current_count))
+
+        return response
+
+    return wrapper
+
+
+# ============================================================================
+# Music-specific rate limiting
+# ============================================================================
+
+def get_music_rate_limit_key(user_id: Optional[int], fingerprint: Optional[str], ip_address: str) -> str:
+    """
+    Generate Redis key for music rate limiting.
+    Uses a separate namespace from photo and location analysis.
+    """
+    if user_id:
+        return f"music:rate_limit:user:{user_id}"
+    elif fingerprint:
+        return f"music:rate_limit:fp:{fingerprint}"
+    else:
+        return f"music:rate_limit:ip:{ip_address}"
+
+
+def check_music_rate_limit(
+    user_id: Optional[int],
+    fingerprint: Optional[str],
+    ip_address: str
+) -> Tuple[bool, int, int]:
+    """
+    Check if the client has exceeded the music rate limit.
+
+    Uses MUSIC_ANALYSIS_RATE_LIMIT_* settings.
+
+    Returns:
+        Tuple of (allowed, current_count, max_limit)
+    """
+    # Determine rate limit based on authentication
+    if user_id:
+        max_limit = config.MUSIC_ANALYSIS_RATE_LIMIT_AUTHENTICATED
+    else:
+        max_limit = config.MUSIC_ANALYSIS_RATE_LIMIT_ANONYMOUS
+
+    # Generate cache key
+    cache_key = get_music_rate_limit_key(user_id, fingerprint, ip_address)
+
+    # Get current count from Redis
+    current_count = cache.get(cache_key, 0)
+
+    # Check if limit exceeded
+    allowed = current_count < max_limit
+
+    return allowed, current_count, max_limit
+
+
+def increment_music_rate_limit(
+    user_id: Optional[int],
+    fingerprint: Optional[str],
+    ip_address: str
+) -> int:
+    """
+    Increment the music rate limit counter for this client.
+
+    Returns:
+        New count value after increment
+    """
+    cache_key = get_music_rate_limit_key(user_id, fingerprint, ip_address)
+
+    # Get current count
+    current_count = cache.get(cache_key, 0)
+
+    # Increment
+    new_count = current_count + 1
+
+    # Set with 1-hour expiration (3600 seconds)
+    if current_count == 0:
+        cache.set(cache_key, new_count, timeout=3600)
+    else:
+        cache.set(cache_key, new_count, timeout=cache.ttl(cache_key))
+
+    return new_count
+
+
+def music_analysis_rate_limit(view_func):
+    """
+    Decorator to enforce rate limiting on music recognition API endpoints.
+
+    Usage:
+        @music_analysis_rate_limit
+        def recognize(self, request, *args, **kwargs):
+            # Your view logic here
+            pass
+
+    Returns:
+        - 429 Too Many Requests if rate limit exceeded
+        - Original view response if allowed
+    """
+    @wraps(view_func)
+    def wrapper(self, request: Request, *args, **kwargs):
+        # Skip rate limiting if disabled in settings
+        if not config.MUSIC_ANALYSIS_ENABLE_RATE_LIMITING:
+            return view_func(self, request, *args, **kwargs)
+
+        # Get client identifiers
+        user_id, fingerprint, ip_address = get_client_identifier(request)
+
+        # Skip rate limiting for localhost requests
+        if ip_address in ['127.0.0.1', '::1', 'localhost']:
+            return view_func(self, request, *args, **kwargs)
+
+        # Check rate limit
+        allowed, current_count, max_limit = check_music_rate_limit(
+            user_id, fingerprint, ip_address
+        )
+
+        if not allowed:
+            cache_key = get_music_rate_limit_key(user_id, fingerprint, ip_address)
+            retry_after = cache.ttl(cache_key) or 3600
+
+            return JsonResponse({
+                "error": "Rate limit exceeded",
+                "detail": "You have exceeded the maximum number of music recognition requests per hour. Please try again later.",
+                "current": current_count,
+                "limit": max_limit,
+                "retry_after_seconds": retry_after
+            }, status=429)
+
+        # Increment counter before processing request
+        increment_music_rate_limit(user_id, fingerprint, ip_address)
+
+        # Call the original view
+        response = view_func(self, request, *args, **kwargs)
+
+        # Add rate limit headers to response
+        response['X-RateLimit-Limit'] = str(max_limit)
+        response['X-RateLimit-Remaining'] = str(max(0, max_limit - current_count - 1))
 
         return response
 

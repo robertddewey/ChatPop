@@ -9,6 +9,7 @@ interface MusicSuggestion {
   name: string;
   key: string;
   type: 'artist' | 'song' | 'genre';
+  active_users?: number;
 }
 
 interface AudioRecognitionResult {
@@ -307,7 +308,7 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
               {result.suggestions && result.suggestions.length > 0 && (
                 <div>
                   <h2 className="text-lg font-bold text-zinc-200 mb-3">
-                    Suggested Chat Rooms ({result.suggestions.length})
+                    Suggested Rooms
                   </h2>
                   <div className="space-y-3">
                     {result.suggestions.map((suggestion, idx) => (
@@ -322,12 +323,11 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
                             : 'border-zinc-600 hover:border-cyan-400'
                         }`}
                       >
-                        {/* Name and Badge */}
-                        <div className="flex items-start justify-between mb-2">
+                        {/* Name Row */}
+                        <div className="flex items-start justify-between mb-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
                             <h3 className="text-base font-bold text-zinc-50">{suggestion.name}</h3>
-                            <span className="px-2 py-0.5 bg-purple-900/40 border border-purple-700 text-purple-300 text-xs font-semibold rounded uppercase">
+                            <span className="px-2 py-0.5 bg-zinc-700 text-zinc-300 text-xs font-medium rounded-full capitalize">
                               {suggestion.type}
                             </span>
                           </div>
@@ -336,8 +336,27 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
                           )}
                         </div>
 
+                        {/* Activity Indicator */}
+                        <div className="flex items-center gap-2 mb-2">
+                          {suggestion.active_users && suggestion.active_users > 0 ? (
+                            <>
+                              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                              <span className="text-xs text-emerald-400 font-medium">
+                                {suggestion.active_users} active today
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                              <span className="text-xs text-zinc-400">
+                                Discover this chat
+                              </span>
+                            </>
+                          )}
+                        </div>
+
                         {/* Description */}
-                        <p className="text-sm text-zinc-300">{getSuggestionDescription(suggestion, result)}</p>
+                        <p className="text-sm text-zinc-300 line-clamp-2">{getSuggestionDescription(suggestion, result)}</p>
                       </div>
                     ))}
                   </div>
@@ -372,11 +391,19 @@ export default function AudioRecordingModal({ onClose }: AudioRecordingModalProp
 
         {/* Footer */}
         <div className="p-4 border-t border-zinc-700">
+          {result?.success && result.suggestions && result.suggestions.length > 0 && (
+            <p className="text-center text-zinc-400 text-sm mb-3">
+              Tap a suggestion to join the chat room
+            </p>
+          )}
           <button
             onClick={onClose}
-            className="w-full px-6 py-3 bg-[#404eed] text-white font-semibold rounded-lg transition-all hover:bg-[#3640d9] cursor-pointer"
+            disabled={selectingIndex !== null}
+            className={`w-full px-6 py-3 bg-zinc-700 text-white font-semibold rounded-lg transition-all ${
+              selectingIndex !== null ? 'opacity-50 cursor-not-allowed' : 'hover:bg-zinc-600 cursor-pointer'
+            }`}
           >
-            Close
+            {selectingIndex !== null ? 'Joining room...' : 'Close'}
           </button>
         </div>
       </div>

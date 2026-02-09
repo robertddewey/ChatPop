@@ -1,6 +1,6 @@
 'use client';
 
-import { X, MapPin, Navigation, Lock, ChevronDown, Users } from 'lucide-react';
+import { X, MapPin, Navigation, Lock, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { locationApi, chatApi, messageApi, LocationSuggestion, LocationAnalysisResponse, NearbyDiscoverableChat } from '@/lib/api';
@@ -325,11 +325,11 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
 
             return (
               <div className="space-y-6">
-                {/* Area Chat Rooms */}
+                {/* Communities */}
                 {areas.length > 0 && (
                   <div>
                     <h2 className="text-lg font-bold text-zinc-200 mb-3">
-                      Area Chat Rooms
+                      Communities
                     </h2>
                     <div className="space-y-3">
                       {areas.map((area, idx) => {
@@ -352,9 +352,8 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                             {/* Name and Badge */}
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
                                 <h3 className="text-base font-bold text-zinc-50">{area.name}</h3>
-                                <span className="px-2 py-0.5 bg-cyan-900/40 border border-cyan-700 text-cyan-300 text-xs font-semibold rounded uppercase">
+                                <span className="px-2 py-0.5 bg-zinc-700 text-zinc-300 text-xs font-medium rounded-full capitalize">
                                   {area.type}
                                 </span>
                               </div>
@@ -362,8 +361,26 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                                 <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
                               )}
                             </div>
+                            {/* Activity Indicator */}
+                            <div className="flex items-center gap-2 mb-2">
+                              {(area.participant_count ?? 0) > 0 ? (
+                                <>
+                                  <span className={`w-2 h-2 rounded-full ${(area.active_users ?? 0) > 0 ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
+                                  <span className={`text-xs font-medium ${(area.active_users ?? 0) > 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                                    {area.participant_count} {area.participant_count === 1 ? 'person' : 'people'} in this room
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                  <span className="text-xs text-zinc-400">
+                                    Discover this chat
+                                  </span>
+                                </>
+                              )}
+                            </div>
                             {/* Description */}
-                            <p className="text-sm text-zinc-300">Chat with others in {area.name}</p>
+                            <p className="text-sm text-zinc-300 line-clamp-2">Chat with others in {area.name}</p>
                           </button>
                         );
                       })}
@@ -371,11 +388,11 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                   </div>
                 )}
 
-                {/* Nearby Places */}
+                {/* Places */}
                 {venues.length > 0 && (
                   <div>
                     <h2 className="text-lg font-bold text-zinc-200 mb-3">
-                      Nearby Places
+                      Places
                     </h2>
                     <div className="space-y-3">
                       {venues.map((venue, idx) => {
@@ -398,9 +415,8 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                             {/* Name and Badge */}
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-zinc-400">#{idx + 1}</span>
                                 <h3 className="text-base font-bold text-zinc-50">{venue.name}</h3>
-                                <span className="px-2 py-0.5 bg-purple-900/40 border border-purple-700 text-purple-300 text-xs font-semibold rounded uppercase">
+                                <span className="px-2 py-0.5 bg-zinc-700 text-zinc-300 text-xs font-medium rounded-full capitalize">
                                   {venue.type}
                                 </span>
                               </div>
@@ -408,8 +424,26 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                                 <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
                               )}
                             </div>
+                            {/* Activity Indicator */}
+                            <div className="flex items-center gap-2 mb-2">
+                              {(venue.participant_count ?? 0) > 0 ? (
+                                <>
+                                  <span className={`w-2 h-2 rounded-full ${(venue.active_users ?? 0) > 0 ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
+                                  <span className={`text-xs font-medium ${(venue.active_users ?? 0) > 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                                    {venue.participant_count} {venue.participant_count === 1 ? 'person' : 'people'} in this room
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                  <span className="text-xs text-zinc-400">
+                                    Discover this chat
+                                  </span>
+                                </>
+                              )}
+                            </div>
                             {/* Description */}
-                            <p className="text-sm text-zinc-300">Chat with others at {venue.name}</p>
+                            <p className="text-sm text-zinc-300 line-clamp-2">Chat with others at {venue.name}</p>
                           </button>
                         );
                       })}
@@ -417,11 +451,11 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                   </div>
                 )}
 
-                {/* Nearby Discoverable Chats */}
+                {/* Hosted */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-lg font-bold text-zinc-200">
-                      Nearby Chats
+                      Hosted
                     </h2>
                     {/* Radius Dropdown */}
                     <div className="relative">
@@ -459,10 +493,9 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                               : 'border-zinc-600 hover:border-green-400 hover:bg-zinc-800/50 cursor-pointer'
                           }`}
                         >
-                          {/* Top row: Rank, Name, Distance */}
+                          {/* Top row: Name and Distance */}
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <span className="text-xs font-bold text-zinc-400 flex-shrink-0">#{idx + 1}</span>
                               <h3 className="text-base font-bold text-zinc-50 truncate">{chat.name}</h3>
                               {chat.access_mode === 'private' && (
                                 <Lock className="w-4 h-4 text-yellow-500 flex-shrink-0" />
@@ -477,14 +510,21 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
                               )}
                             </div>
                           </div>
-                          {/* Bottom row: Host and participants */}
-                          <div className="flex items-center gap-3 text-sm text-zinc-400">
-                            <span>@{chat.host_username}</span>
-                            <span className="flex items-center gap-1">
-                              <Users className="w-3.5 h-3.5" />
-                              {chat.participant_count}
+                          {/* Activity Indicator */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`w-2 h-2 rounded-full ${chat.active_users > 0 ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
+                            <span className={`text-xs font-medium ${chat.active_users > 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                              {chat.participant_count} {chat.participant_count === 1 ? 'person' : 'people'} in this room
                             </span>
                           </div>
+                          {/* Host */}
+                          <div className={`text-sm text-zinc-400 ${chat.description ? 'mb-2' : ''}`}>
+                            Hosted by <span className="text-zinc-300 font-medium">@{chat.host_username}</span>
+                          </div>
+                          {/* Description */}
+                          {chat.description && (
+                            <p className="text-sm text-zinc-300 line-clamp-2">{chat.description}</p>
+                          )}
                         </button>
                       );
                     })}
@@ -555,7 +595,7 @@ export default function LocationSuggestionsModal({ onClose }: LocationSuggestion
           )}
           {!isLoading && result && (
             <p className="text-center text-zinc-400 text-sm mb-3">
-              Tap a chat room to join
+              Tap a suggestion to join the chat room
             </p>
           )}
           <button

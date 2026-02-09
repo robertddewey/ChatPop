@@ -23,6 +23,7 @@ from .serializers import (
 )
 from .utils.rate_limit import (
     media_analysis_rate_limit,
+    music_analysis_rate_limit,
     location_rate_limit_check,
     get_client_identifier,
 )
@@ -629,7 +630,7 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
         methods=['post'],
         url_path='recognize'
     )
-    @media_analysis_rate_limit
+    @music_analysis_rate_limit
     def recognize(self, request):
         """
         Recognize a song from audio recording using ACRCloud API.
@@ -1048,6 +1049,36 @@ class LocationAnalysisViewSet(viewsets.GenericViewSet):
             # Use suggestions directly from the cache result
             # The cache already builds a proper tiered list with venues, neighborhood, city, county, metro
             suggestions_list = result.get('suggestions', [])
+
+            # Enrich suggestions with participant and activity data
+            from chats.models import ChatRoom, Message
+            from datetime import timedelta
+            from django.utils import timezone
+
+            suggestion_keys = [s.get('key') for s in suggestions_list if s.get('key')]
+            existing_rooms = {
+                room.code: room
+                for room in ChatRoom.objects.filter(code__in=suggestion_keys).prefetch_related('participations')
+            }
+
+            cutoff_time = timezone.now() - timedelta(hours=24)
+
+            for suggestion in suggestions_list:
+                key = suggestion.get('key')
+                room = existing_rooms.get(key)
+
+                if room:
+                    # Room exists - get participant count and active users
+                    suggestion['participant_count'] = room.participations.filter(is_active=True).count()
+                    suggestion['active_users'] = Message.objects.filter(
+                        chat_room=room,
+                        created_at__gte=cutoff_time,
+                        is_deleted=False
+                    ).values('username').distinct().count()
+                else:
+                    # Room doesn't exist yet
+                    suggestion['participant_count'] = 0
+                    suggestion['active_users'] = 0
 
             # Ensure Suggestion objects exist in database for linking
             for suggestion in suggestions_list:
