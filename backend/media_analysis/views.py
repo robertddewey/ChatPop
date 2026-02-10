@@ -1231,35 +1231,36 @@ class LocationAnalysisViewSet(viewsets.GenericViewSet):
             # The cache already builds a proper tiered list with venues, neighborhood, city, county, metro
             suggestions_list = result.get('suggestions', [])
 
-            # Enrich suggestions with participant and activity data
-            from chats.models import ChatRoom, Message
-            from datetime import timedelta
-            from django.utils import timezone
+            # Enrich suggestions with message activity data
+            from chats.models import ChatRoom
+            from .utils.message_activity import get_message_activity_for_rooms
 
             suggestion_keys = [s.get('key') for s in suggestions_list if s.get('key')]
             existing_rooms = {
                 room.code: room
-                for room in ChatRoom.objects.filter(code__in=suggestion_keys).prefetch_related('participations')
+                for room in ChatRoom.objects.filter(code__in=suggestion_keys)
             }
 
-            cutoff_time = timezone.now() - timedelta(hours=24)
+            # Get message activity for all existing rooms (batch lookup with caching)
+            room_ids = [str(room.id) for room in existing_rooms.values()]
+            message_activity = get_message_activity_for_rooms(room_ids) if room_ids else {}
 
             for suggestion in suggestions_list:
                 key = suggestion.get('key')
                 room = existing_rooms.get(key)
 
                 if room:
-                    # Room exists - get participant count and active users
-                    suggestion['participant_count'] = room.participations.filter(is_active=True).count()
-                    suggestion['active_users'] = Message.objects.filter(
-                        chat_room=room,
-                        created_at__gte=cutoff_time,
-                        is_deleted=False
-                    ).values('username').distinct().count()
+                    # Room exists - get message activity
+                    room_id = str(room.id)
+                    activity = message_activity.get(room_id)
+                    suggestion['has_room'] = True
+                    suggestion['messages_24h'] = activity.messages_24h if activity else 0
+                    suggestion['messages_10min'] = activity.messages_10min if activity else 0
                 else:
                     # Room doesn't exist yet
-                    suggestion['participant_count'] = 0
-                    suggestion['active_users'] = 0
+                    suggestion['has_room'] = False
+                    suggestion['messages_24h'] = 0
+                    suggestion['messages_10min'] = 0
 
             # Ensure Suggestion objects exist in database for linking
             for suggestion in suggestions_list:

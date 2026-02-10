@@ -452,18 +452,32 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
                             </div>
                             {/* Activity Indicator */}
                             <div className="flex items-center gap-2 mb-2">
-                              {(area.participant_count ?? 0) > 0 ? (
+                              {!area.has_room ? (
                                 <>
-                                  <span className={`w-2 h-2 rounded-full ${(area.active_users ?? 0) > 0 ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-                                  <span className={`text-xs font-medium ${(area.active_users ?? 0) > 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
-                                    {area.participant_count} {area.participant_count === 1 ? 'person' : 'people'} in this room
+                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                  <span className="text-xs text-zinc-400">
+                                    Discover this chat
+                                  </span>
+                                </>
+                              ) : (area.messages_10min ?? 0) > 0 ? (
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span className="text-xs text-emerald-400 font-medium">
+                                    Active • {area.messages_24h ?? 0} messages today
+                                  </span>
+                                </>
+                              ) : (area.messages_24h ?? 0) > 0 ? (
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                                  <span className="text-xs text-zinc-300">
+                                    {area.messages_24h} messages today
                                   </span>
                                 </>
                               ) : (
                                 <>
                                   <span className="w-2 h-2 rounded-full bg-zinc-500" />
                                   <span className="text-xs text-zinc-400">
-                                    Discover this chat
+                                    No new messages today
                                   </span>
                                 </>
                               )}
@@ -515,18 +529,32 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
                             </div>
                             {/* Activity Indicator */}
                             <div className="flex items-center gap-2 mb-2">
-                              {(venue.participant_count ?? 0) > 0 ? (
+                              {!venue.has_room ? (
                                 <>
-                                  <span className={`w-2 h-2 rounded-full ${(venue.active_users ?? 0) > 0 ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-                                  <span className={`text-xs font-medium ${(venue.active_users ?? 0) > 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
-                                    {venue.participant_count} {venue.participant_count === 1 ? 'person' : 'people'} in this room
+                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                  <span className="text-xs text-zinc-400">
+                                    Discover this chat
+                                  </span>
+                                </>
+                              ) : (venue.messages_10min ?? 0) > 0 ? (
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span className="text-xs text-emerald-400 font-medium">
+                                    Active • {venue.messages_24h ?? 0} messages today
+                                  </span>
+                                </>
+                              ) : (venue.messages_24h ?? 0) > 0 ? (
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                                  <span className="text-xs text-zinc-300">
+                                    {venue.messages_24h} messages today
                                   </span>
                                 </>
                               ) : (
                                 <>
                                   <span className="w-2 h-2 rounded-full bg-zinc-500" />
                                   <span className="text-xs text-zinc-400">
-                                    Discover this chat
+                                    No new messages today
                                   </span>
                                 </>
                               )}
@@ -601,10 +629,28 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
                           </div>
                           {/* Activity Indicator */}
                           <div className="flex items-center gap-2 mb-2">
-                            <span className={`w-2 h-2 rounded-full ${chat.active_users > 0 ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-                            <span className={`text-xs font-medium ${chat.active_users > 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
-                              {chat.participant_count} {chat.participant_count === 1 ? 'person' : 'people'} in this room
-                            </span>
+                            {chat.messages_10min > 0 ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                <span className="text-xs text-emerald-400 font-medium">
+                                  Active • {chat.messages_24h} messages today
+                                </span>
+                              </>
+                            ) : chat.messages_24h > 0 ? (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                                <span className="text-xs text-zinc-300">
+                                  {chat.messages_24h} message{chat.messages_24h !== 1 ? 's' : ''} today
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                <span className="text-xs text-zinc-400">
+                                  No new messages today
+                                </span>
+                              </>
+                            )}
                           </div>
                           {/* Host */}
                           <div className={`text-sm text-zinc-400 ${chat.description ? 'mb-2' : ''}`}>

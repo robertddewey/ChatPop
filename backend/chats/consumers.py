@@ -294,6 +294,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             except Exception as e:
                 print(f"❌ Redis cache error for message {message.id}: {e}")
 
+        # Invalidate message activity cache so discovery modals show fresh data
+        try:
+            from media_analysis.utils.message_activity import invalidate_message_activity_cache
+            invalidate_message_activity_cache(str(chat_room.id))
+        except Exception as e:
+            print(f"⚠️  Message activity cache invalidation failed: {e}")
+
         return message
 
     @database_sync_to_async

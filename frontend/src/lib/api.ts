@@ -230,7 +230,8 @@ export interface PhotoSuggestion {
   name: string;
   description: string;
   has_room: boolean;
-  active_users: number;
+  messages_24h: number;  // Total messages in last 24 hours
+  messages_10min: number;  // Messages in last 10 minutes (for "active" indicator)
   source: string; // 'matched' | 'created' | 'proper_noun'
   usage_count: number;
   is_proper_noun: boolean;
@@ -779,8 +780,9 @@ export interface LocationSuggestion {
   description: string;
   address?: string;
   rating?: number;
-  participant_count?: number;
-  active_users?: number;
+  has_room?: boolean;
+  messages_24h?: number;  // Total messages in last 24 hours
+  messages_10min?: number;  // Messages in last 10 minutes (for "active" indicator)
 }
 
 export interface LocationAnalysisResponse {
@@ -809,8 +811,8 @@ export interface NearbyDiscoverableChat {
   url: string;
   access_mode: 'public' | 'private';
   host_username: string;
-  participant_count: number;
-  active_users: number;
+  messages_24h: number;
+  messages_10min: number;
   distance_miles: number;
 }
 

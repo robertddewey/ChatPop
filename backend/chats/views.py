@@ -212,6 +212,17 @@ class NearbyDiscoverableChatsView(APIView):
         total_count = len(results)
         paginated_results = results[offset:offset + limit]
 
+        # Batch fetch message activity for all paginated rooms
+        from media_analysis.utils.message_activity import get_message_activity_for_rooms
+        room_ids = [str(chat.id) for chat in paginated_results]
+        activity_data = get_message_activity_for_rooms(room_ids) if room_ids else {}
+
+        # Add activity data to each room
+        for chat in paginated_results:
+            activity = activity_data.get(str(chat.id))
+            chat.messages_24h = activity.messages_24h if activity else 0
+            chat.messages_10min = activity.messages_10min if activity else 0
+
         # Serialize
         serializer = NearbyDiscoverableChatSerializer(paginated_results, many=True)
 

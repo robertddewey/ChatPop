@@ -10,11 +10,7 @@ This encourages natural room clustering while maintaining diversity.
 """
 
 import logging
-from datetime import timedelta
 from typing import Any, Dict, List, Optional
-
-from django.db.models import Count, Q
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +32,8 @@ class BlendedSuggestion:
         room_id: Optional[str] = None,
         room_code: Optional[str] = None,
         room_url: Optional[str] = None,
-        active_users: int = 0,
+        messages_24h: int = 0,  # Total messages in last 24 hours
+        messages_10min: int = 0,  # Messages in last 10 minutes (for "active" indicator)
         source: str = "refined",  # Always 'refined' (from refinement layer)
         usage_count: int = 0,  # Number of times this suggestion has been used
         is_proper_noun: bool = False,  # Whether this is a proper noun (brand, title, etc.)
@@ -48,7 +45,8 @@ class BlendedSuggestion:
         self.room_id = room_id
         self.room_code = room_code
         self.room_url = room_url
-        self.active_users = active_users
+        self.messages_24h = messages_24h
+        self.messages_10min = messages_10min
         self.source = source
         self.usage_count = usage_count
         self.is_proper_noun = is_proper_noun
@@ -60,7 +58,8 @@ class BlendedSuggestion:
             "name": self.name,
             "description": self.description,
             "has_room": self.has_room,
-            "active_users": self.active_users,
+            "messages_24h": self.messages_24h,
+            "messages_10min": self.messages_10min,
             "source": self.source,
             "usage_count": self.usage_count,
             "is_proper_noun": self.is_proper_noun,
@@ -126,12 +125,12 @@ def blend_suggestions(
             )
         ]
     """
-    from chats.models import ChatParticipation, ChatRoom
+    from chats.models import ChatRoom
+    from .message_activity import get_message_activity_for_rooms
 
     logger.info(f"Enriching {len(refined_suggestions)} refined suggestions with room metadata")
 
     blended = []
-    activity_threshold = timezone.now() - timedelta(hours=24)
 
     # =========================================================================
     # Extract suggestion keys for room lookup
@@ -151,8 +150,6 @@ def blend_suggestions(
             code__in=suggestion_keys,
             source=ChatRoom.SOURCE_AI,  # Only AI-generated collaborative discovery rooms
             is_active=True,
-        ).annotate(
-            active_user_count=Count("participations", filter=Q(participations__last_seen_at__gte=activity_threshold))
         )
 
         # Build dict: key → room
@@ -160,6 +157,15 @@ def blend_suggestions(
             rooms_dict[room.code] = room
 
         logger.info(f"Found {len(rooms_dict)} existing rooms out of {len(suggestion_keys)} refined suggestions")
+
+    # =========================================================================
+    # Get message activity for existing rooms (batch lookup with caching)
+    # =========================================================================
+    room_ids = [str(room.id) for room in rooms_dict.values()]
+    message_activity = get_message_activity_for_rooms(room_ids) if room_ids else {}
+
+    # Map room_id -> room_code for easy lookup
+    room_id_to_code = {str(room.id): room.code for room in rooms_dict.values()}
 
     # =========================================================================
     # Enrich each refined suggestion with room metadata
@@ -176,6 +182,12 @@ def blend_suggestions(
         room = rooms_dict.get(key)
 
         if room:
+            # Get message activity for this room
+            room_id = str(room.id)
+            activity = message_activity.get(room_id)
+            msgs_24h = activity.messages_24h if activity else 0
+            msgs_10min = activity.messages_10min if activity else 0
+
             # Existing room - add full metadata
             blended.append(
                 BlendedSuggestion(
@@ -183,16 +195,17 @@ def blend_suggestions(
                     name=name,
                     description=description,
                     has_room=True,
-                    room_id=str(room.id),
+                    room_id=room_id,
                     room_code=room.code,
                     room_url=room.url,
-                    active_users=room.active_user_count,
+                    messages_24h=msgs_24h,
+                    messages_10min=msgs_10min,
                     source=source,  # Preserve source (popular/refined/seed)
                     usage_count=usage_count,  # Preserve usage count
                     is_proper_noun=is_proper_noun,  # Preserve proper noun flag
                 )
             )
-            logger.debug(f"  ✓ {name} → has_room=True, active_users={room.active_user_count}")
+            logger.debug(f"  ✓ {name} → has_room=True, messages_24h={msgs_24h}, messages_10min={msgs_10min}")
         else:
             # No room yet - metadata shows has_room=False
             blended.append(
@@ -201,7 +214,8 @@ def blend_suggestions(
                     name=name,
                     description=description,
                     has_room=False,
-                    active_users=0,
+                    messages_24h=0,
+                    messages_10min=0,
                     source=source,  # Preserve source
                     usage_count=usage_count,  # Preserve usage count
                     is_proper_noun=is_proper_noun,  # Preserve proper noun flag

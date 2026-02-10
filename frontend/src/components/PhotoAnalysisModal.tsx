@@ -134,18 +134,36 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
 
                           {/* Activity Indicator */}
                           <div className="flex items-center gap-2 mb-2">
-                            {suggestion.active_users > 0 ? (
-                              <>
-                                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                                <span className="text-xs text-emerald-400 font-medium">
-                                  {suggestion.active_users} active today
-                                </span>
-                              </>
-                            ) : (
+                            {!suggestion.has_room ? (
+                              // Room doesn't exist yet
                               <>
                                 <span className="w-2 h-2 rounded-full bg-zinc-500" />
                                 <span className="text-xs text-zinc-400">
                                   Discover this chat
+                                </span>
+                              </>
+                            ) : suggestion.messages_10min > 0 ? (
+                              // Active now (messages in last 10 min)
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                <span className="text-xs text-emerald-400 font-medium">
+                                  Active • {suggestion.messages_24h} messages today
+                                </span>
+                              </>
+                            ) : suggestion.messages_24h > 0 ? (
+                              // Has messages today but not active now
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                                <span className="text-xs text-zinc-300">
+                                  {suggestion.messages_24h} messages today
+                                </span>
+                              </>
+                            ) : (
+                              // Room exists but no messages today
+                              <>
+                                <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                <span className="text-xs text-zinc-400">
+                                  No new messages today
                                 </span>
                               </>
                             )}

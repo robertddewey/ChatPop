@@ -95,8 +95,8 @@ class ChatRoomSerializer(serializers.ModelSerializer):
 class NearbyDiscoverableChatSerializer(serializers.ModelSerializer):
     """Serializer for nearby discoverable chats with distance info"""
     host_username = serializers.SerializerMethodField()
-    participant_count = serializers.SerializerMethodField()
-    active_users = serializers.SerializerMethodField()
+    messages_24h = serializers.IntegerField(read_only=True)
+    messages_10min = serializers.IntegerField(read_only=True)
     distance_miles = serializers.FloatField(read_only=True)
     url = serializers.CharField(read_only=True)
 
@@ -104,7 +104,7 @@ class NearbyDiscoverableChatSerializer(serializers.ModelSerializer):
         model = ChatRoom
         fields = [
             'id', 'code', 'name', 'description', 'url',
-            'access_mode', 'host_username', 'participant_count', 'active_users', 'distance_miles'
+            'access_mode', 'host_username', 'messages_24h', 'messages_10min', 'distance_miles'
         ]
 
     def get_host_username(self, obj):
@@ -112,23 +112,6 @@ class NearbyDiscoverableChatSerializer(serializers.ModelSerializer):
         if obj.host.reserved_username:
             return obj.host.reserved_username
         return obj.host.email.split('@')[0]
-
-    def get_participant_count(self, obj):
-        """Return count of active participants in the chat"""
-        return obj.participations.filter(is_active=True).count()
-
-    def get_active_users(self, obj):
-        """Return count of unique users who sent messages in last 24 hours"""
-        from datetime import timedelta
-        from django.utils import timezone
-        from .models import Message
-
-        cutoff_time = timezone.now() - timedelta(hours=24)
-        return Message.objects.filter(
-            chat_room=obj,
-            created_at__gte=cutoff_time,
-            is_deleted=False
-        ).values('username').distinct().count()
 
 
 class ChatRoomCreateSerializer(serializers.ModelSerializer):
