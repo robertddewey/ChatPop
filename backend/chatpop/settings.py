@@ -288,6 +288,18 @@ CONSTANCE_CONFIG = {
         int
     ),
 
+    # Chat Activity Tracking Settings (discovery modals)
+    'CHAT_ACTIVITY_WINDOW_MINUTES': (
+        10.0,
+        'Minutes of inactivity before a chat is no longer considered "Active". Green pulsing dot shows if messages were sent within this window. Cache TTL is automatically set to half this value.',
+        float
+    ),
+    'CHAT_ACTIVITY_POLL_INTERVAL_SECONDS': (
+        5,
+        'How often (in seconds) discovery modals poll for activity updates. Lower values = more responsive but more server load.',
+        int
+    ),
+
     # Monitoring Settings (developer tools)
     'ENABLE_MONITORING': (
         True,

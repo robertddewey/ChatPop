@@ -3,7 +3,7 @@
 import { X, MapPin, Navigation, Lock, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { locationApi, chatApi, messageApi, LocationSuggestion, LocationAnalysisResponse, NearbyDiscoverableChat } from '@/lib/api';
+import { locationApi, chatApi, messageApi, activityApi, LocationSuggestion, LocationAnalysisResponse, NearbyDiscoverableChat, ActivityPollResponse } from '@/lib/api';
 import { saveModalState, setFreshNavigation } from '@/lib/modalState';
 import dynamic from 'next/dynamic';
 
@@ -52,6 +52,10 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
   const nearbyChatsEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Activity polling state
+  const [activityData, setActivityData] = useState<ActivityPollResponse['activity'] | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // Dev mode location picker state (only in development)
   const [showDevPicker, setShowDevPicker] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -59,6 +63,30 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
 
   // Check if any selection is in progress
   const isSelecting = selectingAreaIndex !== null || selectingVenueIndex !== null || selectingNearbyIndex !== null;
+
+  // Get activity for a suggestion (from polled data or original)
+  const getActivity = useCallback((suggestion: LocationSuggestion) => {
+    if (activityData && activityData[suggestion.key]) {
+      return activityData[suggestion.key];
+    }
+    return {
+      has_room: suggestion.has_room,
+      messages_24h: suggestion.messages_24h ?? 0,
+      messages_10min: suggestion.messages_10min ?? 0,
+    };
+  }, [activityData]);
+
+  // Get activity for a nearby chat (from polled data or original)
+  const getNearbyActivity = useCallback((chat: NearbyDiscoverableChat) => {
+    if (activityData && activityData[chat.code]) {
+      return activityData[chat.code];
+    }
+    return {
+      has_room: true, // Nearby chats always have a room
+      messages_24h: chat.messages_24h,
+      messages_10min: chat.messages_10min,
+    };
+  }, [activityData]);
 
   // Check location permission status on mount
   useEffect(() => {
@@ -163,6 +191,51 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
 
     return () => observer.disconnect();
   }, [nearbyChatsHasMore, nearbyChatsLoading, loadMoreChats, result]);
+
+  // Poll for activity updates
+  useEffect(() => {
+    if (isLoading || !result) return;
+
+    // Collect all room codes to poll
+    const roomCodes: string[] = [];
+
+    // Add suggestion room codes (areas and venues)
+    if (result.suggestions) {
+      roomCodes.push(...result.suggestions.map(s => s.key));
+    }
+
+    // Add nearby chat room codes
+    if (nearbyChats.length > 0) {
+      roomCodes.push(...nearbyChats.map(c => c.code));
+    }
+
+    // Nothing to poll
+    if (roomCodes.length === 0) return;
+
+    const pollActivity = async () => {
+      try {
+        const response = await activityApi.poll(roomCodes);
+        setActivityData(response.activity);
+        return response.poll_interval_seconds;
+      } catch (err) {
+        console.error('Failed to poll activity:', err);
+        return 5; // Default fallback
+      }
+    };
+
+    // Initial poll
+    pollActivity().then(interval => {
+      // Set up recurring poll
+      pollIntervalRef.current = setInterval(pollActivity, interval * 1000);
+    });
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [isLoading, result, nearbyChats]);
 
   const requestLocation = async () => {
     setIsLoading(true);
@@ -451,37 +524,42 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
                               )}
                             </div>
                             {/* Activity Indicator */}
-                            <div className="flex items-center gap-2 mb-2">
-                              {!area.has_room ? (
-                                <>
-                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
-                                  <span className="text-xs text-zinc-400">
-                                    Discover this chat
-                                  </span>
-                                </>
-                              ) : (area.messages_10min ?? 0) > 0 ? (
-                                <>
-                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                  <span className="text-xs text-emerald-400 font-medium">
-                                    Active • {area.messages_24h ?? 0} messages today
-                                  </span>
-                                </>
-                              ) : (area.messages_24h ?? 0) > 0 ? (
-                                <>
-                                  <span className="w-2 h-2 rounded-full bg-zinc-400" />
-                                  <span className="text-xs text-zinc-300">
-                                    {area.messages_24h} messages today
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
-                                  <span className="text-xs text-zinc-400">
-                                    No new messages today
-                                  </span>
-                                </>
-                              )}
-                            </div>
+                            {(() => {
+                              const activity = getActivity(area);
+                              return (
+                                <div className="flex items-center gap-2 mb-2">
+                                  {!activity.has_room ? (
+                                    <>
+                                      <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                      <span className="text-xs text-zinc-400">
+                                        Discover this chat
+                                      </span>
+                                    </>
+                                  ) : activity.messages_10min > 0 ? (
+                                    <>
+                                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                      <span className="text-xs text-emerald-400 font-medium">
+                                        Active • {activity.messages_24h} message{activity.messages_24h !== 1 ? 's' : ''} today
+                                      </span>
+                                    </>
+                                  ) : activity.messages_24h > 0 ? (
+                                    <>
+                                      <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                                      <span className="text-xs text-zinc-300">
+                                        {activity.messages_24h} message{activity.messages_24h !== 1 ? 's' : ''} today
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                      <span className="text-xs text-zinc-400">
+                                        No new messages today
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })()}
                             {/* Description */}
                             <p className="text-sm text-zinc-300 line-clamp-2">Chat with others in {area.name}</p>
                           </button>
@@ -528,37 +606,42 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
                               )}
                             </div>
                             {/* Activity Indicator */}
-                            <div className="flex items-center gap-2 mb-2">
-                              {!venue.has_room ? (
-                                <>
-                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
-                                  <span className="text-xs text-zinc-400">
-                                    Discover this chat
-                                  </span>
-                                </>
-                              ) : (venue.messages_10min ?? 0) > 0 ? (
-                                <>
-                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                  <span className="text-xs text-emerald-400 font-medium">
-                                    Active • {venue.messages_24h ?? 0} messages today
-                                  </span>
-                                </>
-                              ) : (venue.messages_24h ?? 0) > 0 ? (
-                                <>
-                                  <span className="w-2 h-2 rounded-full bg-zinc-400" />
-                                  <span className="text-xs text-zinc-300">
-                                    {venue.messages_24h} messages today
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
-                                  <span className="text-xs text-zinc-400">
-                                    No new messages today
-                                  </span>
-                                </>
-                              )}
-                            </div>
+                            {(() => {
+                              const activity = getActivity(venue);
+                              return (
+                                <div className="flex items-center gap-2 mb-2">
+                                  {!activity.has_room ? (
+                                    <>
+                                      <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                      <span className="text-xs text-zinc-400">
+                                        Discover this chat
+                                      </span>
+                                    </>
+                                  ) : activity.messages_10min > 0 ? (
+                                    <>
+                                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                      <span className="text-xs text-emerald-400 font-medium">
+                                        Active • {activity.messages_24h} message{activity.messages_24h !== 1 ? 's' : ''} today
+                                      </span>
+                                    </>
+                                  ) : activity.messages_24h > 0 ? (
+                                    <>
+                                      <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                                      <span className="text-xs text-zinc-300">
+                                        {activity.messages_24h} message{activity.messages_24h !== 1 ? 's' : ''} today
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                      <span className="text-xs text-zinc-400">
+                                        No new messages today
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })()}
                             {/* Description */}
                             <p className="text-sm text-zinc-300 line-clamp-2">Chat with others at {venue.name}</p>
                           </button>
@@ -628,30 +711,35 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
                             </div>
                           </div>
                           {/* Activity Indicator */}
-                          <div className="flex items-center gap-2 mb-2">
-                            {chat.messages_10min > 0 ? (
-                              <>
-                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                <span className="text-xs text-emerald-400 font-medium">
-                                  Active • {chat.messages_24h} messages today
-                                </span>
-                              </>
-                            ) : chat.messages_24h > 0 ? (
-                              <>
-                                <span className="w-2 h-2 rounded-full bg-zinc-400" />
-                                <span className="text-xs text-zinc-300">
-                                  {chat.messages_24h} message{chat.messages_24h !== 1 ? 's' : ''} today
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="w-2 h-2 rounded-full bg-zinc-500" />
-                                <span className="text-xs text-zinc-400">
-                                  No new messages today
-                                </span>
-                              </>
-                            )}
-                          </div>
+                          {(() => {
+                            const activity = getNearbyActivity(chat);
+                            return (
+                              <div className="flex items-center gap-2 mb-2">
+                                {activity.messages_10min > 0 ? (
+                                  <>
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                    <span className="text-xs text-emerald-400 font-medium">
+                                      Active • {activity.messages_24h} message{activity.messages_24h !== 1 ? 's' : ''} today
+                                    </span>
+                                  </>
+                                ) : activity.messages_24h > 0 ? (
+                                  <>
+                                    <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                                    <span className="text-xs text-zinc-300">
+                                      {activity.messages_24h} message{activity.messages_24h !== 1 ? 's' : ''} today
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                    <span className="text-xs text-zinc-400">
+                                      No new messages today
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {/* Host */}
                           <div className={`text-sm text-zinc-400 ${chat.description ? 'mb-2' : ''}`}>
                             Hosted by <span className="text-zinc-300 font-medium">@{chat.host_username}</span>

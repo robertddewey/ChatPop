@@ -1393,3 +1393,86 @@ class LocationAnalysisViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+
+class ActivityPollingView(viewsets.ViewSet):
+    """
+    Lightweight endpoint for polling chat activity in discovery modals.
+
+    Returns message counts (24h and active window) for requested room codes.
+    Designed for frequent polling (default: every 5 seconds).
+    """
+    permission_classes = [AllowAny]
+
+    @action(detail=False, methods=['get'], url_path='poll')
+    def poll(self, request):
+        """
+        Get activity data for multiple rooms by code.
+
+        Query params:
+            room_codes: Comma-separated list of room codes
+
+        Returns:
+            {
+                "poll_interval_seconds": 5,
+                "activity": {
+                    "room-code-1": {"has_room": true, "messages_24h": 10, "messages_10min": 2},
+                    "room-code-2": {"has_room": false, "messages_24h": 0, "messages_10min": 0},
+                    ...
+                }
+            }
+        """
+        from chats.models import ChatRoom
+        from .utils.message_activity import get_message_activity_for_rooms
+        from constance import config
+
+        room_codes_param = request.query_params.get('room_codes', '')
+        if not room_codes_param:
+            return Response(
+                {"error": "room_codes parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        room_codes = [code.strip() for code in room_codes_param.split(',') if code.strip()]
+        if not room_codes:
+            return Response(
+                {"error": "No valid room codes provided"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Limit to prevent abuse
+        if len(room_codes) > 50:
+            room_codes = room_codes[:50]
+
+        # Fetch existing rooms
+        existing_rooms = {
+            room.code: room
+            for room in ChatRoom.objects.filter(code__in=room_codes)
+        }
+
+        # Get activity for existing rooms
+        room_ids = [str(room.id) for room in existing_rooms.values()]
+        activity_data = get_message_activity_for_rooms(room_ids) if room_ids else {}
+
+        # Build response
+        activity = {}
+        for code in room_codes:
+            room = existing_rooms.get(code)
+            if room:
+                room_activity = activity_data.get(str(room.id))
+                activity[code] = {
+                    "has_room": True,
+                    "messages_24h": room_activity.messages_24h if room_activity else 0,
+                    "messages_10min": room_activity.messages_10min if room_activity else 0,
+                }
+            else:
+                activity[code] = {
+                    "has_room": False,
+                    "messages_24h": 0,
+                    "messages_10min": 0,
+                }
+
+        return Response({
+            "poll_interval_seconds": config.CHAT_ACTIVITY_POLL_INTERVAL_SECONDS,
+            "activity": activity,
+        })
+

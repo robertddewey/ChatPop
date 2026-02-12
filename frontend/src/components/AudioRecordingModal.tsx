@@ -1,9 +1,9 @@
 'use client';
 
 import { X, Music, Mic, Loader2 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, messageApi } from '@/lib/api';
+import { api, messageApi, activityApi, ActivityPollResponse } from '@/lib/api';
 import { saveModalState, setFreshNavigation } from '@/lib/modalState';
 import dynamic from 'next/dynamic';
 
@@ -69,6 +69,53 @@ export default function AudioRecordingModal({ onClose, initialState }: AudioReco
   const [showDevPicker, setShowDevPicker] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isDev = process.env.NODE_ENV === 'development';
+
+  // Activity polling state
+  const [activityData, setActivityData] = useState<ActivityPollResponse['activity'] | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Get activity for a suggestion (from polled data or original)
+  const getActivity = useCallback((suggestion: MusicSuggestion) => {
+    if (activityData && activityData[suggestion.key]) {
+      return activityData[suggestion.key];
+    }
+    return {
+      has_room: suggestion.has_room ?? false,
+      messages_24h: suggestion.messages_24h ?? 0,
+      messages_10min: suggestion.messages_10min ?? 0,
+    };
+  }, [activityData]);
+
+  // Poll for activity updates
+  useEffect(() => {
+    if (isAnalyzing || !result?.suggestions?.length) return;
+
+    const roomCodes = result.suggestions.map(s => s.key);
+
+    const pollActivity = async () => {
+      try {
+        const response = await activityApi.poll(roomCodes);
+        setActivityData(response.activity);
+        return response.poll_interval_seconds;
+      } catch (err) {
+        console.error('Failed to poll activity:', err);
+        return 5; // Default fallback
+      }
+    };
+
+    // Initial poll
+    pollActivity().then(interval => {
+      // Set up recurring poll
+      pollIntervalRef.current = setInterval(pollActivity, interval * 1000);
+    });
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [isAnalyzing, result]);
 
   // Fetch config and cleanup on unmount
   useEffect(() => {
@@ -393,41 +440,46 @@ export default function AudioRecordingModal({ onClose, initialState }: AudioReco
                         </div>
 
                         {/* Activity Indicator */}
-                        <div className="flex items-center gap-2 mb-2">
-                          {!suggestion.has_room ? (
-                            // Room doesn't exist yet
-                            <>
-                              <span className="w-2 h-2 rounded-full bg-zinc-500" />
-                              <span className="text-xs text-zinc-400">
-                                Discover this chat
-                              </span>
-                            </>
-                          ) : (suggestion.messages_10min ?? 0) > 0 ? (
-                            // Active now (messages in last 10 min)
-                            <>
-                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                              <span className="text-xs text-emerald-400 font-medium">
-                                Active • {suggestion.messages_24h ?? 0} messages today
-                              </span>
-                            </>
-                          ) : (suggestion.messages_24h ?? 0) > 0 ? (
-                            // Has messages today but not active now
-                            <>
-                              <span className="w-2 h-2 rounded-full bg-zinc-400" />
-                              <span className="text-xs text-zinc-300">
-                                {suggestion.messages_24h} messages today
-                              </span>
-                            </>
-                          ) : (
-                            // Room exists but no messages today
-                            <>
-                              <span className="w-2 h-2 rounded-full bg-zinc-500" />
-                              <span className="text-xs text-zinc-400">
-                                No new messages today
-                              </span>
-                            </>
-                          )}
-                        </div>
+                        {(() => {
+                          const activity = getActivity(suggestion);
+                          return (
+                            <div className="flex items-center gap-2 mb-2">
+                              {!activity.has_room ? (
+                                // Room doesn't exist yet
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                  <span className="text-xs text-zinc-400">
+                                    Discover this chat
+                                  </span>
+                                </>
+                              ) : activity.messages_10min > 0 ? (
+                                // Active now (messages in last 10 min)
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span className="text-xs text-emerald-400 font-medium">
+                                    Active • {activity.messages_24h} message{activity.messages_24h !== 1 ? 's' : ''} today
+                                  </span>
+                                </>
+                              ) : activity.messages_24h > 0 ? (
+                                // Has messages today but not active now
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                                  <span className="text-xs text-zinc-300">
+                                    {activity.messages_24h} message{activity.messages_24h !== 1 ? 's' : ''} today
+                                  </span>
+                                </>
+                              ) : (
+                                // Room exists but no messages today
+                                <>
+                                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                                  <span className="text-xs text-zinc-400">
+                                    No new messages today
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {/* Description */}
                         <p className="text-sm text-zinc-300 line-clamp-2">{getSuggestionDescription(suggestion, result)}</p>

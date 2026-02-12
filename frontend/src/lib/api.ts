@@ -891,6 +891,29 @@ export const locationApi = {
   },
 };
 
+// Activity Polling Types
+export interface ActivityPollResponse {
+  poll_interval_seconds: number;
+  activity: {
+    [roomCode: string]: {
+      has_room: boolean;
+      messages_24h: number;
+      messages_10min: number;
+    };
+  };
+}
+
+// Activity Polling API
+export const activityApi = {
+  // Poll activity for multiple room codes
+  poll: async (roomCodes: string[]): Promise<ActivityPollResponse> => {
+    const response = await api.get('/api/media-analysis/activity/poll/', {
+      params: { room_codes: roomCodes.join(',') },
+    });
+    return response.data;
+  },
+};
+
 // Admin API Types
 export interface SiteBan {
   id: string;

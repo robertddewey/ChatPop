@@ -27,7 +27,8 @@ from media_analysis.utils.message_activity import (
     invalidate_message_activity_cache,
     MessageActivity,
     MESSAGE_ACTIVITY_CACHE_PREFIX,
-    MESSAGE_ACTIVITY_CACHE_TTL,
+    _get_cache_ttl_seconds,
+    _get_activity_window_minutes,
     _query_message_activity,
 )
 
@@ -309,7 +310,7 @@ class MessageActivityCachingTests(TransactionTestCase):
         cache.set(cache_key, {
             'messages_24h': 42,
             'messages_10min': 7
-        }, timeout=MESSAGE_ACTIVITY_CACHE_TTL)
+        }, timeout=_get_cache_ttl_seconds())
 
         # Mock the DB query function to verify it's not called
         with patch('media_analysis.utils.message_activity._query_message_activity') as mock_query:
@@ -333,7 +334,7 @@ class MessageActivityCachingTests(TransactionTestCase):
         cache.set(cache_key, {
             'messages_24h': 100,
             'messages_10min': 50
-        }, timeout=MESSAGE_ACTIVITY_CACHE_TTL)
+        }, timeout=_get_cache_ttl_seconds())
 
         # Verify cache is set
         self.assertIsNotNone(cache.get(cache_key))
@@ -365,7 +366,7 @@ class MessageActivityCachingTests(TransactionTestCase):
         cache.set(cache_key1, {
             'messages_24h': 10,
             'messages_10min': 2
-        }, timeout=MESSAGE_ACTIVITY_CACHE_TTL)
+        }, timeout=_get_cache_ttl_seconds())
 
         # Add message to room2 (not cached)
         Message.objects.create(
@@ -528,8 +529,10 @@ class MessageActivityDataTypeTests(TestCase):
 
         cache.clear()
 
-    @allure.title("Cache TTL is 5 minutes")
+    @allure.title("Cache TTL is half the activity window")
     @allure.severity(allure.severity_level.NORMAL)
     def test_cache_ttl_is_correct(self):
-        """Test that the cache TTL constant is set correctly."""
-        self.assertEqual(MESSAGE_ACTIVITY_CACHE_TTL, 300)  # 5 minutes
+        """Test that the cache TTL is calculated as half the activity window."""
+        window_minutes = _get_activity_window_minutes()
+        expected_ttl = int((window_minutes / 2) * 60)
+        self.assertEqual(_get_cache_ttl_seconds(), expected_ttl)
