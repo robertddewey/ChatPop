@@ -1,6 +1,6 @@
 'use client';
 
-import { X } from 'lucide-react';
+import { X, Camera } from 'lucide-react';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { messageApi, activityApi } from '@/lib/api';
@@ -113,11 +113,12 @@ export default function PhotoAnalysisModal({ result, isLoading, onClose }: Photo
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-zinc-700">
           <div>
-            <h1 className="text-2xl font-bold text-zinc-50">
-              {isLoading ? 'Analyzing Photo...' : 'Join a Chat'}
+            <h1 className="text-2xl font-bold text-zinc-50 flex items-center gap-2">
+              <Camera className="w-6 h-6" />
+              {isLoading ? 'Analyzing Photo...' : 'Photo Matched!'}
             </h1>
             <p className="text-sm text-zinc-400 mt-1">
-              {isLoading ? 'Finding relevant chat rooms' : `${result?.analysis.suggestions.length || 0} rooms found`}
+              {isLoading ? 'Finding relevant chat rooms' : `${result?.analysis.suggestions.length || 0} rooms talking about this`}
             </p>
           </div>
           <button

@@ -252,14 +252,13 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
       });
 
       const { latitude, longitude } = position.coords;
-      console.log('📍 Location obtained:', latitude, longitude);
+
 
       // Store coordinates for reuse
       setUserCoords({ latitude, longitude });
 
       // Fetch suggestions from API
       const response = await locationApi.getSuggestions(latitude, longitude);
-      console.log('✅ Location suggestions received:', response);
       setResult(response);
 
       // Also fetch nearby discoverable chats
@@ -295,14 +294,13 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
     setError(null);
 
     try {
-      console.log('🗺️ [DEV] Using debug location:', coords.latitude, coords.longitude);
+
 
       // Store coordinates for reuse
       setUserCoords(coords);
 
       // Fetch suggestions from API with the selected coordinates
       const response = await locationApi.getSuggestions(coords.latitude, coords.longitude);
-      console.log('✅ Location suggestions received:', response);
       setResult(response);
 
       // Also fetch nearby discoverable chats
@@ -327,7 +325,6 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
     e.preventDefault();
 
     longPressTimerRef.current = setTimeout(() => {
-      console.log('🗺️ [DEV] Long press detected - opening location picker');
       setShowDevPicker(true);
     }, 1500); // 1.5 second long press
   };
@@ -352,7 +349,6 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
         room_code: suggestion.key,
       });
 
-      console.log('Location room created/joined:', response);
       // Save modal state before navigating so back button can restore
       saveModalState('location', { result, nearbyChats, selectedRadius });
       // Mark this as a fresh navigation (prevents browser forward from returning here)
@@ -379,7 +375,6 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
         room_code: suggestion.key,
       });
 
-      console.log('Location room created/joined:', response);
       // Save modal state before navigating so back button can restore
       saveModalState('location', { result, nearbyChats, selectedRadius });
       // Mark this as a fresh navigation (prevents browser forward from returning here)
@@ -418,7 +413,7 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
               {isLoading ? 'Finding chats...' : result?.success ? 'Nearby Places' : 'Start a local chat'}
             </h1>
             <p className="text-sm text-zinc-400 mt-1">
-              {isLoading ? 'Getting nearby chats' : result?.success ? `📍 ${result.location.city || 'Your area'}` : 'Tap to find chats near you'}
+              {isLoading ? 'Getting nearby chats' : result?.success ? `${(result.suggestions?.length || 0) + nearbyChats.length} rooms chatting nearby` : 'Tap to find chats near you'}
             </p>
           </div>
           <button

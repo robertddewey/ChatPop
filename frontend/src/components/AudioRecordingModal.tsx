@@ -321,7 +321,7 @@ export default function AudioRecordingModal({ onClose, initialState }: AudioReco
               {isRecording ? 'Recording Audio...' : isAnalyzing ? 'Identifying Song...' : result?.success ? 'Song Found!' : 'Start a music chat'}
             </h1>
             <p className="text-sm text-zinc-400 mt-1">
-              {isRecording ? '🎤 Listening to audio' : isAnalyzing ? '🔍 Searching music database' : result?.success ? '✨ Recognition complete' : 'Tap record to identify music'}
+              {isRecording ? '🎤 Listening to audio' : isAnalyzing ? '🔍 Searching music database' : result?.success ? `${result.suggestions?.length || 0} rooms listening now` : 'Tap record to identify music'}
             </p>
           </div>
           <button
