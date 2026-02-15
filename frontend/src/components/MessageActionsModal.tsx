@@ -3,9 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
-import { Pin, DollarSign, Ban, X, BadgeCheck, Reply, Trash2 } from 'lucide-react';
+import { Pin, DollarSign, Ban, BadgeCheck, Reply, Trash2, Copy, Flag } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
-import { isDarkTheme } from '@/lib/themes';
 
 interface PinTier {
   amount_cents: number;
@@ -41,6 +40,7 @@ interface MessageActionsModalProps {
   onTip?: (username: string) => void;
   onReact?: (messageId: string, emoji: string) => void;
   onDelete?: (messageId: string) => void;
+  onReport?: (messageId: string, username: string) => void;
   // Legacy props (deprecated, will be removed)
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
@@ -55,7 +55,7 @@ const getModalStyles = (themeIsDarkMode: boolean) => {
       container: 'bg-zinc-900',
       messagePreview: 'bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl',
       messageText: 'text-zinc-50',
-      actionButton: 'bg-zinc-700 hover:bg-zinc-600 active:bg-zinc-500 text-zinc-50 border border-zinc-600',
+      actionButton: 'bg-zinc-700 hover:bg-zinc-600 active:bg-zinc-500 text-zinc-50 border border-zinc-500',
       actionIcon: 'text-cyan-400',
       dragHandle: 'bg-gray-600',
       usernameText: 'text-gray-300',
@@ -93,6 +93,7 @@ export default function MessageActionsModal({
   onTip,
   onReact,
   onDelete,
+  onReport,
   // Legacy props
   onPinSelf,
   onPinOther,
@@ -321,7 +322,7 @@ export default function MessageActionsModal({
   // Filter actions based on context
   const actions = [];
 
-  // Reply (always available, always first)
+  // 1. Reply — always
   if (onReply) {
     actions.push({
       icon: Reply,
@@ -333,49 +334,27 @@ export default function MessageActionsModal({
     });
   }
 
-  // Pin actions (new API with amount input)
-  // Host messages are already sticky, so disable pinning for them
+  // 2. Pin — always (non-host messages, pin support required)
   const hasPinSupport = !message.is_from_host && (onPin || onAddToPin || getPinRequirements || onPinSelf || onPinOther);
-
-  // Check if pin has expired
   const isPinExpired = message.is_pinned && message.sticky_until && new Date(message.sticky_until) < new Date();
 
   if (hasPinSupport) {
     if (!message.is_pinned) {
-      // Not pinned - show "Pin Message"
-      actions.push({
-        icon: Pin,
-        label: 'Pin Message',
-        action: handleOpenPinInput,
-      });
+      actions.push({ icon: Pin, label: 'Pin', action: handleOpenPinInput });
     } else if (isPinExpired) {
-      // Pin expired - show "Re-pin" to restart the timer
-      actions.push({
-        icon: Pin,
-        label: 'Re-pin Message',
-        action: handleOpenPinInput,
-      });
+      actions.push({ icon: Pin, label: 'Re-pin', action: handleOpenPinInput });
     } else if (isOutbid) {
-      // Outbid but has time remaining - show "Reclaim Pin"
-      actions.push({
-        icon: Pin,
-        label: 'Reclaim Pin',
-        action: handleOpenPinInput,
-      });
+      actions.push({ icon: Pin, label: 'Reclaim', action: handleOpenPinInput });
     } else {
-      // Active pin and current sticky holder - show "Add to Pin"
-      actions.push({
-        icon: Pin,
-        label: 'Add to Pin',
-        action: handleOpenPinInput,
-      });
+      actions.push({ icon: Pin, label: 'Add Pin', action: handleOpenPinInput });
     }
   }
 
+  // 3. Tip — others only
   if (!isOwnMessage && onTip) {
     actions.push({
       icon: DollarSign,
-      label: 'Tip User',
+      label: 'Tip',
       action: () => {
         onTip(message.username);
         handleClose();
@@ -383,38 +362,69 @@ export default function MessageActionsModal({
     });
   }
 
-  // Delete message (host only)
+  // 4. Copy — always (copies "username: content" to clipboard)
+  actions.push({
+    icon: Copy,
+    label: 'Copy',
+    action: () => {
+      const text = `${message.username}: ${message.content}`;
+      navigator.clipboard.writeText(text).catch(() => {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      });
+      handleClose();
+    },
+  });
+
+  // 5. Delete — host only (destructive)
   if (isHost && onDelete) {
     actions.push({
       icon: Trash2,
-      label: 'Delete Message',
+      label: 'Delete',
+      destructive: true,
       action: () => {
         if (confirm('Are you sure you want to delete this message?')) {
           onDelete(message.id);
           handleClose();
-        } else {
-          // Don't close if cancelled
-          return;
         }
       },
     });
   }
 
-  // Block/Mute should always be last (bottom of modal)
-  // Only show mute/ban for authenticated users (anonymous users cannot mute)
+  // 6. Mute/Ban — registered users, others only (destructive)
   if (!isOwnMessage && !isHostMessage && onBlock) {
     const authToken = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-
     if (authToken) {
       actions.push({
         icon: Ban,
-        label: isHost ? 'Ban from Chat' : 'Mute User',
+        label: isHost ? 'Ban' : 'Mute',
+        destructive: true,
         action: () => {
           onBlock(message.username);
           handleClose();
         },
       });
     }
+  }
+
+  // 7. Report — others only (destructive, inactive placeholder for now)
+  if (!isOwnMessage) {
+    actions.push({
+      icon: Flag,
+      label: 'Report',
+      destructive: true,
+      action: () => {
+        if (onReport) {
+          onReport(message.id, message.username);
+        }
+        handleClose();
+      },
+    });
   }
 
   return (
@@ -439,40 +449,7 @@ export default function MessageActionsModal({
           {/* Backdrop with blur */}
           <div className={`absolute inset-0 ${modalStyles.overlay}`} />
 
-          {/* Emoji Reactions - Floating above modal */}
-          {onReact && (
-            <div
-              className="absolute bottom-0 left-0 right-0 flex justify-center items-end"
-              style={{
-                transform: `translateY(${dragOffset}px)`,
-                transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-                marginBottom: 'calc(env(safe-area-inset-bottom, 2rem) + 480px)',
-              }}
-            >
-              <div className="flex items-center gap-3 justify-center px-6 mb-6">
-                {REACTION_EMOJIS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onReact(message.id, emoji);
-                      handleClose();
-                    }}
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onTouchMove={(e) => e.stopPropagation()}
-                    onTouchEnd={(e) => e.stopPropagation()}
-                    className={`flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-110 shadow-lg cursor-pointer ${
-                      themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-white hover:bg-gray-50'
-                    }`}
-                  >
-                    <span className="text-2xl">{emoji}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Modal Container */}
+          {/* E4 Layout: Message docked above sheet, slides up as one unit */}
           <div
             className={`relative w-full max-w-lg ${isClosing ? 'animate-slide-down' : (!hasAnimatedIn && 'animate-slide-up')}`}
             style={{
@@ -480,38 +457,58 @@ export default function MessageActionsModal({
               transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           >
+            {/* Floating Message Preview — docked above sheet, rendered like actual chat message */}
+            <div className="px-4 pb-6" onClick={(e) => e.stopPropagation()}>
+              <div className="flex">
+                <div className="w-10 flex-shrink-0 mr-3">
+                  <img
+                    src={message.avatar_url}
+                    alt={message.username}
+                    className="w-10 h-10 rounded-full bg-zinc-700"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="mb-1">
+                    <span className={`text-sm font-bold ${
+                      message.is_from_host
+                        ? 'text-amber-400'
+                        : isOwnMessage
+                          ? 'text-red-500'
+                          : message.is_pinned
+                            ? 'text-purple-400'
+                            : themeIsDarkMode ? 'text-white' : 'text-gray-900'
+                    }`}>
+                      {message.username}
+                    </span>
+                    {message.username_is_reserved && (
+                      <BadgeCheck className="text-blue-500 inline-block ml-1 flex-shrink-0" size={14} />
+                    )}
+                    {message.is_from_host && <span className="text-xs ml-1">👑</span>}
+                    {message.is_pinned && <span className="text-xs ml-1">📌</span>}
+                    <span className={`text-xs ${themeIsDarkMode ? 'text-white opacity-60' : 'text-gray-500'} -mt-0.5 block`}>
+                      {new Date(message.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className={`text-sm ${themeIsDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                    {message.content}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Sheet */}
             <div
               className={`w-full ${modalStyles.container} rounded-t-3xl`}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Draggable area: handle + message preview */}
+              {/* Draggable handle area */}
               <div
                 onTouchStart={handleDragStart}
                 onTouchMove={handleDragMove}
                 onTouchEnd={handleDragEnd}
               >
-                {/* Drag handle */}
                 <div className="pt-3 pb-2 flex justify-center">
                   <div className={`w-12 h-1.5 ${modalStyles.dragHandle} rounded-full`} />
-                </div>
-
-                {/* Message Preview */}
-                <div className="px-6 pt-2 pb-6">
-                <div className={`p-4 ${modalStyles.messagePreview}`}>
-                  <div className="flex items-center gap-1 mb-2">
-                    <span className={`font-semibold text-sm ${modalStyles.usernameText}`}>
-                      {message.username}
-                    </span>
-                    {message.username_is_reserved && (
-                      <BadgeCheck className="text-blue-500 flex-shrink-0" size={14} />
-                    )}
-                    {message.is_from_host && <span className="text-xs">👑</span>}
-                    {message.is_pinned && <span className="text-xs">📌</span>}
-                  </div>
-                  <p className={`text-base ${modalStyles.messageText}`}>
-                    {message.content}
-                  </p>
-                </div>
                 </div>
               </div>
 
@@ -678,27 +675,66 @@ export default function MessageActionsModal({
                   </div>
                 </div>
               ) : (
-                <div className="px-6 pb-8 space-y-3 max-h-[280px] overflow-y-auto">
-                  {actions.map((action, index) => {
-                    const Icon = action.icon;
-                    return (
-                      <button
-                        key={index}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          action.action();
-                        }}
-                        onTouchStart={(e) => e.stopPropagation()}
-                        onTouchMove={(e) => e.stopPropagation()}
-                        onTouchEnd={(e) => e.stopPropagation()}
-                        className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all active:scale-95 cursor-pointer ${modalStyles.actionButton}`}
-                      >
-                        <Icon className={`w-6 h-6 ${modalStyles.actionIcon}`} />
-                        <span className="text-base font-medium">{action.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <>
+                  {/* Emoji Reactions Row */}
+                  {onReact && (
+                    <div className="px-5 pb-4">
+                      <div className="flex items-center justify-between">
+                        {REACTION_EMOJIS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReact(message.id, emoji);
+                              handleClose();
+                            }}
+                            onTouchStart={(e) => e.stopPropagation()}
+                            onTouchMove={(e) => e.stopPropagation()}
+                            onTouchEnd={(e) => e.stopPropagation()}
+                            className={`flex items-center justify-center rounded-full transition-all active:scale-110 cursor-pointer ${
+                              themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
+                            }`}
+                            style={{ width: '52px', height: '52px' }}
+                          >
+                            <span className="text-2xl">{emoji}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Divider */}
+                  <div className={`mx-5 border-t ${themeIsDarkMode ? 'border-zinc-700/50' : 'border-gray-200'}`} />
+
+                  {/* Horizontal Scrollable Action Row */}
+                  <div className="pt-3 pb-8">
+                    <div
+                      className="overflow-x-scroll actions-scrollbar-hide actions-scroll-container px-5"
+                      style={{ WebkitOverflowScrolling: 'touch' }}
+                    >
+                      <div className="flex gap-2 w-max mx-auto">
+                        {actions.map((action, index) => {
+                          const Icon = action.icon;
+                          return (
+                            <div
+                              key={index}
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                action.action();
+                              }}
+                              className="flex flex-col items-center justify-center gap-2 py-3 rounded-2xl transition-all active:scale-95 cursor-pointer w-[88px] h-[80px] action-btn"
+                            >
+                              <Icon className={`w-6 h-6 ${action.destructive ? 'text-red-400' : modalStyles.actionIcon}`} />
+                              <span className={`text-xs font-medium truncate w-full text-center ${action.destructive ? 'text-red-400' : ''}`}>{action.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -739,6 +775,23 @@ export default function MessageActionsModal({
 
         .pb-safe {
           padding-bottom: env(safe-area-inset-bottom, 2rem);
+        }
+      `}</style>
+      <style jsx global>{`
+        .actions-scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .actions-scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .actions-scroll-container,
+        .actions-scroll-container * {
+          touch-action: pan-x pan-y !important;
+        }
+        .action-btn {
+          background-color: #27272a !important;
+          border: 1px solid #3f3f46 !important;
         }
       `}</style>
     </>
