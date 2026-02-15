@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
-import { Pin, DollarSign, Ban, BadgeCheck, Reply, Trash2, Copy, Flag } from 'lucide-react';
+import { Pin, DollarSign, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Mic } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 
 interface PinTier {
@@ -41,6 +41,7 @@ interface MessageActionsModalProps {
   onReact?: (messageId: string, emoji: string) => void;
   onDelete?: (messageId: string) => void;
   onReport?: (messageId: string, username: string) => void;
+  sessionToken?: string | null;
   // Legacy props (deprecated, will be removed)
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
@@ -94,6 +95,7 @@ export default function MessageActionsModal({
   onReact,
   onDelete,
   onReport,
+  sessionToken,
   // Legacy props
   onPinSelf,
   onPinOther,
@@ -491,9 +493,38 @@ export default function MessageActionsModal({
                       {new Date(message.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
                   </div>
-                  <p className={`text-sm ${themeIsDarkMode ? 'text-white' : 'text-gray-800'}`}>
-                    {message.content}
-                  </p>
+                  {/* Text content */}
+                  {message.content && (
+                    <p className={`text-sm ${themeIsDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                      {message.content}
+                    </p>
+                  )}
+                  {/* Photo */}
+                  {message.photo_url && (
+                    <div className="mt-1 max-w-[240px] rounded-lg overflow-hidden bg-zinc-700">
+                      <img src={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`} alt="Photo" className="w-full h-auto rounded-lg" />
+                    </div>
+                  )}
+                  {/* Video thumbnail */}
+                  {message.video_url && (
+                    <div className="mt-1 max-w-[240px] rounded-lg overflow-hidden bg-zinc-700 relative">
+                      <img src={`${message.video_thumbnail_url || ''}${(message.video_thumbnail_url || '').includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`} alt="Video" className="w-full h-auto rounded-lg" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center">
+                          <Play className="w-5 h-5 text-white ml-0.5" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Voice message */}
+                  {message.voice_url && !message.content && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <Mic className={`w-4 h-4 ${themeIsDarkMode ? 'text-white/60' : 'text-gray-500'}`} />
+                      <span className={`text-sm ${themeIsDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                        Voice message{message.voice_duration ? ` (${Math.floor(message.voice_duration / 60)}:${String(Math.floor(message.voice_duration % 60)).padStart(2, '0')})` : ''}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -330,6 +330,7 @@ function MainChatView({
               currentUsername={username}
               isHost={chatRoom?.host.id === currentUserId}
               themeIsDarkMode={themeIsDarkMode}
+              sessionToken={sessionToken}
               onReply={handleReply}
               onPin={handlePin}
               onAddToPin={handleAddToPin}
@@ -409,6 +410,7 @@ function MainChatView({
               currentUsername={username}
               isHost={chatRoom?.host.id === currentUserId}
               themeIsDarkMode={themeIsDarkMode}
+              sessionToken={sessionToken}
               onReply={handleReply}
               onPin={handlePin}
               onAddToPin={handleAddToPin}
@@ -701,6 +703,7 @@ function MainChatView({
                   currentUsername={username}
                   isHost={chatRoom?.host.id === currentUserId}
                   themeIsDarkMode={themeIsDarkMode}
+                  sessionToken={sessionToken}
                   isOutbid={!!(
                     message.is_pinned &&
                     message.sticky_until &&
