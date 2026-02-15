@@ -367,16 +367,18 @@ export default function MessageActionsModal({
     icon: Copy,
     label: 'Copy',
     action: () => {
-      const text = `${message.username}: ${message.content}`;
-      navigator.clipboard.writeText(text).catch(() => {
-        // Fallback for older browsers
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-      });
+      const text = message.username + ': ' + message.content;
+      // Use textarea approach for reliable plain-text copy on iOS
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, text.length);
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
       handleClose();
     },
   });
