@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Message } from '@/lib/api';
-import { Pin, DollarSign, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Mic } from 'lucide-react';
+import { Pin, DollarSign, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 
 interface PinTier {
@@ -25,6 +25,16 @@ interface PinRequirements {
   time_remaining_seconds?: number;  // Remaining time if outbid (for reclaim stacking)
 }
 
+interface ThemeColors {
+  badgeIcon?: string;    // BadgeCheck icon color
+  crownIcon?: string;    // Crown icon color
+  pinIcon?: string;      // Pin icon color
+  hostUsername?: string;  // Host username text color
+  pinnedUsername?: string; // Pinned username text color
+  myUsername?: string;    // Own username text color
+  regularUsername?: string; // Regular username text color
+}
+
 interface MessageActionsModalProps {
   message: Message;
   currentUsername?: string;
@@ -42,6 +52,7 @@ interface MessageActionsModalProps {
   onDelete?: (messageId: string) => void;
   onReport?: (messageId: string, username: string) => void;
   sessionToken?: string | null;
+  themeColors?: ThemeColors;
   // Legacy props (deprecated, will be removed)
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
@@ -79,6 +90,107 @@ const getModalStyles = (themeIsDarkMode: boolean) => {
 // Allowed reaction emojis (matching backend)
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
 
+// Inline video player for modal preview (matches chat VideoMessage style)
+function ModalVideoPlayer({ videoUrl, thumbnailUrl, duration }: { videoUrl: string; thumbnailUrl: string; duration: number }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const formatTime = (seconds: number): string => {
+    if (!isFinite(seconds) || seconds < 0) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const togglePlayPause = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+
+    try {
+      if (isPlaying) {
+        video.pause();
+        setIsPlaying(false);
+      } else {
+        setIsLoading(true);
+        await video.play();
+        setIsPlaying(true);
+        setIsLoading(false);
+      }
+    } catch {
+      setIsPlaying(false);
+      setIsLoading(false);
+    }
+  };
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const percentage = (e.clientX - rect.left) / rect.width;
+    video.currentTime = percentage * duration;
+    setCurrentTime(video.currentTime);
+  };
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div className="mt-1 max-w-[240px] rounded-lg overflow-hidden bg-black relative" onClick={(e) => e.stopPropagation()}>
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        poster={thumbnailUrl}
+        className="w-full h-auto rounded-lg"
+        playsInline
+        onTimeUpdate={() => videoRef.current && setCurrentTime(videoRef.current.currentTime)}
+        onEnded={() => { setIsPlaying(false); setCurrentTime(0); if (videoRef.current) videoRef.current.currentTime = 0; }}
+      />
+
+      {/* Play/Pause overlay */}
+      <div
+        className="absolute inset-0 flex items-center justify-center cursor-pointer"
+        onClick={togglePlayPause}
+      >
+        {!isPlaying && (
+          <>
+            <div className="absolute inset-0 bg-black/30 rounded-lg" />
+            <div className="relative z-10 w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+              {isLoading ? (
+                <div className="w-5 h-5 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Play size={20} className="text-gray-800 ml-1" fill="currentColor" />
+              )}
+            </div>
+          </>
+        )}
+        {isPlaying && (
+          <div className="absolute inset-0 bg-black/20 opacity-0 hover:opacity-100 active:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
+            <Pause size={32} className="text-white" fill="white" />
+          </div>
+        )}
+      </div>
+
+      {/* Duration badge */}
+      <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs font-mono">
+        {formatTime(isPlaying ? currentTime : duration)}
+      </div>
+
+      {/* Progress bar */}
+      {isPlaying && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-1 bg-black/30 cursor-pointer rounded-b-lg"
+          onClick={handleSeek}
+        >
+          <div className="h-full bg-white transition-all" style={{ width: `${progress}%` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MessageActionsModal({
   message,
   currentUsername,
@@ -96,6 +208,7 @@ export default function MessageActionsModal({
   onDelete,
   onReport,
   sessionToken,
+  themeColors,
   // Legacy props
   onPinSelf,
   onPinOther,
@@ -364,11 +477,14 @@ export default function MessageActionsModal({
     });
   }
 
-  // 4. Copy — always (copies "username: content" to clipboard)
+  // 4. Copy — always (copies "username: content" to clipboard, disabled for media-only)
+  const hasTextContent = !!message.content?.trim();
   actions.push({
     icon: Copy,
     label: 'Copy',
+    disabled: !hasTextContent,
     action: () => {
+      if (!hasTextContent) return;
       const text = message.username + ': ' + message.content;
       // Use textarea approach for reliable plain-text copy on iOS
       const textarea = document.createElement('textarea');
@@ -462,7 +578,7 @@ export default function MessageActionsModal({
             }}
           >
             {/* Floating Message Preview — docked above sheet, rendered like actual chat message */}
-            <div className="px-4 pb-6" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 pb-6">
               <div className="flex">
                 <div className="w-10 flex-shrink-0 mr-3">
                   <img
@@ -473,22 +589,29 @@ export default function MessageActionsModal({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="mb-1">
-                    <span className={`text-sm font-bold ${
-                      message.is_from_host
-                        ? 'text-amber-400'
-                        : isOwnMessage
-                          ? 'text-red-500'
-                          : message.is_pinned
-                            ? 'text-purple-400'
-                            : themeIsDarkMode ? 'text-white' : 'text-gray-900'
-                    }`}>
+                    <span
+                      className="text-sm font-bold"
+                      style={{
+                        color: message.is_from_host
+                          ? (themeColors?.hostUsername || '#fbbf24')
+                          : isOwnMessage
+                            ? (themeColors?.myUsername || '#ef4444')
+                            : message.is_pinned
+                              ? (themeColors?.pinnedUsername || '#c084fc')
+                              : (themeColors?.regularUsername || (themeIsDarkMode ? '#ffffff' : '#111827'))
+                      }}
+                    >
                       {message.username}
                     </span>
                     {message.username_is_reserved && (
-                      <BadgeCheck className="text-blue-500 inline-block ml-1 flex-shrink-0" size={14} />
+                      <BadgeCheck className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.badgeIcon || '#34d399' }} />
                     )}
-                    {message.is_from_host && <span className="text-xs ml-1">👑</span>}
-                    {message.is_pinned && <span className="text-xs ml-1">📌</span>}
+                    {message.is_from_host && (
+                      <Crown className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
+                    )}
+                    {message.is_pinned && !message.is_from_host && (
+                      <Pin className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.pinIcon || '#fbbf24' }} />
+                    )}
                     <span className={`text-xs ${themeIsDarkMode ? 'text-white opacity-60' : 'text-gray-500'} -mt-0.5 block`}>
                       {new Date(message.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
@@ -501,24 +624,25 @@ export default function MessageActionsModal({
                   )}
                   {/* Photo */}
                   {message.photo_url && (
-                    <div className="mt-1 max-w-[240px] rounded-lg overflow-hidden bg-zinc-700">
-                      <img src={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`} alt="Photo" className="w-full h-auto rounded-lg" />
+                    <div
+                      className="mt-1 max-w-[240px] rounded-lg overflow-hidden bg-zinc-700"
+                      style={message.photo_width && message.photo_height ? { aspectRatio: `${message.photo_width} / ${message.photo_height}` } : undefined}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <img src={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`} alt="Photo" className="w-full h-full object-cover rounded-lg" />
                     </div>
                   )}
-                  {/* Video thumbnail */}
+                  {/* Video player */}
                   {message.video_url && (
-                    <div className="mt-1 max-w-[240px] rounded-lg overflow-hidden bg-zinc-700 relative">
-                      <img src={`${message.video_thumbnail_url || ''}${(message.video_thumbnail_url || '').includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`} alt="Video" className="w-full h-auto rounded-lg" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center">
-                          <Play className="w-5 h-5 text-white ml-0.5" />
-                        </div>
-                      </div>
-                    </div>
+                    <ModalVideoPlayer
+                      videoUrl={`${message.video_url}${message.video_url.includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`}
+                      thumbnailUrl={`${message.video_thumbnail_url || ''}${(message.video_thumbnail_url || '').includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`}
+                      duration={message.video_duration || 0}
+                    />
                   )}
                   {/* Voice message */}
                   {message.voice_url && !message.content && (
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 mt-1" onClick={(e) => e.stopPropagation()}>
                       <Mic className={`w-4 h-4 ${themeIsDarkMode ? 'text-white/60' : 'text-gray-500'}`} />
                       <span className={`text-sm ${themeIsDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
                         Voice message{message.voice_duration ? ` (${Math.floor(message.voice_duration / 60)}:${String(Math.floor(message.voice_duration % 60)).padStart(2, '0')})` : ''}
@@ -752,12 +876,12 @@ export default function MessageActionsModal({
                             <div
                               key={index}
                               role="button"
-                              tabIndex={0}
+                              tabIndex={action.disabled ? -1 : 0}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                action.action();
+                                if (!action.disabled) action.action();
                               }}
-                              className="flex flex-col items-center justify-center gap-2 py-3 rounded-2xl transition-all active:scale-95 cursor-pointer w-[88px] h-[80px] action-btn"
+                              className={`flex flex-col items-center justify-center gap-2 py-3 rounded-2xl transition-all w-[88px] h-[80px] action-btn ${action.disabled ? 'opacity-30 cursor-not-allowed' : 'active:scale-95 cursor-pointer'}`}
                             >
                               <Icon className={`w-6 h-6 ${action.destructive ? 'text-red-400' : modalStyles.actionIcon}`} />
                               <span className={`text-xs font-medium truncate w-full text-center ${action.destructive ? 'text-red-400' : ''}`}>{action.label}</span>

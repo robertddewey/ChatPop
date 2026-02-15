@@ -101,11 +101,14 @@ class MessageCache:
         # Build reply_to_message object if there's a reply
         reply_to_message = None
         if message.reply_to:
+            reply_username_is_reserved = cls._compute_username_is_reserved(message.reply_to)
             reply_to_message = {
                 "id": str(message.reply_to.id),
                 "username": message.reply_to.username,
                 "content": message.reply_to.content[:100] if message.reply_to.content else "",
                 "is_from_host": message.reply_to.message_type == "host",
+                "username_is_reserved": reply_username_is_reserved,
+                "is_pinned": message.reply_to.is_pinned,
             }
 
         # Get avatar_url if not provided

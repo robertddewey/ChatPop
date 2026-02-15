@@ -349,11 +349,18 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_reply_to_message(self, obj):
         """Return basic info about the message being replied to"""
         if obj.reply_to:
+            reply_username_is_reserved = (
+                obj.reply_to.user and
+                obj.reply_to.user.reserved_username and
+                obj.reply_to.username.lower() == obj.reply_to.user.reserved_username.lower()
+            )
             return {
                 'id': str(obj.reply_to.id),
                 'username': obj.reply_to.username,
                 'content': obj.reply_to.content[:100],  # Truncate for preview
-                'is_from_host': obj.reply_to.user == obj.reply_to.chat_room.host if obj.reply_to.user else False
+                'is_from_host': obj.reply_to.user == obj.reply_to.chat_room.host if obj.reply_to.user else False,
+                'username_is_reserved': bool(reply_username_is_reserved),
+                'is_pinned': obj.reply_to.is_pinned,
             }
         return None
 

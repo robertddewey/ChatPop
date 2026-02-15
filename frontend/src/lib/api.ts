@@ -175,6 +175,8 @@ export interface ReplyToMessage {
   username: string;
   content: string;
   is_from_host: boolean;
+  username_is_reserved: boolean;
+  is_pinned: boolean;
 }
 
 export interface MessageReaction {

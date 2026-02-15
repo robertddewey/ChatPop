@@ -239,6 +239,17 @@ function MainChatView({
   const stickySectionRef = useRef<HTMLDivElement>(null);
   const [stickyHeight, setStickyHeight] = useState(0);
 
+  // Compute theme colors for modal badges/icons (memoized)
+  const modalThemeColors = useMemo(() => ({
+    badgeIcon: getIconColor(currentDesign.badgeIconColor) || '#34d399',
+    crownIcon: getIconColor(currentDesign.crownIconColor) || '#2dd4bf',
+    pinIcon: getIconColor(currentDesign.pinIconColor) || '#fbbf24',
+    hostUsername: getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff',
+    pinnedUsername: getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff',
+    myUsername: getTextColor(currentDesign.myUsername) || '#ef4444',
+    regularUsername: getTextColor(currentDesign.regularUsername) || '#ffffff',
+  }), [currentDesign]);
+
   // Track if initial render is complete - skip all animations until then
   const initialRenderDoneRef = useRef(false);
   // State version for sticky section animations (refs don't trigger re-renders)
@@ -331,6 +342,7 @@ function MainChatView({
               isHost={chatRoom?.host.id === currentUserId}
               themeIsDarkMode={themeIsDarkMode}
               sessionToken={sessionToken}
+              themeColors={modalThemeColors}
               onReply={handleReply}
               onPin={handlePin}
               onAddToPin={handleAddToPin}
@@ -411,6 +423,7 @@ function MainChatView({
               isHost={chatRoom?.host.id === currentUserId}
               themeIsDarkMode={themeIsDarkMode}
               sessionToken={sessionToken}
+              themeColors={modalThemeColors}
               onReply={handleReply}
               onPin={handlePin}
               onAddToPin={handleAddToPin}
@@ -704,6 +717,7 @@ function MainChatView({
                   isHost={chatRoom?.host.id === currentUserId}
                   themeIsDarkMode={themeIsDarkMode}
                   sessionToken={sessionToken}
+                  themeColors={modalThemeColors}
                   isOutbid={!!(
                     message.is_pinned &&
                     message.sticky_until &&
@@ -744,8 +758,8 @@ function MainChatView({
                         className={`mb-2 p-2 rounded-lg cursor-pointer transition-colors ${
                           themeIsDarkMode
                             ? message.username.toLowerCase() === username.toLowerCase()
-                              ? 'bg-black/60 backdrop-blur-sm border border-white/10 hover:bg-black/70'
-                              : 'bg-zinc-800/60 backdrop-blur-sm border border-zinc-600 hover:bg-zinc-800/80'
+                              ? 'bg-white/10 border border-white/10 hover:bg-white/15'
+                              : 'bg-white/10 border border-zinc-600 hover:bg-white/15'
                             : message.username.toLowerCase() === username.toLowerCase()
                               ? 'bg-white/95 border border-gray-200 hover:bg-white shadow-sm'
                               : 'bg-white border border-gray-200 hover:bg-gray-50 shadow-sm'
@@ -754,9 +768,27 @@ function MainChatView({
                       >
                         <div className="flex items-center gap-1 mb-0.5">
                           <Reply className={`w-3 h-3 flex-shrink-0 ${themeIsDarkMode ? 'text-gray-300' : 'text-blue-600'}`} />
-                          <span className={`text-xs font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                          <span
+                            className="text-xs font-semibold"
+                            style={{
+                              color: message.reply_to_message.is_from_host
+                                ? (getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff')
+                                : message.reply_to_message.is_pinned && !message.reply_to_message.is_from_host
+                                  ? (getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff')
+                                  : themeIsDarkMode ? '#ffffff' : '#111827'
+                            }}
+                          >
                             {message.reply_to_message.username}
                           </span>
+                          {message.reply_to_message.username_is_reserved && (
+                            <BadgeCheck size={12} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                          )}
+                          {message.reply_to_message.is_from_host && (
+                            <Crown size={12} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                          )}
+                          {message.reply_to_message.is_pinned && !message.reply_to_message.is_from_host && (
+                            <Pin size={12} className="flex-shrink-0" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                          )}
                         </div>
                         <p className={`text-xs truncate ${themeIsDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                           {message.reply_to_message.content || '[Voice message]'}

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, X, Maximize2 } from 'lucide-react';
 
 interface VideoMessageProps {
@@ -56,15 +56,39 @@ export default function VideoMessage({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
 
-  // Default 16:9 aspect ratio if dimensions not known
-  const aspectRatio = 16 / 9;
-  let displayWidth = maxDisplayWidth;
-  let displayHeight = displayWidth / aspectRatio;
+  // Detect thumbnail's natural aspect ratio
+  useEffect(() => {
+    if (!thumbnailUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.src = thumbnailUrl;
+  }, [thumbnailUrl]);
 
-  if (displayHeight > maxDisplayHeight) {
+  // Use natural thumbnail dimensions if available, otherwise default 16:9
+  const aspectRatio = naturalSize ? naturalSize.width / naturalSize.height : 16 / 9;
+  let displayWidth: number;
+  let displayHeight: number;
+
+  if (aspectRatio >= 1) {
+    // Landscape or square
+    displayWidth = maxDisplayWidth;
+    displayHeight = displayWidth / aspectRatio;
+    if (displayHeight > maxDisplayHeight) {
+      displayHeight = maxDisplayHeight;
+      displayWidth = displayHeight * aspectRatio;
+    }
+  } else {
+    // Portrait — constrain by height first
     displayHeight = maxDisplayHeight;
     displayWidth = displayHeight * aspectRatio;
+    if (displayWidth > maxDisplayWidth) {
+      displayWidth = maxDisplayWidth;
+      displayHeight = displayWidth / aspectRatio;
+    }
   }
 
   const formatTime = (seconds: number): string => {

@@ -318,11 +318,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Include reply_to_message preview if this is a reply
         reply_to_message = None
         if message.reply_to:
+            reply_username_is_reserved = (
+                message.reply_to.user and
+                message.reply_to.user.reserved_username and
+                message.reply_to.username.lower() == message.reply_to.user.reserved_username.lower()
+            )
             reply_to_message = {
                 'id': str(message.reply_to.id),
                 'username': message.reply_to.username,
                 'content': message.reply_to.content[:100],  # Truncate for preview
-                'is_from_host': message.reply_to.user == message.reply_to.chat_room.host if message.reply_to.user else False
+                'is_from_host': message.reply_to.user == message.reply_to.chat_room.host if message.reply_to.user else False,
+                'username_is_reserved': bool(reply_username_is_reserved),
+                'is_pinned': message.reply_to.is_pinned,
             }
 
         # Get avatar_url from ChatParticipation (always populated at join time)
