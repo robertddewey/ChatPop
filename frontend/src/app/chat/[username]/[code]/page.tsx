@@ -1210,6 +1210,36 @@ export default function ChatPage() {
     };
   }, []);
 
+  // Anchor scroll position when content height changes above viewport
+  // (e.g., reaction bars appearing/disappearing on messages the user has scrolled past).
+  // Uses ResizeObserver on the content wrapper so it's decoupled from React rendering.
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || !hasJoined) return;
+
+    const content = container.firstElementChild;
+    if (!content) return;
+
+    let prevScrollHeight = container.scrollHeight;
+
+    const observer = new ResizeObserver(() => {
+      const newScrollHeight = container.scrollHeight;
+      const heightDiff = newScrollHeight - prevScrollHeight;
+
+      // Only adjust if:
+      // - Height actually changed
+      // - User is scrolled up (not auto-scrolling at bottom)
+      // - Not during infinite scroll prepend (that handles its own adjustment)
+      if (heightDiff !== 0 && !shouldAutoScrollRef.current && !isInsertingRef.current) {
+        container.scrollTop += heightDiff;
+      }
+
+      prevScrollHeight = newScrollHeight;
+    });
+
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [hasJoined]);
 
 
   // Note: We previously tracked scroll-based visibility for sticky host messages,
