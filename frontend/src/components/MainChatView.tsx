@@ -583,7 +583,8 @@ function MainChatView({
           // Determine spacing: first message in thread gets more margin, consecutive messages get minimal
           // Always reserve mb-8 to accommodate reaction pills (absolute -bottom-6) without layout shifts
           const showAvatar = isFirstInThread || message.is_from_host || message.is_pinned;
-          const messageMargin = showAvatar ? 'mt-3 mb-8' : 'mt-0.5 mb-8';
+          const isLastMessage = index === filteredMessages.length - 1;
+          const messageMargin = showAvatar ? `mt-3 ${isLastMessage ? 'mb-5' : 'mb-8'}` : `mt-0.5 ${isLastMessage ? 'mb-5' : 'mb-8'}`;
 
           return (
             <div key={message.id} data-message-id={message.id} className={`${messageMargin} ${newMessageIds.has(message.id) ? 'animate-message-appear' : ''}`}>
@@ -925,7 +926,7 @@ function MainChatView({
           );
         })}
         {/* Spacer to ensure last message is visible above input */}
-        <div ref={messagesEndRef} className="h-4" style={{ overflowAnchor: 'none' }} />
+        <div ref={messagesEndRef} style={{ overflowAnchor: 'none' }} />
         </div>
       </div>
     </div>
