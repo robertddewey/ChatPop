@@ -527,67 +527,76 @@ function MainChatView({
             <div className="animate-pulse text-gray-400 text-sm bg-black/50 px-3 py-1 rounded-full">Loading...</div>
           </div>
         )}
-        {hasJoined && filteredMessages.map((message, index) => {
-          const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
-
-          // Time-based threading: break thread if >5 minutes gap
+        {hasJoined && (() => {
+          // Pre-compute thread groups for continuous thread lines
           const THREAD_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-          const timeDiff = prevMessage ?
-            new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime() :
-            Infinity;
+          type ThreadGroup = { messages: { message: Message; index: number }[] };
+          const threadGroups: ThreadGroup[] = [];
+          let currentGroup: ThreadGroup | null = null;
 
-          const isFirstInThread = !prevMessage ||
-            prevMessage.username !== message.username ||
-            prevMessage.is_from_host ||
-            message.is_from_host ||
-            message.is_pinned ||
-            timeDiff > THREAD_WINDOW_MS;
+          filteredMessages.forEach((message, index) => {
+            const prevMessage = index > 0 ? filteredMessages[index - 1] : null;
+            const timeDiff = prevMessage ?
+              new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime() :
+              Infinity;
 
-          const nextMessage = index < filteredMessages.length - 1 ? filteredMessages[index + 1] : null;
-          const nextTimeDiff = nextMessage ?
-            new Date(nextMessage.created_at).getTime() - new Date(message.created_at).getTime() :
-            Infinity;
+            const isFirstInThread = !prevMessage ||
+              prevMessage.username !== message.username ||
+              prevMessage.is_from_host ||
+              message.is_from_host ||
+              message.is_pinned ||
+              timeDiff > THREAD_WINDOW_MS;
 
-          const isLastInThread = !nextMessage ||
-            nextMessage.username !== message.username ||
-            nextMessage.is_from_host ||
-            message.is_from_host ||
-            message.is_pinned ||
-            nextTimeDiff > THREAD_WINDOW_MS;
-
-          // Find the last message in this thread to get its timestamp
-          let lastMessageInThread = message;
-          if (isFirstInThread && !isLastInThread && !message.is_from_host && !message.is_pinned) {
-            for (let i = index + 1; i < filteredMessages.length; i++) {
-              const futureMsg = filteredMessages[i];
-              const futureMsgTimeDiff = new Date(futureMsg.created_at).getTime() - new Date(lastMessageInThread.created_at).getTime();
-
-              if (futureMsg.username === message.username &&
-                  !futureMsg.is_from_host &&
-                  !futureMsg.is_pinned &&
-                  futureMsgTimeDiff <= THREAD_WINDOW_MS) {
-                lastMessageInThread = futureMsg;
-              } else {
-                break;
-              }
+            if (isFirstInThread) {
+              currentGroup = { messages: [{ message, index }] };
+              threadGroups.push(currentGroup);
+            } else {
+              currentGroup!.messages.push({ message, index });
             }
-          }
+          });
 
-          // Get avatar settings from theme
-          const avatarStyle = currentDesign.avatarStyle || 'pixel-art';
-          const avatarSize = currentDesign.avatarSize || 'w-10 h-10';
-          const avatarSpacing = currentDesign.avatarSpacing || 'mr-3';
-          const avatarBorder = currentDesign.avatarBorder || '';
-          const isRegularMessage = !message.is_from_host && !message.is_pinned;
+          return threadGroups.map((group) => {
+            const isMultiMessage = group.messages.length > 1;
+            const firstMsg = group.messages[0].message;
 
-          // Determine spacing: first message in thread gets more margin, consecutive messages get minimal
-          // Always reserve mb-8 to accommodate reaction pills (absolute -bottom-6) without layout shifts
-          const showAvatar = isFirstInThread || message.is_from_host || message.is_pinned;
-          const isLastMessage = index === filteredMessages.length - 1;
-          const messageMargin = showAvatar ? `mt-3 ${isLastMessage ? 'mb-5' : 'mb-8'}` : `mt-0.5 ${isLastMessage ? 'mb-5' : 'mb-8'}`;
+            // Get avatar settings from theme
+            const avatarStyle = currentDesign.avatarStyle || 'pixel-art';
+            const avatarSize = currentDesign.avatarSize || 'w-10 h-10';
+            const avatarSpacing = currentDesign.avatarSpacing || 'mr-3';
+            const avatarBorder = currentDesign.avatarBorder || '';
+
+            // Avatar width for thread line positioning
+            const avatarWidthMatch = avatarSize.match(/w-(\d+)/);
+            const avatarWidthRem = avatarWidthMatch ? parseInt(avatarWidthMatch[1]) * 0.25 : 2.5;
+
+            // Find the last message in this thread to get its timestamp
+            const lastMessageInThread = group.messages[group.messages.length - 1].message;
+
+            return (
+              <div key={firstMsg.id} className="relative mt-3">
+                {/* Single continuous thread line for multi-message groups */}
+                {isMultiMessage && (
+                  <div
+                    className="absolute w-0.5 bg-zinc-600/30 pointer-events-none"
+                    style={{
+                      left: `${avatarWidthRem / 2}rem`,
+                      transform: 'translateX(-50%)',
+                      top: `${avatarWidthRem}rem`,
+                      bottom: 0,
+                    }}
+                  />
+                )}
+
+                {group.messages.map(({ message, index: msgIndex }, groupIndex) => {
+                  const isFirstInGroup = groupIndex === 0;
+                  const isRegularMessage = !message.is_from_host && !message.is_pinned;
+                  const showAvatar = isFirstInGroup || message.is_from_host || message.is_pinned;
+                  const isLastMessage = msgIndex === filteredMessages.length - 1;
+                  const innerMargin = isFirstInGroup ? '' : 'mt-0.5';
+                  const bottomMargin = isLastMessage ? 'mb-5' : 'mb-8';
 
           return (
-            <div key={message.id} data-message-id={message.id} className={`${messageMargin} ${newMessageIds.has(message.id) ? 'animate-message-appear' : ''}`}>
+            <div key={message.id} data-message-id={message.id} className={`${innerMargin} ${bottomMargin} ${newMessageIds.has(message.id) ? 'animate-message-appear' : ''}`}>
               {/* Main message layout - flex with avatar column */}
               <div className="flex">
                 {/* Avatar column - for all messages */}
@@ -599,17 +608,15 @@ function MainChatView({
                       className={`${avatarSize} rounded-full bg-zinc-700 ${avatarBorder}`}
                     />
                   ) : (
-                    /* Continuous thread line for consecutive messages - extends exactly to bridge mt-0.5 gap */
-                    <div className="w-full h-full flex justify-center relative">
-                      <div className="w-0.5 bg-zinc-600/30 absolute -top-0.5 bottom-0"></div>
-                    </div>
+                    /* Invisible spacer to maintain alignment */
+                    <div className="w-full h-full" />
                   )}
                 </div>
 
                 {/* Content column */}
                 <div className="flex-1 min-w-0">
                   {/* Username header for first regular message in thread */}
-                  {isRegularMessage && isFirstInThread && (
+                  {isRegularMessage && isFirstInGroup && (
                     <div className="mb-1">
                       <div className="flex items-center gap-1">
                         <span
@@ -923,8 +930,12 @@ function MainChatView({
               </div>
             </div>
           </div>
-          );
-        })}
+                  );
+                })}
+              </div>
+            );
+          });
+        })()}
         {/* Spacer to ensure last message is visible above input */}
         <div ref={messagesEndRef} style={{ overflowAnchor: 'none' }} />
         </div>
