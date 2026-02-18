@@ -894,6 +894,8 @@ function MainChatView({
                         videoUrl={`${message.video_url}${message.video_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
                         thumbnailUrl={message.video_thumbnail_url ? `${message.video_thumbnail_url}${message.video_thumbnail_url.includes('?') ? '&' : '?'}session_token=${sessionToken}` : ''}
                         duration={message.video_duration || 0}
+                        width={message.video_width}
+                        height={message.video_height}
                       />
                     ) : message.content ? (
                       <p className={

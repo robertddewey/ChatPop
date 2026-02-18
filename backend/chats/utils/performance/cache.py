@@ -133,6 +133,8 @@ class MessageCache:
             "video_url": message.video_url,
             "video_duration": float(message.video_duration) if message.video_duration else None,
             "video_thumbnail_url": message.video_thumbnail_url,
+            "video_width": message.video_width,
+            "video_height": message.video_height,
             "reply_to_id": str(message.reply_to.id) if message.reply_to else None,
             "reply_to_message": reply_to_message,
             "is_pinned": message.is_pinned,

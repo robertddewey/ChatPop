@@ -2709,7 +2709,30 @@ class VideoUploadView(APIView):
                 probe_data = json.loads(probe_result.stdout)
                 duration = float(probe_data.get('format', {}).get('duration', 0))
 
-                logger.info(f"[VideoUpload] Video duration: {duration} seconds")
+                # Extract video dimensions from the video stream
+                video_width = None
+                video_height = None
+                for stream in probe_data.get('streams', []):
+                    if stream.get('codec_type') == 'video':
+                        video_width = int(stream['width']) if 'width' in stream else None
+                        video_height = int(stream['height']) if 'height' in stream else None
+                        # Check for rotation (phone videos record landscape with rotation metadata)
+                        rotation = 0
+                        # Check tags first (older ffprobe)
+                        rotation_tag = stream.get('tags', {}).get('rotate', '0')
+                        rotation = int(rotation_tag)
+                        # Check side_data_list (newer ffprobe)
+                        if rotation == 0:
+                            for sd in stream.get('side_data_list', []):
+                                if 'rotation' in sd:
+                                    rotation = int(sd['rotation'])
+                                    break
+                        # Swap dimensions for 90/270 degree rotations
+                        if video_width and video_height and abs(rotation) in (90, 270):
+                            video_width, video_height = video_height, video_width
+                        break
+
+                logger.info(f"[VideoUpload] Video duration: {duration} seconds, dimensions: {video_width}x{video_height}")
 
                 # Validate duration (max 30 seconds)
                 if duration > 30:
@@ -2757,6 +2780,8 @@ class VideoUploadView(APIView):
                 'video_url': video_url,
                 'duration': round(duration, 2),
                 'thumbnail_url': thumbnail_url,
+                'width': video_width,
+                'height': video_height,
                 'storage_path': storage_path,
                 'storage_type': storage_type
             }, status=status.HTTP_201_CREATED)

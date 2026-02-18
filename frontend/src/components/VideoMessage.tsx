@@ -7,6 +7,8 @@ interface VideoMessageProps {
   videoUrl: string;
   thumbnailUrl: string;
   duration: number;
+  width?: number | null;
+  height?: number | null;
   caption?: string;
   captionClassName?: string;
   className?: string;
@@ -42,6 +44,8 @@ export default function VideoMessage({
   videoUrl,
   thumbnailUrl,
   duration,
+  width: videoWidth,
+  height: videoHeight,
   caption,
   captionClassName = '',
   className = '',
@@ -57,9 +61,8 @@ export default function VideoMessage({
   const videoRef = useRef<HTMLVideoElement>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
 
-  // Use a stable 16:9 container to prevent layout shifts.
-  // The actual video/thumbnail fills it with object-contain.
-  const aspectRatio = 16 / 9;
+  // Use actual video dimensions if available, fall back to 16:9
+  const aspectRatio = (videoWidth && videoHeight) ? videoWidth / videoHeight : 16 / 9;
   let displayWidth = maxDisplayWidth;
   let displayHeight = displayWidth / aspectRatio;
 
@@ -186,7 +189,7 @@ export default function VideoMessage({
           ref={videoRef}
           src={videoUrl}
           poster={thumbnailUrl}
-          className="w-full h-full object-contain"
+          className={`w-full h-full ${videoWidth && videoHeight ? 'object-cover' : 'object-contain'}`}
           playsInline
           onTimeUpdate={handleTimeUpdate}
           onEnded={handleVideoEnd}

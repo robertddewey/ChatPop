@@ -96,6 +96,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         video_url = data.get('video_url')  # Optional video URL
         video_duration = data.get('video_duration')  # Optional video duration (seconds)
         video_thumbnail_url = data.get('video_thumbnail_url')  # Optional video thumbnail URL
+        video_width = data.get('video_width')  # Optional video width
+        video_height = data.get('video_height')  # Optional video height
 
         # Validate session token on each message (optional extra security)
         session_token = data.get('session_token', self.session_token)
@@ -127,7 +129,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 photo_height=photo_height,
                 video_url=video_url,
                 video_duration=video_duration,
-                video_thumbnail_url=video_thumbnail_url
+                video_thumbnail_url=video_thumbnail_url,
+                video_width=video_width,
+                video_height=video_height
             )
 
             # Serialize for broadcast (includes username_is_reserved)
@@ -237,7 +241,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def save_message(self, chat_code, username, user_id, content, reply_to_id=None, voice_url=None, voice_duration=None, voice_waveform=None, photo_url=None, photo_width=None, photo_height=None, video_url=None, video_duration=None, video_thumbnail_url=None):
+    def save_message(self, chat_code, username, user_id, content, reply_to_id=None, voice_url=None, voice_duration=None, voice_waveform=None, photo_url=None, photo_width=None, photo_height=None, video_url=None, video_duration=None, video_thumbnail_url=None, video_width=None, video_height=None):
         """
         Save message to PostgreSQL and Redis (dual-write).
 
@@ -281,7 +285,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             photo_height=photo_height,
             video_url=video_url,
             video_duration=video_duration,
-            video_thumbnail_url=video_thumbnail_url
+            video_thumbnail_url=video_thumbnail_url,
+            video_width=video_width,
+            video_height=video_height
         )
 
         # Add to Redis cache (dual-write) - only if enabled
@@ -369,6 +375,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'video_url': message.video_url,
             'video_duration': float(message.video_duration) if message.video_duration else None,
             'video_thumbnail_url': message.video_thumbnail_url,
+            'video_width': message.video_width,
+            'video_height': message.video_height,
             'reply_to_id': str(message.reply_to.id) if message.reply_to else None,
             'reply_to_message': reply_to_message,
             'is_pinned': message.is_pinned,

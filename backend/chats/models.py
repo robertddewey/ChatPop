@@ -301,6 +301,8 @@ class Message(models.Model):
     video_url = models.URLField(max_length=500, blank=True, null=True, help_text="URL to video file")
     video_duration = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True, help_text="Duration of video in seconds")
     video_thumbnail_url = models.URLField(max_length=500, blank=True, null=True, help_text="URL to video thumbnail image")
+    video_width = models.IntegerField(null=True, blank=True, help_text="Video width in pixels")
+    video_height = models.IntegerField(null=True, blank=True, help_text="Video height in pixels")
 
     # Pinning
     is_pinned = models.BooleanField(default=False)

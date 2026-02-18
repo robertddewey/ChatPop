@@ -1125,7 +1125,7 @@ export default function ChatPage() {
       }
 
       // Upload video and get URLs
-      const { video_url, duration: uploadedDuration, thumbnail_url } = await messageApi.uploadVideo(code, file, roomUsername);
+      const { video_url, duration: uploadedDuration, thumbnail_url, width, height } = await messageApi.uploadVideo(code, file, roomUsername);
 
       // Send the video message via WebSocket
       sendRawMessage({
@@ -1133,6 +1133,8 @@ export default function ChatPage() {
         video_url: video_url,
         video_duration: uploadedDuration,
         video_thumbnail_url: thumbnail_url,
+        video_width: width,
+        video_height: height,
         reply_to_id: replyingTo?.id,
       });
 

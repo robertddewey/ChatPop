@@ -211,6 +211,8 @@ export interface Message {
   video_url: string | null;
   video_duration: number | null;
   video_thumbnail_url: string | null;
+  video_width: number | null;
+  video_height: number | null;
   reply_to: string | null;
   reply_to_message: ReplyToMessage | null;
   is_pinned: boolean;
@@ -594,6 +596,8 @@ export const messageApi = {
     video_url: string;
     duration: number;
     thumbnail_url: string;
+    width: number | null;
+    height: number | null;
     storage_path: string;
     storage_type: string;
   }> => {

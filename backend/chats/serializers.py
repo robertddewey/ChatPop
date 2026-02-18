@@ -316,7 +316,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'id', 'chat_room', 'username', 'user', 'message_type', 'content',
             'voice_url', 'voice_duration', 'voice_waveform',
             'photo_url', 'photo_width', 'photo_height',
-            'video_url', 'video_duration', 'video_thumbnail_url',
+            'video_url', 'video_duration', 'video_thumbnail_url', 'video_width', 'video_height',
             'reply_to', 'reply_to_message',
             'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount',
             'is_from_host', 'username_is_reserved', 'time_until_unpin', 'avatar_url', 'created_at', 'is_deleted'
@@ -325,7 +325,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'id', 'user', 'message_type',
             'voice_url', 'voice_duration', 'voice_waveform',
             'photo_url', 'photo_width', 'photo_height',
-            'video_url', 'video_duration', 'video_thumbnail_url',
+            'video_url', 'video_duration', 'video_thumbnail_url', 'video_width', 'video_height',
             'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount', 'created_at', 'is_deleted'
         ]
 
