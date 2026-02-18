@@ -47,7 +47,7 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
   const highlightText = highlightTheme?.reaction_highlight_text || defaultHighlightText;
 
   return (
-    <div className="absolute -bottom-6 left-0 z-10 flex items-center gap-1">
+    <div className="flex items-center gap-1">
       {topReactions.map((reaction) => {
         const isAnimating = animatingEmoji === reaction.emoji;
         const hasReacted = reaction.has_reacted;

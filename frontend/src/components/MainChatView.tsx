@@ -593,7 +593,7 @@ function MainChatView({
                   const showAvatar = isFirstInGroup || message.is_from_host || message.is_pinned;
                   const isLastMessage = msgIndex === filteredMessages.length - 1;
                   const innerMargin = isFirstInGroup ? '' : 'mt-0.5';
-                  const bottomMargin = isLastMessage ? 'mb-5' : 'mb-8';
+                  const bottomMargin = isLastMessage ? 'mb-3' : 'mb-3';
 
           return (
             <div key={message.id} data-message-id={message.id} className={`${innerMargin} ${bottomMargin} ${newMessageIds.has(message.id) ? 'animate-message-appear' : ''}`}>
@@ -639,18 +639,6 @@ function MainChatView({
                           <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
                         )}
                       </div>
-                      <span
-                        className="text-xs opacity-60 -mt-0.5 block"
-                        style={{
-                          color: getTextColor(
-                            message.username.toLowerCase() === username.toLowerCase()
-                              ? currentDesign.myTimestamp
-                              : currentDesign.regularTimestamp
-                          ) || '#ffffff'
-                        }}
-                      >
-                        {formatTimestamp(lastMessageInThread.created_at)}
-                      </span>
                     </div>
                   )}
                   {/* Host message header - OUTSIDE bubble */}
@@ -677,12 +665,6 @@ function MainChatView({
                         )}
                         <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                       </div>
-                      <span
-                        className="text-xs opacity-60 -mt-0.5 block"
-                        style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
-                      >
-                        {formatTimestamp(message.created_at)}
-                      </span>
                     </div>
                   )}
 
@@ -710,12 +692,6 @@ function MainChatView({
                         )}
                         <Pin size={14} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                       </div>
-                      <span
-                        className="text-xs opacity-60 -mt-0.5 block"
-                        style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
-                      >
-                        {formatTimestamp(message.created_at)}
-                      </span>
                     </div>
                   )}
 
@@ -914,21 +890,39 @@ function MainChatView({
                         [Media message - loading...]
                       </p>
                     )}
-                    {/* Reaction Bar - floating pill */}
-                    <ReactionBar
-                      reactions={messageReactions[message.id] || message.reactions || []}
-                      onReactionClick={(emoji) => handleReactionToggle(message.id, emoji)}
-                      themeIsDarkMode={themeIsDarkMode}
-                      highlightTheme={currentDesign.reactionHighlightBg ? {
-                        reaction_highlight_bg: currentDesign.reactionHighlightBg,
-                        reaction_highlight_border: currentDesign.reactionHighlightBorder,
-                        reaction_highlight_text: currentDesign.reactionHighlightText,
-                      } : undefined}
-                      fullWidth={message.is_from_host}
-                    />
                     </div>
                   </div>
                 </MessageActionsModal>
+                {/* Timestamp + Reaction pills row */}
+                <div className="flex items-center mt-1 gap-2 h-6">
+                  <span
+                    className="text-[10px] opacity-60"
+                    style={{
+                      color: getTextColor(
+                        message.is_from_host
+                          ? currentDesign.hostTimestamp
+                          : message.is_pinned
+                          ? currentDesign.pinnedTimestamp
+                          : message.username.toLowerCase() === username.toLowerCase()
+                          ? currentDesign.myTimestamp
+                          : currentDesign.regularTimestamp
+                      ) || '#ffffff'
+                    }}
+                  >
+                    {formatTimestamp(message.created_at)}
+                  </span>
+                  <ReactionBar
+                    reactions={messageReactions[message.id] || message.reactions || []}
+                    onReactionClick={(emoji) => handleReactionToggle(message.id, emoji)}
+                    themeIsDarkMode={themeIsDarkMode}
+                    highlightTheme={currentDesign.reactionHighlightBg ? {
+                      reaction_highlight_bg: currentDesign.reactionHighlightBg,
+                      reaction_highlight_border: currentDesign.reactionHighlightBorder,
+                      reaction_highlight_text: currentDesign.reactionHighlightText,
+                    } : undefined}
+                    fullWidth={message.is_from_host}
+                  />
+                </div>
               </div>
             </div>
           </div>

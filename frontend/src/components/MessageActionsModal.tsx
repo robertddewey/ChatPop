@@ -884,7 +884,7 @@ export default function MessageActionsModal({
                               className={`flex flex-col items-center justify-center gap-2 py-3 rounded-2xl transition-all w-[88px] h-[80px] action-btn ${action.disabled ? 'opacity-30 cursor-not-allowed' : 'active:scale-95 cursor-pointer'}`}
                             >
                               <Icon className={`w-6 h-6 ${action.destructive ? 'text-red-400' : modalStyles.actionIcon}`} />
-                              <span className={`text-xs font-medium truncate w-full text-center ${action.destructive ? 'text-red-400' : ''}`}>{action.label}</span>
+                              <span className={`text-xs font-medium truncate w-full text-center ${action.destructive ? 'text-red-400' : themeIsDarkMode ? 'text-zinc-50' : 'text-gray-900'}`}>{action.label}</span>
                             </div>
                           );
                         })}
