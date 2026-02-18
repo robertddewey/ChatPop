@@ -581,8 +581,9 @@ function MainChatView({
           const isRegularMessage = !message.is_from_host && !message.is_pinned;
 
           // Determine spacing: first message in thread gets more margin, consecutive messages get minimal
+          // Always reserve mb-8 to accommodate reaction pills (absolute -bottom-6) without layout shifts
           const showAvatar = isFirstInThread || message.is_from_host || message.is_pinned;
-          const messageMargin = showAvatar ? 'mt-3' : 'mt-0.5';
+          const messageMargin = showAvatar ? 'mt-3 mb-8' : 'mt-0.5 mb-8';
 
           return (
             <div key={message.id} data-message-id={message.id} className={`${messageMargin} ${newMessageIds.has(message.id) ? 'animate-message-appear' : ''}`}>
@@ -710,7 +711,7 @@ function MainChatView({
                     </div>
                   )}
 
-                  {/* Message bubble with action modal */}
+                  {/* Message bubble with action modal + floating reactions */}
                   <MessageActionsModal
                   message={message}
                   currentUsername={username}
@@ -811,7 +812,8 @@ function MainChatView({
                       </p>
                     )}
 
-                    {/* Message content */}
+                    {/* Message content + floating reaction pill */}
+                    <div className="relative w-fit max-w-full">
                     {message.voice_url ? (
                       <VoiceMessagePlayer
                         voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
@@ -902,20 +904,21 @@ function MainChatView({
                         [Media message - loading...]
                       </p>
                     )}
+                    {/* Reaction Bar - floating pill */}
+                    <ReactionBar
+                      reactions={messageReactions[message.id] || message.reactions || []}
+                      onReactionClick={(emoji) => handleReactionToggle(message.id, emoji)}
+                      themeIsDarkMode={themeIsDarkMode}
+                      highlightTheme={currentDesign.reactionHighlightBg ? {
+                        reaction_highlight_bg: currentDesign.reactionHighlightBg,
+                        reaction_highlight_border: currentDesign.reactionHighlightBorder,
+                        reaction_highlight_text: currentDesign.reactionHighlightText,
+                      } : undefined}
+                      fullWidth={message.is_from_host}
+                    />
+                    </div>
                   </div>
                 </MessageActionsModal>
-
-                  {/* Reaction Bar */}
-                  <ReactionBar
-                    reactions={messageReactions[message.id] || message.reactions || []}
-                    onReactionClick={(emoji) => handleReactionToggle(message.id, emoji)}
-                    themeIsDarkMode={themeIsDarkMode}
-                    highlightTheme={currentDesign.reactionHighlightBg ? {
-                      reaction_highlight_bg: currentDesign.reactionHighlightBg,
-                      reaction_highlight_border: currentDesign.reactionHighlightBorder,
-                      reaction_highlight_text: currentDesign.reactionHighlightText,
-                    } : undefined}
-                  />
               </div>
             </div>
           </div>

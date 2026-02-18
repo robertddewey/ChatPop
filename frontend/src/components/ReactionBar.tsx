@@ -14,9 +14,10 @@ interface ReactionBarProps {
   onReactionClick?: (emoji: string) => void;
   themeIsDarkMode?: boolean;
   highlightTheme?: ReactionHighlightTheme;
+  fullWidth?: boolean;
 }
 
-export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMode = true, highlightTheme }: ReactionBarProps) {
+export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMode = true, highlightTheme, fullWidth }: ReactionBarProps) {
   const [animatingEmoji, setAnimatingEmoji] = useState<string | null>(null);
 
   if (!reactions || reactions.length === 0) {
@@ -46,7 +47,7 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
   const highlightText = highlightTheme?.reaction_highlight_text || defaultHighlightText;
 
   return (
-    <div className="flex items-center gap-1.5 mt-1.5">
+    <div className="absolute -bottom-6 left-0 z-10 flex items-center gap-1">
       {topReactions.map((reaction) => {
         const isAnimating = animatingEmoji === reaction.emoji;
         const hasReacted = reaction.has_reacted;
@@ -55,22 +56,22 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
           <button
             key={reaction.emoji}
             onClick={() => handleClick(reaction.emoji)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-full transition-all ${
+            className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 shadow-lg transition-all ${
               isAnimating ? 'scale-110' : 'scale-100'
             } ${
               hasReacted
                 ? `${highlightBg} ${highlightBorder}`
                 : themeIsDarkMode
-                  ? 'bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/60'
-                  : 'bg-gray-100/80 hover:bg-gray-200/80 border border-gray-300/60'
+                  ? 'bg-zinc-800 border border-zinc-700'
+                  : 'bg-white border border-gray-200'
             }`}
             style={{
               transition: 'transform 0.15s ease-out, background-color 0.2s, border-color 0.2s',
             }}
           >
-            <span className="text-sm">{reaction.emoji}</span>
+            <span className="text-xs">{reaction.emoji}</span>
             <span
-              className={`text-xs font-medium ${
+              className={`text-[10px] font-medium ${
                 hasReacted
                   ? highlightText
                   : themeIsDarkMode ? 'text-zinc-400' : 'text-gray-600'
