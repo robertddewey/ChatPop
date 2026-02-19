@@ -1114,6 +1114,78 @@ class RedisReactionCacheTests(TransactionTestCase):
         except Exception as e:
             self.fail(f"Reaction cache operations should not raise exceptions: {e}")
 
+    @allure.title("Increment reaction count atomically")
+    @allure.description("Test atomic increment of reaction count via HINCRBY")
+    @allure.severity(allure.severity_level.NORMAL)
+    def test_increment_reaction(self):
+        """Test atomic increment of reaction count"""
+        msg_id = str(self.message1.id)
+
+        # First increment creates the counter
+        count = MessageCache.increment_reaction(self.chat_room.id, msg_id, '👍')
+        self.assertEqual(count, 1)
+
+        # Second increment bumps it
+        count = MessageCache.increment_reaction(self.chat_room.id, msg_id, '👍')
+        self.assertEqual(count, 2)
+
+        # Different emoji gets its own counter
+        count = MessageCache.increment_reaction(self.chat_room.id, msg_id, '❤️')
+        self.assertEqual(count, 1)
+
+        # Verify via get_message_reactions
+        cached = MessageCache.get_message_reactions(self.chat_room.id, msg_id)
+        self.assertEqual(len(cached), 2)
+        thumbs = next(r for r in cached if r['emoji'] == '👍')
+        self.assertEqual(thumbs['count'], 2)
+
+    @allure.title("Decrement reaction count atomically")
+    @allure.description("Test atomic decrement of reaction count with zero cleanup")
+    @allure.severity(allure.severity_level.NORMAL)
+    def test_decrement_reaction(self):
+        """Test atomic decrement with zero-count cleanup"""
+        msg_id = str(self.message1.id)
+
+        # Set up initial counts
+        MessageCache.increment_reaction(self.chat_room.id, msg_id, '👍')
+        MessageCache.increment_reaction(self.chat_room.id, msg_id, '👍')
+        MessageCache.increment_reaction(self.chat_room.id, msg_id, '❤️')
+
+        # Decrement thumbs from 2 to 1
+        count = MessageCache.decrement_reaction(self.chat_room.id, msg_id, '👍')
+        self.assertEqual(count, 1)
+
+        # Decrement heart from 1 to 0 (should be cleaned up)
+        count = MessageCache.decrement_reaction(self.chat_room.id, msg_id, '❤️')
+        self.assertEqual(count, 0)
+
+        # Verify heart is gone from cache
+        cached = MessageCache.get_message_reactions(self.chat_room.id, msg_id)
+        self.assertEqual(len(cached), 1)
+        self.assertEqual(cached[0]['emoji'], '👍')
+
+    @allure.title("Decrement on empty key returns zero")
+    @allure.description("Test that decrementing a non-existent reaction returns 0")
+    @allure.severity(allure.severity_level.NORMAL)
+    def test_decrement_nonexistent_reaction(self):
+        """Test decrementing a reaction that doesn't exist in cache"""
+        msg_id = str(self.message1.id)
+        count = MessageCache.decrement_reaction(self.chat_room.id, msg_id, '👍')
+        self.assertEqual(count, 0)
+
+    @allure.title("Increment sets TTL on new key")
+    @allure.description("Test that increment_reaction sets TTL when creating a new key")
+    @allure.severity(allure.severity_level.NORMAL)
+    def test_increment_reaction_sets_ttl(self):
+        """Test that increment sets TTL on new keys"""
+        msg_id = str(self.message1.id)
+        MessageCache.increment_reaction(self.chat_room.id, msg_id, '👍')
+
+        redis_client = MessageCache._get_redis_client()
+        key = f"room:{self.chat_room.id}:reactions:{self.message1.id}"
+        ttl = redis_client.ttl(key)
+        self.assertGreater(ttl, 86000)  # ~24 hours
+
 
 @allure.feature('Message Caching')
 @allure.story('Cache Configuration Control')

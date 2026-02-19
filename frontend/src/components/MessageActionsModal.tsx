@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Message } from '@/lib/api';
+import { Message, ReactionSummary } from '@/lib/api';
 import { Pin, DollarSign, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 
@@ -49,6 +49,7 @@ interface MessageActionsModalProps {
   onBlock?: (username: string) => void;
   onTip?: (username: string) => void;
   onReact?: (messageId: string, emoji: string) => void;
+  reactions?: ReactionSummary[];
   onDelete?: (messageId: string) => void;
   onReport?: (messageId: string, username: string) => void;
   sessionToken?: string | null;
@@ -205,6 +206,7 @@ export default function MessageActionsModal({
   onBlock,
   onTip,
   onReact,
+  reactions = [],
   onDelete,
   onReport,
   sessionToken,
@@ -837,25 +839,31 @@ export default function MessageActionsModal({
                   {onReact && (
                     <div className="px-5 pb-4">
                       <div className="flex items-center justify-between">
-                        {REACTION_EMOJIS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onReact(message.id, emoji);
-                              handleClose();
-                            }}
-                            onTouchStart={(e) => e.stopPropagation()}
-                            onTouchMove={(e) => e.stopPropagation()}
-                            onTouchEnd={(e) => e.stopPropagation()}
-                            className={`flex items-center justify-center rounded-full transition-all active:scale-110 cursor-pointer ${
-                              themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
-                            }`}
-                            style={{ width: '52px', height: '52px' }}
-                          >
-                            <span className="text-2xl">{emoji}</span>
-                          </button>
-                        ))}
+                        {REACTION_EMOJIS.map((emoji) => {
+                          const hasReacted = reactions.some(r => r.emoji === emoji && r.has_reacted);
+                          return (
+                            <button
+                              key={emoji}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onReact(message.id, emoji);
+                              }}
+                              onTouchStart={(e) => e.stopPropagation()}
+                              onTouchMove={(e) => e.stopPropagation()}
+                              onTouchEnd={(e) => e.stopPropagation()}
+                              className={`flex items-center justify-center rounded-full transition-all active:scale-110 cursor-pointer ${
+                                hasReacted
+                                  ? themeIsDarkMode
+                                    ? 'bg-purple-500/30 ring-2 ring-purple-500/60'
+                                    : 'bg-purple-100 ring-2 ring-purple-400'
+                                  : themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
+                              }`}
+                              style={{ width: '52px', height: '52px' }}
+                            >
+                              <span className="text-2xl">{emoji}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

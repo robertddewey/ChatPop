@@ -657,6 +657,50 @@ class MessageCache:
             return False
 
     @classmethod
+    def increment_reaction(cls, room_id: Union[str, UUID], message_id: str, emoji: str) -> int:
+        """
+        Atomically increment a reaction count for a specific emoji.
+        Uses HINCRBY for O(1) performance instead of full recount.
+
+        Returns:
+            New count after increment, or -1 on error
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.REACTIONS_KEY.format(room_id=str(room_id), message_id=message_id)
+            new_count = redis_client.hincrby(key, emoji, 1)
+            # Ensure TTL is set (in case key was just created)
+            ttl = redis_client.ttl(key)
+            if ttl < 0:
+                ttl_seconds = cls._get_ttl_hours() * 3600
+                redis_client.expire(key, ttl_seconds)
+            return new_count
+        except Exception as e:
+            print(f"Redis cache error (increment_reaction): {e}")
+            return -1
+
+    @classmethod
+    def decrement_reaction(cls, room_id: Union[str, UUID], message_id: str, emoji: str) -> int:
+        """
+        Atomically decrement a reaction count for a specific emoji.
+        Cleans up zero/negative counts with HDEL.
+
+        Returns:
+            New count after decrement (min 0), or -1 on error
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.REACTIONS_KEY.format(room_id=str(room_id), message_id=message_id)
+            new_count = redis_client.hincrby(key, emoji, -1)
+            if new_count <= 0:
+                redis_client.hdel(key, emoji)
+                return 0
+            return new_count
+        except Exception as e:
+            print(f"Redis cache error (decrement_reaction): {e}")
+            return -1
+
+    @classmethod
     def get_message_reactions(cls, room_id: Union[str, UUID], message_id: str) -> List[Dict[str, Any]]:
         """
         Get cached reactions for a single message.

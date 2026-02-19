@@ -2005,31 +2005,28 @@ class MessageReactionToggleView(APIView):
         user = request.user if request.user.is_authenticated else None
         fingerprint_value = fingerprint if not user else None
 
-        # Check if user already has ANY reaction on this message
+        # Check if user already has a reaction with THIS SPECIFIC emoji
         if user:
             existing_reaction = MessageReaction.objects.filter(
                 message=message,
-                user=user
+                user=user,
+                emoji=emoji
             ).first()
         else:
             existing_reaction = MessageReaction.objects.filter(
                 message=message,
-                fingerprint=fingerprint_value
+                fingerprint=fingerprint_value,
+                emoji=emoji
             ).first()
 
-        # If clicking the same emoji, remove it (toggle off)
-        if existing_reaction and existing_reaction.emoji == emoji:
+        # Toggle: if exists, remove it; if not, add it
+        if existing_reaction:
             existing_reaction.delete()
             action = 'removed'
             reaction_data = None
-        # If user has a different reaction, update it
-        elif existing_reaction:
-            existing_reaction.emoji = emoji
-            existing_reaction.save()
-            action = 'updated'
-            reaction_data = MessageReactionSerializer(existing_reaction).data
+            # Atomic Redis decrement (O(1), no Postgres recount)
+            MessageCache.decrement_reaction(chat_room.id, str(message_id), emoji)
         else:
-            # Create new reaction
             existing_reaction = MessageReaction.objects.create(
                 message=message,
                 emoji=emoji,
@@ -2039,6 +2036,8 @@ class MessageReactionToggleView(APIView):
             )
             action = 'added'
             reaction_data = MessageReactionSerializer(existing_reaction).data
+            # Atomic Redis increment (O(1), no Postgres recount)
+            MessageCache.increment_reaction(chat_room.id, str(message_id), emoji)
 
         # Convert UUIDs to strings for WebSocket serialization
         if reaction_data:
@@ -2046,22 +2045,6 @@ class MessageReactionToggleView(APIView):
             reaction_data['message'] = str(reaction_data['message'])
             if reaction_data.get('user'):
                 reaction_data['user'] = str(reaction_data['user'])
-
-        # Update reaction cache after database modification
-        from collections import defaultdict
-        reactions_list = MessageReaction.objects.filter(message=message)
-        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0})
-
-        for reaction in reactions_list:
-            emoji = reaction.emoji
-            emoji_counts[emoji]['emoji'] = emoji
-            emoji_counts[emoji]['count'] += 1
-
-        # Get top 3 reactions by count
-        top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
-
-        # Update cache with new reaction summary
-        MessageCache.set_message_reactions(chat_room.id, str(message_id), top_reactions)
 
         # Broadcast reaction update via WebSocket
         channel_layer = get_channel_layer()

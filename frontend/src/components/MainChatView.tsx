@@ -351,6 +351,7 @@ function MainChatView({
               onTip={handleTipUser}
               onDelete={handleDeleteMessage}
               onReact={handleReactionToggle}
+              reactions={messageReactions[message.id] || message.reactions || []}
             >
               <div
                 className={`${currentDesign.stickyHostMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
@@ -432,6 +433,7 @@ function MainChatView({
               onTip={handleTipUser}
               onDelete={handleDeleteMessage}
               onReact={handleReactionToggle}
+              reactions={messageReactions[stickyPinnedMessage.id] || stickyPinnedMessage.reactions || []}
             >
               <div
                 className={`${currentDesign.stickyPinnedMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
@@ -717,6 +719,7 @@ function MainChatView({
                   onTip={handleTipUser}
                   onDelete={handleDeleteMessage}
                   onReact={handleReactionToggle}
+                  reactions={messageReactions[message.id] || message.reactions || []}
                 >
                   <div
                     className={(() => {

@@ -1405,18 +1405,6 @@ export default function ChatPage() {
           updated[messageId] = reactions;
           return updated;
         });
-      } else if (result.action === 'updated') {
-        // User changed their reaction from one emoji to another
-        setMessageReactions(prev => {
-          const updated = { ...prev };
-          const reactions = [...(updated[messageId] || [])];
-          // Remove has_reacted from old reactions, add to new
-          updated[messageId] = reactions.map(r => ({
-            ...r,
-            has_reacted: r.emoji === emoji
-          }));
-          return updated;
-        });
       }
       // WebSocket will also broadcast the update for consistency across clients
     } catch (error) {

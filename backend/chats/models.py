@@ -504,21 +504,21 @@ class MessageReaction(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['message', 'emoji']),
-            models.Index(fields=['message', 'user']),
-            models.Index(fields=['message', 'fingerprint']),
+            models.Index(fields=['message', 'user', 'emoji']),
+            models.Index(fields=['message', 'fingerprint', 'emoji']),
         ]
         constraints = [
-            # One reaction per logged-in user per message
+            # One reaction per emoji per logged-in user per message
             models.UniqueConstraint(
-                fields=['message', 'user'],
+                fields=['message', 'user', 'emoji'],
                 condition=models.Q(user__isnull=False),
-                name='unique_message_user_reaction'
+                name='unique_message_user_emoji_reaction'
             ),
-            # One reaction per anonymous user per message
+            # One reaction per emoji per anonymous user per message
             models.UniqueConstraint(
-                fields=['message', 'fingerprint'],
+                fields=['message', 'fingerprint', 'emoji'],
                 condition=models.Q(user__isnull=True),
-                name='unique_message_fingerprint_reaction'
+                name='unique_message_fingerprint_emoji_reaction'
             ),
         ]
 
