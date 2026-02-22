@@ -146,7 +146,7 @@ function MessageInputComponent({
   const showMediaButtons = !isExpanded && (hasVoiceButton || hasMediaButton);
 
   return (
-    <div className={design.inputArea}>
+    <div className={design.inputArea} style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))` }}>
       {/* Reply Preview Bar */}
       {replyingTo && (
         <div className={design.replyPreviewContainer}>
