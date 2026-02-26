@@ -617,6 +617,29 @@ function MainChatView({
 
                 {/* Content column */}
                 <div className="flex-1 min-w-0">
+                  <MessageActionsModal
+                  message={message}
+                  currentUsername={username}
+                  isHost={chatRoom?.host.id === currentUserId}
+                  themeIsDarkMode={themeIsDarkMode}
+                  sessionToken={sessionToken}
+                  themeColors={modalThemeColors}
+                  isOutbid={!!(
+                    message.is_pinned &&
+                    message.sticky_until &&
+                    new Date(message.sticky_until) > new Date() &&
+                    stickyPinnedMessage?.id !== message.id
+                  )}
+                  onReply={handleReply}
+                  onPin={handlePin}
+                  onAddToPin={handleAddToPin}
+                  getPinRequirements={getPinRequirements}
+                  onBlock={handleBlockUser}
+                  onTip={handleTipUser}
+                  onDelete={handleDeleteMessage}
+                  onReact={handleReactionToggle}
+                  reactions={messageReactions[message.id] || message.reactions || []}
+                >
                   {/* Username header for first regular message in thread */}
                   {isRegularMessage && isFirstInGroup && (
                     <div className="mb-1">
@@ -697,30 +720,7 @@ function MainChatView({
                     </div>
                   )}
 
-                  {/* Message bubble with action modal + floating reactions */}
-                  <MessageActionsModal
-                  message={message}
-                  currentUsername={username}
-                  isHost={chatRoom?.host.id === currentUserId}
-                  themeIsDarkMode={themeIsDarkMode}
-                  sessionToken={sessionToken}
-                  themeColors={modalThemeColors}
-                  isOutbid={!!(
-                    message.is_pinned &&
-                    message.sticky_until &&
-                    new Date(message.sticky_until) > new Date() &&
-                    stickyPinnedMessage?.id !== message.id
-                  )}
-                  onReply={handleReply}
-                  onPin={handlePin}
-                  onAddToPin={handleAddToPin}
-                  getPinRequirements={getPinRequirements}
-                  onBlock={handleBlockUser}
-                  onTip={handleTipUser}
-                  onDelete={handleDeleteMessage}
-                  onReact={handleReactionToggle}
-                  reactions={messageReactions[message.id] || message.reactions || []}
-                >
+                  {/* Message bubble */}
                   <div
                     className={(() => {
                       const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
@@ -895,7 +895,6 @@ function MainChatView({
                     )}
                     </div>
                   </div>
-                </MessageActionsModal>
                 {/* Timestamp + Reaction pills row */}
                 <div className="flex items-center mt-1 gap-2 h-6">
                   <span
@@ -926,6 +925,7 @@ function MainChatView({
                     fullWidth={message.is_from_host}
                   />
                 </div>
+                </MessageActionsModal>
               </div>
             </div>
           </div>

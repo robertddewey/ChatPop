@@ -551,11 +551,14 @@ export default function MessageActionsModal({
 
   return (
     <>
-      {/* Trigger: Long-press enabled message */}
-      {React.cloneElement(children as React.ReactElement<{ onContextMenu?: (e: React.MouseEvent) => void }>, {
-        ...longPressHandlers,
-        onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
-      })}
+      {/* Trigger: Long-press enabled wrapper */}
+      <div
+        {...longPressHandlers}
+        onContextMenu={(e: React.MouseEvent) => e.preventDefault()}
+        style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+      >
+        {children}
+      </div>
 
       {/* Full-screen Modal */}
       {isOpen && typeof document !== 'undefined' && createPortal(
