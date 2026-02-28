@@ -227,7 +227,6 @@ export default function MessageActionsModal({
   const [selectedTier, setSelectedTier] = useState<PinTier | null>(null);
   const [isPinning, setIsPinning] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
-  const [showAllTiers, setShowAllTiers] = useState(false);
 
   const dragStartY = React.useRef(0);
   const isOwnMessage = message.username === currentUsername;
@@ -285,7 +284,6 @@ export default function MessageActionsModal({
       setPinRequirements(null);
       setSelectedTier(null);
       setPinError(null);
-      setShowAllTiers(false);
     }, 250); // Match animation duration
   };
 
@@ -384,6 +382,14 @@ export default function MessageActionsModal({
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
+  const formatDurationMedium = (minutes: number): string => {
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (mins > 0) return `${hours} hr ${mins} min`;
+    return `${hours} hour${hours !== 1 ? 's' : ''}`;
   };
 
   // Format duration for display (long form for headers)
@@ -662,6 +668,7 @@ export default function MessageActionsModal({
             <div
               className={`w-full ${modalStyles.container} rounded-t-3xl`}
               onClick={(e) => e.stopPropagation()}
+              style={{ paddingBottom: `calc(1.5rem + env(safe-area-inset-bottom, 0px))` }}
             >
               {/* Draggable handle area */}
               <div
@@ -676,7 +683,7 @@ export default function MessageActionsModal({
 
               {/* Actions or Pin Input */}
               {showPinInput && pinRequirements ? (
-                <div className="pb-8 space-y-4 max-h-[320px] overflow-y-auto w-full">
+                <div className="space-y-4 max-h-[320px] overflow-y-auto w-full">
                   {/* Pin Amount Header */}
                   <div className="text-center px-6">
                     <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -704,82 +711,62 @@ export default function MessageActionsModal({
                           const minRequired = pinRequirements.minimum_required_cents || 0;
                           return `Outbid current pin (min $${(minRequired / 100).toFixed(0)})`;
                         } else {
-                          return `Pin for ${formatDurationLong(pinRequirements.duration_minutes)}`;
+                          return `Pin for ${formatDurationLong(pinRequirements.duration_minutes)}, or until outbid`;
                         }
                       })()}
                     </p>
                   </div>
 
-                  {/* Tier Selection - Quick Picks + More */}
+                  {/* Tier Selection - Horizontal Scroll */}
                   {pinRequirements.tiers && pinRequirements.tiers.length > 0 && (
-                    <div className="px-6">
+                    <div>
                       {(() => {
-                        // Filter out unavailable tiers (below minimum for outbid)
                         const availableTiers = pinRequirements.tiers.filter(t => isTierAvailable(t));
-                        // Show first 6 available tiers as quick picks
-                        const quickPicks = availableTiers.slice(0, 6);
-                        const moreTiers = availableTiers.slice(6);
-                        const displayTiers = showAllTiers ? availableTiers : quickPicks;
-
-                        // For add-to-pin or reclaim, show tier's time extension
-                        // For new pin/re-pin, show standard duration
                         const showTimeExtension = pinRequirements.is_current_sticky || pinRequirements.is_outbid;
 
                         return (
-                          <>
-                            <div className="grid grid-cols-3 gap-2">
-                              {displayTiers.map((tier) => {
+                          <div
+                            className="overflow-x-scroll actions-scrollbar-hide actions-scroll-container px-5"
+                            style={{ WebkitOverflowScrolling: 'touch' }}
+                          >
+                            <div className="flex gap-2 w-max mx-auto">
+                              {availableTiers.map((tier) => {
                                 const isSelected = selectedTier?.amount_cents === tier.amount_cents;
 
                                 return (
-                                  <button
+                                  <div
                                     key={tier.amount_cents}
+                                    role="button"
+                                    tabIndex={0}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedTier(tier);
                                     }}
-                                    className={`py-3 px-2 rounded-xl transition-colors ${
+                                    className={`flex flex-col items-center justify-center gap-2 py-3 rounded-2xl transition-all w-[88px] h-[80px] action-btn active:scale-95 cursor-pointer ${
                                       isSelected
                                         ? themeIsDarkMode
-                                          ? 'bg-cyan-600 text-white ring-2 ring-cyan-400'
-                                          : 'bg-purple-600 text-white ring-2 ring-purple-400'
-                                        : themeIsDarkMode
-                                          ? 'bg-zinc-700 text-white hover:bg-zinc-600'
-                                          : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                                          ? 'ring-2 ring-cyan-400'
+                                          : 'ring-2 ring-purple-400'
+                                        : ''
                                     }`}
                                   >
-                                    <div className="font-bold text-lg">
-                                      ${(tier.amount_cents / 100).toFixed(0)}
-                                    </div>
-                                    <div className={`text-xs ${
+                                    <span className={`font-bold text-base ${
                                       isSelected
-                                        ? 'text-white/70'
-                                        : themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'
+                                        ? modalStyles.actionIcon
+                                        : modalStyles.actionIcon
                                     }`}>
-                                      {showTimeExtension ? `+${formatDuration(tier.duration_minutes)}` : formatDuration(pinRequirements.duration_minutes)}
-                                    </div>
-                                  </button>
+                                      ${(tier.amount_cents / 100).toFixed(0)}
+                                    </span>
+                                    <span className={`text-xs font-medium whitespace-nowrap ${
+                                      themeIsDarkMode ? 'text-zinc-50' : 'text-gray-900'
+                                    }`}>
+                                      {showTimeExtension ? `+${formatDurationMedium(tier.duration_minutes)}` : formatDurationMedium(pinRequirements.duration_minutes)}
+                                    </span>
+                                  </div>
                                 );
                               })}
                             </div>
-
-                            {/* More/Less button */}
-                            {moreTiers.length > 0 && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setShowAllTiers(!showAllTiers);
-                                }}
-                                className={`w-full mt-2 py-2 text-sm font-medium rounded-lg transition-colors ${
-                                  themeIsDarkMode
-                                    ? 'text-cyan-400 hover:bg-zinc-800'
-                                    : 'text-purple-600 hover:bg-gray-100'
-                                }`}
-                              >
-                                {showAllTiers ? 'Show less' : `More options ($${moreTiers[0].amount_cents / 100}-$${moreTiers[moreTiers.length - 1].amount_cents / 100})`}
-                              </button>
-                            )}
-                          </>
+                          </div>
                         );
                       })()}
                     </div>
@@ -875,7 +862,7 @@ export default function MessageActionsModal({
                   <div className={`mx-5 border-t ${themeIsDarkMode ? 'border-zinc-700/50' : 'border-gray-200'}`} />
 
                   {/* Horizontal Scrollable Action Row */}
-                  <div className="pt-3 pb-8">
+                  <div className="pt-3">
                     <div
                       className="overflow-x-scroll actions-scrollbar-hide actions-scroll-container px-5"
                       style={{ WebkitOverflowScrolling: 'touch' }}

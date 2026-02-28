@@ -167,11 +167,10 @@ app.prepare().then(() => {
     server.on('upgrade', (req, socket, head) => {
       const parsedUrl = parse(req.url, true);
 
-      // Proxy WebSocket connections to Django backend
+      // Proxy chat WebSocket connections to Django backend
+      // Let all other upgrades (including /_next/webpack-hmr for HMR) pass through to Next.js
       if (parsedUrl.pathname.startsWith('/ws/')) {
         proxyWebSocket(req, socket, head);
-      } else {
-        socket.destroy();
       }
     });
   }

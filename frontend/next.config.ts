@@ -30,6 +30,16 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Prevent Safari from caching pages in dev mode (HMR doesn't work through ngrok)
+      ...(process.env.NODE_ENV === 'development' ? [{
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-store, must-revalidate',
+          },
+        ],
+      }] : []),
     ];
   },
 };
