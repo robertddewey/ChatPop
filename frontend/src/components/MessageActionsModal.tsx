@@ -709,7 +709,7 @@ export default function MessageActionsModal({
                   <div className="w-full flex-shrink-0" ref={actionsRef}>
                   {/* Emoji Reactions Row */}
                   {onReact && (
-                    <div className="px-5 pb-4">
+                    <div className="px-5 pb-4 pt-1">
                       <div className="flex items-center justify-between">
                         {REACTION_EMOJIS.map((emoji) => {
                           const hasReacted = reactions.some(r => r.emoji === emoji && r.has_reacted);
