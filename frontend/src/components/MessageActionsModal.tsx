@@ -229,6 +229,21 @@ export default function MessageActionsModal({
   const [pinError, setPinError] = useState<string | null>(null);
 
   const dragStartY = React.useRef(0);
+  const actionsRef = React.useRef<HTMLDivElement>(null);
+  const pinRef = React.useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState<number | undefined>(undefined);
+
+  // Measure active panel height for smooth height transitions
+  useEffect(() => {
+    // Use requestAnimationFrame to ensure DOM has updated before measuring
+    const raf = requestAnimationFrame(() => {
+      const activeRef = showPinInput && pinRequirements ? pinRef : actionsRef;
+      if (activeRef.current) {
+        setContainerHeight(activeRef.current.scrollHeight);
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [showPinInput, pinRequirements, selectedTier, pinError]);
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
 
@@ -681,150 +696,17 @@ export default function MessageActionsModal({
                 </div>
               </div>
 
-              {/* Actions or Pin Input */}
-              {showPinInput && pinRequirements ? (
-                <div className="space-y-4 max-h-[320px] overflow-y-auto w-full">
-                  {/* Pin Amount Header */}
-                  <div className="text-center px-6">
-                    <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {pinRequirements.is_current_sticky
-                        ? 'Add to Pin'
-                        : pinRequirements.is_outbid
-                          ? 'Reclaim Pin'
-                          : !message.is_pinned
-                            ? 'Pin Message'
-                            : 'Re-pin Message'
-                      }
-                    </h3>
-                    <p className={`text-sm mt-1 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {(() => {
-                        if (pinRequirements.is_current_sticky) {
-                          return 'Extend pin duration';
-                        } else if (pinRequirements.is_outbid) {
-                          const minAdd = pinRequirements.minimum_add_cents || 0;
-                          const timeRemaining = pinRequirements.time_remaining_seconds || 0;
-                          const hours = Math.floor(timeRemaining / 3600);
-                          const mins = Math.ceil((timeRemaining % 3600) / 60);
-                          const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-                          return `Add $${(minAdd / 100).toFixed(0)}+ to reclaim • ${timeStr} remaining`;
-                        } else if (pinRequirements.current_pin_cents > 0) {
-                          const minRequired = pinRequirements.minimum_required_cents || 0;
-                          return `Outbid current pin (min $${(minRequired / 100).toFixed(0)})`;
-                        } else {
-                          return `Pin for ${formatDurationLong(pinRequirements.duration_minutes)}, or until outbid`;
-                        }
-                      })()}
-                    </p>
-                  </div>
-
-                  {/* Tier Selection - Horizontal Scroll */}
-                  {pinRequirements.tiers && pinRequirements.tiers.length > 0 && (
-                    <div>
-                      {(() => {
-                        const availableTiers = pinRequirements.tiers.filter(t => isTierAvailable(t));
-                        const showTimeExtension = pinRequirements.is_current_sticky || pinRequirements.is_outbid;
-
-                        return (
-                          <div
-                            className="overflow-x-scroll actions-scrollbar-hide actions-scroll-container px-5"
-                            style={{ WebkitOverflowScrolling: 'touch' }}
-                          >
-                            <div className="flex gap-2 w-max mx-auto">
-                              {availableTiers.map((tier) => {
-                                const isSelected = selectedTier?.amount_cents === tier.amount_cents;
-
-                                return (
-                                  <div
-                                    key={tier.amount_cents}
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedTier(tier);
-                                    }}
-                                    className={`flex flex-col items-center justify-center gap-2 py-3 rounded-2xl transition-all w-[88px] h-[80px] action-btn active:scale-95 cursor-pointer ${
-                                      isSelected
-                                        ? themeIsDarkMode
-                                          ? 'ring-2 ring-cyan-400'
-                                          : 'ring-2 ring-purple-400'
-                                        : ''
-                                    }`}
-                                  >
-                                    <span className={`font-bold text-base ${
-                                      isSelected
-                                        ? modalStyles.actionIcon
-                                        : modalStyles.actionIcon
-                                    }`}>
-                                      ${(tier.amount_cents / 100).toFixed(0)}
-                                    </span>
-                                    <span className={`text-xs font-medium whitespace-nowrap ${
-                                      themeIsDarkMode ? 'text-zinc-50' : 'text-gray-900'
-                                    }`}>
-                                      {showTimeExtension ? `+${formatDurationMedium(tier.duration_minutes)}` : formatDurationMedium(pinRequirements.duration_minutes)}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-
-                  {/* Selected tier summary */}
-                  {selectedTier && (
-                    <div className={`text-center py-2 px-4 mx-6 rounded-lg ${
-                      themeIsDarkMode ? 'bg-zinc-800' : 'bg-gray-50'
-                    }`}>
-                      <span className={`text-sm ${themeIsDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                        {pinRequirements.is_current_sticky
-                          ? `Add $${(selectedTier.amount_cents / 100).toFixed(2)} to extend by ${formatDurationLong(selectedTier.duration_minutes)}`
-                          : pinRequirements.is_outbid
-                            ? `Pay $${(selectedTier.amount_cents / 100).toFixed(2)} to reclaim + ${formatDurationLong(selectedTier.duration_minutes)}`
-                            : `Pay $${(selectedTier.amount_cents / 100).toFixed(2)} to pin for ${formatDurationLong(pinRequirements.duration_minutes)}`
-                        }
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Error message */}
-                  {pinError && (
-                    <p className="text-center text-sm text-red-500 px-6">{pinError}</p>
-                  )}
-
-                  {/* Buttons */}
-                  <div className="flex gap-3 pt-2 px-6">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setShowPinInput(false); setSelectedTier(null); }}
-                      className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
-                        themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
-                      }`}
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handlePinSubmit(); }}
-                      disabled={isPinning || !selectedTier}
-                      className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
-                        (isPinning || !selectedTier) ? 'opacity-50 cursor-not-allowed' : ''
-                      } ${themeIsDarkMode ? 'bg-cyan-600 text-white' : 'bg-purple-600 text-white'}`}
-                    >
-                      {isPinning
-                        ? 'Processing...'
-                        : pinRequirements.is_current_sticky
-                          ? 'Add to Pin'
-                          : pinRequirements.is_outbid
-                            ? 'Reclaim Pin'
-                            : !message.is_pinned
-                              ? 'Pin Message'
-                              : 'Re-pin'
-                      }
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
+              {/* Actions / Pin Input — slide transition */}
+              <div
+                className="overflow-hidden relative transition-[height] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                style={{ height: containerHeight ? `${containerHeight}px` : 'auto' }}
+              >
+                <div
+                  className="flex items-start transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  style={{ transform: showPinInput && pinRequirements ? 'translateX(-100%)' : 'translateX(0)' }}
+                >
+                  {/* Panel 1: Actions (emoji + action buttons) */}
+                  <div className="w-full flex-shrink-0" ref={actionsRef}>
                   {/* Emoji Reactions Row */}
                   {onReact && (
                     <div className="px-5 pb-4">
@@ -889,8 +771,139 @@ export default function MessageActionsModal({
                       </div>
                     </div>
                   </div>
-                </>
-              )}
+                  </div>
+
+                  {/* Panel 2: Pin Input */}
+                  <div className="w-full flex-shrink-0" ref={pinRef}>
+                {pinRequirements && (
+                <div className="space-y-4 max-h-[320px] overflow-y-auto w-full">
+                  {/* Pin Amount Header */}
+                  <div className="text-center px-6">
+                    <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {pinRequirements.is_current_sticky
+                        ? 'Add to Pin'
+                        : pinRequirements.is_outbid
+                          ? 'Reclaim Pin'
+                          : !message.is_pinned
+                            ? 'Pin Message'
+                            : 'Re-pin Message'
+                      }
+                    </h3>
+                    <p className={`text-sm mt-1 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {(() => {
+                        if (pinRequirements.is_current_sticky) {
+                          return 'Extend pin duration';
+                        } else if (pinRequirements.is_outbid) {
+                          const minAdd = pinRequirements.minimum_add_cents || 0;
+                          const timeRemaining = pinRequirements.time_remaining_seconds || 0;
+                          const hours = Math.floor(timeRemaining / 3600);
+                          const mins = Math.ceil((timeRemaining % 3600) / 60);
+                          const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                          return `Add $${(minAdd / 100).toFixed(0)}+ to reclaim • ${timeStr} remaining`;
+                        } else if (pinRequirements.current_pin_cents > 0) {
+                          const minRequired = pinRequirements.minimum_required_cents || 0;
+                          return `Outbid current pin (min $${(minRequired / 100).toFixed(0)})`;
+                        } else {
+                          return `Pin for ${formatDurationLong(pinRequirements.duration_minutes)}, or until outbid`;
+                        }
+                      })()}
+                    </p>
+                  </div>
+
+                  {/* Tier Selection - Horizontal Scroll */}
+                  {pinRequirements.tiers && pinRequirements.tiers.length > 0 && (
+                    <div>
+                      {(() => {
+                        const availableTiers = pinRequirements.tiers.filter(t => isTierAvailable(t));
+                        const showTimeExtension = pinRequirements.is_current_sticky || pinRequirements.is_outbid;
+
+                        return (
+                          <div
+                            className="overflow-x-scroll actions-scrollbar-hide actions-scroll-container px-5"
+                            style={{ WebkitOverflowScrolling: 'touch' }}
+                          >
+                            <div className="flex gap-2 w-max mx-auto py-1">
+                              {availableTiers.map((tier) => {
+                                const isSelected = selectedTier?.amount_cents === tier.amount_cents;
+
+                                return (
+                                  <div
+                                    key={tier.amount_cents}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedTier(tier);
+                                    }}
+                                    className={`flex flex-col items-center justify-center gap-2 py-3 rounded-2xl transition-all w-[88px] h-[80px] action-btn active:scale-95 cursor-pointer ${
+                                      isSelected
+                                        ? themeIsDarkMode
+                                          ? 'ring-2 ring-cyan-400'
+                                          : 'ring-2 ring-purple-400'
+                                        : ''
+                                    }`}
+                                  >
+                                    <span className={`font-bold text-base ${
+                                      isSelected
+                                        ? modalStyles.actionIcon
+                                        : modalStyles.actionIcon
+                                    }`}>
+                                      ${(tier.amount_cents / 100).toFixed(0)}
+                                    </span>
+                                    <span className={`text-xs font-medium whitespace-nowrap ${
+                                      themeIsDarkMode ? 'text-zinc-50' : 'text-gray-900'
+                                    }`}>
+                                      {showTimeExtension ? `+${formatDurationMedium(tier.duration_minutes)}` : formatDurationMedium(pinRequirements.duration_minutes)}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Error message */}
+                  {pinError && (
+                    <p className="text-center text-sm text-red-500 px-6">{pinError}</p>
+                  )}
+
+                  {/* Buttons */}
+                  <div className="flex gap-3 pt-2 px-6">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowPinInput(false); setSelectedTier(null); }}
+                      className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
+                        themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handlePinSubmit(); }}
+                      disabled={isPinning || !selectedTier}
+                      className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
+                        (isPinning || !selectedTier) ? 'opacity-50 cursor-not-allowed' : ''
+                      } ${themeIsDarkMode ? 'bg-cyan-600 text-white' : 'bg-purple-600 text-white'}`}
+                    >
+                      {isPinning
+                        ? 'Processing...'
+                        : pinRequirements.is_current_sticky
+                          ? 'Add to Pin'
+                          : pinRequirements.is_outbid
+                            ? 'Reclaim Pin'
+                            : !message.is_pinned
+                              ? 'Pin Message'
+                              : 'Re-pin'
+                      }
+                    </button>
+                  </div>
+                </div>
+                )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>,
