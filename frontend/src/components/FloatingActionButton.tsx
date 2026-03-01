@@ -25,7 +25,7 @@ export interface FloatingActionButtonProps {
   /** Toggled state accessibility label */
   toggledAriaLabel?: string;
   /** Theme/design variant */
-  design?: 'dark-mode' | 'pink-dream' | 'ocean-blue' | 'light-mode';
+  design?: 'dark-mode' | 'pink-dream' | 'ocean-blue';
   /** Show initial bounce animation on mount */
   initialBounce?: boolean;
   /** Custom class names to add */
@@ -77,13 +77,6 @@ export default function FloatingActionButton({
           baseClasses: 'p-3 rounded-2xl',
           defaultColors: 'bg-gradient-to-br from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white',
           toggledColors: 'bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-gray-700 dark:to-gray-800 hover:from-blue-200 hover:to-cyan-200 dark:hover:from-gray-600 dark:hover:to-gray-700 text-blue-900 dark:text-white',
-          shadow: 'shadow-lg',
-        };
-      case 'light-mode':
-        return {
-          baseClasses: 'p-3 rounded-2xl',
-          defaultColors: 'bg-gradient-to-br from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white',
-          toggledColors: 'bg-gradient-to-br from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-900',
           shadow: 'shadow-lg',
         };
       case 'dark-mode':

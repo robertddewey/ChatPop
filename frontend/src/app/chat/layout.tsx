@@ -61,17 +61,15 @@ export default function ChatLayout({
         {`
           (function() {
             // Check if there's a stored theme in localStorage for this chat
-            let themeColor = '#ffffff';  // Default to white (light theme)
+            let themeColor = '#18181b';  // Default to zinc-900 (dark theme)
 
             try {
               // Try to get theme from localStorage (set by page.tsx and ChatSettingsSheet)
               const storedTheme = localStorage.getItem('chat_theme_color');
               if (storedTheme) {
                 const parsed = JSON.parse(storedTheme);
-                // IMPORTANT: Use the 'light' property as the forced theme color
-                // This overrides system preference - both light and dark meta tags get the same value
-                // For light-mode theme: light = '#ffffff' (white)
-                // For dark-mode theme: light = '#18181b' (zinc-900, but still called 'light')
+                // Use the 'light' property as the forced theme color
+                // Both light and dark meta tags get the same value to override system preference
                 themeColor = parsed.light || themeColor;
               }
             } catch (e) {

@@ -9,7 +9,7 @@ interface GameRoomTabProps {
   hasBackRoom: boolean;
   onClick: () => void;
   hasNewMessages?: boolean;
-  design?: 'dark-mode' | 'pink-dream' | 'ocean-blue' | 'light-mode';
+  design?: 'dark-mode' | 'pink-dream' | 'ocean-blue';
 }
 
 export default function GameRoomTab({

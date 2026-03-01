@@ -11,35 +11,23 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { chatApi, type ChatRoom } from '@/lib/api';
-import { Copy, Check, BadgeCheck, Moon, Sun, ArrowLeft, Image, Mic, Video } from 'lucide-react';
+import { Copy, Check, BadgeCheck, Moon, ArrowLeft, Image, Mic, Video } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 // Theme color constants for optimistic updates
-// IMPORTANT: For both themes, light and dark values MUST be the same
-// to override system preference and force the browser chrome color
 const THEME_COLORS = {
   'dark-mode': {
-    light: '#18181b', // zinc-900 (both same - force dark)
+    light: '#18181b', // zinc-900
     dark: '#18181b',  // zinc-900
-  },
-  'light-mode': {
-    light: '#ffffff', // white (both same - force light)
-    dark: '#ffffff',  // white (NOT gray-800 - must match to override system dark mode)
   },
 } as const;
 
 // Helper function to update theme-color meta tags (iOS Safari requirement)
-// IMPORTANT: For light-mode theme, we force BOTH light and dark to white (#ffffff)
-// because iOS Safari uses the dark meta tag when system is in dark mode,
-// but we want to override system preference with our theme choice.
 const updateThemeColorMetaTags = (themeColors: { light: string; dark: string }) => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-  // For light-mode theme: force both to the light color (white)
-  // For dark-mode theme: both are already the same (zinc-900)
-  // This ensures the theme color matches the theme, not the system preference
   const forcedLightColor = themeColors.light;
-  const forcedDarkColor = themeColors.light; // Use light color for dark too (override system)
+  const forcedDarkColor = themeColors.light;
 
   // Update default meta tag
   let defaultMeta = document.querySelector('meta[name="theme-color"]:not([media])') as HTMLMetaElement;
@@ -286,63 +274,6 @@ export default function ChatSettingsSheet({
                 <div className="h-8 rounded bg-zinc-950 flex items-center justify-center gap-1">
                   <div className="h-4 w-12 rounded bg-cyan-400"></div>
                   <div className="h-4 w-8 rounded bg-yellow-400"></div>
-                </div>
-              </button>
-
-              {/* Light Mode */}
-              <button
-                onClick={async () => {
-                  if (chatRoom.theme_locked || themeUpdating) return;
-
-                  // Store current theme for rollback on error
-                  const currentThemeColors = localStorage.getItem('chat_theme_color');
-
-                  try {
-                    setThemeUpdating(true);
-
-                    // Optimistically update localStorage and meta tags
-                    localStorage.setItem('chat_theme_color', JSON.stringify(THEME_COLORS['light-mode']));
-                    updateThemeColorMetaTags(THEME_COLORS['light-mode']);
-
-                    // Wait for API to complete (no race condition)
-                    await chatApi.updateMyTheme(chatRoom.code, 'light-mode', fingerprint, chatRoom.host.reserved_username);
-
-                    // Reload to apply theme
-                    window.location.reload();
-                  } catch (err) {
-                    // API failed - revert localStorage to prevent mismatch
-                    if (currentThemeColors) {
-                      localStorage.setItem('chat_theme_color', currentThemeColors);
-                      try {
-                        const parsed = JSON.parse(currentThemeColors);
-                        updateThemeColorMetaTags(parsed);
-                      } catch (e) {
-                        // Ignore parse errors
-                      }
-                    } else {
-                      localStorage.removeItem('chat_theme_color');
-                    }
-                    console.error('Failed to update theme:', err);
-                    setThemeUpdating(false);
-                  }
-                }}
-                disabled={chatRoom.theme_locked || activeThemeId === 'light-mode' || themeUpdating}
-                className={`p-3 rounded-lg transition-all focus:outline-none border-2 bg-white ${
-                  activeThemeId === 'light-mode'
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-gray-300 hover:border-blue-500/50'
-                } ${chatRoom.theme_locked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-semibold text-gray-900">Light Mode</div>
-                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-700">
-                    <Sun size={10} />
-                    <span>Light</span>
-                  </div>
-                </div>
-                <div className="h-8 rounded bg-gray-50 border border-gray-200 flex items-center justify-center gap-1">
-                  <div className="h-4 w-12 rounded bg-blue-500"></div>
-                  <div className="h-4 w-8 rounded bg-gray-300"></div>
                 </div>
               </button>
 
