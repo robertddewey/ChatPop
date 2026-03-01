@@ -21,6 +21,7 @@ A platform that allows users to create and join chat rooms with various customiz
 - Node.js 18+
 - Docker & Docker Compose
 - **mkcert** - For generating SSL certificates (required for voice messages)
+- **ngrok** (optional) - For mobile device testing via public tunnel
 
 #### Install mkcert (One-Time Setup)
 
@@ -29,16 +30,24 @@ A platform that allows users to create and join chat rooms with various customiz
 brew install mkcert
 mkcert -install
 
-# Windows (with Chocolatey)
-choco install mkcert
-mkcert -install
-
 # Linux
 sudo apt install mkcert  # Debian/Ubuntu
 # or
 sudo yum install mkcert  # RedHat/CentOS
 mkcert -install
 ```
+
+#### Install ngrok (Optional - for Mobile Testing)
+
+```bash
+# macOS
+brew install ngrok
+
+# Linux
+snap install ngrok
+```
+
+Sign up and connect your authtoken at https://dashboard.ngrok.com
 
 ---
 
@@ -132,23 +141,24 @@ cp .env.example .env
 ./venv/bin/python manage.py migrate
 ```
 
-#### Load Database Fixtures (Optional but Recommended)
-
-Fixtures provide essential seed data (chat themes, config settings):
+#### Load Seed Data and Initialize
 
 ```bash
-# Option A: Load essential seed data only (recommended for clean start)
+# Load constance config settings (44 dynamic settings for pins, rate limits, etc.)
 ./venv/bin/python manage.py loaddata fixtures/seed_data.json
 
-# Option B: Load full development data (includes test users, chats, messages)
-# Note: full_dev_data.json must be obtained separately (not in Git)
-# If you have the file, place it in backend/fixtures/ then run:
-./venv/bin/python manage.py loaddata fixtures/full_dev_data.json
+# Create system user (required for AI-generated discover rooms)
+./venv/bin/python manage.py create_system_user
 ```
 
-**What's in the fixtures?**
-- `seed_data.json`: 2 chat themes (Purple Dream, Ocean Blue) + config settings
-- `full_dev_data.json`: Complete dev environment with 33 test users, 18 chat rooms, 119 messages
+**Note:** Chat themes (Dark Mode, Light Mode) are created automatically by data migrations during `migrate` - no fixture loading needed for themes.
+
+#### Create Test Data (Optional)
+
+```bash
+# Creates admin user (admin@chatpop.app / demo123), test users, and sample chat rooms
+./venv/bin/python manage.py create_test_data
+```
 
 #### Create a Superuser (Optional)
 
@@ -156,15 +166,21 @@ Fixtures provide essential seed data (chat themes, config settings):
 ./venv/bin/python manage.py createsuperuser
 ```
 
+#### Collect Static Files
+
+```bash
+./venv/bin/python manage.py collectstatic --noinput
+```
+
 #### Start the Backend Server (with SSL)
 
 **⚠️ IMPORTANT:** Use Daphne with SSL, not `runserver`. Voice messages require HTTPS.
 
 ```bash
-ALLOWED_HOSTS=localhost,127.0.0.1,10.0.0.135 \
-CORS_ALLOWED_ORIGINS="http://localhost:4000,http://127.0.0.1:4000,http://10.0.0.135:4000,https://localhost:4000,https://127.0.0.1:4000,https://10.0.0.135:4000" \
 ./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
 ```
+
+ALLOWED_HOSTS and CORS_ALLOWED_ORIGINS are configured in `backend/.env`. The defaults work for localhost. For LAN/mobile testing, add your LAN IP to both settings in `.env`.
 
 Backend API will be available at: **https://localhost:9000** (note HTTPS)
 
@@ -226,6 +242,24 @@ Frontend will be available at: **https://localhost:4000** (note HTTPS)
 
 ---
 
+### 7. Mobile Testing with ngrok (Optional)
+
+ngrok creates a public HTTPS tunnel to your local frontend, allowing you to test on mobile devices without LAN configuration.
+
+```bash
+# With a static domain (configured in backend/.env)
+ngrok http https://localhost:4000 --url=your-domain.ngrok-free.app
+
+# Without a static domain (ngrok assigns a random URL)
+ngrok http https://localhost:4000
+```
+
+Get a free static domain at https://dashboard.ngrok.com/cloud-edge/domains
+
+See [NGROK-README.txt](NGROK-README.txt) for quick reference.
+
+---
+
 ### Quick Start Summary
 
 For experienced developers, here's the quick version:
@@ -245,6 +279,8 @@ pip install -r requirements.txt
 cp .env.example .env
 ./venv/bin/python manage.py migrate
 ./venv/bin/python manage.py loaddata fixtures/seed_data.json
+./venv/bin/python manage.py create_system_user
+./venv/bin/python manage.py collectstatic --noinput
 
 # 4. Frontend setup (in new terminal)
 cd frontend
@@ -253,8 +289,6 @@ cp .env.example .env.local  # Create if doesn't exist
 
 # 5. Start servers (in separate terminals)
 # Terminal 1 - Backend
-ALLOWED_HOSTS=localhost,127.0.0.1 \
-CORS_ALLOWED_ORIGINS="https://localhost:4000" \
 ./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
 
 # Terminal 2 - Frontend
@@ -277,7 +311,8 @@ npm run dev:https
 ChatPop/
 ├── backend/              # Django backend
 │   ├── chatpop/         # Main Django project
-│   ├── chats/           # Chat app
+│   ├── chats/           # Chat app (models, views, WebSocket consumers)
+│   ├── fixtures/        # Seed data (constance config settings)
 │   ├── .env             # Backend environment variables
 │   ├── .env.example     # Backend environment template
 │   ├── manage.py
@@ -286,9 +321,14 @@ ChatPop/
 ├── frontend/            # Next.js frontend
 │   ├── src/
 │   ├── public/
+│   ├── server.js        # Custom HTTPS server with WebSocket proxy
 │   ├── .env.local       # Frontend environment variables
 │   └── package.json
+├── certs/               # SSL certificates (generated by mkcert)
+├── docs/                # Documentation
 ├── docker-compose.yml   # PostgreSQL & Redis
+├── install.sh           # Automated setup script
+├── NGROK-README.txt     # ngrok quick reference
 ├── CLAUDE.md            # Project documentation for Claude
 └── README.md
 ```
@@ -305,13 +345,17 @@ Key variables:
 - `PORT=4000` - Next.js server port
 - `POSTGRES_PORT=5435` - PostgreSQL port
 - `REDIS_PORT=6381` - Redis port
+- `NGROK_DOMAIN` - Your ngrok static domain (optional, for mobile testing)
 - `STRIPE_SECRET_KEY` - Add your Stripe keys for payment features
+- `OPENAI_API_KEY` - For media analysis (photo descriptions)
+- `ACRCLOUD_ACCESS_KEY` / `ACRCLOUD_SECRET_KEY` - For music identification
 
 ## Documentation
 
 Comprehensive documentation is organized in the `docs/` directory:
 
 ### Core Documentation
+- **[docs/MANAGEMENT_COMMANDS.md](docs/MANAGEMENT_COMMANDS.md)** - All 13 manage.py commands with examples
 - **[docs/TESTING.md](docs/TESTING.md)** - Testing framework and Allure reports
 - **[docs/CACHING.md](docs/CACHING.md)** - Redis message and reaction caching architecture
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
@@ -320,13 +364,7 @@ Comprehensive documentation is organized in the `docs/` directory:
 - **[docs/MONITORING.md](docs/MONITORING.md)** - Real-time cache & database monitoring system
 
 ### Deployment & Scaling
-- **[docs/AWS_DEPLOYMENT_SCALING.md](docs/AWS_DEPLOYMENT_SCALING.md)** - AWS ECS Fargate production deployment guide
-  - Complete setup guide (Docker → ECR → ECS)
-  - Scaling targets: 100 rooms (1k users) → 5000 rooms (250k users)
-  - Cost breakdowns and infrastructure sizing
-  - Database optimizations and required indexes
-  - Auto-scaling configuration
-  - Monitoring and alerts
+- **[docs/AWS_DEPLOYMENT_SCALING.md](docs/AWS_DEPLOYMENT_SCALING.md)** - AWS ECS Fargate deployment and scaling guide
 
 ### Project Documentation
 - **[CLAUDE.md](CLAUDE.md)** - Complete project documentation for AI assistants
@@ -386,9 +424,8 @@ Chat themes can include subtle SVG background patterns to add visual texture wit
 #### Current Implementation
 
 **Themes with SVG backgrounds:**
-- **Pink Dream**: Pink-tinted pattern (`hue-rotate(310deg)`, 4% opacity)
-- **Ocean Blue**: Blue-tinted pattern (`hue-rotate(180deg)`, 4% opacity)
-- **Dark Mode**: Inverted cyan-tinted pattern (`invert(1)` + `hue-rotate(180deg)`, 3% opacity)
+- **Light Mode**: Light pattern with 30% opacity
+- **Dark Mode (Emerald Green)**: Inverted cyan-tinted pattern (`invert(1)` + `hue-rotate(180deg)`, 6% opacity)
 
 **SVG File:** `/frontend/public/bg-pattern.svg` (166KB optimized)
 
@@ -475,9 +512,8 @@ z-index: 20    → Sticky section (host/pinned messages)
 - High visibility: `0.08 - 0.15`
 
 **Current production values:**
-- Pink Dream: `0.04` (4%)
-- Ocean Blue: `0.04` (4%)
-- Dark Mode: `0.03` (3%, with `invert(1)`)
+- Light Mode: `0.30` (30%)
+- Dark Mode (Emerald Green): `0.06` (6%, with `invert(1)`)
 
 **Performance:**
 - External SVG loaded once per session
@@ -491,13 +527,15 @@ See `CLAUDE.md` for complete theme development guidelines.
 
 ### MVP Features
 - ✅ Project structure and infrastructure
-- ⏳ Core chat room creation
-- ⏳ Public/Private chat modes
-- ⏳ WebSocket real-time messaging
+- ✅ Core chat room creation with unique URLs
+- ✅ Public/Private chat modes (access codes)
+- ✅ WebSocket real-time messaging
+- ✅ Rich media support (voice, video, photo)
+- ✅ Message reactions (multi-emoji)
+- ✅ Paid message pinning (tiered pricing, outbid system)
+- ✅ Host tipping
+- ✅ Database-driven theme system (Dark Mode, Light Mode)
 - ⏳ Back Room (paid seats)
-- ⏳ Paid message pinning
-- ⏳ Host tipping
-- ⏳ Rich media support (voice, video, photo)
 
 ## License
 
