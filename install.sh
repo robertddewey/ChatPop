@@ -114,6 +114,22 @@ check_prerequisites() {
         missing_deps=1
     fi
 
+    # Check ngrok
+    if command_exists ngrok; then
+        print_success "ngrok found"
+    else
+        print_warning "ngrok not found - required for mobile testing via tunnel"
+        echo ""
+        echo "Install ngrok:"
+        echo "  macOS:  brew install ngrok"
+        echo "  Linux:  sudo snap install ngrok  # or see https://ngrok.com/download"
+        echo ""
+        echo "After installing, authenticate with:"
+        echo "  ngrok config add-authtoken <your-token>"
+        echo "  (Get your token at https://dashboard.ngrok.com/get-started/your-authtoken)"
+        echo ""
+    fi
+
     # Check mkcert
     if command_exists mkcert; then
         print_success "mkcert found"
@@ -255,6 +271,21 @@ setup_backend() {
         print_info "Backend .env file already exists"
     fi
 
+    # Configure ngrok domain
+    echo ""
+    print_info "ngrok enables mobile device testing via a public tunnel"
+    echo -e "  Get a free static domain at: ${YELLOW}https://dashboard.ngrok.com/cloud-edge/domains${NC}"
+    echo ""
+    read -p "Enter your ngrok static domain (or press Enter to skip): " NGROK_DOMAIN
+    if [ -n "$NGROK_DOMAIN" ]; then
+        # Remove https:// prefix if provided
+        NGROK_DOMAIN=$(echo "$NGROK_DOMAIN" | sed 's|^https://||')
+        sed -i.bak "s|^NGROK_DOMAIN=.*|NGROK_DOMAIN=$NGROK_DOMAIN|" .env && rm -f .env.bak
+        print_success "ngrok domain set to: $NGROK_DOMAIN"
+    else
+        print_info "Skipping ngrok domain configuration (can be set later in backend/.env)"
+    fi
+
     # Run migrations
     print_info "Running database migrations..."
     ./venv/bin/python manage.py migrate
@@ -269,20 +300,21 @@ setup_backend() {
         print_warning "Seed data fixture not found (fixtures/seed_data.json)"
     fi
 
-    # Optional: Load full development data
+    # Create system user (needed for AI-generated discover rooms)
+    print_info "Creating system user (ChatPopDiscover)..."
+    ./venv/bin/python manage.py create_system_user 2>/dev/null || print_warning "System user may already exist"
+    print_success "System user ready"
+
+    # Optional: Create test data (admin, test users, sample chat rooms)
     echo ""
-    read -p "Load full development data (test users, chats, messages)? May be stale (y/N): " -n 1 -r
+    read -p "Create test data? (admin user, test users, sample chats) (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        if [ -f "fixtures/full_dev_data.json" ]; then
-            print_info "Loading full development data..."
-            ./venv/bin/python manage.py loaddata fixtures/full_dev_data.json
-            print_success "Full development data loaded"
-        else
-            print_warning "full_dev_data.json not found (fixtures/full_dev_data.json)"
-        fi
+        print_info "Creating test data..."
+        ./venv/bin/python manage.py create_test_data
+        print_success "Test data created (admin@chatpop.app / demo123)"
     else
-        print_info "Skipping full development data"
+        print_info "Skipping test data"
     fi
 
     # Collect static files for Django admin
@@ -398,6 +430,17 @@ print_completion() {
         echo -e "${BLUE}Mobile/LAN Access (other devices on your network):${NC}"
         echo -e "   Frontend:     ${GREEN}https://$LAN_IP:4000${NC}"
         echo -e "   Backend API:  ${GREEN}https://$LAN_IP:9000${NC}"
+    fi
+
+    # ngrok section
+    CONFIGURED_NGROK_DOMAIN=$(grep "^NGROK_DOMAIN=" backend/.env 2>/dev/null | cut -d= -f2)
+    echo ""
+    echo -e "${BLUE}Mobile Testing (ngrok):${NC}"
+    if [ -n "$CONFIGURED_NGROK_DOMAIN" ]; then
+        echo -e "   ${YELLOW}ngrok http https://localhost:4000 --url=$CONFIGURED_NGROK_DOMAIN${NC}"
+    else
+        echo -e "   ${YELLOW}ngrok http https://localhost:4000${NC}"
+        echo -e "   (Set NGROK_DOMAIN in backend/.env for a static domain)"
     fi
 
     echo ""
