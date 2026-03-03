@@ -9,6 +9,7 @@ from .views import (
     BlockUserView, UnblockUserView, BlockedUsersListView,
     UserBlockView, UserUnblockView, UserBlockListView,
     PhotoAnalysisView, ChatRoomCreateFromPhotoView, ChatRoomCreateFromLocationView, ChatRoomCreateFromMusicView,
+    GiftCatalogView, SendGiftView, AcknowledgeGiftView,
     # Admin/Staff moderation views
     AdminChatDetailView, AdminMessageListView, AdminMessageDeleteView, AdminMessageUnpinView,
     AdminSiteBanListView, AdminSiteBanCreateView, AdminSiteBanRevokeView, AdminChatBanCreateView,
@@ -75,6 +76,9 @@ urlpatterns = [
     path('discover/<str:code>/block-user/', BlockUserView.as_view(), name='block-user-ai'),
     path('discover/<str:code>/unblock/', UnblockUserView.as_view(), name='unblock-user-ai'),
     path('discover/<str:code>/blocked-users/', BlockedUsersListView.as_view(), name='blocked-users-list-ai'),
+    path('discover/<str:code>/gifts/catalog/', GiftCatalogView.as_view(), name='gift-catalog-ai'),
+    path('discover/<str:code>/gifts/send/', SendGiftView.as_view(), name='gift-send-ai'),
+    path('discover/<str:code>/gifts/acknowledge/', AcknowledgeGiftView.as_view(), name='gift-acknowledge-ai'),
 
     # Manual Rooms (user-namespaced, /{username}/{code}/)
     path('<str:username>/<str:code>/', ChatRoomDetailView.as_view(), name='chat-detail'),
@@ -100,4 +104,7 @@ urlpatterns = [
     path('<str:username>/<str:code>/block-user/', BlockUserView.as_view(), name='block-user'),
     path('<str:username>/<str:code>/unblock/', UnblockUserView.as_view(), name='unblock-user'),
     path('<str:username>/<str:code>/blocked-users/', BlockedUsersListView.as_view(), name='blocked-users-list'),
+    path('<str:username>/<str:code>/gifts/catalog/', GiftCatalogView.as_view(), name='gift-catalog'),
+    path('<str:username>/<str:code>/gifts/send/', SendGiftView.as_view(), name='gift-send'),
+    path('<str:username>/<str:code>/gifts/acknowledge/', AcknowledgeGiftView.as_view(), name='gift-acknowledge'),
 ]

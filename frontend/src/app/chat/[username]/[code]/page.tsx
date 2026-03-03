@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { chatApi, messageApi, authApi, backRoomApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary } from '@/lib/api';
+import { chatApi, messageApi, authApi, backRoomApi, giftApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
@@ -12,11 +12,13 @@ import GameRoomView from '@/components/GameRoomView';
 import MainChatView from '@/components/MainChatView';
 import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
+import { GiftReceivedPopup } from '@/components/GiftReceivedPopup';
 import LoginModal from '@/components/LoginModal';
 import RegisterModal from '@/components/RegisterModal';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
 import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
+import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
 import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft, Reply, X } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
@@ -316,6 +318,9 @@ export default function ChatPage() {
   // Settings sheet state
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
 
+  // Gift notification state
+  const [giftQueue, setGiftQueue] = useState<GiftNotification[]>([]);
+
   // WebSocket state
   const [sessionToken, setSessionToken] = useState<string | null>(null);
 
@@ -420,6 +425,17 @@ export default function ChatPage() {
     onReaction: handleReactionEvent,
     onMessageDeleted: handleMessageDeleted,
     onMessagePinned: handleMessagePinned,
+    onGiftReceived: useCallback((gift: GiftNotification) => {
+      setGiftQueue(prev => [...prev, gift]);
+    }, []),
+    onGiftQueue: useCallback((gifts: GiftNotification[]) => {
+      setGiftQueue(gifts);
+    }, []),
+    onGiftAcknowledged: useCallback((messageIds: string[]) => {
+      setMessages(prev => prev.map(msg =>
+        messageIds.includes(msg.id) ? { ...msg, is_gift_acknowledged: true } : msg
+      ));
+    }, []),
     onVisibilityChange: handleVisibilityChange,
     enabled: hasJoined && !!sessionToken,
   });
@@ -845,6 +861,7 @@ export default function ChatPage() {
       setUsername(username);
       setHasJoined(true);
       clearChatVisited(code); // Clear visit tracking since user joined
+      fetchGiftCatalog(code, roomUsername); // Preload catalog + settings (fire-and-forget)
       await loadMessages();
 
       // Add history entry so back button shows join modal again
@@ -926,6 +943,7 @@ export default function ChatPage() {
       await UsernameStorage.saveUsername(code, username.trim(), isLoggedIn);
       setHasJoined(true);
       clearChatVisited(code); // Clear visit tracking since user joined
+      fetchGiftCatalog(code, roomUsername); // Preload catalog + settings (fire-and-forget)
       await loadMessages();
     } catch (err: unknown) {
       const error = err as ApiError;
@@ -1346,6 +1364,67 @@ export default function ChatPage() {
   const handleTipUser = useCallback((username: string) => {
         // TODO: Implement tip user logic with payment
   }, []);
+
+  const handleSendGift = useCallback(async (giftId: string, recipientUsername: string): Promise<boolean> => {
+    try {
+      await giftApi.sendGift(code, giftId, recipientUsername, roomUsername);
+      return true;
+    } catch (error: unknown) {
+      const err = error as ApiError;
+      console.error('[Gift] Send failed:', err.response?.data || error);
+      return false;
+    }
+  }, [code, roomUsername]);
+
+  const handleDismissGift = useCallback(async (giftId: string) => {
+    try {
+      await giftApi.acknowledgeGift(code, giftId, false, roomUsername);
+      setGiftQueue(prev => prev.filter(g => g.id !== giftId));
+    } catch (error) {
+      console.error('[Gift] Dismiss failed:', error);
+      setGiftQueue(prev => prev.filter(g => g.id !== giftId));
+    }
+  }, [code, roomUsername]);
+
+  const handleThankGiftPopup = useCallback(async (giftId: string) => {
+    try {
+      await giftApi.acknowledgeGift(code, giftId, true, roomUsername);
+      setGiftQueue(prev => prev.filter(g => g.id !== giftId));
+    } catch (error) {
+      console.error('[Gift] Thank failed:', error);
+      setGiftQueue(prev => prev.filter(g => g.id !== giftId));
+    }
+  }, [code, roomUsername]);
+
+  const handleDismissAllGifts = useCallback(async () => {
+    try {
+      await giftApi.acknowledgeAllGifts(code, false, roomUsername);
+      setGiftQueue([]);
+    } catch (error) {
+      console.error('[Gift] Dismiss all failed:', error);
+      setGiftQueue([]);
+    }
+  }, [code, roomUsername]);
+
+  const handleThankAllGifts = useCallback(async () => {
+    try {
+      await giftApi.acknowledgeAllGifts(code, true, roomUsername);
+      setGiftQueue([]);
+    } catch (error) {
+      console.error('[Gift] Thank all failed:', error);
+      setGiftQueue([]);
+    }
+  }, [code, roomUsername]);
+
+  const handleThankGift = useCallback(async (messageId: string): Promise<boolean> => {
+    try {
+      await giftApi.acknowledgeGiftByMessage(code, messageId, roomUsername);
+      return true;
+    } catch (error) {
+      console.error('[Gift] Thank failed:', error);
+      return false;
+    }
+  }, [code, roomUsername]);
 
   const handleDeleteMessage = useCallback(async (messageId: string) => {
     // Only hosts can delete messages
@@ -1854,6 +1933,8 @@ export default function ChatPage() {
             getPinRequirements={getPinRequirements}
             handleBlockUser={handleBlockUser}
             handleTipUser={handleTipUser}
+            handleSendGift={handleSendGift}
+            handleThankGift={handleThankGift}
             handleDeleteMessage={handleDeleteMessage}
             handleReactionToggle={handleReactionToggle}
             messageReactions={messageReactions}
@@ -1983,6 +2064,17 @@ export default function ChatPage() {
           <div />
         </ChatSettingsSheet>
       )}
+
+      {/* Gift Received Popup */}
+      <GiftReceivedPopup
+        gifts={giftQueue}
+        themeIsDarkMode={themeIsDarkMode}
+        onSkipOne={handleDismissGift}
+        onThankOne={handleThankGiftPopup}
+        onSkipAll={handleDismissAllGifts}
+        onThankAll={handleThankAllGifts}
+        onClose={() => setGiftQueue([])}
+      />
     </>
   );
 }

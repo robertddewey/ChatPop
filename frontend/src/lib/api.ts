@@ -174,6 +174,7 @@ export interface ReplyToMessage {
   id: string;
   username: string;
   content: string;
+  message_type?: string;
   is_from_host: boolean;
   username_is_reserved: boolean;
   is_pinned: boolean;
@@ -200,7 +201,7 @@ export interface Message {
   chat_room: string;
   username: string;
   user: User | null;
-  message_type: 'normal' | 'host' | 'system';
+  message_type: 'normal' | 'host' | 'system' | 'gift';
   content: string;
   voice_url: string | null;
   voice_duration: number | null;
@@ -226,7 +227,18 @@ export interface Message {
   avatar_url: string;
   created_at: string;
   is_deleted: boolean;
+  is_gift_acknowledged?: boolean;
   reactions?: ReactionSummary[]; // Top 3 reactions for display
+}
+
+export interface GiftNotification {
+  id: string;
+  gift_id: string;
+  emoji: string;
+  name: string;
+  price_cents: number;
+  sender_username: string;
+  created_at: string;
 }
 
 export interface PhotoSuggestion {
@@ -774,6 +786,80 @@ export const messageApi = {
     message: string;
   }> => {
     const response = await api.post('/api/chats/create-from-music/', data);
+    return response.data;
+  },
+};
+
+// Gift API
+export const giftApi = {
+  getCatalog: async (code: string, roomUsername?: string): Promise<{
+    items: Array<{
+      gift_id: string;
+      emoji: string;
+      name: string;
+      price_cents: number;
+      category: string;
+      sort_order: number;
+    }>;
+    bulk_action_threshold?: number;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/gifts/catalog/`, {
+      params: { session_token: sessionToken },
+    });
+    return response.data;
+  },
+
+  sendGift: async (code: string, giftId: string, recipientUsername: string, roomUsername?: string): Promise<{
+    success: boolean;
+    gift_id: string;
+    message_id: string;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/gifts/send/`, {
+      gift_id: giftId,
+      recipient_username: recipientUsername,
+      session_token: sessionToken,
+    });
+    return response.data;
+  },
+
+  acknowledgeGift: async (code: string, giftId: string, thank: boolean = false, roomUsername?: string): Promise<{
+    success: boolean;
+    remaining_count: number;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/gifts/acknowledge/`, {
+      gift_id: giftId,
+      thank,
+      session_token: sessionToken,
+    });
+    return response.data;
+  },
+
+  acknowledgeAllGifts: async (code: string, thank: boolean = false, roomUsername?: string): Promise<{
+    success: boolean;
+    remaining_count: number;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/gifts/acknowledge/`, {
+      acknowledge_all: true,
+      thank,
+      session_token: sessionToken,
+    });
+    return response.data;
+  },
+
+  acknowledgeGiftByMessage: async (code: string, messageId: string, roomUsername?: string): Promise<{
+    success: boolean;
+    remaining_count: number;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/gifts/acknowledge/`, {
+      message_id: messageId,
+      thank: true,
+      session_token: sessionToken,
+    });
     return response.data;
   },
 };

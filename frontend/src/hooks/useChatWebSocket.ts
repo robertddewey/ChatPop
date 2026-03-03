@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import type { Message } from '@/lib/api';
+import type { Message, GiftNotification } from '@/lib/api';
 
 interface ReactionEventData {
   type: 'reaction';
@@ -17,6 +17,9 @@ interface UseChatWebSocketOptions {
   onReaction?: (data: ReactionEventData) => void;
   onMessageDeleted?: (messageId: string) => void;
   onMessagePinned?: (message: Message, isTopPin: boolean) => void;
+  onGiftReceived?: (gift: GiftNotification) => void;
+  onGiftQueue?: (gifts: GiftNotification[]) => void;
+  onGiftAcknowledged?: (messageIds: string[]) => void;
   onError?: (error: Event) => void;
   onVisibilityChange?: (isVisible: boolean) => void;
   enabled?: boolean;
@@ -31,6 +34,9 @@ export function useChatWebSocket({
   onReaction,
   onMessageDeleted,
   onMessagePinned,
+  onGiftReceived,
+  onGiftQueue,
+  onGiftAcknowledged,
   onError,
   onVisibilityChange,
   enabled = true,
@@ -50,6 +56,9 @@ export function useChatWebSocket({
   const onReactionRef = useRef(onReaction);
   const onMessageDeletedRef = useRef(onMessageDeleted);
   const onMessagePinnedRef = useRef(onMessagePinned);
+  const onGiftReceivedRef = useRef(onGiftReceived);
+  const onGiftQueueRef = useRef(onGiftQueue);
+  const onGiftAcknowledgedRef = useRef(onGiftAcknowledged);
   const onErrorRef = useRef(onError);
   const onVisibilityChangeRef = useRef(onVisibilityChange);
 
@@ -60,6 +69,9 @@ export function useChatWebSocket({
   useEffect(() => { onReactionRef.current = onReaction; }, [onReaction]);
   useEffect(() => { onMessageDeletedRef.current = onMessageDeleted; }, [onMessageDeleted]);
   useEffect(() => { onMessagePinnedRef.current = onMessagePinned; }, [onMessagePinned]);
+  useEffect(() => { onGiftReceivedRef.current = onGiftReceived; }, [onGiftReceived]);
+  useEffect(() => { onGiftQueueRef.current = onGiftQueue; }, [onGiftQueue]);
+  useEffect(() => { onGiftAcknowledgedRef.current = onGiftAcknowledged; }, [onGiftAcknowledged]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
   useEffect(() => { onVisibilityChangeRef.current = onVisibilityChange; }, [onVisibilityChange]);
 
@@ -137,6 +149,30 @@ export function useChatWebSocket({
           console.log('[WebSocket] Message pinned event received:', data.message);
           if (onMessagePinnedRef.current) {
             onMessagePinnedRef.current(data.message, data.is_top_pin);
+          }
+          return;
+        }
+
+        // Handle gift received notification (popup for recipient)
+        if (data.type === 'gift_received') {
+          if (onGiftReceivedRef.current) {
+            onGiftReceivedRef.current(data.gift);
+          }
+          return;
+        }
+
+        // Handle gift queue (unacked gifts on reconnect)
+        if (data.type === 'gift_queue') {
+          if (onGiftQueueRef.current) {
+            onGiftQueueRef.current(data.gifts);
+          }
+          return;
+        }
+
+        // Handle gift acknowledged events
+        if (data.type === 'gift_acknowledged') {
+          if (onGiftAcknowledgedRef.current) {
+            onGiftAcknowledgedRef.current(data.message_ids);
           }
           return;
         }

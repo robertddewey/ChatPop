@@ -643,6 +643,13 @@ Response JSON:
         'Default avatar size in pixels for DiceBear avatars',
         int
     ),
+
+    # Gift Settings
+    'GIFT_BULK_ACTION_THRESHOLD': (
+        10,
+        'Minimum number of pending gifts before showing bulk actions (Dismiss All / Thank All) in the gift popup. Below this threshold, users handle gifts one at a time.',
+        int
+    ),
 }
 
 # Custom User Model

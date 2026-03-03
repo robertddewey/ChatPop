@@ -39,6 +39,20 @@ body {
   transform-origin: center;
 }
 
+@keyframes giftBreath {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+.animate-gift-breath {
+  animation: giftBreath 1.5s ease-in-out infinite;
+  transform-origin: center;
+}
+
 @keyframes gentleBounce {
   0%, 100% {
     transform: translateX(-50%) translateY(0);

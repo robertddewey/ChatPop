@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Reply, Pin, DollarSign, Ban, BadgeCheck, Settings, Crown, Gamepad2, Sparkles, Camera, MessageSquare, Mic, Play, Image, Copy, Forward, Trash2, Flag } from 'lucide-react';
+import { ArrowLeft, Reply, Pin, Gift, Ban, BadgeCheck, Settings, Crown, Gamepad2, Sparkles, Camera, MessageSquare, Mic, Play, Image, Copy, Forward, Trash2, Flag } from 'lucide-react';
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
 
@@ -69,7 +69,7 @@ const BG_MESSAGES: FakeMsg[] = [
 const ACTIONS = [
   { icon: Reply, label: 'Reply', color: 'text-cyan-400' },
   { icon: Pin, label: 'Pin', color: 'text-cyan-400' },
-  { icon: DollarSign, label: 'Tip', color: 'text-cyan-400' },
+  { icon: Gift, label: 'Gift', color: 'text-cyan-400' },
   { icon: Copy, label: 'Copy', color: 'text-cyan-400' },
   { icon: Forward, label: 'Forward', color: 'text-cyan-400' },
   { icon: Ban, label: 'Mute', color: 'text-red-400' },

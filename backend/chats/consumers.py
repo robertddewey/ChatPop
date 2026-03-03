@@ -2,7 +2,7 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from .utils.security.auth import ChatSessionValidator
-from .utils.performance.cache import MessageCache
+from .utils.performance.cache import MessageCache, UnacknowledgedGiftCache
 from .models import ChatRoom, Message, ChatParticipation
 from urllib.parse import parse_qs
 
@@ -74,6 +74,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         await self.accept()
+
+        # Deliver unacknowledged gifts on reconnect
+        unacked_gifts = await self.get_unacked_gifts()
+        if unacked_gifts:
+            await self.send(text_data=json.dumps({
+                'type': 'gift_queue',
+                'gifts': unacked_gifts,
+            }))
 
     async def disconnect(self, close_code):
         # Leave room group
@@ -230,6 +238,37 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await asyncio.sleep(0.1)
         # Close the WebSocket connection with site ban code
         await self.close(code=4503)
+
+    async def gift_sent(self, event):
+        """Gift chat message - broadcast to all (respects block list)."""
+        message_data = event['message_data']
+        if message_data.get('username') in self.blocked_usernames:
+            return
+        await self.send(text_data=json.dumps(message_data))
+
+    async def gift_received(self, event):
+        """Gift popup notification - only forwarded to recipient."""
+        if self.username == event.get('recipient_username'):
+            await self.send(text_data=json.dumps({
+                'type': 'gift_received',
+                'gift': event['gift'],
+            }))
+
+    async def gift_acknowledged(self, event):
+        """Gift acknowledged - broadcast message IDs to all clients."""
+        await self.send(text_data=json.dumps({
+            'type': 'gift_acknowledged',
+            'message_ids': event['message_ids'],
+        }))
+
+    @database_sync_to_async
+    def get_unacked_gifts(self):
+        """Get unacknowledged gifts for this user from Redis."""
+        try:
+            chat_room = ChatRoom.objects.get(code=self.chat_code)
+            return UnacknowledgedGiftCache.get_unacked(str(chat_room.id), self.username)
+        except ChatRoom.DoesNotExist:
+            return []
 
     @database_sync_to_async
     def validate_session(self, token, chat_code, username=None):

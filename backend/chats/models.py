@@ -269,10 +269,12 @@ class Message(models.Model):
     MESSAGE_NORMAL = 'normal'
     MESSAGE_HOST = 'host'
     MESSAGE_SYSTEM = 'system'
+    MESSAGE_GIFT = 'gift'
     MESSAGE_TYPES = [
         (MESSAGE_NORMAL, 'Normal'),
         (MESSAGE_HOST, 'Host Message'),
         (MESSAGE_SYSTEM, 'System Message'),
+        (MESSAGE_GIFT, 'Gift Message'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -311,6 +313,9 @@ class Message(models.Model):
     pin_amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     # Current session amount - resets when pin expires or is outbid
     current_pin_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
+    # Gift acknowledgment
+    is_gift_acknowledged = models.BooleanField(default=False)
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -773,9 +778,11 @@ class Transaction(models.Model):
     """Track all payments in the system"""
     TRANSACTION_PIN = 'pin'
     TRANSACTION_TIP = 'tip'
+    TRANSACTION_GIFT = 'gift'
     TRANSACTION_TYPES = [
         (TRANSACTION_PIN, 'Message Pin'),
         (TRANSACTION_TIP, 'Tip to Host'),
+        (TRANSACTION_GIFT, 'Gift'),
     ]
 
     STATUS_PENDING = 'pending'
@@ -821,3 +828,76 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"{self.transaction_type} - ${self.amount} by {self.username}"
+
+
+class GiftCatalogItem(models.Model):
+    """Catalog of available gifts (loaded from fixtures)"""
+    CATEGORY_FOOD = 'food'
+    CATEGORY_FUN = 'fun'
+    CATEGORY_LOVE = 'love'
+    CATEGORY_ANIMALS = 'animals'
+    CATEGORY_PREMIUM = 'premium'
+    CATEGORY_CHOICES = [
+        (CATEGORY_FOOD, 'Food & Drink'),
+        (CATEGORY_FUN, 'Fun'),
+        (CATEGORY_LOVE, 'Love'),
+        (CATEGORY_ANIMALS, 'Animals'),
+        (CATEGORY_PREMIUM, 'Premium'),
+    ]
+
+    gift_id = models.CharField(max_length=50, unique=True, db_index=True, help_text="Stable identifier e.g. 'gift_coffee'")
+    emoji = models.CharField(max_length=10, help_text="Emoji character")
+    name = models.CharField(max_length=100, help_text="Display name")
+    price_cents = models.PositiveIntegerField(help_text="Price in cents")
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    is_active = models.BooleanField(default=True, help_text="Soft-disable without removing")
+    sort_order = models.PositiveIntegerField(default=0, help_text="Display ordering within category")
+
+    class Meta:
+        ordering = ['category', 'sort_order', 'price_cents']
+        verbose_name = 'Gift Catalog Item'
+        verbose_name_plural = 'Gift Catalog Items'
+
+    def __str__(self):
+        return f"{self.emoji} {self.name} (${self.price_cents / 100:.2f})"
+
+
+class Gift(models.Model):
+    """Individual gift sent between users"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    chat_room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='gifts')
+    gift_catalog_item = models.ForeignKey(GiftCatalogItem, on_delete=models.PROTECT, related_name='sent_gifts')
+
+    # Denormalized snapshot at send time
+    gift_id = models.CharField(max_length=50, help_text="Gift catalog ID at send time")
+    emoji = models.CharField(max_length=10)
+    name = models.CharField(max_length=100)
+    price_cents = models.PositiveIntegerField()
+
+    # Sender
+    sender_username = models.CharField(max_length=100)
+    sender_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='gifts_sent')
+
+    # Recipient
+    recipient_username = models.CharField(max_length=100)
+    recipient_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='gifts_received')
+
+    # Related message
+    message = models.ForeignKey(Message, on_delete=models.SET_NULL, null=True, blank=True, related_name='gift')
+
+    # Acknowledgment
+    is_acknowledged = models.BooleanField(default=False)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient_username', 'chat_room', 'is_acknowledged']),
+            models.Index(fields=['chat_room', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.emoji} {self.name} from {self.sender_username} to {self.recipient_username}"

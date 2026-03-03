@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.utils import timezone
 from django.core.exceptions import ValidationError as DjangoValidationError
 from constance import config
-from .models import ChatRoom, Message, Transaction, ChatParticipation, ChatTheme, MessageReaction
+from .models import ChatRoom, Message, Transaction, ChatParticipation, ChatTheme, MessageReaction, GiftCatalogItem
 from .utils.username.validators import validate_username
 from accounts.serializers import UserSerializer
 from accounts.models import User
@@ -319,7 +319,8 @@ class MessageSerializer(serializers.ModelSerializer):
             'video_url', 'video_duration', 'video_thumbnail_url', 'video_width', 'video_height',
             'reply_to', 'reply_to_message',
             'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount',
-            'is_from_host', 'username_is_reserved', 'time_until_unpin', 'avatar_url', 'created_at', 'is_deleted'
+            'is_from_host', 'username_is_reserved', 'time_until_unpin', 'avatar_url', 'created_at', 'is_deleted',
+            'is_gift_acknowledged'
         ]
         read_only_fields = [
             'id', 'user', 'message_type',
@@ -358,6 +359,7 @@ class MessageSerializer(serializers.ModelSerializer):
                 'id': str(obj.reply_to.id),
                 'username': obj.reply_to.username,
                 'content': obj.reply_to.content[:100],  # Truncate for preview
+                'message_type': obj.reply_to.message_type,
                 'is_from_host': obj.reply_to.user == obj.reply_to.chat_room.host if obj.reply_to.user else False,
                 'username_is_reserved': bool(reply_username_is_reserved),
                 'is_pinned': obj.reply_to.is_pinned,
@@ -574,3 +576,25 @@ class ChatRoomCreateFromMusicSerializer(serializers.Serializer):
         except MusicAnalysis.DoesNotExist:
             raise serializers.ValidationError("Music analysis not found")
         return value
+
+
+class GiftCatalogItemSerializer(serializers.ModelSerializer):
+    """Read-only serializer for gift catalog items"""
+    class Meta:
+        model = GiftCatalogItem
+        fields = ['gift_id', 'emoji', 'name', 'price_cents', 'category', 'sort_order']
+        read_only_fields = fields
+
+
+class SendGiftSerializer(serializers.Serializer):
+    """Validates gift send request"""
+    gift_id = serializers.CharField(max_length=50)
+    recipient_username = serializers.CharField(max_length=100)
+
+
+class AcknowledgeGiftSerializer(serializers.Serializer):
+    """Validates gift acknowledgment request"""
+    gift_id = serializers.UUIDField(required=False)
+    message_id = serializers.UUIDField(required=False)
+    acknowledge_all = serializers.BooleanField(required=False, default=False)
+    thank = serializers.BooleanField(required=False, default=False)

@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Message, ReactionSummary } from '@/lib/api';
-import { Pin, DollarSign, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown } from 'lucide-react';
+import { Pin, Gift, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
+import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
 
 interface PinTier {
   amount_cents: number;
@@ -48,6 +49,8 @@ interface MessageActionsModalProps {
   getPinRequirements?: (messageId: string) => Promise<PinRequirements>;
   onBlock?: (username: string) => void;
   onTip?: (username: string) => void;
+  onSendGift?: (giftId: string, recipientUsername: string) => Promise<boolean>;
+  onThankGift?: (messageId: string) => Promise<boolean>;
   onReact?: (messageId: string, emoji: string) => void;
   reactions?: ReactionSummary[];
   onDelete?: (messageId: string) => void;
@@ -205,6 +208,8 @@ export default function MessageActionsModal({
   getPinRequirements,
   onBlock,
   onTip,
+  onSendGift,
+  onThankGift,
   onReact,
   reactions = [],
   onDelete,
@@ -221,29 +226,41 @@ export default function MessageActionsModal({
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Panel state: which panel is visible
+  type ActivePanel = 'actions' | 'pin' | 'gift';
+  const [activePanel, setActivePanel] = useState<ActivePanel>('actions');
+
   // Pin input state
-  const [showPinInput, setShowPinInput] = useState(false);
   const [pinRequirements, setPinRequirements] = useState<PinRequirements | null>(null);
   const [selectedTier, setSelectedTier] = useState<PinTier | null>(null);
   const [isPinning, setIsPinning] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
 
+  // Gift state
+  const [selectedCategory, setSelectedCategory] = useState<GiftCategory>('food');
+  const [selectedGift, setSelectedGift] = useState<GiftItem | null>(null);
+  const [showGiftConfirmation, setShowGiftConfirmation] = useState(false);
+  const [isGiftSending, setIsGiftSending] = useState(false);
+
   const dragStartY = React.useRef(0);
   const actionsRef = React.useRef<HTMLDivElement>(null);
   const pinRef = React.useRef<HTMLDivElement>(null);
+  const giftRef = React.useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState<number | undefined>(undefined);
 
   // Measure active panel height for smooth height transitions
   useEffect(() => {
-    // Use requestAnimationFrame to ensure DOM has updated before measuring
+    if (!isOpen) return;
     const raf = requestAnimationFrame(() => {
-      const activeRef = showPinInput && pinRequirements ? pinRef : actionsRef;
+      let activeRef = actionsRef;
+      if (activePanel === 'pin' && pinRequirements) activeRef = pinRef;
+      if (activePanel === 'gift') activeRef = giftRef;
       if (activeRef.current) {
         setContainerHeight(activeRef.current.scrollHeight);
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [showPinInput, pinRequirements, selectedTier, pinError]);
+  }, [isOpen, activePanel, pinRequirements, selectedTier, pinError, selectedCategory, selectedGift, showGiftConfirmation]);
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
 
@@ -294,11 +311,16 @@ export default function MessageActionsModal({
       setIsClosing(false);
       setHasAnimatedIn(false);
       setDragOffset(0);
-      // Reset pin state
-      setShowPinInput(false);
+      // Reset panel state
+      setActivePanel('actions');
       setPinRequirements(null);
       setSelectedTier(null);
       setPinError(null);
+      setSelectedCategory('food');
+      setSelectedGift(null);
+      setShowGiftConfirmation(false);
+      setIsGiftSending(false);
+      setContainerHeight(undefined);
     }, 250); // Match animation duration
   };
 
@@ -309,7 +331,7 @@ export default function MessageActionsModal({
         const requirements = await getPinRequirements(message.id);
         setPinRequirements(requirements);
         setSelectedTier(null);  // Reset selection
-        setShowPinInput(true);
+        setActivePanel('pin');
         setPinError(null);
       } catch (error) {
         console.error('Failed to get pin requirements:', error);
@@ -330,7 +352,7 @@ export default function MessageActionsModal({
         ],
       });
       setSelectedTier(null);
-      setShowPinInput(true);
+      setActivePanel('pin');
     }
   };
 
@@ -460,7 +482,23 @@ export default function MessageActionsModal({
   // Filter actions based on context
   const actions = [];
 
-  // 1. Reply — always
+  // 1. Thank — gift messages addressed to me, not yet acknowledged
+  if (message.message_type === 'gift' && !message.is_gift_acknowledged && onThankGift) {
+    const recipientMatch = message.content.match(/to\s+@(\S+)\s*$/);
+    const giftRecipient = recipientMatch ? recipientMatch[1] : '';
+    if (giftRecipient.toLowerCase() === currentUsername?.toLowerCase()) {
+      actions.push({
+        icon: Heart,
+        label: 'Thank',
+        action: async () => {
+          await onThankGift(message.id);
+          handleClose();
+        },
+      });
+    }
+  }
+
+  // 2. Reply — always
   if (onReply) {
     actions.push({
       icon: Reply,
@@ -472,7 +510,7 @@ export default function MessageActionsModal({
     });
   }
 
-  // 2. Pin — always (non-host messages, pin support required)
+  // 3. Pin — always (non-host messages, pin support required)
   const hasPinSupport = !message.is_from_host && (onPin || onAddToPin || getPinRequirements || onPinSelf || onPinOther);
   const isPinExpired = message.is_pinned && message.sticky_until && new Date(message.sticky_until) < new Date();
 
@@ -488,15 +526,12 @@ export default function MessageActionsModal({
     }
   }
 
-  // 3. Tip — others only
-  if (!isOwnMessage && onTip) {
+  // 4. Gift — others only
+  if (!isOwnMessage) {
     actions.push({
-      icon: DollarSign,
-      label: 'Tip',
-      action: () => {
-        onTip(message.username);
-        handleClose();
-      },
+      icon: Gift,
+      label: 'Gift',
+      action: () => setActivePanel('gift'),
     });
   }
 
@@ -642,8 +677,43 @@ export default function MessageActionsModal({
                       {new Date(message.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
                   </div>
-                  {/* Text content */}
-                  {message.content && (
+                  {/* Text content or gift card */}
+                  {message.message_type === 'gift' ? (() => {
+                    const giftMatch = message.content.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
+                    const emoji = giftMatch ? giftMatch[1] : '🎁';
+                    const giftName = giftMatch ? giftMatch[2] : '';
+                    const price = giftMatch ? giftMatch[3] : '';
+                    const recipient = giftMatch ? giftMatch[4] : '';
+                    return (
+                      <div className={`relative rounded-xl px-3 py-2.5 text-center max-w-[85%] ${
+                        themeIsDarkMode
+                          ? 'bg-gradient-to-b from-zinc-800 to-zinc-800/60 border border-zinc-700'
+                          : 'bg-gradient-to-b from-purple-50/80 to-white border border-purple-200/60'
+                      }`}>
+                        {message.is_gift_acknowledged && (
+                          <div className="absolute top-1.5 left-2 text-sm" title="Thanked">
+                            🤗
+                          </div>
+                        )}
+                        {price && (
+                          <div className={`absolute top-2 right-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                            themeIsDarkMode ? 'bg-cyan-900/50 text-cyan-400' : 'bg-purple-100 text-purple-600'
+                          }`}>
+                            {price}
+                          </div>
+                        )}
+                        <div className="text-3xl mb-1">{emoji}</div>
+                        <div className={`text-xs font-bold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                          {giftName}
+                        </div>
+                        {recipient && (
+                          <div className={`text-[10px] mt-1 ${themeIsDarkMode ? 'text-zinc-500' : 'text-gray-400'}`}>
+                            to <span className={`font-semibold ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600'}`}>@{recipient}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })() : message.content && (
                     <p className={`text-sm ${themeIsDarkMode ? 'text-white' : 'text-gray-800'}`}>
                       {message.content}
                     </p>
@@ -703,7 +773,7 @@ export default function MessageActionsModal({
               >
                 <div
                   className="flex items-start transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-                  style={{ transform: showPinInput && pinRequirements ? 'translateX(-100%)' : 'translateX(0)' }}
+                  style={{ transform: activePanel === 'gift' ? 'translateX(-200%)' : activePanel === 'pin' ? 'translateX(-100%)' : 'translateX(0)' }}
                 >
                   {/* Panel 1: Actions (emoji + action buttons) */}
                   <div className="w-full flex-shrink-0" ref={actionsRef}>
@@ -873,7 +943,7 @@ export default function MessageActionsModal({
                   {/* Buttons */}
                   <div className="flex gap-3 pt-2 px-6">
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowPinInput(false); setSelectedTier(null); }}
+                      onClick={(e) => { e.stopPropagation(); setActivePanel('actions'); setSelectedTier(null); }}
                       className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
                         themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
                       }`}
@@ -901,6 +971,142 @@ export default function MessageActionsModal({
                   </div>
                 </div>
                 )}
+                  </div>
+
+                  {/* Panel 3: Gift Selection */}
+                  <div className="w-full flex-shrink-0" ref={giftRef}>
+                    <div className="space-y-4 max-h-[420px] overflow-y-auto w-full">
+                      {!showGiftConfirmation ? (
+                        <>
+                          {/* Header */}
+                          <div className="text-center px-6">
+                            <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              Send a Gift
+                            </h3>
+                            <p className={`text-sm mt-1 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              to <span className={`font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>@{message.username}</span>
+                            </p>
+                          </div>
+
+                          {/* Category Tabs */}
+                          <div
+                            className="overflow-x-scroll actions-scrollbar-hide actions-scroll-container px-5"
+                            style={{ WebkitOverflowScrolling: 'touch' }}
+                          >
+                            <div className="flex gap-2 w-max mx-auto">
+                              {GIFT_CATEGORIES.map((cat) => (
+                                <button
+                                  key={cat.id}
+                                  onClick={(e) => { e.stopPropagation(); setSelectedCategory(cat.id); }}
+                                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all active:scale-95 whitespace-nowrap ${
+                                    selectedCategory === cat.id
+                                      ? themeIsDarkMode
+                                        ? 'bg-cyan-600 text-white'
+                                        : 'bg-purple-600 text-white'
+                                      : themeIsDarkMode
+                                        ? 'bg-zinc-700 text-zinc-300 border border-zinc-500'
+                                        : 'bg-gray-100 text-gray-700 border border-gray-300'
+                                  }`}
+                                >
+                                  {cat.emoji} {cat.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Gift Items — Horizontal Scroll */}
+                          <div
+                            className="overflow-x-scroll actions-scrollbar-hide actions-scroll-container px-5"
+                            style={{ WebkitOverflowScrolling: 'touch' }}
+                          >
+                            <div className="flex gap-2 w-max">
+                              {getGiftsByCategory(selectedCategory).map((gift) => (
+                                <div
+                                  key={gift.id}
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedGift(gift);
+                                    setShowGiftConfirmation(true);
+                                  }}
+                                  className="flex flex-col items-center justify-center gap-1 py-3 rounded-2xl transition-all w-[72px] h-[72px] action-btn active:scale-95 cursor-pointer"
+                                >
+                                  <span className="text-2xl">{gift.emoji}</span>
+                                  <span className={`text-[10px] font-medium ${themeIsDarkMode ? 'text-zinc-50' : 'text-gray-900'}`}>
+                                    {formatGiftPrice(gift.price)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Back Button */}
+                          <div className="px-6 pt-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setActivePanel('actions'); }}
+                              className={`w-full py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
+                                themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
+                              }`}
+                            >
+                              Back
+                            </button>
+                          </div>
+                        </>
+                      ) : selectedGift && (
+                        <>
+                          {/* Confirmation View */}
+                          <div className="text-center px-6 pt-2">
+                            <span className="text-6xl block mb-3">{selectedGift.emoji}</span>
+                            <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {selectedGift.name}
+                            </h3>
+                            <p className={`text-2xl font-bold mt-1 ${modalStyles.actionIcon}`}>
+                              {formatGiftPrice(selectedGift.price)}
+                            </p>
+                            <p className={`text-sm mt-2 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Send to <span className={`font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>@{message.username}</span>
+                            </p>
+                          </div>
+
+                          {/* Confirm / Back Buttons */}
+                          <div className="flex gap-3 pt-2 px-6">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setShowGiftConfirmation(false); setSelectedGift(null); }}
+                              disabled={isGiftSending}
+                              className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
+                                isGiftSending ? 'opacity-50 cursor-not-allowed' : ''
+                              } ${themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'}`}
+                            >
+                              Back
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!onSendGift || !selectedGift) return;
+                                setIsGiftSending(true);
+                                try {
+                                  const success = await onSendGift(selectedGift.id, message.username);
+                                  if (success) {
+                                    handleClose();
+                                  }
+                                } catch (err) {
+                                  console.error('[Gift] Send failed:', err);
+                                } finally {
+                                  setIsGiftSending(false);
+                                }
+                              }}
+                              disabled={isGiftSending}
+                              className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
+                                isGiftSending ? 'opacity-50 cursor-not-allowed' : ''
+                              } ${themeIsDarkMode ? 'bg-cyan-600 text-white' : 'bg-purple-600 text-white'}`}
+                            >
+                              {isGiftSending ? 'Sending...' : `Send ${formatGiftPrice(selectedGift.price)}`}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

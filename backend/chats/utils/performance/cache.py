@@ -106,6 +106,7 @@ class MessageCache:
                 "id": str(message.reply_to.id),
                 "username": message.reply_to.username,
                 "content": message.reply_to.content[:100] if message.reply_to.content else "",
+                "message_type": message.reply_to.message_type,
                 "is_from_host": message.reply_to.message_type == "host",
                 "username_is_reserved": reply_username_is_reserved,
                 "is_pinned": message.reply_to.is_pinned,
@@ -145,6 +146,7 @@ class MessageCache:
             "avatar_url": avatar_url,
             "created_at": message.created_at.isoformat(),
             "is_deleted": message.is_deleted,
+            "is_gift_acknowledged": message.is_gift_acknowledged,
         }
 
     @classmethod
@@ -1066,3 +1068,151 @@ class UserBlockCache:
 
         except Exception as e:
             print(f"Redis cache error (clear_user_blocks): {e}")
+
+
+class GiftCatalogCache:
+    """Redis cache for the gift catalog (single key, 24h TTL)"""
+
+    CATALOG_KEY = "gift_catalog"
+    TTL_SECONDS = 24 * 3600  # 24 hours
+
+    @classmethod
+    def _get_redis_client(cls):
+        return cache.client.get_client()
+
+    @classmethod
+    def get_catalog(cls) -> List[Dict[str, Any]]:
+        """
+        Get gift catalog from Redis cache, falling back to DB.
+
+        Returns:
+            List of gift catalog item dicts
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            cached = redis_client.get(cls.CATALOG_KEY)
+
+            if cached:
+                data = cached.decode('utf-8') if isinstance(cached, bytes) else cached
+                return json.loads(data)
+
+            # Cache miss - load from DB
+            return cls._load_from_db()
+
+        except Exception as e:
+            print(f"Redis cache error (gift_catalog): {e}")
+            return cls._load_from_db_direct()
+
+    @classmethod
+    def _load_from_db(cls) -> List[Dict[str, Any]]:
+        """Load catalog from DB and populate Redis cache."""
+        from chats.models import GiftCatalogItem
+
+        items = list(GiftCatalogItem.objects.filter(is_active=True).values(
+            'gift_id', 'emoji', 'name', 'price_cents', 'category', 'sort_order'
+        ))
+
+        # Populate cache
+        try:
+            redis_client = cls._get_redis_client()
+            redis_client.set(cls.CATALOG_KEY, json.dumps(items), ex=cls.TTL_SECONDS)
+        except Exception as e:
+            print(f"Redis cache error (gift_catalog populate): {e}")
+
+        return items
+
+    @classmethod
+    def _load_from_db_direct(cls) -> List[Dict[str, Any]]:
+        """Direct DB load without caching (Redis down fallback)."""
+        from chats.models import GiftCatalogItem
+        return list(GiftCatalogItem.objects.filter(is_active=True).values(
+            'gift_id', 'emoji', 'name', 'price_cents', 'category', 'sort_order'
+        ))
+
+    @classmethod
+    def invalidate(cls):
+        """Invalidate the catalog cache."""
+        try:
+            redis_client = cls._get_redis_client()
+            redis_client.delete(cls.CATALOG_KEY)
+        except Exception as e:
+            print(f"Redis cache error (gift_catalog invalidate): {e}")
+
+
+class UnacknowledgedGiftCache:
+    """Redis cache for per-user unacknowledged gift queues"""
+
+    UNACKED_KEY = "room:{room_id}:unacked_gifts:{username}"
+    TTL_SECONDS = 7 * 24 * 3600  # 7 days
+
+    @classmethod
+    def _get_redis_client(cls):
+        return cache.client.get_client()
+
+    @classmethod
+    def push_gift(cls, room_id: str, username: str, gift_data: Dict[str, Any]) -> bool:
+        """Push a gift to the recipient's unacknowledged queue."""
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.UNACKED_KEY.format(room_id=room_id, username=username)
+            redis_client.lpush(key, json.dumps(gift_data))
+            redis_client.expire(key, cls.TTL_SECONDS)
+            return True
+        except Exception as e:
+            print(f"Redis cache error (push_gift): {e}")
+            return False
+
+    @classmethod
+    def get_unacked(cls, room_id: str, username: str) -> List[Dict[str, Any]]:
+        """Get all unacknowledged gifts for a user in a room."""
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.UNACKED_KEY.format(room_id=room_id, username=username)
+            items = redis_client.lrange(key, 0, -1)
+
+            gifts = []
+            for item in items:
+                data = item.decode('utf-8') if isinstance(item, bytes) else item
+                try:
+                    gifts.append(json.loads(data))
+                except json.JSONDecodeError:
+                    continue
+            return gifts
+        except Exception as e:
+            print(f"Redis cache error (get_unacked): {e}")
+            return []
+
+    @classmethod
+    def acknowledge_one(cls, room_id: str, username: str, gift_id: str) -> bool:
+        """Remove a single gift from the unacknowledged queue by gift ID."""
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.UNACKED_KEY.format(room_id=room_id, username=username)
+            items = redis_client.lrange(key, 0, -1)
+
+            for item in items:
+                data = item.decode('utf-8') if isinstance(item, bytes) else item
+                try:
+                    gift = json.loads(data)
+                    if gift.get('id') == gift_id:
+                        redis_client.lrem(key, 1, item)
+                        return True
+                except json.JSONDecodeError:
+                    continue
+            return False
+        except Exception as e:
+            print(f"Redis cache error (acknowledge_one): {e}")
+            return False
+
+    @classmethod
+    def acknowledge_all(cls, room_id: str, username: str) -> int:
+        """Remove all unacknowledged gifts for a user. Returns count removed."""
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls.UNACKED_KEY.format(room_id=room_id, username=username)
+            count = redis_client.llen(key)
+            redis_client.delete(key)
+            return count
+        except Exception as e:
+            print(f"Redis cache error (acknowledge_all): {e}")
+            return 0

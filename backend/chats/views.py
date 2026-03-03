@@ -14,7 +14,8 @@ from .models import ChatRoom, Message, AnonymousUserFingerprint, ChatParticipati
 from .serializers import (
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomUpdateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
-    ChatParticipationSerializer, MessageReactionSerializer, MessageReactionCreateSerializer
+    ChatParticipationSerializer, MessageReactionSerializer, MessageReactionCreateSerializer,
+    GiftCatalogItemSerializer, SendGiftSerializer, AcknowledgeGiftSerializer
 )
 from .utils.security.auth import ChatSessionValidator
 from .utils.performance.cache import MessageCache
@@ -4204,3 +4205,284 @@ class AdminChatBanCreateView(APIView):
             return Response({
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GiftCatalogView(APIView):
+    """Get the gift catalog (cached in Redis)"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, code, username=None):
+        from .utils.performance.cache import GiftCatalogCache
+
+        # Validate session
+        session_token = request.query_params.get('session_token')
+        if not session_token:
+            raise PermissionDenied("Session token is required")
+
+        ChatSessionValidator.validate_session_token(token=session_token, chat_code=code)
+
+        items = GiftCatalogCache.get_catalog()
+        return Response({
+            'items': items,
+            'bulk_action_threshold': config.GIFT_BULK_ACTION_THRESHOLD,
+        })
+
+
+class SendGiftView(APIView):
+    """Send a gift to another user in the chat"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code, username=None):
+        from .utils.performance.cache import GiftCatalogCache, UnacknowledgedGiftCache
+        from .models import Gift, GiftCatalogItem, Transaction
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        from rest_framework.renderers import JSONRenderer
+
+        chat_room = get_chat_room_by_url(code, username)
+
+        # Validate session token
+        session_token = request.data.get('session_token')
+        if not session_token:
+            raise PermissionDenied("Session token is required")
+
+        session_data = ChatSessionValidator.validate_session_token(
+            token=session_token, chat_code=code
+        )
+        sender_username = session_data['username']
+        sender_user_id = session_data.get('user_id')
+
+        # Validate request data
+        serializer = SendGiftSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        gift_id = serializer.validated_data['gift_id']
+        recipient_username = serializer.validated_data['recipient_username']
+
+        # Prevent self-gifting
+        if sender_username.lower() == recipient_username.lower():
+            return Response({'error': 'Cannot send a gift to yourself'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Look up gift in catalog
+        try:
+            catalog_item = GiftCatalogItem.objects.get(gift_id=gift_id, is_active=True)
+        except GiftCatalogItem.DoesNotExist:
+            return Response({'error': 'Gift not found in catalog'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Validate recipient exists in chat
+        try:
+            recipient_participation = ChatParticipation.objects.get(
+                chat_room=chat_room,
+                username__iexact=recipient_username,
+                is_active=True
+            )
+        except ChatParticipation.DoesNotExist:
+            return Response({'error': 'Recipient not found in this chat'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get sender user
+        sender_user = None
+        if sender_user_id:
+            try:
+                sender_user = User.objects.get(id=sender_user_id)
+            except User.DoesNotExist:
+                pass
+
+        # Create gift message
+        price_display = f"${catalog_item.price_cents / 100:.0f}" if catalog_item.price_cents >= 100 else f"${catalog_item.price_cents / 100:.2f}"
+        message_content = f"sent {catalog_item.emoji} {catalog_item.name} ({price_display}) to @{recipient_username}"
+
+        message = Message.objects.create(
+            chat_room=chat_room,
+            username=sender_username,
+            user=sender_user,
+            content=message_content,
+            message_type=Message.MESSAGE_GIFT,
+        )
+
+        # Create Gift record
+        gift = Gift.objects.create(
+            chat_room=chat_room,
+            gift_catalog_item=catalog_item,
+            gift_id=catalog_item.gift_id,
+            emoji=catalog_item.emoji,
+            name=catalog_item.name,
+            price_cents=catalog_item.price_cents,
+            sender_username=sender_username,
+            sender_user=sender_user,
+            recipient_username=recipient_username,
+            recipient_user=recipient_participation.user,
+            message=message,
+        )
+
+        # Create Transaction
+        Transaction.objects.create(
+            chat_room=chat_room,
+            transaction_type=Transaction.TRANSACTION_GIFT,
+            amount=Decimal(catalog_item.price_cents) / 100,
+            status=Transaction.STATUS_COMPLETED,
+            username=sender_username,
+            user=sender_user,
+            message=message,
+        )
+
+        # Dual-write message to Redis cache
+        if config.REDIS_CACHE_ENABLED:
+            try:
+                MessageCache.add_message(message)
+            except Exception as e:
+                print(f"Redis cache error for gift message {message.id}: {e}")
+
+        # Push to unacked gift queue for recipient
+        gift_notification_data = {
+            'id': str(gift.id),
+            'gift_id': catalog_item.gift_id,
+            'emoji': catalog_item.emoji,
+            'name': catalog_item.name,
+            'price_cents': catalog_item.price_cents,
+            'sender_username': sender_username,
+            'created_at': gift.created_at.isoformat(),
+        }
+        UnacknowledgedGiftCache.push_gift(
+            room_id=str(chat_room.id),
+            username=recipient_username,
+            gift_data=gift_notification_data
+        )
+
+        # Serialize message for broadcast
+        username_is_reserved = MessageCache._compute_username_is_reserved(message)
+        message_data = MessageCache._serialize_message(message, username_is_reserved)
+        # Convert to JSON-safe (handles UUIDs/Decimals)
+        import json
+        json_bytes = JSONRenderer().render(message_data)
+        json_safe_data = json.loads(json_bytes)
+
+        # WebSocket broadcast
+        channel_layer = get_channel_layer()
+        room_group_name = f'chat_{chat_room.code}'
+
+        # Broadcast gift chat message to all
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'gift_sent',
+                'message_data': json_safe_data,
+            }
+        )
+
+        # Send gift notification to recipient only
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'gift_received',
+                'recipient_username': recipient_username,
+                'gift': gift_notification_data,
+            }
+        )
+
+        return Response({
+            'success': True,
+            'gift_id': str(gift.id),
+            'message_id': str(message.id),
+        }, status=status.HTTP_201_CREATED)
+
+
+class AcknowledgeGiftView(APIView):
+    """Acknowledge received gifts"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code, username=None):
+        from .utils.performance.cache import UnacknowledgedGiftCache, MessageCache
+        from .models import Gift
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        chat_room = get_chat_room_by_url(code, username)
+
+        # Validate session token
+        session_token = request.data.get('session_token')
+        if not session_token:
+            raise PermissionDenied("Session token is required")
+
+        session_data = ChatSessionValidator.validate_session_token(
+            token=session_token, chat_code=code
+        )
+        current_username = session_data['username']
+
+        serializer = AcknowledgeGiftSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        acknowledge_all = serializer.validated_data.get('acknowledge_all', False)
+        thank = serializer.validated_data.get('thank', False)
+        gift_id = serializer.validated_data.get('gift_id')
+        message_id = serializer.validated_data.get('message_id')
+
+        room_id = str(chat_room.id)
+        thanked_message_ids = []
+
+        if acknowledge_all:
+            count = UnacknowledgedGiftCache.acknowledge_all(room_id, current_username)
+            # Get gifts before updating
+            gifts = Gift.objects.filter(
+                chat_room=chat_room,
+                recipient_username=current_username,
+                is_acknowledged=False
+            ).select_related('message')
+            gift_message_ids = [str(g.message.id) for g in gifts if g.message]
+            # Batch DB update — mark gifts as acknowledged
+            gifts.update(is_acknowledged=True, acknowledged_at=timezone.now())
+            # Only mark messages as thanked (🤗 badge) when thank=True
+            if thank and gift_message_ids:
+                Message.objects.filter(id__in=gift_message_ids).update(is_gift_acknowledged=True)
+                thanked_message_ids = gift_message_ids
+
+            remaining = 0
+        elif gift_id or message_id:
+            # Look up the gift by gift_id or by message_id — enforce recipient ownership
+            if message_id:
+                gift = Gift.objects.filter(
+                    message_id=message_id,
+                    recipient_username=current_username
+                ).select_related('message').first()
+                if not gift:
+                    return Response({'error': 'Gift not found or not yours'}, status=status.HTTP_403_FORBIDDEN)
+            else:
+                gift = Gift.objects.filter(
+                    id=gift_id,
+                    recipient_username=current_username
+                ).select_related('message').first()
+
+            if gift:
+                UnacknowledgedGiftCache.acknowledge_one(room_id, current_username, str(gift.id))
+                gift.is_acknowledged = True
+                gift.acknowledged_at = timezone.now()
+                gift.save(update_fields=['is_acknowledged', 'acknowledged_at'])
+                # Only mark message as thanked (🤗 badge) when thank=True
+                if thank and gift.message:
+                    thanked_message_ids = [str(gift.message.id)]
+                    gift.message.is_gift_acknowledged = True
+                    gift.message.save(update_fields=['is_gift_acknowledged'])
+            remaining = len(UnacknowledgedGiftCache.get_unacked(room_id, current_username))
+        else:
+            return Response({'error': 'Must provide gift_id, message_id, or acknowledge_all'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update Redis message cache + broadcast WebSocket for thanked messages
+        if thanked_message_ids:
+            channel_layer = get_channel_layer()
+            room_group_name = f"chat_{chat_room.code}"
+
+            for msg_id in thanked_message_ids:
+                try:
+                    msg = Message.objects.get(id=msg_id)
+                    MessageCache.update_message(msg)
+                except Message.DoesNotExist:
+                    pass
+
+            # Single broadcast with all thanked message IDs
+            async_to_sync(channel_layer.group_send)(
+                room_group_name,
+                {
+                    'type': 'gift_acknowledged',
+                    'message_ids': thanked_message_ids,
+                }
+            )
+
+        return Response({'success': True, 'remaining_count': remaining})

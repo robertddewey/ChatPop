@@ -201,6 +201,8 @@ interface MainChatViewProps {
   handlePinOther?: (messageId: string) => void;
   handleBlockUser: (username: string) => void;
   handleTipUser: (username: string) => void;
+  handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
+  handleThankGift: (messageId: string) => Promise<boolean>;
   handleDeleteMessage: (messageId: string) => void;
   handleReactionToggle: (messageId: string, emoji: string) => void;
   messageReactions: Record<string, ReactionSummary[]>;
@@ -230,6 +232,8 @@ function MainChatView({
   handlePinOther,
   handleBlockUser,
   handleTipUser,
+  handleSendGift,
+  handleThankGift,
   handleDeleteMessage,
   handleReactionToggle,
   messageReactions,
@@ -349,6 +353,8 @@ function MainChatView({
               getPinRequirements={getPinRequirements}
               onBlock={handleBlockUser}
               onTip={handleTipUser}
+              onSendGift={handleSendGift}
+              onThankGift={handleThankGift}
               onDelete={handleDeleteMessage}
               onReact={handleReactionToggle}
               reactions={messageReactions[message.id] || message.reactions || []}
@@ -431,6 +437,8 @@ function MainChatView({
               getPinRequirements={getPinRequirements}
               onBlock={handleBlockUser}
               onTip={handleTipUser}
+              onSendGift={handleSendGift}
+              onThankGift={handleThankGift}
               onDelete={handleDeleteMessage}
               onReact={handleReactionToggle}
               reactions={messageReactions[stickyPinnedMessage.id] || stickyPinnedMessage.reactions || []}
@@ -458,9 +466,11 @@ function MainChatView({
                   {stickyPinnedMessage.username_is_reserved && (
                     <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
                   )}
-                  <div className="flex items-center gap-1">
-                    <Pin size={14} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
-                    <span className={`text-xs ${currentDesign.pinnedText} opacity-70`}>
+                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
+                    themeIsDarkMode ? 'bg-white/10' : 'bg-black/10'
+                  }`}>
+                    <Pin size={12} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                    <span className={`text-xs font-medium ${currentDesign.pinnedText}`}>
                       ${stickyPinnedMessage.current_pin_amount}
                     </span>
                   </div>
@@ -492,7 +502,22 @@ function MainChatView({
                       Video{stickyPinnedMessage.content ? `: ${stickyPinnedMessage.content}` : stickyPinnedMessage.video_duration ? ` (${Math.floor(stickyPinnedMessage.video_duration / 60)}:${String(Math.floor(stickyPinnedMessage.video_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
-                ) : (
+                ) : stickyPinnedMessage.message_type === 'gift' ? (() => {
+                  const m = stickyPinnedMessage.content.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
+                  const emoji = m ? m[1] : '🎁';
+                  const name = m ? m[2] : '';
+                  const price = m ? m[3] : '';
+                  const recipient = m ? m[4] : '';
+                  return (
+                    <div className="flex items-center gap-1.5 text-sm">
+                      <span className="flex-shrink-0">{emoji}</span>
+                      <span className={`${currentDesign.pinnedText} truncate`}>
+                        sent <span className="font-semibold">{name}</span> to <span className="font-semibold">@{recipient}</span>
+                      </span>
+                      <span className="font-semibold text-cyan-400 flex-shrink-0">{price}</span>
+                    </div>
+                  );
+                })() : (
                   <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
                     {stickyPinnedMessage.content}
                   </p>
@@ -636,6 +661,8 @@ function MainChatView({
                   getPinRequirements={getPinRequirements}
                   onBlock={handleBlockUser}
                   onTip={handleTipUser}
+                  onSendGift={handleSendGift}
+                  onThankGift={handleThankGift}
                   onDelete={handleDeleteMessage}
                   onReact={handleReactionToggle}
                   reactions={messageReactions[message.id] || message.reactions || []}
@@ -715,12 +742,70 @@ function MainChatView({
                         {message.username_is_reserved && (
                           <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
                         )}
-                        <Pin size={14} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                        <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
+                          themeIsDarkMode ? 'bg-white/10' : 'bg-black/10'
+                        }`}>
+                          <Pin size={12} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                          {message.pin_amount_paid && parseFloat(message.pin_amount_paid) > 0 && (
+                            <span className={`text-xs font-medium ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600'}`}>
+                              ${message.pin_amount_paid}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Message bubble */}
+                  {/* Gift message card - special rendering */}
+                  {message.message_type === 'gift' ? (
+                    (() => {
+                      // Parse "sent ☕ Coffee ($1) to @user"
+                      const giftMatch = message.content.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
+                      const emoji = giftMatch ? giftMatch[1] : '🎁';
+                      const giftName = giftMatch ? giftMatch[2] : '';
+                      const price = giftMatch ? giftMatch[3] : '';
+                      const recipient = giftMatch ? giftMatch[4] : '';
+                      const isForMe = recipient.toLowerCase() === username.toLowerCase();
+                      return (
+                        <div className={`relative rounded-xl px-4 py-3 text-center max-w-[65%] ${
+                          isForMe
+                            ? themeIsDarkMode
+                              ? 'bg-purple-950/50 border border-purple-500/50'
+                              : 'bg-purple-100/80 border border-purple-400/50'
+                            : themeIsDarkMode
+                              ? 'bg-gradient-to-b from-zinc-800 to-zinc-800/60 border border-zinc-700'
+                              : 'bg-gradient-to-b from-purple-50/80 to-white border border-purple-200/60'
+                        }`}>
+                          {message.is_gift_acknowledged && (
+                            <div className="absolute top-2 left-2.5 text-lg" title="Thanked">
+                              🤗
+                            </div>
+                          )}
+                          {price && (
+                            <div className={`absolute top-2.5 right-2.5 text-xs font-medium px-2 py-0.5 rounded-full ${
+                              themeIsDarkMode ? 'bg-cyan-900/50 text-cyan-400' : 'bg-purple-100 text-purple-600'
+                            }`}>
+                              {price}
+                            </div>
+                          )}
+                          <div className="text-4xl mb-1.5">{emoji}</div>
+                          <div className={`text-sm font-bold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {giftName || message.content}
+                          </div>
+                          {recipient && (
+                            <div className={`text-xs mt-1.5 ${themeIsDarkMode ? 'text-zinc-500' : 'text-gray-400'}`}>
+                              to <span className={`font-semibold ${
+                                isForMe
+                                  ? (themeIsDarkMode ? 'text-purple-400' : 'text-purple-600')
+                                  : (themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600')
+                              }`}>@{recipient}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : (
+                  /* Message bubble */
                   <div
                     className={(() => {
                       const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
@@ -778,9 +863,35 @@ function MainChatView({
                             <Pin size={12} className="flex-shrink-0" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                           )}
                         </div>
-                        <p className={`text-xs truncate ${themeIsDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                          {message.reply_to_message.content || '[Voice message]'}
-                        </p>
+                        {(() => {
+                          const c = message.reply_to_message!.content;
+                          const isGift = message.reply_to_message!.message_type === 'gift' || c.match(/^sent\s+\S+\s+.+?\s+\(\$[\d,.]+\)\s+to\s+@/);
+                          if (isGift) {
+                            const m = c.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
+                            const emoji = m ? m[1] : '🎁';
+                            const name = m ? m[2] : '';
+                            const price = m ? m[3] : '';
+                            const recipient = m ? m[4] : '';
+                            return (
+                              <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 mt-1 text-xs ${
+                                themeIsDarkMode
+                                  ? 'bg-zinc-700/60 border border-zinc-600/50'
+                                  : 'bg-gray-100 border border-gray-200/50'
+                              }`}>
+                                <span className="text-sm flex-shrink-0">{emoji}</span>
+                                <span className={themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600'}>
+                                  sent <span className="font-semibold">{name}</span> to <span className="font-semibold">@{recipient}</span>
+                                </span>
+                                <span className={`font-semibold flex-shrink-0 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`}>{price}</span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <p className={`text-xs truncate ${themeIsDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                              {c || '[Voice message]'}
+                            </p>
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -895,6 +1006,7 @@ function MainChatView({
                     )}
                     </div>
                   </div>
+                  )}
                 {/* Timestamp + Reaction pills row */}
                 <div className="flex items-center mt-1 gap-2 h-6">
                   <span
