@@ -8,6 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('chats', '0048_add_chatroom_url_namespacing'),
+        ('media_analysis', '0001_initial'),  # pgvector extension created here
     ]
 
     operations = [

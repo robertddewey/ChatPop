@@ -537,9 +537,11 @@ detect_previous_installation() {
     print_info "Cleaning up previous installation..."
 
     # Stop and remove Docker containers with volumes
-    if docker ps --filter "name=chatpop" 2>/dev/null | grep -q chatpop; then
-        print_info "Stopping Docker containers..."
+    if docker ps -a --filter "name=chatpop" 2>/dev/null | grep -q chatpop || docker volume ls 2>/dev/null | grep -q chatpop; then
+        print_info "Stopping Docker containers and removing volumes..."
         docker-compose down -v 2>/dev/null || true
+        # Remove any orphaned volumes that docker-compose might miss
+        docker volume rm chatpop_postgres_data chatpop_redis_data 2>/dev/null || true
     fi
 
     # Remove backend artifacts
