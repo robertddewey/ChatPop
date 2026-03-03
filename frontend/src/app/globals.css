@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -12,16 +13,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: #0a0a0a;
+  color: #ededed;
   font-family: Arial, Helvetica, sans-serif;
 }
 
@@ -43,6 +37,19 @@ body {
 .animate-pulse-scale {
   animation: pulseScale 1s ease-in-out 2;
   transform-origin: center;
+}
+
+@keyframes gentleBounce {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-12px);
+  }
+}
+
+.animate-gentle-bounce {
+  animation: gentleBounce 1.5s ease-in-out infinite;
 }
 
 /* Hide scrollbar while maintaining scroll functionality */

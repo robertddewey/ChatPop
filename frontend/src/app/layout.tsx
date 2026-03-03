@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
+import InAppBrowserGate from "@/components/InAppBrowserGate";
 import "./globals.css";
 
 const figtree = Figtree({
@@ -24,7 +25,7 @@ export function generateViewport() {
   return {
     width: 'device-width',
     initialScale: 1,
-    themeColor: "#18181b", // gray-900 to match gradient header
+    themeColor: "#0a0a0a", // gray-900 to match gradient header
   };
 }
 
@@ -34,13 +35,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" style={{ backgroundColor: '#18181b' }}>
+    <html lang="en" style={{ backgroundColor: '#0a0a0a' }}>
       <body
-        style={{ backgroundColor: '#18181b' }}
+        style={{ backgroundColor: '#0a0a0a' }}
         className={`${figtree.className} antialiased`}
         suppressHydrationWarning
       >
-        {children}
+        <InAppBrowserGate>
+          {children}
+        </InAppBrowserGate>
       </body>
     </html>
   );
