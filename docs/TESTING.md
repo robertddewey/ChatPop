@@ -338,6 +338,41 @@ class LoginTests(TestCase):
 - **Team visibility** - Non-technical stakeholders can understand test coverage
 - **No separate docs to maintain** - Single source of truth
 
+## Test Coverage by Module
+
+### Backend Test Files
+
+| Module | Tests | Coverage |
+|--------|-------|----------|
+| `chats/tests/tests_security.py` | 26 | Session tokens, auth, cross-chat protection |
+| `chats/tests/tests_validators.py` | 10 | Username validation rules |
+| `chats/tests/tests_profanity.py` | 26 | Profanity filter |
+| `chats/tests/tests_rate_limits.py` | 12 | Rate limiting |
+| `chats/tests/tests_dual_sessions.py` | 16 | Anonymous + logged-in coexistence, IP limits |
+| `chats/tests/tests_redis_cache.py` | 49 | Message cache (hash+index), filter indexes, pinned messages, reactions, eviction, cleanup |
+| `chats/tests/tests_partial_cache_hits.py` | 8 | Hybrid Redis+PostgreSQL queries |
+| `chats/tests/tests_message_deletion.py` | 22 | Soft delete, multi-layer cache invalidation |
+
+### Redis Cache Tests (`tests_redis_cache.py`)
+
+Key areas covered:
+- **Hash + Index architecture:** Message add, update, get via timeline
+- **Filter indexes:** Focus mode routing (own messages, replies, host threads), gift index routing (sender + recipient), per-user gift indexes
+- **Eviction:** Timeline overflow triggers hash + index cleanup
+- **Pagination:** `get_messages_before()` across timeline and filter indexes
+- **Pinned messages:** Add, remove, ordering by amount paid
+- **Reactions:** Set, get, batch get, cache miss fallback
+- **Room cleanup:** `clear_room_cache()` removes all `room:{id}:*` keys
+- **Edge cases:** Empty rooms, duplicate messages, deleted messages
+
+```bash
+# Run all cache tests
+./venv/bin/python manage.py test chats.tests.tests_redis_cache -v 2
+
+# Run partial cache hit tests
+./venv/bin/python manage.py test chats.tests.tests_partial_cache_hits -v 2
+```
+
 ## Next Steps
 
 1. Add `@allure.feature()` and `@allure.story()` to all test classes

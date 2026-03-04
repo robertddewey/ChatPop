@@ -618,6 +618,8 @@ class MessageListView(APIView):
         limit = int(request.query_params.get('limit', config.MESSAGE_LIST_DEFAULT_LIMIT))
         before_timestamp = request.query_params.get('before')  # Unix timestamp for pagination
         session_token = request.query_params.get('session_token')
+        filter_mode = request.query_params.get('filter')  # 'focus' or 'gifts'
+        filter_username = request.query_params.get('filter_username')  # username for filter
 
         # Extract current user's fingerprint and user_id from session token (for has_reacted)
         current_fingerprint = None
@@ -643,8 +645,19 @@ class MessageListView(APIView):
         source = 'postgresql'  # Default source
 
         if cache_enabled:
-            # Try Redis cache first for ALL requests (initial load AND pagination)
-            if before_timestamp:
+            # Route to filter-specific cache reads when filter is set
+            if filter_mode and filter_username:
+                if filter_mode == 'focus':
+                    messages = MessageCache.get_focus_messages(
+                        chat_room.id, filter_username, limit=limit,
+                        before_timestamp=float(before_timestamp) if before_timestamp else None
+                    )
+                elif filter_mode == 'gifts':
+                    messages = MessageCache.get_gift_messages(
+                        chat_room.id, username=filter_username, limit=limit,
+                        before_timestamp=float(before_timestamp) if before_timestamp else None
+                    )
+            elif before_timestamp:
                 # Pagination request - try cache first with before_timestamp
                 messages = MessageCache.get_messages_before(chat_room.id, before_timestamp=float(before_timestamp), limit=limit)
             else:
@@ -668,7 +681,9 @@ class MessageListView(APIView):
                         before_timestamp=oldest_cached_timestamp,
                         request=request,
                         current_fingerprint=current_fingerprint,
-                        current_user_id=current_user_id
+                        current_user_id=current_user_id,
+                        filter_mode=filter_mode,
+                        filter_username=filter_username
                     )
 
                     # Backfill cache with the older messages we just fetched
@@ -723,7 +738,7 @@ class MessageListView(APIView):
             else:
                 # Cache miss - fall back to PostgreSQL and backfill cache
                 print(f"DEBUG: Cache miss! Calling _fetch_from_db, limit={limit}, before_timestamp={before_timestamp}")
-                messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id)
+                messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id, filter_mode, filter_username)
                 source = 'postgresql_fallback'
                 print(f"DEBUG: _fetch_from_db returned {len(messages)} messages")
 
@@ -734,7 +749,7 @@ class MessageListView(APIView):
                 print(f"DEBUG: _backfill_cache completed")
         else:
             # Cache disabled - always use PostgreSQL
-            messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id)
+            messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id, filter_mode, filter_username)
 
         # Filter blocked users for authenticated users
         if request.user and request.user.is_authenticated:
@@ -765,7 +780,7 @@ class MessageListView(APIView):
             }
         })
 
-    def _fetch_from_db(self, chat_room, limit, before_timestamp=None, request=None, current_fingerprint=None, current_user_id=None):
+    def _fetch_from_db(self, chat_room, limit, before_timestamp=None, request=None, current_fingerprint=None, current_user_id=None, filter_mode=None, filter_username=None):
         """
         Fallback: fetch messages from PostgreSQL.
 
@@ -777,6 +792,23 @@ class MessageListView(APIView):
             chat_room=chat_room,
             is_deleted=False
         ).select_related('user', 'reply_to').prefetch_related('reactions')
+
+        # Apply filter mode
+        if filter_mode and filter_username:
+            from django.db.models import Q
+            if filter_mode == 'focus':
+                queryset = queryset.filter(
+                    Q(message_type='host') |
+                    Q(username__iexact=filter_username) |
+                    Q(reply_to__username__iexact=filter_username)
+                )
+            elif filter_mode == 'gifts':
+                queryset = queryset.filter(
+                    Q(message_type='gift') & (
+                        Q(username__iexact=filter_username) |
+                        Q(gift_recipient__iexact=filter_username)
+                    )
+                )
 
         # Filter by timestamp if paginating
         if before_timestamp:
@@ -4296,6 +4328,7 @@ class SendGiftView(APIView):
             user=sender_user,
             content=message_content,
             message_type=Message.MESSAGE_GIFT,
+            gift_recipient=recipient_username,
         )
 
         # Create Gift record

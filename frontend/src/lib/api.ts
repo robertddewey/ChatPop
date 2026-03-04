@@ -227,6 +227,7 @@ export interface Message {
   avatar_url: string;
   created_at: string;
   is_deleted: boolean;
+  gift_recipient?: string | null;
   is_gift_acknowledged?: boolean;
   reactions?: ReactionSummary[]; // Top 3 reactions for display
 }
@@ -470,10 +471,14 @@ export const chatApi = {
 };
 
 export const messageApi = {
-  getMessages: async (code: string, roomUsername?: string, sessionToken?: string): Promise<{ messages: Message[], pinnedMessages: Message[] }> => {
+  getMessages: async (code: string, roomUsername?: string, sessionToken?: string, filter?: string, filterUsername?: string): Promise<{ messages: Message[], pinnedMessages: Message[] }> => {
     const params: Record<string, string> = {};
     if (sessionToken) {
       params.session_token = sessionToken;
+    }
+    if (filter && filterUsername) {
+      params.filter = filter;
+      params.filter_username = filterUsername;
     }
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/`, { params });
     // Support new Redis cache response format: { messages: [...], pinned_messages: [...], source: "redis" }
@@ -484,13 +489,16 @@ export const messageApi = {
     return { messages, pinnedMessages };
   },
 
-  getMessagesBefore: async (code: string, beforeTimestamp: number, limit: number = 50, roomUsername?: string): Promise<{ messages: Message[], hasMore: boolean }> => {
-    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/`, {
-      params: {
-        before: beforeTimestamp,
-        limit
-      }
-    });
+  getMessagesBefore: async (code: string, beforeTimestamp: number, limit: number = 50, roomUsername?: string, filter?: string, filterUsername?: string): Promise<{ messages: Message[], hasMore: boolean }> => {
+    const params: Record<string, string | number> = {
+      before: beforeTimestamp,
+      limit
+    };
+    if (filter && filterUsername) {
+      params.filter = filter;
+      params.filter_username = filterUsername;
+    }
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/`, { params });
 
     const messages = response.data.messages || response.data.results || response.data;
     // Keep loading as long as we're getting messages back

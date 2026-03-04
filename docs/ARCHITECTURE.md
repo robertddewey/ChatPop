@@ -9,6 +9,7 @@ This document covers advanced architectural patterns and business logic in ChatP
 1. [Dual Sessions Architecture](#dual-sessions-architecture)
 2. [Username Validation Rules](#username-validation-rules)
 3. [IP-Based Rate Limiting](#ip-based-rate-limiting)
+4. [Gift System & Message Filtering](#gift-system--message-filtering)
 
 ---
 
@@ -239,12 +240,81 @@ Run IP rate limiting tests:
 
 ---
 
-## Related Documentation
+## Gift System & Message Filtering
 
-- **Testing:** [docs/TESTING.md](./TESTING.md) - Test suite for dual sessions, validation, and rate limiting
-- **Caching:** [docs/CACHING.md](./CACHING.md) - Redis caching architecture
-- **Security:** See test documentation for JWT session security details
+### Overview
+
+ChatPop supports a gift system where users can send virtual gifts to each other. Gifts are stored as special messages (`message_type='gift'`) with a denormalized `gift_recipient` field for efficient filtering and indexing.
+
+### Gift Data Model
+
+**Message Model** (`models.py`):
+```python
+message_type = CharField(choices=['normal', 'host', 'gift', ...])
+gift_recipient = CharField(max_length=100, null=True, blank=True)  # Denormalized for filter indexing
+is_gift_acknowledged = BooleanField(default=False)  # "Thank you" tracking
+```
+
+**GiftCatalogItem Model** (`models.py`):
+```python
+gift_id = CharField(unique=True)       # e.g., "gift_coffee"
+emoji = CharField()                     # e.g., "☕"
+name = CharField()                      # e.g., "Coffee"
+price_cents = IntegerField()            # e.g., 100
+category = CharField()                  # food, fun, love, animals, premium
+```
+
+The catalog is seeded via `backend/fixtures/seed_data.json` (50 items across 5 categories).
+
+### Why Denormalize `gift_recipient`?
+
+Gift messages record who sent them (`message.username`) and who received them (`message.gift_recipient`). Without denormalization, filtering "show me my gifts" would require joining through a gift transaction table. By storing the recipient directly on the message, we can:
+
+1. **Index in Redis** — `idx:gifts:{username}` sorted sets for O(1) lookups
+2. **Filter in PostgreSQL** — `Q(gift_recipient__iexact=username)` without joins
+3. **Display in frontend** — `message.gift_recipient` available directly in message JSON
+
+### Message Filtering Architecture
+
+The frontend presents three filtered "room" views accessed via FAB buttons:
+
+| Room | Filter | What's Shown |
+|------|--------|-------------|
+| **Main** | none | All messages (default timeline) |
+| **Focus** | `?filter=focus` | User's messages + replies to them + host messages in their threads |
+| **Gifts** | `?filter=gifts` | Gifts sent by or received by the user |
+
+**API:** `GET /api/chats/{username}/{code}/messages/?filter=focus&filter_username=alice`
+
+**Backend routing** (`views.py:MessageListView`):
+1. If `REDIS_CACHE_ENABLED`: route to `MessageCache.get_focus_messages()` or `get_gift_messages()`
+2. If cache disabled or miss: fall back to Django ORM with equivalent `Q()` filters
+
+**Frontend navigation:** Uses a unified `currentRoom` state with `replaceState` for lateral room switching. See [CACHING.md](./CACHING.md#filter-index-architecture) for Redis index details.
+
+### Gift Lifecycle
+
+1. **Send:** User selects gift from catalog → `POST /api/chats/{code}/gifts/send/` → creates gift message with `gift_recipient` field → WebSocket broadcast
+2. **Display:** Gift message appears in chat with emoji and recipient name
+3. **Acknowledge:** Recipient taps "Thank" → `POST /api/chats/{code}/gifts/{id}/thank/` → sets `is_gift_acknowledged=True`
+4. **Filter:** User opens Gift History room → sees all gifts involving them (sent + received)
+
+### Testing
+
+Gift fixtures are loaded via `backend/fixtures/seed_data.json`. The gift catalog includes 50 items across 5 categories (food, fun, love, animals, premium) with prices from $1.00 to $500.00.
 
 ---
 
-**Last Updated:** 2025-01-10
+## Related Documentation
+
+- **Testing:** [docs/TESTING.md](./TESTING.md) - Test suite for dual sessions, validation, and rate limiting
+- **Caching:** [docs/CACHING.md](./CACHING.md) - Redis caching architecture, filter indexes, reaction caching
+- **Security:** See test documentation for JWT session security details
+- **Management Commands:** [docs/MANAGEMENT_COMMANDS.md](./MANAGEMENT_COMMANDS.md) - Cache inspection and data tools
+
+---
+
+**Last Updated:** 2026-03-04
+- Added Gift System & Message Filtering section
+- Documented `gift_recipient` denormalization and filter architecture
+- Updated related documentation links

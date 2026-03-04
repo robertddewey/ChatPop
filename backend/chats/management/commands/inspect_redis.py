@@ -146,7 +146,7 @@ class Command(BaseCommand):
             room_id = str(chat.id)
             # Check each key type
             keys = [
-                (MessageCache.MESSAGES_KEY.format(room_id=room_id), 'messages'),
+                (MessageCache.TIMELINE_KEY.format(room_id=room_id), 'messages'),
                 (MessageCache.PINNED_ORDER_KEY.format(room_id=room_id), 'pinned'),
             ]
 
@@ -174,8 +174,8 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'\n🔍 Chat: {chat_room.host.reserved_username}/{chat_room.code} ({chat_room.name})'))
         self.stdout.write('━' * 60)
 
-        # Main messages
-        main_key = MessageCache.MESSAGES_KEY.format(room_id=room_id)
+        # Main messages (timeline index)
+        main_key = MessageCache.TIMELINE_KEY.format(room_id=room_id)
         main_count = redis_client.zcard(main_key)
         self.stdout.write(f'\n📨 Main Messages ({main_count} cached)')
         self.stdout.write(f'  Key: {main_key}')
@@ -184,17 +184,24 @@ class Command(BaseCommand):
             ttl = redis_client.ttl(main_key)
             self.stdout.write(f'  TTL: {self._format_ttl(ttl)}')
 
-            # Get oldest and newest
-            oldest = redis_client.zrange(main_key, 0, 0)
-            newest = redis_client.zrange(main_key, -1, -1)
+            # Get oldest and newest (timeline stores message IDs, data is in hash)
+            oldest = redis_client.zrange(main_key, 0, 0, withscores=True)
+            newest = redis_client.zrange(main_key, -1, -1, withscores=True)
+            data_key = MessageCache.MSG_DATA_KEY.format(room_id=room_id)
 
             if oldest:
-                oldest_data = json.loads(oldest[0])
-                self.stdout.write(f'  Oldest: {oldest_data["created_at"]}')
+                mid = oldest[0][0].decode() if isinstance(oldest[0][0], bytes) else oldest[0][0]
+                raw = redis_client.hget(data_key, mid)
+                if raw:
+                    oldest_data = json.loads(raw)
+                    self.stdout.write(f'  Oldest: {oldest_data["created_at"]}')
 
             if newest:
-                newest_data = json.loads(newest[0])
-                self.stdout.write(f'  Newest: {newest_data["created_at"]}')
+                mid = newest[0][0].decode() if isinstance(newest[0][0], bytes) else newest[0][0]
+                raw = redis_client.hget(data_key, mid)
+                if raw:
+                    newest_data = json.loads(raw)
+                    self.stdout.write(f'  Newest: {newest_data["created_at"]}')
 
         # Pinned messages
         pinned_key = MessageCache.PINNED_ORDER_KEY.format(room_id=room_id)
@@ -345,7 +352,7 @@ class Command(BaseCommand):
 
         self.stdout.write('\nRedis:')
         if redis_msg:
-            self.stdout.write(f'  ✓ Found in room:{room_id}:messages')
+            self.stdout.write(f'  ✓ Found in room:{room_id}:msg_data')
             self.stdout.write('  Serialized data:')
             self.stdout.write('    ' + json.dumps(redis_msg, indent=4).replace('\n', '\n    '))
         else:
@@ -360,7 +367,7 @@ class Command(BaseCommand):
 
         # Count messages
         keys = [
-            MessageCache.MESSAGES_KEY.format(room_id=room_id),
+            MessageCache.TIMELINE_KEY.format(room_id=room_id),
             MessageCache.PINNED_ORDER_KEY.format(room_id=room_id),
         ]
 
@@ -391,7 +398,7 @@ class Command(BaseCommand):
         """Monitor cache in real-time"""
         room_id = str(chat_room.id)
         redis_client = MessageCache._get_redis_client()
-        key = MessageCache.MESSAGES_KEY.format(room_id=room_id)
+        key = MessageCache.TIMELINE_KEY.format(room_id=room_id)
 
         self.stdout.write(self.style.SUCCESS(f'\n🔴 Monitoring {key} (Press Ctrl+C to stop)\n'))
 
@@ -435,7 +442,7 @@ class Command(BaseCommand):
 
         for chat in chats:
             room_id = str(chat.id)
-            msg_count = redis_client.zcard(MessageCache.MESSAGES_KEY.format(room_id=room_id))
+            msg_count = redis_client.zcard(MessageCache.TIMELINE_KEY.format(room_id=room_id))
             pin_count = redis_client.zcard(MessageCache.PINNED_ORDER_KEY.format(room_id=room_id))
             reaction_pattern = f"room:{room_id}:reactions:*"
             reaction_keys = redis_client.keys(reaction_pattern)

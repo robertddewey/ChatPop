@@ -130,10 +130,10 @@ Per-operation overhead:
 
 The monitoring system is integrated at key points in the codebase:
 
-### Redis Cache (`chats/redis_cache.py`)
+### Redis Cache (`chats/utils/performance/cache.py`)
 
 ```python
-from chats.monitoring import monitor
+from chats.utils.performance.monitoring import monitor
 import time
 
 @classmethod
@@ -306,12 +306,12 @@ def _get_sample_rate(self) -> float:
 ## Files
 
 **Core monitoring infrastructure:**
-- `/backend/chats/monitoring.py` - Main monitoring class
+- `/backend/chats/utils/performance/monitoring.py` - Main monitoring class
 - `/backend/chats/admin_views.py` - Web dashboard views
 - `/backend/chats/templates/admin/monitoring_dashboard.html` - Dashboard UI
 
 **Integration points:**
-- `/backend/chats/redis_cache.py` - Cache operation instrumentation
+- `/backend/chats/utils/performance/cache.py` - Cache operation instrumentation
 - `/backend/chats/views.py` - Database operation instrumentation
 - `/backend/chatpop/settings.py` - Constance configuration
 - `/backend/chatpop/urls.py` - URL routing

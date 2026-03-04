@@ -314,7 +314,8 @@ class Message(models.Model):
     # Current session amount - resets when pin expires or is outbid
     current_pin_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
-    # Gift acknowledgment
+    # Gift tracking
+    gift_recipient = models.CharField(max_length=100, blank=True, null=True, help_text="Recipient username for gift messages (denormalized for filter indexing)")
     is_gift_acknowledged = models.BooleanField(default=False)
 
     # Timestamps

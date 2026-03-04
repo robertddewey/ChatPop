@@ -348,6 +348,10 @@ class RedisMessageCacheTests(TransactionTestCase):
         result = MessageCache.remove_pinned_message(self.chat_room.id, str(message.id))
         self.assertTrue(result)
 
+        # Also unpin from DB so fallback doesn't repopulate
+        message.is_pinned = False
+        message.save()
+
         # Verify it's gone
         pinned = MessageCache.get_pinned_messages(self.chat_room.id)
         self.assertEqual(len(pinned), 0)
@@ -380,10 +384,10 @@ class RedisMessageCacheTests(TransactionTestCase):
 
         pinned = MessageCache.get_pinned_messages(self.chat_room.id)
 
-        # Should be ordered by sticky_until (ascending)
+        # Should be ordered by current_pin_amount (descending - highest first)
         self.assertEqual(len(pinned), 3)
-        self.assertEqual(pinned[0]['content'], 'Pin 0')  # Expires first
-        self.assertEqual(pinned[2]['content'], 'Pin 2')  # Expires last
+        self.assertEqual(pinned[0]['content'], 'Pin 2')  # Highest amount ($3)
+        self.assertEqual(pinned[2]['content'], 'Pin 0')  # Lowest amount ($1)
 
     @allure.title("Backroom messages use separate cache")
     @allure.description("Test that backroom messages use separate Redis key")
@@ -448,6 +452,10 @@ class RedisMessageCacheTests(TransactionTestCase):
 
         # Clear cache
         MessageCache.clear_room_cache(self.chat_room.id)
+
+        # Also unpin from DB so fallback doesn't repopulate
+        pinned_msg.is_pinned = False
+        pinned_msg.save()
 
         # Verify all caches are empty
         self.assertEqual(len(MessageCache.get_messages(self.chat_room.id)), 0)
@@ -1437,9 +1445,9 @@ class ConstanceCacheControlTests(TransactionTestCase):
         )
         MessageCache.add_message(message)
 
-        # Check TTL is set on the Redis key
+        # Check TTL is set on the Redis key (hash + timeline)
         redis_client = MessageCache._get_redis_client()
-        key = f"room:{self.chat_room.id}:messages"
+        key = f"room:{self.chat_room.id}:msg_data"
         ttl = redis_client.ttl(key)
 
         # TTL should be set to 24 hours (86400 seconds)

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
@@ -218,6 +218,8 @@ interface MainChatViewProps {
   handleReactionToggle: (messageId: string, emoji: string) => void;
   messageReactions: Record<string, ReactionSummary[]>;
   loadingOlder?: boolean;
+  filterLoading?: boolean;
+  filterMode?: 'all' | 'focus' | 'gifts';
 }
 
 function MainChatView({
@@ -251,6 +253,8 @@ function MainChatView({
   handleReactionToggle,
   messageReactions,
   loadingOlder = false,
+  filterLoading = false,
+  filterMode = 'all',
 }: MainChatViewProps) {
   // Ref for measuring sticky section height
   const stickySectionRef = useRef<HTMLDivElement>(null);
@@ -554,6 +558,22 @@ function MainChatView({
         style={backgroundStyles.style}
       />
 
+      {/* Filter Loading Overlay */}
+      {filterLoading && (
+        <div className={`absolute inset-0 z-40 flex items-center justify-center ${
+          themeIsDarkMode ? 'bg-zinc-900' : 'bg-white'
+        }`}>
+          <div className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl ${
+            themeIsDarkMode ? 'bg-zinc-800 text-zinc-200' : 'bg-gray-100 text-gray-700'
+          }`}>
+            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm font-medium">
+              {filterMode === 'focus' ? 'Focusing...' : filterMode === 'gifts' ? 'Gifting...' : 'Loading...'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Messages Area */}
       {/* no-scroll-anchor class disables browser scroll anchoring on container AND all descendants */}
       <div
@@ -570,6 +590,20 @@ function MainChatView({
         {loadingOlder && (
           <div className="absolute top-0 left-0 right-0 flex justify-center py-2 pointer-events-none z-30">
             <div className="animate-pulse text-gray-400 text-sm bg-black/50 px-3 py-1 rounded-full">Loading...</div>
+          </div>
+        )}
+        {/* Empty state for filtered views */}
+        {hasJoined && !filterLoading && filteredMessages.length === 0 && filterMode !== 'all' && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <div className={`flex items-center gap-1.5 ${themeIsDarkMode ? 'text-zinc-600' : 'text-gray-300'}`}>
+              {filterMode === 'gifts'
+                ? <><Gift size={96} /><Frown size={96} /></>
+                : <><Eye size={96} /><Frown size={96} /></>
+              }
+            </div>
+            <span className={`text-sm ${themeIsDarkMode ? 'text-zinc-500' : 'text-gray-400'}`}>
+              {filterMode === 'gifts' ? 'No gifts yet' : 'Nothing in focus yet'}
+            </span>
           </div>
         )}
         {hasJoined && (() => {

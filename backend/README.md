@@ -183,6 +183,6 @@ The frontend WebSocket hook (`useChatWebSocket.ts`) automatically reconnects up 
 - **[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)** - Dual sessions, username validation, IP rate limiting
 
 ### Source Code
-- [chats/redis_cache.py](chats/redis_cache.py) - Redis cache implementation
+- [chats/utils/performance/cache.py](chats/utils/performance/cache.py) - Redis cache implementation (hash + index architecture)
 - [chats/consumers.py](chats/consumers.py) - WebSocket consumer implementation
 - [chats/views.py](chats/views.py) - REST API views

@@ -9,10 +9,11 @@ ChatPop uses a **hybrid Redis/PostgreSQL storage strategy** to optimize real-tim
 ## Table of Contents
 
 1. [Message Caching Architecture](#message-caching-architecture)
-2. [Reaction Caching Architecture](#reaction-caching-architecture)
-3. [Performance Characteristics](#performance-characteristics)
-4. [Configuration](#configuration)
-5. [Monitoring & Debugging](#monitoring--debugging)
+2. [Filter Index Architecture](#filter-index-architecture)
+3. [Reaction Caching Architecture](#reaction-caching-architecture)
+4. [Performance Characteristics](#performance-characteristics)
+5. [Configuration](#configuration)
+6. [Monitoring & Debugging](#monitoring--debugging)
 
 ---
 
@@ -61,36 +62,52 @@ ChatPop caches recent messages in Redis for fast delivery while storing all mess
 
 ### Redis Data Structures
 
-**Regular Messages:**
+**Note:** Keys use the room UUID (not chat code) to avoid collisions between rooms with the same code owned by different users.
+
+**Message Data (Hash):**
 ```
-Key: chat:{chat_code}:messages
-Type: Sorted Set (ZADD)
-Score: Unix timestamp (microseconds for ordering)
+Key: room:{room_id}:msg_data
+Type: Hash (HSET)
+Field: message_id (UUID string)
 Value: JSON message object
-TTL: 24 hours OR last 500 messages (whichever is larger)
+TTL: 24 hours (refreshed on each write)
+```
+
+**Timeline Index (Sorted Set):**
+```
+Key: room:{room_id}:timeline
+Type: Sorted Set (ZADD)
+Score: Unix timestamp
+Member: message_id (UUID string)
+TTL: 24 hours
+```
+
+**Filter Indexes (Sorted Sets):**
+```
+room:{room_id}:idx:host             → Host messages
+room:{room_id}:idx:focus:{username}  → Per-user focus view (own messages + replies to them + host messages they triggered)
+room:{room_id}:idx:gifts             → All gift messages
+room:{room_id}:idx:gifts:{username}  → Per-user gifts (sent + received)
 ```
 
 **Pinned Messages:**
 ```
-Key: chat:{chat_code}:pinned
-Type: Sorted Set (ZADD)
-Score: pinned_until timestamp (for auto-expiry)
-Value: JSON message object
-TTL: 7 days
+Key: room:{room_id}:pinned:{message_id}  → Individual pinned message data
+Key: room:{room_id}:pinned_order          → Pin ordering (score = pin_amount_paid)
 ```
 
-**Back Room Messages:**
+**Reaction Caches:**
 ```
-Key: chat:{chat_code}:backroom:messages
-Type: Sorted Set (ZADD)
-Score: Unix timestamp
-Value: JSON message object
-TTL: 24 hours OR last 500 messages
+Key: room:{room_id}:reactions:{message_id}
+Type: Hash (emoji → JSON reaction summary)
+TTL: 24 hours
 ```
+
+This **hash + index** architecture separates message data (stored once in the hash) from chronological ordering and filter routing (stored as lightweight ID references in sorted sets). A message write is a single pipelined operation that writes to the hash, timeline, and all applicable filter indexes atomically.
 
 ### Message Serialization
 
-Messages in Redis include the `username_is_reserved` flag for frontend badge display:
+Messages in Redis include all fields needed by the frontend, including badge status, avatar URLs, gift metadata, and media URLs:
 
 ```json
 {
@@ -98,11 +115,23 @@ Messages in Redis include the `username_is_reserved` flag for frontend badge dis
   "chat_code": "ABC123",
   "username": "Robert",
   "username_is_reserved": true,
-  "user_id": 42,
+  "user_id": "42",
   "message_type": "normal",
+  "is_from_host": false,
   "content": "Hello everyone!",
   "reply_to_id": null,
+  "reply_to_message": null,
   "is_pinned": false,
+  "pinned_at": null,
+  "sticky_until": null,
+  "pin_amount_paid": "0.00",
+  "current_pin_amount": "0.00",
+  "avatar_url": "https://...",
+  "voice_url": null,
+  "photo_url": null,
+  "video_url": null,
+  "gift_recipient": null,
+  "is_gift_acknowledged": false,
   "created_at": "2025-01-04T12:34:56.789Z",
   "is_deleted": false
 }
@@ -142,16 +171,22 @@ Messages in Redis include the `username_is_reserved` flag for frontend badge dis
 ### Implementation Files
 
 **Core Modules:**
-- `backend/chats/redis_cache.py` - MessageCache utility class
+- `backend/chats/utils/performance/cache.py` - MessageCache utility class (hash + index architecture)
+- `backend/chats/utils/performance/monitoring.py` - Cache monitoring and metrics
 - `backend/chats/consumers.py` - WebSocket consumer (dual-write on send)
-- `backend/chats/views.py` - MessageListView (Redis-first read)
+- `backend/chats/views.py` - MessageListView (Redis-first read with filter routing)
 
 **Key Methods:**
-- `MessageCache.add_message()` - Add message to Redis cache
-- `MessageCache.get_messages()` - Fetch recent messages (Redis)
-- `MessageCache.get_messages_before()` - Pagination support
+- `MessageCache.add_message()` - Add message to hash + timeline + filter indexes (pipelined)
+- `MessageCache.update_message()` - Update message in hash (O(1), no index changes)
+- `MessageCache.get_messages()` - Fetch recent messages from timeline → hash
+- `MessageCache.get_messages_before()` - Pagination via timeline index
+- `MessageCache.get_focus_messages()` - Merge user focus index + host index
+- `MessageCache.get_gift_messages()` - Read from gifts index (all or per-user)
 - `MessageCache.add_pinned_message()` - Cache pinned message
 - `MessageCache.get_pinned_messages()` - Fetch active pins (auto-expires)
+- `MessageCache.remove_message()` - Remove from hash, timeline, all indexes, pinned, reactions
+- `MessageCache.clear_room_cache()` - SCAN and delete all `room:{id}:*` keys
 - `MessageListView._backfill_cache()` - Automatically populate cache on miss (internal)
 
 ### Edge Cases & Error Handling
@@ -215,6 +250,92 @@ Real-world test results (`chats/tests_partial_cache_hits.py`):
 
 ---
 
+## Filter Index Architecture
+
+### Overview
+
+ChatPop supports **filtered room views** (Focus Mode and Gift History) powered by pre-computed Redis indexes. When a message is written, it is routed to all applicable filter indexes in the same pipelined operation as the main timeline write. This means filter reads are O(1) index lookups — no scanning or filtering at read time.
+
+### Filter Modes
+
+**Focus Mode** (`?filter=focus&filter_username=alice`):
+Shows messages relevant to a specific user — their own messages, messages that reply to them, and host messages connected to their conversation threads.
+
+**Gift History** (`?filter=gifts&filter_username=alice`):
+Shows gift messages involving a specific user — gifts they sent and gifts they received. Uses the denormalized `gift_recipient` field on the Message model (added in migration 0066) for efficient indexing.
+
+### Fan-Out Routing Logic
+
+When `MessageCache.add_message()` is called, the message is routed to indexes based on its properties:
+
+```
+Message arrives
+  │
+  ├─→ msg_data hash     (always — stores full JSON)
+  ├─→ timeline          (always — chronological order)
+  │
+  ├─→ idx:host          (if message_type == 'host')
+  │
+  ├─→ idx:focus:{sender}    (always — user sees own messages)
+  ├─→ idx:focus:{parent}    (if reply — parent author sees replies to them)
+  │   └─→ Also adds PARENT message to focus (if host replied to someone,
+  │       so user sees what triggered the host's reply)
+  │
+  ├─→ idx:gifts              (if message_type == 'gift')
+  ├─→ idx:gifts:{sender}     (if gift — sender sees their sent gifts)
+  └─→ idx:gifts:{recipient}  (if gift_recipient set — recipient sees received gifts)
+```
+
+### Focus Mode Read Path
+
+`get_focus_messages()` merges two indexes:
+1. `idx:focus:{username}` — user's personal focus (own messages + replies to them)
+2. `idx:host` — all host messages (always visible in focus)
+
+These are combined via `ZUNIONSTORE` into a temporary key, then read with `ZRANGE` for pagination. The temporary key has a 60-second TTL for reuse across rapid page loads.
+
+### Gift History Read Path
+
+`get_gift_messages()` reads from:
+- `idx:gifts:{username}` — user-specific gifts (sent + received)
+- Falls back to `idx:gifts` — all gifts in the room (if no username specified)
+
+### Eviction & Cleanup
+
+When the timeline exceeds `REDIS_CACHE_MAX_COUNT`, overflow messages are evicted from:
+- The message hash (`msg_data`)
+- The timeline sorted set
+- **All filter indexes** (via `SCAN` for `room:{id}:idx:*` pattern)
+
+`remove_message()` (soft delete) similarly removes from hash, timeline, and all discovered index keys.
+
+### Database Fallback
+
+When Redis cache is disabled or on cache miss, `MessageListView._fetch_from_db()` applies equivalent Django ORM filters:
+
+```python
+# Focus mode
+queryset.filter(
+    Q(message_type='host') |
+    Q(username__iexact=filter_username) |
+    Q(reply_to__username__iexact=filter_username)
+)
+
+# Gift mode
+queryset.filter(
+    Q(message_type='gift') & (
+        Q(username__iexact=filter_username) |
+        Q(gift_recipient__iexact=filter_username)
+    )
+)
+```
+
+### Frontend Room Navigation
+
+The frontend uses a unified `currentRoom` state (`'main' | 'focus' | 'gifts' | 'backroom'`) to manage room switching. Room transitions use `history.replaceState()` (lateral navigation) while only the Settings overlay uses `pushState()`. Each room switch fetches fresh messages from the API with the appropriate `?filter=` parameter — no client-side firehose caching.
+
+---
+
 ## Reaction Caching Architecture
 
 ### Overview
@@ -242,18 +363,17 @@ Message reactions (emoji reactions on chat messages) use a **separate Redis cach
 
 **Reaction Cache Keys:**
 ```
-Key: chat:{chat_code}:reactions:{message_id}
+Key: room:{room_id}:reactions:{message_id}
 Type: Redis Hash
-Fields: emoji → count mapping
+Fields: emoji → JSON reaction summary
 TTL: 24 hours
 ```
 
 **Example:**
 ```redis
-HSET chat:ABC123:reactions:550e8400-e29b-41d4-a716-446655440000
-  "👍" "5"
-  "❤️" "3"
-  "😂" "1"
+HSET room:abc123-uuid:reactions:550e8400-uuid
+  "👍" '{"emoji":"👍","count":5,"users":["alice","bob"]}'
+  "❤️" '{"emoji":"❤️","count":3,"users":["charlie"]}'
 ```
 
 ### Data Flow Scenarios
@@ -310,42 +430,22 @@ Performance: ~100ms (PostgreSQL fallback), subsequent loads are fast
 
 ### Implementation Components
 
-**File: `backend/chats/redis_cache.py`**
+**File: `backend/chats/utils/performance/cache.py`**
 
-New methods added to `MessageCache` class:
+Reaction methods on `MessageCache` class:
 
 ```python
 @classmethod
-def set_message_reactions(cls, chat_code: str, message_id: str, reactions: List[Dict]) -> bool:
-    """
-    Cache reaction summary for a message.
-
-    Args:
-        chat_code: Chat room code
-        message_id: Message UUID
-        reactions: List of {emoji, count, users} dicts
-    """
-    # Creates Redis hash: chat:{code}:reactions:{msg_id}
-    # Sets 24-hour TTL
+def set_message_reactions(cls, room_id, message_id, reactions) -> bool:
+    """Cache reaction summary for a message (room:{id}:reactions:{msg_id})."""
 
 @classmethod
-def get_message_reactions(cls, chat_code: str, message_id: str) -> List[Dict]:
-    """
-    Get cached reactions for a single message.
-
-    Returns empty list if cache miss (caller should rebuild from PostgreSQL)
-    """
+def get_message_reactions(cls, room_id, message_id) -> List[Dict]:
+    """Get cached reactions for a single message. Empty list on cache miss."""
 
 @classmethod
-def batch_get_reactions(cls, chat_code: str, message_ids: List[str]) -> Dict[str, List[Dict]]:
-    """
-    Batch fetch reactions for multiple messages using Redis pipeline.
-
-    Returns:
-        {message_id: [reactions]} dict
-
-    Performance: Single Redis round-trip for all messages
-    """
+def batch_get_reactions(cls, room_id, message_ids) -> Dict[str, List[Dict]]:
+    """Batch fetch reactions for multiple messages using Redis pipeline."""
 ```
 
 **File: `backend/chats/views.py`**
@@ -360,161 +460,33 @@ WebSocket consumer broadcasts full reaction summary (not just emoji) to enable i
 
 ### Frontend WebSocket Integration
 
-**IMPORTANT:** The frontend reactions feature has not been implemented yet. When implementing emoji reactions in the frontend, follow these guidelines for WebSocket real-time updates.
+Reactions are fully implemented in the frontend with real-time WebSocket updates.
 
 #### WebSocket Event Format
 
-The backend broadcasts reaction updates via WebSocket with this format (`views.py:850-866`):
+The backend broadcasts reaction updates via WebSocket:
 
-```python
+```json
 {
   "type": "reaction",
-  "action": "added" | "removed" | "updated",
-  "message_id": "550e8400-e29b-41d4-a716-446655440000",
+  "action": "added",
+  "message_id": "550e8400-uuid",
   "emoji": "👍",
   "username": "alice",
-  "reaction": {
-    "id": "...",
-    "emoji": "👍",
-    "username": "alice",
-    "created_at": "2025-01-04T12:34:56.789Z"
-  },
   "summary": [
-    {"emoji": "👍", "count": 5},
-    {"emoji": "❤️", "count": 3},
-    {"emoji": "😂", "count": 1"}
+    {"emoji": "👍", "count": 5, "has_reacted": true},
+    {"emoji": "❤️", "count": 3, "has_reacted": false}
   ]
 }
 ```
 
-**Key Fields:**
-- `type`: Always `"reaction"` for reaction events
-- `action`: `"added"` (new reaction), `"removed"` (reaction deleted), `"updated"` (changed emoji)
-- `message_id`: UUID of the message that was reacted to
-- `emoji`: The emoji that was added/removed/changed
-- `username`: User who performed the action
-- `summary`: **Top 3 reactions** for this message (use this to update UI)
+#### Data Flow
 
-#### Frontend Implementation Pattern
-
-**Step 1: Add State Management**
-
-In your chat page component (`page.tsx`), add state to track reactions:
-
-```typescript
-// Near other state declarations
-const [messageReactions, setMessageReactions] = useState<Record<string, ReactionSummary[]>>({});
-
-interface ReactionSummary {
-  emoji: string;
-  count: number;
-}
-```
-
-**Step 2: Handle WebSocket Reaction Events**
-
-Add to your existing WebSocket `onmessage` handler:
-
-```typescript
-// In WebSocket onmessage handler
-const data = JSON.parse(event.data);
-
-if (data.type === 'reaction') {
-  // Extract reaction summary from WebSocket event (already computed by backend)
-  const { message_id, summary } = data;
-
-  // Update local state immediately (no API call needed - cache already updated)
-  setMessageReactions(prev => ({
-    ...prev,
-    [message_id]: summary  // summary is top 3 reactions with counts
-  }));
-
-  // Optional: Play sound or show animation
-  if (data.action === 'added') {
-    playReactionSound();  // If you want audio feedback
-  }
-}
-```
-
-**Why This Works:**
-1. Backend updates Redis cache before broadcasting (`views.py:927-942`)
-2. Backend computes top 3 reactions and includes in `summary` field
-3. Frontend just updates local state - no additional API calls needed
-4. Real-time updates across all connected users
-5. Cache hit on next page reload
-
-**Step 3: Render Reactions**
-
-Use the `messageReactions` state in your message rendering:
-
-```typescript
-{messages.map((message) => (
-  <div key={message.id}>
-    {/* Existing message content */}
-    <MessageBubble message={message} />
-
-    {/* Reaction bar (only if reactions exist) */}
-    {(messageReactions[message.id]?.length > 0 || message.reactions?.length > 0) && (
-      <ReactionBar
-        reactions={messageReactions[message.id] || message.reactions || []}
-        onReactionClick={(emoji) => handleReactionToggle(message.id, emoji)}
-        themeIsDarkMode={currentDesign.is_dark_mode}
-      />
-    )}
-  </div>
-))}
-```
-
-**Step 4: Handle User Reactions**
-
-When user adds/removes a reaction via emoji picker or ReactionBar:
-
-```typescript
-const handleReactionToggle = async (messageId: string, emoji: string) => {
-  try {
-    // Optimistic UI update (optional - for instant feedback)
-    // You can skip this and wait for WebSocket broadcast
-
-    // Call API to toggle reaction
-    const result = await messageApi.toggleReaction(
-      params.code,
-      messageId,
-      emoji,
-      username,
-      fingerprint
-    );
-
-    // WebSocket will broadcast the update to all users (including this one)
-    // The WebSocket handler above will update messageReactions state
-
-  } catch (error) {
-    console.error('Failed to toggle reaction:', error);
-    // Show error toast to user
-  }
-};
-```
-
-**Performance Benefits:**
-- No N+1 queries: Reactions loaded with messages via batch fetch
-- No API polling: Real-time updates via WebSocket
-- No cache staleness: WebSocket updates ensure consistency
-- Fast UI updates: Just update local state from WebSocket event
-
-#### Testing Frontend Integration
-
-**Test Scenarios:**
-1. Load chat → see existing reactions on messages
-2. Add reaction → see update immediately (WebSocket)
-3. Remove reaction → see update immediately (WebSocket)
-4. Multiple users react simultaneously → all users see updates
-5. Reload page → reactions persist (loaded from cache)
-6. Reaction on old message → still works (PostgreSQL fallback)
-
-**Performance Validation:**
-- Initial load: <20ms for reactions (batch fetch via Redis pipeline)
-- WebSocket update: <2ms (local state update)
-- No additional API calls after initial load
-- Page reload: reactions still cached (24h TTL)
+1. User taps emoji → `POST /api/chats/{code}/messages/{id}/react/` with optimistic UI update
+2. Backend toggles reaction in PostgreSQL + updates Redis cache
+3. WebSocket broadcasts `summary` to all connected clients
+4. Frontend updates `messageReactions` state from WebSocket event (no additional API call)
+5. On page load, reactions are batch-fetched via `MessageCache.batch_get_reactions()` (single pipelined Redis call)
 
 ### Cache Invalidation Strategy
 
@@ -568,24 +540,29 @@ def remove_message(cls, chat_code: str, message_id: str) -> bool:
     """
 ```
 
-**Layer 1: Main Messages Cache**
+**Layer 1: Message Hash + Timeline**
 ```
-Key: chat:{chat_code}:messages
-Action: ZREM (remove from sorted set)
+Key: room:{room_id}:msg_data  → HDEL (remove from hash)
+Key: room:{room_id}:timeline  → ZREM (remove from sorted set)
 Why: Prevents deleted message from appearing in message list
 ```
 
-**Layer 2: Pinned Messages Cache**
+**Layer 2: All Filter Indexes**
 ```
-Key: chat:{chat_code}:pinned
-Action: Remove from sorted set (if message was pinned)
+Keys: room:{room_id}:idx:*  → ZREM from all matching indexes (via SCAN)
+Why: Prevents deleted message from appearing in Focus or Gift views
+```
+
+**Layer 3: Pinned Messages Cache**
+```
+Key: room:{room_id}:pinned:{message_id}  → DEL
+Key: room:{room_id}:pinned_order          → ZREM
 Why: Deleted pinned messages should not remain in sticky UI
 ```
 
-**Layer 3: Reactions Cache**
+**Layer 4: Reactions Cache**
 ```
-Key: chat:{chat_code}:reactions:{message_id}
-Action: DEL (remove entire key)
+Key: room:{room_id}:reactions:{message_id}  → DEL
 Why: Reactions for deleted messages are no longer relevant
 ```
 
@@ -673,16 +650,15 @@ const handleMessageDeleted = useCallback((messageId: string) => {
 ### Implementation Files
 
 **Backend:**
-- `backend/chats/redis_cache.py:474-521` - `MessageCache.remove_message()`
-- `backend/chats/views.py:1551-1619` - `MessageDeleteView` (API endpoint)
-- `backend/chats/consumers.py:113-118` - WebSocket `message_deleted` handler
-- `backend/chats/urls.py:25` - Route: `/<code>/messages/<uuid:message_id>/delete/`
+- `backend/chats/utils/performance/cache.py` - `MessageCache.remove_message()` (hash + timeline + all indexes + pinned + reactions)
+- `backend/chats/views.py` - `MessageDeleteView` (API endpoint)
+- `backend/chats/consumers.py` - WebSocket `message_deleted` handler
 
 **Frontend:**
-- `frontend/src/lib/api.ts:449-460` - `deleteMessage()` API method
-- `frontend/src/hooks/useChatWebSocket.ts:84-91` - WebSocket event handler
-- `frontend/src/app/chat/[code]/page.tsx:255-268` - `handleMessageDeleted()` state update
-- `frontend/src/components/MessageActionsModal.tsx:239-254` - Delete UI with confirmation
+- `frontend/src/lib/api.ts` - `deleteMessage()` API method
+- `frontend/src/hooks/useChatWebSocket.ts` - WebSocket event handler
+- `frontend/src/app/chat/[username]/[code]/page.tsx` - `handleMessageDeleted()` state update
+- `frontend/src/components/MessageActionsModal.tsx` - Delete UI with confirmation
 
 ### Testing
 
@@ -852,44 +828,47 @@ REACTION_CACHE_TTL_HOURS = 24  # Match message cache TTL
 **Redis CLI Commands:**
 
 ```bash
-# Inspect cached messages for a chat
-redis-cli ZRANGE chat:ABC123:messages 0 -1
+# Inspect message hash (all message data)
+redis-cli -p 6381 HLEN room:{room_id}:msg_data
 
-# Inspect cached reactions for a message
-redis-cli HGETALL chat:ABC123:reactions:550e8400-e29b-41d4-a716-446655440000
+# Inspect timeline (message count)
+redis-cli -p 6381 ZCARD room:{room_id}:timeline
 
-# Clear message cache for testing
-redis-cli DEL chat:ABC123:messages
+# Inspect filter indexes
+redis-cli -p 6381 ZCARD room:{room_id}:idx:host
+redis-cli -p 6381 ZCARD room:{room_id}:idx:focus:alice
+redis-cli -p 6381 ZCARD room:{room_id}:idx:gifts
+redis-cli -p 6381 ZCARD room:{room_id}:idx:gifts:alice
 
-# Clear reaction cache for testing
-redis-cli DEL chat:ABC123:reactions:*
+# Inspect reactions for a message
+redis-cli -p 6381 HGETALL room:{room_id}:reactions:{message_id}
 
 # Check cache TTL
-redis-cli TTL chat:ABC123:messages
-redis-cli TTL chat:ABC123:reactions:550e8400-e29b-41d4-a716-446655440000
+redis-cli -p 6381 TTL room:{room_id}:timeline
 
-# Check message count
-redis-cli ZCARD chat:ABC123:messages
+# List all keys for a room
+redis-cli -p 6381 KEYS "room:{room_id}:*"
 ```
 
 **Python Management Commands:**
 
 ```bash
-# Inspect Redis cache
-./venv/bin/python manage.py inspect_redis --chat ABC123
+# Inspect Redis cache (see docs/MANAGEMENT_COMMANDS.md for full usage)
+./venv/bin/python manage.py inspect_redis --chat jane/tech-talk-tuesday
+./venv/bin/python manage.py inspect_redis --chat jane/tech-talk-tuesday --show-messages
+./venv/bin/python manage.py inspect_redis --stats
 ```
 
 **MessageCache API:**
 
 ```python
-# Manual cache invalidation
-from chats.redis_cache import MessageCache
+from chats.utils.performance.cache import MessageCache
 
-# Clear all caches for a chat
-MessageCache.clear_chat_cache(chat_code)
+# Clear all caches for a room
+MessageCache.clear_room_cache(room_id)
 
 # Clear specific message reactions
-MessageCache.set_message_reactions(chat_code, message_id, [])
+MessageCache.set_message_reactions(room_id, message_id, [])
 ```
 
 ---
@@ -915,13 +894,19 @@ MessageCache.set_message_reactions(chat_code, message_id, [])
 
 ## Related Documentation
 
-- **Testing:** [docs/TESTING.md](./TESTING.md) - Redis cache test suite (57 tests total: 49 cache tests + 8 partial hit tests)
-- **Architecture:** [docs/ARCHITECTURE.md](./ARCHITECTURE.md) - Overall system design
+- **Testing:** [docs/TESTING.md](./TESTING.md) - Redis cache test suite (49 cache tests + 8 partial hit tests)
+- **Architecture:** [docs/ARCHITECTURE.md](./ARCHITECTURE.md) - Overall system design, gift system, filter architecture
+- **Management Commands:** [docs/MANAGEMENT_COMMANDS.md](./MANAGEMENT_COMMANDS.md) - `inspect_redis` cache debugging tool
+- **Monitoring:** [docs/MONITORING.md](./MONITORING.md) - Adaptive sampling and real-time dashboard
 
 ---
 
-**Last Updated:** 2025-01-12
-- Added Partial Cache Hit Detection section with performance metrics
-- Added 8 new tests for partial cache hit behavior (`chats/tests_partial_cache_hits.py`)
-- Updated message load flow documentation to include hybrid queries
-- Added performance benchmarks: hybrid queries are 50% faster than full DB queries
+**Last Updated:** 2026-03-04
+- Rewrote Redis data structures section for hash + index architecture (replaces sorted-set-with-JSON-values)
+- Added Filter Index Architecture section (focus, gifts, fan-out routing)
+- Updated all key patterns from `chat:{code}:*` → `room:{room_id}:*`
+- Updated all file paths from `redis_cache.py` → `utils/performance/cache.py`
+- Documented `gift_recipient` denormalized field and per-user gift indexes
+- Removed stale "frontend reactions not implemented" section (reactions are fully implemented)
+- Updated message deletion to document filter index cleanup (Layer 2)
+- Added frontend room navigation architecture note (unified `currentRoom` state)

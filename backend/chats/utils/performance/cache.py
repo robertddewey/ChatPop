@@ -5,13 +5,18 @@ Implements a hybrid message storage strategy:
 - PostgreSQL: Permanent message log (source of truth)
 - Redis: Fast cache for recent messages (last 500 or 24 hours)
 
-Key patterns:
-- room:{room_id}:messages - Sorted set for message ordering (score = timestamp)
+Architecture (hash + index):
+- room:{room_id}:msg_data - Hash (message_id -> JSON) for message data
+- room:{room_id}:timeline - Sorted set (timestamp -> message_id) for chronological order
+- room:{room_id}:idx:host - Sorted set index for host messages
+- room:{room_id}:idx:focus:{username} - Sorted set index for user's focus view
+- room:{room_id}:idx:gifts - Sorted set index for all gift messages
+- room:{room_id}:idx:gifts:{username} - Sorted set index for user's gifts
+
+Other keys (unchanged):
 - room:{room_id}:pinned:{message_id} - Individual pinned message data
 - room:{room_id}:pinned_order - Sorted set for pin ordering (score = pin_amount_paid)
 - room:{room_id}:reactions:{message_id} - Hash for reaction counts
-- Dual-write on message send (PostgreSQL + Redis)
-- Read from Redis first, fallback to PostgreSQL
 
 Note: Uses room UUID (not code) to avoid collisions between
 manual rooms with same code owned by different users.
@@ -31,8 +36,21 @@ from .monitoring import monitor
 class MessageCache:
     """Redis cache manager for chat messages"""
 
-    # Cache key patterns (using room UUID for uniqueness)
+    # Core data store (hash: message_id -> JSON)
+    MSG_DATA_KEY = "room:{room_id}:msg_data"
+    # Timeline index (sorted set: score=timestamp, member=message_id)
+    TIMELINE_KEY = "room:{room_id}:timeline"
+
+    # Filter indexes (sorted set: score=timestamp, member=message_id)
+    HOST_INDEX_KEY = "room:{room_id}:idx:host"
+    FOCUS_INDEX_KEY = "room:{room_id}:idx:focus:{username}"
+    GIFTS_INDEX_KEY = "room:{room_id}:idx:gifts"
+    GIFTS_USER_INDEX_KEY = "room:{room_id}:idx:gifts:{username}"
+
+    # Legacy key (kept for migration/cleanup reference)
     MESSAGES_KEY = "room:{room_id}:messages"
+
+    # Pinned and reactions (unchanged)
     PINNED_MESSAGE_KEY = "room:{room_id}:pinned:{message_id}"
     PINNED_ORDER_KEY = "room:{room_id}:pinned_order"
     REACTIONS_KEY = "room:{room_id}:reactions:{message_id}"
@@ -146,6 +164,7 @@ class MessageCache:
             "avatar_url": avatar_url,
             "created_at": message.created_at.isoformat(),
             "is_deleted": message.is_deleted,
+            "gift_recipient": message.gift_recipient,
             "is_gift_acknowledged": message.is_gift_acknowledged,
         }
 
@@ -165,7 +184,14 @@ class MessageCache:
     @classmethod
     def add_message(cls, message: Message) -> bool:
         """
-        Add a message to Redis cache.
+        Add a message to Redis cache with filter index routing.
+
+        Writes to:
+        1. Message hash (msg_data) — full JSON
+        2. Timeline sorted set — for chronological ordering
+        3. Filter indexes — based on message properties
+
+        All operations are pipelined (single network round trip).
 
         Args:
             message: Message instance (already saved to PostgreSQL)
@@ -177,33 +203,86 @@ class MessageCache:
         try:
             redis_client = cls._get_redis_client()
             room_id = str(message.chat_room.id)
+            message_id = str(message.id)
+            score = message.created_at.timestamp()
+            ttl_seconds = cls._get_ttl_hours() * 3600
 
-            # Compute badge status
+            # Compute badge status and serialize
             username_is_reserved = cls._compute_username_is_reserved(message)
-
-            # Serialize message
             message_data = cls._serialize_message(message, username_is_reserved)
             message_json = json.dumps(message_data)
 
-            # Use messages key
-            key = cls.MESSAGES_KEY.format(room_id=room_id)
+            # Build pipeline for atomic write
+            pipe = redis_client.pipeline()
 
-            # Use microsecond timestamp for ordering
-            score = message.created_at.timestamp()
+            # 1. HSET message data to hash
+            data_key = cls.MSG_DATA_KEY.format(room_id=room_id)
+            pipe.hset(data_key, message_id, message_json)
+            pipe.expire(data_key, ttl_seconds)
 
-            # Add to sorted set
-            redis_client.zadd(key, {message_json: score})
+            # 2. ZADD to timeline
+            timeline_key = cls.TIMELINE_KEY.format(room_id=room_id)
+            pipe.zadd(timeline_key, {message_id: score})
+            pipe.expire(timeline_key, ttl_seconds)
 
-            # Trim to max message count (keep most recent)
+            # 3. Route to filter indexes
+            sender_username = message.username.lower()
+
+            # Host index
+            if message.message_type == 'host':
+                host_key = cls.HOST_INDEX_KEY.format(room_id=room_id)
+                pipe.zadd(host_key, {message_id: score})
+                pipe.expire(host_key, ttl_seconds)
+
+            # Focus index: sender always sees own messages
+            focus_key = cls.FOCUS_INDEX_KEY.format(room_id=room_id, username=sender_username)
+            pipe.zadd(focus_key, {message_id: score})
+            pipe.expire(focus_key, ttl_seconds)
+
+            # Focus index: if reply, add to parent author's focus
+            if message.reply_to:
+                parent_username = message.reply_to.username.lower()
+                if parent_username != sender_username:
+                    parent_focus_key = cls.FOCUS_INDEX_KEY.format(room_id=room_id, username=parent_username)
+                    pipe.zadd(parent_focus_key, {message_id: score})
+                    pipe.expire(parent_focus_key, ttl_seconds)
+
+                    # If host replied to someone, also add the PARENT message to that user's focus
+                    # so they see the context of what the host replied to
+                    if message.message_type == 'host':
+                        parent_msg_id = str(message.reply_to.id)
+                        parent_score = message.reply_to.created_at.timestamp()
+                        pipe.zadd(parent_focus_key, {parent_msg_id: parent_score})
+
+            # Gift indexes
+            if message.message_type == 'gift':
+                gifts_key = cls.GIFTS_INDEX_KEY.format(room_id=room_id)
+                pipe.zadd(gifts_key, {message_id: score})
+                pipe.expire(gifts_key, ttl_seconds)
+
+                # Per-user gift index: sender
+                gifts_sender_key = cls.GIFTS_USER_INDEX_KEY.format(room_id=room_id, username=sender_username)
+                pipe.zadd(gifts_sender_key, {message_id: score})
+                pipe.expire(gifts_sender_key, ttl_seconds)
+
+                # Per-user gift index: recipient
+                if message.gift_recipient:
+                    recipient_username = message.gift_recipient.lower()
+                    if recipient_username != sender_username:
+                        gifts_recipient_key = cls.GIFTS_USER_INDEX_KEY.format(room_id=room_id, username=recipient_username)
+                        pipe.zadd(gifts_recipient_key, {message_id: score})
+                        pipe.expire(gifts_recipient_key, ttl_seconds)
+
+            pipe.execute()
+
+            # Trim timeline to max (separate operation)
             max_messages = cls._get_max_messages()
-            total_messages = redis_client.zcard(key)
+            total_messages = redis_client.zcard(timeline_key)
             if total_messages > max_messages:
-                # Remove oldest messages
-                redis_client.zremrangebyrank(key, 0, total_messages - max_messages - 1)
-
-            # Set TTL on the key (refreshed on each add)
-            ttl_seconds = cls._get_ttl_hours() * 3600
-            redis_client.expire(key, ttl_seconds)
+                # Get IDs being removed so we can clean hash + indexes
+                overflow = total_messages - max_messages
+                removed_ids = redis_client.zrange(timeline_key, 0, overflow - 1)
+                cls._evict_messages(redis_client, room_id, removed_ids)
 
             # Monitor: Cache write
             duration_ms = (time.time() - start_time) * 1000
@@ -217,12 +296,36 @@ class MessageCache:
             return False
 
     @classmethod
+    def _evict_messages(cls, redis_client, room_id: str, message_ids: list):
+        """Remove evicted messages from hash, timeline, and all filter indexes."""
+        if not message_ids:
+            return
+        pipe = redis_client.pipeline()
+        data_key = cls.MSG_DATA_KEY.format(room_id=room_id)
+        timeline_key = cls.TIMELINE_KEY.format(room_id=room_id)
+
+        for mid_bytes in message_ids:
+            mid = mid_bytes.decode() if isinstance(mid_bytes, bytes) else mid_bytes
+            pipe.hdel(data_key, mid)
+            pipe.zrem(timeline_key, mid)
+
+        # Clean all index keys for this room
+        idx_pattern = f"room:{room_id}:idx:*"
+        for idx_key in redis_client.scan_iter(match=idx_pattern, count=100):
+            for mid_bytes in message_ids:
+                mid = mid_bytes.decode() if isinstance(mid_bytes, bytes) else mid_bytes
+                pipe.zrem(idx_key, mid)
+
+        pipe.execute()
+
+    @classmethod
     def update_message(cls, message: Message) -> bool:
         """
-        Update an existing message in the Redis cache.
+        Update an existing message in the Redis hash.
 
-        Finds the message by ID, removes the old version, and adds the updated version
-        with the same timestamp/score.
+        O(1) operation: HGET to check existence, HSET to overwrite.
+        Indexes are NOT touched — they store only message IDs and timestamps,
+        which don't change on updates (reactions, pins, gift ack, etc.).
 
         Args:
             message: Message instance with updated data
@@ -234,40 +337,21 @@ class MessageCache:
             redis_client = cls._get_redis_client()
             room_id = str(message.chat_room.id)
             message_id = str(message.id)
-            key = cls.MESSAGES_KEY.format(room_id=room_id)
+            data_key = cls.MSG_DATA_KEY.format(room_id=room_id)
 
-            # Get all messages with scores
-            message_strings_with_scores = redis_client.zrange(key, 0, -1, withscores=True)
-
-            # Find the message with matching ID
-            old_message_json = None
-            old_score = None
-            for msg_str, score in message_strings_with_scores:
-                try:
-                    msg_data = json.loads(msg_str)
-                    if msg_data.get('id') == message_id:
-                        old_message_json = msg_str
-                        old_score = score
-                        break
-                except json.JSONDecodeError:
-                    continue
-
-            if old_message_json is None:
-                # Message not in cache - just add it
+            # Check if message exists in hash
+            existing = redis_client.hget(data_key, message_id)
+            if existing is None:
+                # Not in cache — add it (will also write indexes)
                 return cls.add_message(message)
 
-            # Compute badge status
+            # Compute badge status and serialize
             username_is_reserved = cls._compute_username_is_reserved(message)
-
-            # Serialize the updated message
             message_data = cls._serialize_message(message, username_is_reserved)
-            new_message_json = json.dumps(message_data)
+            message_json = json.dumps(message_data)
 
-            # Use pipeline for atomic remove + add
-            pipe = redis_client.pipeline()
-            pipe.zrem(key, old_message_json)
-            pipe.zadd(key, {new_message_json: old_score})
-            pipe.execute()
+            # O(1) overwrite in hash
+            redis_client.hset(data_key, message_id, message_json)
 
             return True
 
@@ -276,9 +360,43 @@ class MessageCache:
             return False
 
     @classmethod
+    def _fetch_by_ids(cls, redis_client, room_id: str, message_ids: list) -> List[Dict[str, Any]]:
+        """
+        Fetch message data from hash for a list of message IDs.
+
+        Args:
+            redis_client: Redis client
+            room_id: Room UUID string
+            message_ids: List of message ID strings/bytes (in desired order)
+
+        Returns:
+            List of message dicts (preserves input order, skips missing)
+        """
+        if not message_ids:
+            return []
+
+        data_key = cls.MSG_DATA_KEY.format(room_id=room_id)
+        # Decode bytes to strings for HMGET
+        str_ids = [mid.decode() if isinstance(mid, bytes) else mid for mid in message_ids]
+        raw_values = redis_client.hmget(data_key, str_ids)
+
+        messages = []
+        for val in raw_values:
+            if val is None:
+                continue
+            try:
+                raw = val.decode() if isinstance(val, bytes) else val
+                messages.append(json.loads(raw))
+            except (json.JSONDecodeError, AttributeError):
+                continue
+        return messages
+
+    @classmethod
     def get_messages(cls, room_id: Union[str, UUID], limit: int = 50) -> List[Dict[str, Any]]:
         """
         Get recent messages from Redis cache.
+
+        Reads from timeline index → hash lookup.
 
         Args:
             room_id: Chat room UUID (as string or UUID object)
@@ -291,20 +409,13 @@ class MessageCache:
         room_id_str = str(room_id)
         try:
             redis_client = cls._get_redis_client()
-            key = cls.MESSAGES_KEY.format(room_id=room_id_str)
+            timeline_key = cls.TIMELINE_KEY.format(room_id=room_id_str)
 
-            # Get most recent messages in chronological order (ascending)
-            # ZRANGE returns lowest scores first (oldest messages first)
-            # Get the last N messages by using negative indices
-            message_strings = redis_client.zrange(key, -limit, -1)
+            # Get last N message IDs from timeline (oldest first)
+            message_ids = redis_client.zrange(timeline_key, -limit, -1)
 
-            # Deserialize
-            messages = []
-            for msg_str in message_strings:
-                try:
-                    messages.append(json.loads(msg_str))
-                except json.JSONDecodeError:
-                    continue
+            # Fetch full data from hash
+            messages = cls._fetch_by_ids(redis_client, room_id_str, message_ids)
 
             # Monitor: Cache read
             duration_ms = (time.time() - start_time) * 1000
@@ -335,9 +446,30 @@ class MessageCache:
             return []
 
     @classmethod
+    def _get_ids_before(cls, redis_client, index_key: str, before_timestamp: float, limit: int) -> list:
+        """
+        Get message IDs from an index before a timestamp, newest-first then reversed.
+
+        Returns list of message IDs in chronological order (oldest first).
+        """
+        # ZREVRANGEBYSCORE: newest-first, exclusive upper bound
+        ids = redis_client.zrevrangebyscore(
+            index_key,
+            max=f'({before_timestamp}',
+            min='-inf',
+            start=0,
+            num=limit
+        )
+        # Reverse to chronological order
+        ids.reverse()
+        return ids
+
+    @classmethod
     def get_messages_before(cls, room_id: Union[str, UUID], before_timestamp: float, limit: int = 50) -> List[Dict[str, Any]]:
         """
         Get messages before a specific timestamp (for pagination/scroll-up).
+
+        Reads from timeline index → hash lookup.
 
         Args:
             room_id: Chat room UUID (as string or UUID object)
@@ -351,29 +483,13 @@ class MessageCache:
         room_id_str = str(room_id)
         try:
             redis_client = cls._get_redis_client()
-            key = cls.MESSAGES_KEY.format(room_id=room_id_str)
+            timeline_key = cls.TIMELINE_KEY.format(room_id=room_id_str)
 
-            # Get messages with score < before_timestamp (exclusive)
-            # ZRANGEBYSCORE: ascending order, exclusive max boundary using '(' prefix
-            # We need to get the last N messages before the timestamp, so use ZREVRANGEBYSCORE
-            # to get them newest-first, then reverse to chronological order
-            message_strings = redis_client.zrevrangebyscore(
-                key,
-                max=f'({before_timestamp}',  # Exclusive boundary
-                min='-inf',
-                start=0,
-                num=limit
-            )
+            # Get IDs before timestamp
+            message_ids = cls._get_ids_before(redis_client, timeline_key, before_timestamp, limit)
 
-            messages = []
-            for msg_str in message_strings:
-                try:
-                    messages.append(json.loads(msg_str))
-                except json.JSONDecodeError:
-                    continue
-
-            # Reverse to chronological order (oldest first)
-            messages.reverse()
+            # Fetch full data from hash
+            messages = cls._fetch_by_ids(redis_client, room_id_str, message_ids)
 
             # Monitor: Cache read (pagination)
             duration_ms = (time.time() - start_time) * 1000
@@ -401,6 +517,131 @@ class MessageCache:
                 source='redis'
             )
 
+            return []
+
+    @classmethod
+    def get_focus_messages(cls, room_id: Union[str, UUID], username: str,
+                           limit: int = 50, before_timestamp: float = None) -> List[Dict[str, Any]]:
+        """
+        Get focus-mode messages: merge user's focus index + host index.
+
+        Focus contains: user's own messages, replies to user, host messages,
+        and context messages (parent messages the host replied to).
+
+        Args:
+            room_id: Chat room UUID
+            username: Username to get focus for (case-insensitive)
+            limit: Maximum messages to return
+            before_timestamp: Optional timestamp for pagination
+
+        Returns:
+            List of message dicts (oldest first, chronological order)
+        """
+        start_time = time.time()
+        room_id_str = str(room_id)
+        username_lower = username.lower()
+        try:
+            redis_client = cls._get_redis_client()
+            focus_key = cls.FOCUS_INDEX_KEY.format(room_id=room_id_str, username=username_lower)
+            host_key = cls.HOST_INDEX_KEY.format(room_id=room_id_str)
+
+            if before_timestamp:
+                max_score = f'({before_timestamp}'
+            else:
+                max_score = '+inf'
+
+            # Get IDs + scores from both indexes
+            pipe = redis_client.pipeline()
+            pipe.zrangebyscore(focus_key, '-inf', max_score, withscores=True)
+            pipe.zrangebyscore(host_key, '-inf', max_score, withscores=True)
+            focus_results, host_results = pipe.execute()
+
+            # Merge by message ID (dedup), keeping score for ordering
+            merged = {}
+            for mid, score in focus_results:
+                mid_str = mid.decode() if isinstance(mid, bytes) else mid
+                merged[mid_str] = score
+            for mid, score in host_results:
+                mid_str = mid.decode() if isinstance(mid, bytes) else mid
+                if mid_str not in merged:
+                    merged[mid_str] = score
+
+            # Sort by timestamp, take last N
+            sorted_ids = sorted(merged.items(), key=lambda x: x[1])
+            if before_timestamp:
+                # Already filtered by score, take last `limit`
+                sorted_ids = sorted_ids[-limit:]
+            else:
+                sorted_ids = sorted_ids[-limit:]
+
+            # Fetch full data in order
+            ordered_ids = [mid for mid, _ in sorted_ids]
+            messages = cls._fetch_by_ids(redis_client, room_id_str, ordered_ids)
+
+            # Monitor
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_read(room_id_str, hit=len(messages) > 0,
+                                   count=len(messages), duration_ms=duration_ms, source='redis')
+
+            return messages
+
+        except Exception as e:
+            print(f"Redis cache error (get_focus_messages): {e}")
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_read(room_id_str, hit=False, count=0,
+                                   duration_ms=duration_ms, source='redis')
+            return []
+
+    @classmethod
+    def get_gift_messages(cls, room_id: Union[str, UUID], username: str = None,
+                          limit: int = 50, before_timestamp: float = None) -> List[Dict[str, Any]]:
+        """
+        Get gift messages from Redis cache.
+
+        If username is provided, returns gifts for that user (sent or received).
+        Otherwise returns all gifts in the room.
+
+        Args:
+            room_id: Chat room UUID
+            username: Optional username to filter by (case-insensitive)
+            limit: Maximum messages to return
+            before_timestamp: Optional timestamp for pagination
+
+        Returns:
+            List of message dicts (oldest first, chronological order)
+        """
+        start_time = time.time()
+        room_id_str = str(room_id)
+        try:
+            redis_client = cls._get_redis_client()
+
+            # Pick the right index
+            if username:
+                index_key = cls.GIFTS_USER_INDEX_KEY.format(
+                    room_id=room_id_str, username=username.lower()
+                )
+            else:
+                index_key = cls.GIFTS_INDEX_KEY.format(room_id=room_id_str)
+
+            if before_timestamp:
+                message_ids = cls._get_ids_before(redis_client, index_key, before_timestamp, limit)
+            else:
+                message_ids = redis_client.zrange(index_key, -limit, -1)
+
+            messages = cls._fetch_by_ids(redis_client, room_id_str, message_ids)
+
+            # Monitor
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_read(room_id_str, hit=len(messages) > 0,
+                                   count=len(messages), duration_ms=duration_ms, source='redis')
+
+            return messages
+
+        except Exception as e:
+            print(f"Redis cache error (get_gift_messages): {e}")
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_read(room_id_str, hit=False, count=0,
+                                   duration_ms=duration_ms, source='redis')
             return []
 
     @classmethod
@@ -804,8 +1045,7 @@ class MessageCache:
         """
         Remove a specific message from cache (for soft deletes).
 
-        This removes the message from both the main messages cache and pinned cache.
-        Also removes associated reactions cache.
+        Removes from: hash, timeline, all filter indexes, pinned cache, reactions.
 
         Args:
             room_id: Chat room UUID (as string or UUID object)
@@ -817,31 +1057,33 @@ class MessageCache:
         try:
             redis_client = cls._get_redis_client()
             room_id_str = str(room_id)
-            removed = False
 
-            # Remove from main messages cache
-            messages_key = cls.MESSAGES_KEY.format(room_id=room_id_str)
-            message_strings = redis_client.zrange(messages_key, 0, -1)
+            data_key = cls.MSG_DATA_KEY.format(room_id=room_id_str)
+            timeline_key = cls.TIMELINE_KEY.format(room_id=room_id_str)
 
-            for msg_str in message_strings:
-                try:
-                    msg_data = json.loads(msg_str)
-                    if msg_data.get('id') == message_id:
-                        redis_client.zrem(messages_key, msg_str)
-                        removed = True
-                        break
-                except json.JSONDecodeError:
-                    continue
+            # Check if message exists in hash
+            removed = redis_client.hdel(data_key, message_id) > 0
+
+            # Remove from timeline
+            pipe = redis_client.pipeline()
+            pipe.zrem(timeline_key, message_id)
+
+            # Remove from all filter indexes (scan for idx:* keys)
+            idx_pattern = f"room:{room_id_str}:idx:*"
+            for idx_key in redis_client.scan_iter(match=idx_pattern, count=100):
+                pipe.zrem(idx_key, message_id)
+
+            # Remove reactions cache
+            reactions_key = cls.REACTIONS_KEY.format(room_id=room_id_str, message_id=message_id)
+            pipe.delete(reactions_key)
+
+            pipe.execute()
 
             # Remove from pinned messages cache (if it exists there)
             cls.remove_pinned_message(room_id_str, message_id)
 
-            # Remove reactions cache for this message
-            reactions_key = cls.REACTIONS_KEY.format(room_id=room_id_str, message_id=message_id)
-            redis_client.delete(reactions_key)
-
             if removed:
-                print(f"✅ Removed message {message_id} from Redis cache for room {room_id_str}")
+                print(f"Removed message {message_id} from Redis cache for room {room_id_str}")
 
             return removed
 
@@ -852,37 +1094,23 @@ class MessageCache:
     @classmethod
     def clear_room_cache(cls, room_id: Union[str, UUID]):
         """
-        Clear all cached messages for a chat room.
+        Clear all cached data for a chat room.
 
-        Useful for testing or manual cache invalidation.
-
-        Note: This clears the main messages cache and pinned order,
-        but individual pinned message keys may need separate cleanup.
+        Uses SCAN to find all room:{room_id}:* keys and deletes them.
+        This covers: msg_data, timeline, all idx:*, pinned:*, reactions:*, etc.
         """
         try:
             redis_client = cls._get_redis_client()
             room_id_str = str(room_id)
 
-            # Clear main keys
-            keys_to_delete = [
-                cls.MESSAGES_KEY.format(room_id=room_id_str),
-                cls.PINNED_ORDER_KEY.format(room_id=room_id_str),
-            ]
+            # SCAN for all keys belonging to this room
+            pattern = f"room:{room_id_str}:*"
+            keys_to_delete = []
+            for key in redis_client.scan_iter(match=pattern, count=200):
+                keys_to_delete.append(key)
 
-            for key in keys_to_delete:
-                redis_client.delete(key)
-
-            # Also clear any pinned message data keys (pattern match)
-            pinned_pattern = f"room:{room_id_str}:pinned:*"
-            pinned_keys = redis_client.keys(pinned_pattern)
-            if pinned_keys:
-                redis_client.delete(*pinned_keys)
-
-            # Clear reaction keys (pattern match)
-            reactions_pattern = f"room:{room_id_str}:reactions:*"
-            reaction_keys = redis_client.keys(reactions_pattern)
-            if reaction_keys:
-                redis_client.delete(*reaction_keys)
+            if keys_to_delete:
+                redis_client.delete(*keys_to_delete)
 
         except Exception as e:
             print(f"Redis cache error (clear_room_cache): {e}")

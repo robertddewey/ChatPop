@@ -168,7 +168,7 @@ These commands inspect, sync, and manage the Redis cache layer.
 
 ### `inspect_redis`
 
-Comprehensive debugging tool for the Redis message and reaction cache. Supports listing, inspecting, comparing, monitoring, and clearing caches.
+Comprehensive debugging tool for the Redis message cache (hash + index architecture). Supports listing, inspecting, comparing, monitoring, and clearing caches. Shows timeline counts, filter index sizes, pinned messages, and reaction caches.
 
 **List all cached chats:**
 ```bash
@@ -208,6 +208,29 @@ Comprehensive debugging tool for the Redis message and reaction cache. Supports 
 ./venv/bin/python manage.py inspect_redis --chat jane/tech-talk-tuesday --clear
 ./venv/bin/python manage.py inspect_redis --chat jane/tech-talk-tuesday --clear --force
 ```
+
+---
+
+### `reset_all_chat_data`
+
+Nuclear reset: deletes all messages, gifts, transactions, reactions from PostgreSQL and flushes the entire Redis cache. Useful during development when you want a clean slate.
+
+```bash
+# With confirmation prompt
+./venv/bin/python manage.py reset_all_chat_data
+
+# Skip confirmation
+./venv/bin/python manage.py reset_all_chat_data --confirm
+```
+
+**Deletes (in dependency order):**
+1. MessageReaction records
+2. Gift records
+3. Transaction records
+4. Message records
+5. Redis cache (full `FLUSHDB`)
+
+**Warning:** This is irreversible. Chat rooms and participations are preserved — only message data is wiped.
 
 ---
 
@@ -374,7 +397,8 @@ Requires an OpenAI API key (`OPENAI_API_KEY` in `backend/.env`) for the `text-em
 | `test_photo_upload` | media_analysis | Testing | End-to-end photo upload test |
 | `batch_photo_upload` | media_analysis | Testing | Upload multiple test photos from JSON |
 | `generate_location_data` | media_analysis | Testing | Stress test lightning strike map |
-| `inspect_redis` | chats | Maintenance | Debug/monitor Redis message cache |
+| `inspect_redis` | chats | Maintenance | Debug/monitor Redis message cache (hash + indexes) |
+| `reset_all_chat_data` | chats | Maintenance | Delete all messages, gifts, transactions + flush Redis |
 | `sync_reaction_cache` | chats | Maintenance | Sync reactions from PostgreSQL to Redis |
 | `cleanup_expired_photos` | media_analysis | Maintenance | Delete expired photo records and files |
 | `backfill_avatars` | chats | Maintenance | Generate missing avatar URLs |
