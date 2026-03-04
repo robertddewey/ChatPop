@@ -20,7 +20,7 @@ import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft, Reply, X } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, Sparkles, ArrowLeft, Reply, X, Gift } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited, hasModalState } from '@/lib/modalState';
@@ -303,7 +303,7 @@ export default function ChatPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   // Message filter
-  const [filterMode, setFilterMode] = useState<'all' | 'focus'>('all');
+  const [filterMode, setFilterMode] = useState<'all' | 'focus' | 'gifts'>('all');
 
   // Emoji reactions state
   const [messageReactions, setMessageReactions] = useState<Record<string, ReactionSummary[]>>({});
@@ -652,6 +652,12 @@ export default function ChatPage() {
         return;
       }
 
+      // If gift filter is active, clear it first
+      if (filterMode === 'gifts') {
+        setFilterMode('all');
+        return;
+      }
+
       // If in a secondary view (backroom), return to main chat first
       if (activeView !== 'main') {
         setActiveView('main');
@@ -683,7 +689,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, activeView, showSettingsSheet, router, code]);
+  }, [hasJoined, activeView, showSettingsSheet, filterMode, router, code]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -1175,17 +1181,25 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
-  const scrollToMessage = useCallback((messageId: string) => {
+  const highlightMessage = useCallback((messageId: string) => {
     const element = document.querySelector(`[data-message-id="${messageId}"]`);
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Add pulsating animation
+      element.classList.remove('animate-pulse-scale');
+      void (element as HTMLElement).offsetWidth; // force reflow to restart animation
       element.classList.add('animate-pulse-scale');
       setTimeout(() => {
         element.classList.remove('animate-pulse-scale');
       }, 2000);
     }
   }, []);
+
+  const scrollToMessage = useCallback((messageId: string) => {
+    const element = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      highlightMessage(messageId);
+    }
+  }, [highlightMessage]);
 
   // Track if user is near bottom
   const shouldAutoScrollRef = useRef(true);
@@ -1286,8 +1300,6 @@ export default function ChatPage() {
   const handlePin = useCallback(async (messageId: string, amountCents: number): Promise<boolean> => {
     try {
       await messageApi.pinMessage(code, messageId, amountCents, roomUsername);
-            // Reload messages to get updated pin status
-      await loadMessages();
       return true;
     } catch (err: unknown) {
       const error = err as ApiError;
@@ -1305,8 +1317,6 @@ export default function ChatPage() {
   const handleAddToPin = useCallback(async (messageId: string, amountCents: number): Promise<boolean> => {
     try {
       await messageApi.addToPin(code, messageId, amountCents, roomUsername);
-            // Reload messages to get updated pin amount
-      await loadMessages();
       return true;
     } catch (err: unknown) {
       const error = err as ApiError;
@@ -1493,6 +1503,16 @@ export default function ChatPage() {
 
   // Filter messages based on mode (memoized to prevent recalculation on unrelated state changes)
   const filteredMessages = useMemo(() => {
+    if (filterMode === 'gifts') {
+      return messages.filter(msg => {
+        if (msg.message_type !== 'gift') return false;
+        if (msg.username === username) return true;
+        const recipientMatch = msg.content.match(/to\s+@(\S+)\s*$/);
+        if (recipientMatch && recipientMatch[1] === username) return true;
+        return false;
+      });
+    }
+
     if (filterMode !== 'focus') return messages;
 
     return messages.filter(msg => {
@@ -1889,13 +1909,6 @@ export default function ChatPage() {
               onClick={() => {
                 const newMode = filterMode === 'all' ? 'focus' : 'all';
                 setFilterMode(newMode);
-
-                // Reset scroll to top when changing filter to prevent weird jumps
-                setTimeout(() => {
-                  if (messagesContainerRef.current) {
-                    messagesContainerRef.current.scrollTop = 0;
-                  }
-                }, 0);
               }}
               className={`transition-all whitespace-nowrap flex items-center gap-1.5 ${
                 filterMode === 'focus'
@@ -1927,7 +1940,9 @@ export default function ChatPage() {
             themeIsDarkMode={themeIsDarkMode}
             handleScroll={handleScroll}
             scrollToMessage={scrollToMessage}
+            highlightMessage={highlightMessage}
             handleReply={handleReply}
+            disableReply={filterMode === 'gifts'}
             handlePin={handlePin}
             handleAddToPin={handleAddToPin}
             getPinRequirements={getPinRequirements}
@@ -1960,29 +1975,62 @@ export default function ChatPage() {
           isHost={isHost}
           hasJoined={hasJoined}
           sending={sending}
+          username={username}
           replyingTo={replyingTo}
           onCancelReply={handleCancelReply}
           onSubmitText={handleSubmitText}
           onVoiceRecording={handleVoiceRecording}
           onPhotoSelected={handlePhotoSelected}
           onVideoSelected={handleVideoSelected}
+          disabled={filterMode === 'gifts'}
+          disabledMessage="Viewing gift history"
           design={messageInputDesign}
         />
       )}
 
-      {/* Crown Button - Grid centered at 50%, first icon at top of grid */}
+      {/* Crown Button - Grid centered at 50%, first icon of 4-icon grid */}
       {hasJoined && (
         <FloatingActionButton
           icon={Crown}
           onClick={() => {}}
           position="right"
-          customPosition="right-[2.5%] top-[calc(50%-92px)]"
+          customPosition="right-[2.5%] top-[calc(50%-124px)]"
           ariaLabel="Host Actions"
           design={'dark-mode'}
         />
       )}
 
-      {/* Game Room Tab - Center icon of 3-icon grid */}
+      {/* Gift Filter - Second icon of 4-icon grid */}
+      {hasJoined && (
+        <FloatingActionButton
+          icon={Gift}
+          toggledIcon={MessageSquare}
+          onClick={() => {
+            if (filterMode === 'gifts') {
+              // Leaving gift filter - use history.back() to properly handle browser history
+              window.history.back();
+            } else {
+              // Exit backroom if entering gift filter
+              if (activeView === 'backroom') {
+                window.history.back();
+              }
+              // Entering gift filter - push history state so back button returns to main
+              window.history.pushState({ view: 'gifts' }, '', window.location.href);
+              setFilterMode('gifts');
+              setReplyingTo(null);
+            }
+          }}
+          isToggled={filterMode === 'gifts'}
+          position="right"
+          customPosition="right-[2.5%] top-[calc(50%-60px)]"
+          ariaLabel="Filter Gifts"
+          toggledAriaLabel="Show All Messages"
+          design={'dark-mode'}
+          initialBounce={false}
+        />
+      )}
+
+      {/* Game Room Tab - Third icon of 4-icon grid */}
       {hasJoined && (
         <FloatingActionButton
           icon={Gamepad2}
@@ -1992,6 +2040,8 @@ export default function ChatPage() {
               // Going back to main - use history.back() to properly handle browser history
               window.history.back();
             } else {
+              // Clear gift filter when entering backroom
+              if (filterMode === 'gifts') setFilterMode('all');
               // Entering backroom - push history state so back button returns to main
               window.history.pushState({ view: 'backroom' }, '', window.location.href);
               setActiveView('backroom');
@@ -2000,7 +2050,7 @@ export default function ChatPage() {
           isToggled={activeView === 'backroom'}
           hasNotification={false}
           position="right"
-          customPosition="right-[2.5%] top-[calc(50%-28px)]"
+          customPosition="right-[2.5%] top-[calc(50%+4px)]"
           ariaLabel="Open Game Room"
           toggledAriaLabel="Return to Main Chat"
           design={'dark-mode'}
@@ -2008,7 +2058,7 @@ export default function ChatPage() {
         />
       )}
 
-      {/* Settings Button - Bottom icon of grid */}
+      {/* Settings Button - Bottom icon of 4-icon grid */}
       {hasJoined && (
         <FloatingActionButton
           icon={Settings}
@@ -2017,7 +2067,7 @@ export default function ChatPage() {
             setShowSettingsSheet(true);
           }}
           position="right"
-          customPosition="right-[2.5%] top-[calc(50%+36px)]"
+          customPosition="right-[2.5%] top-[calc(50%+68px)]"
           ariaLabel="Open Settings"
           design={'dark-mode'}
         />

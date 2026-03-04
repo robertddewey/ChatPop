@@ -84,7 +84,7 @@ export default function FloatingActionButton({
         return {
           baseClasses: 'p-3 rounded-2xl',
           defaultColors: 'bg-gradient-to-br from-zinc-700 to-zinc-800 hover:from-zinc-600 hover:to-zinc-700 text-white',
-          toggledColors: 'bg-gradient-to-br from-zinc-700 to-zinc-800 hover:from-zinc-600 hover:to-zinc-700 text-white',
+          toggledColors: 'bg-gradient-to-br from-cyan-600 to-cyan-700 hover:from-cyan-500 hover:to-cyan-600 text-white',
           shadow: 'shadow-lg',
         };
     }
@@ -125,6 +125,7 @@ export default function FloatingActionButton({
       className={`
         fixed z-50
         transition-all duration-300
+        active:scale-90 active:brightness-125
         ${getPositionClasses()}
         ${styles.baseClasses}
         ${colorClasses}

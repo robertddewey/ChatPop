@@ -7,6 +7,15 @@ import { Pin, Gift, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic
 import { useLongPress } from '@/hooks/useLongPress';
 import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
 
+// "you" pill shown next to the current user's username
+function YouPill({ dark = true }: { dark?: boolean }) {
+  return (
+    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none ${
+      dark ? 'bg-white/10 text-zinc-400' : 'bg-black/10 text-gray-500'
+    }`}>you</span>
+  );
+}
+
 interface PinTier {
   amount_cents: number;
   duration_minutes: number;
@@ -55,6 +64,7 @@ interface MessageActionsModalProps {
   reactions?: ReactionSummary[];
   onDelete?: (messageId: string) => void;
   onReport?: (messageId: string, username: string) => void;
+  onHighlight?: (messageId: string) => void;
   sessionToken?: string | null;
   themeColors?: ThemeColors;
   // Legacy props (deprecated, will be removed)
@@ -214,6 +224,7 @@ export default function MessageActionsModal({
   reactions = [],
   onDelete,
   onReport,
+  onHighlight,
   sessionToken,
   themeColors,
   // Legacy props
@@ -374,6 +385,7 @@ export default function MessageActionsModal({
         const success = await handler(message.id, selectedTier.amount_cents);
         if (success) {
           handleClose();
+          setTimeout(() => onHighlight?.(message.id), 300);
         } else {
           setPinError('Failed to pin message');
         }
@@ -667,6 +679,7 @@ export default function MessageActionsModal({
                     {message.username_is_reserved && (
                       <BadgeCheck className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.badgeIcon || '#34d399' }} />
                     )}
+                    {message.username.toLowerCase() === currentUsername?.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                     {message.is_from_host && (
                       <Crown className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
                     )}
@@ -684,11 +697,16 @@ export default function MessageActionsModal({
                     const giftName = giftMatch ? giftMatch[2] : '';
                     const price = giftMatch ? giftMatch[3] : '';
                     const recipient = giftMatch ? giftMatch[4] : '';
+                    const isForMe = recipient.toLowerCase() === currentUsername?.toLowerCase();
                     return (
                       <div className={`relative rounded-xl px-3 py-2.5 text-center max-w-[85%] ${
-                        themeIsDarkMode
-                          ? 'bg-gradient-to-b from-zinc-800 to-zinc-800/60 border border-zinc-700'
-                          : 'bg-gradient-to-b from-purple-50/80 to-white border border-purple-200/60'
+                        isForMe
+                          ? themeIsDarkMode
+                            ? 'bg-purple-950/50 border border-purple-500/50'
+                            : 'bg-purple-100/80 border border-purple-400/50'
+                          : themeIsDarkMode
+                            ? 'bg-gradient-to-b from-zinc-800 to-zinc-800/60 border border-zinc-700'
+                            : 'bg-gradient-to-b from-purple-50/80 to-white border border-purple-200/60'
                       }`}>
                         {message.is_gift_acknowledged && (
                           <div className="absolute top-1.5 left-2 text-sm" title="Thanked">
@@ -708,7 +726,12 @@ export default function MessageActionsModal({
                         </div>
                         {recipient && (
                           <div className={`text-[10px] mt-1 ${themeIsDarkMode ? 'text-zinc-500' : 'text-gray-400'}`}>
-                            to <span className={`font-semibold ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600'}`}>@{recipient}</span>
+                            to <span className={`font-semibold ${
+                              isForMe
+                                ? (themeIsDarkMode ? 'text-purple-400' : 'text-purple-600')
+                                : (themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600')
+                            }`}>@{recipient}</span>
+                              {isForMe && <span className="ml-1"><YouPill dark={themeIsDarkMode} /></span>}
                           </div>
                         )}
                       </div>
@@ -789,6 +812,8 @@ export default function MessageActionsModal({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onReact(message.id, emoji);
+                                handleClose();
+                                setTimeout(() => onHighlight?.(message.id), 300);
                               }}
                               onTouchStart={(e) => e.stopPropagation()}
                               onTouchMove={(e) => e.stopPropagation()}

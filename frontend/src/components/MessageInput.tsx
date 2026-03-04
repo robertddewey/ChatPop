@@ -22,6 +22,9 @@ interface MessageInputProps {
   onVoiceRecording: (audioBlob: Blob, metadata: RecordingMetadata, caption: string) => void;
   onPhotoSelected: (file: File, width: number, height: number, caption: string) => void;
   onVideoSelected: (file: File, duration: number, thumbnail: Blob | null, caption: string) => void;
+  username?: string;
+  disabled?: boolean;
+  disabledMessage?: string;
   design: {
     inputArea: string;
     inputField: string;
@@ -45,6 +48,9 @@ function MessageInputComponent({
   onVoiceRecording,
   onPhotoSelected,
   onVideoSelected,
+  username,
+  disabled = false,
+  disabledMessage,
   design,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
@@ -145,6 +151,16 @@ function MessageInputComponent({
   const hasMediaButton = chatRoom?.photo_enabled || chatRoom?.video_enabled;
   const showMediaButtons = !isExpanded && (hasVoiceButton || hasMediaButton);
 
+  if (disabled) {
+    return (
+      <div className={design.inputArea} style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))` }}>
+        <div className="flex items-center justify-center h-9 rounded-lg bg-zinc-800/60 border border-zinc-700/50">
+          <span className="text-sm text-zinc-500">{disabledMessage || 'Messaging disabled'}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={design.inputArea} style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))` }}>
       {/* Reply Preview Bar */}
@@ -155,6 +171,9 @@ function MessageInputComponent({
             <div className="flex-1 min-w-0">
               <div className={design.replyPreviewUsername}>
                 Replying to {replyingTo.username}
+                {username && replyingTo.username.toLowerCase() === username.toLowerCase() && (
+                  <span className="ml-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none bg-white/10 text-zinc-400">you</span>
+                )}
               </div>
               <div className={design.replyPreviewContent}>
                 {replyingTo.content}
