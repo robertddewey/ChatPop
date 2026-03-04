@@ -120,7 +120,7 @@ export function GiftReceivedPopup({
           <button
             onClick={() => showBulkActions ? onThankAll() : onThankOne(currentGift.id)}
             className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
-              isDark ? 'bg-cyan-600 hover:bg-cyan-500 text-white' : 'bg-purple-600 hover:bg-purple-500 text-white'
+              isDark ? 'bg-[#404eed] hover:bg-[#3640d9] text-white' : 'bg-purple-600 hover:bg-purple-500 text-white'
             }`}
           >
             {showBulkActions ? 'Thank All' : 'Thank you!'}

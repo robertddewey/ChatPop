@@ -699,41 +699,45 @@ export default function MessageActionsModal({
                     const recipient = giftMatch ? giftMatch[4] : '';
                     const isForMe = recipient.toLowerCase() === currentUsername?.toLowerCase();
                     return (
-                      <div className={`relative rounded-xl px-3 py-2.5 text-center max-w-[85%] ${
+                      <div className={`relative rounded-xl px-2.5 py-2 flex items-center gap-2 max-w-[calc(100%-2.5%-5rem+5px)] ${
                         isForMe
                           ? themeIsDarkMode
                             ? 'bg-purple-950/50 border border-purple-500/50'
                             : 'bg-purple-100/80 border border-purple-400/50'
                           : themeIsDarkMode
-                            ? 'bg-gradient-to-b from-zinc-800 to-zinc-800/60 border border-zinc-700'
-                            : 'bg-gradient-to-b from-purple-50/80 to-white border border-purple-200/60'
+                            ? 'bg-zinc-800/80 border border-zinc-700'
+                            : 'bg-gray-50 border border-gray-200'
                       }`}>
                         {message.is_gift_acknowledged && (
-                          <div className="absolute top-1.5 left-2 text-sm" title="Thanked">
+                          <div className="absolute -top-1.5 -right-1.5 text-sm" title="Thanked">
                             🤗
                           </div>
                         )}
-                        {price && (
-                          <div className={`absolute top-2 right-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                            themeIsDarkMode ? 'bg-cyan-900/50 text-cyan-400' : 'bg-purple-100 text-purple-600'
-                          }`}>
-                            {price}
-                          </div>
-                        )}
-                        <div className="text-3xl mb-1">{emoji}</div>
-                        <div className={`text-xs font-bold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                          {giftName}
+                        <div className={`text-xl flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center animate-gift-breath ${
+                          themeIsDarkMode ? 'bg-zinc-700/80' : 'bg-gray-100'
+                        }`}>
+                          {emoji}
                         </div>
-                        {recipient && (
-                          <div className={`text-[10px] mt-1 ${themeIsDarkMode ? 'text-zinc-500' : 'text-gray-400'}`}>
-                            to <span className={`font-semibold ${
-                              isForMe
-                                ? (themeIsDarkMode ? 'text-purple-400' : 'text-purple-600')
-                                : (themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600')
-                            }`}>@{recipient}</span>
-                              {isForMe && <span className="ml-1"><YouPill dark={themeIsDarkMode} /></span>}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>{giftName}</span>
+                            {price && (
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                                themeIsDarkMode ? 'bg-cyan-900/50 text-cyan-400' : 'bg-purple-100 text-purple-600'
+                              }`}>{price}</span>
+                            )}
                           </div>
-                        )}
+                          {recipient && (
+                            <div className={`text-[10px] ${themeIsDarkMode ? 'text-zinc-400' : 'text-gray-500'}`}>
+                              to <span className={`font-semibold ${
+                                isForMe
+                                  ? (themeIsDarkMode ? 'text-purple-400' : 'text-purple-600')
+                                  : (themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600')
+                              }`}>@{recipient}</span>
+                              {isForMe && <span className="ml-1"><YouPill dark={themeIsDarkMode} /></span>}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })() : message.content && (
@@ -980,7 +984,7 @@ export default function MessageActionsModal({
                       disabled={isPinning || !selectedTier}
                       className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
                         (isPinning || !selectedTier) ? 'opacity-50 cursor-not-allowed' : ''
-                      } ${themeIsDarkMode ? 'bg-cyan-600 text-white' : 'bg-purple-600 text-white'}`}
+                      } ${themeIsDarkMode ? 'bg-[#404eed] hover:bg-[#3640d9] text-white' : 'bg-purple-600 text-white'}`}
                     >
                       {isPinning
                         ? 'Processing...'
@@ -1026,7 +1030,7 @@ export default function MessageActionsModal({
                                   className={`px-4 py-2 rounded-full text-sm font-medium transition-all active:scale-95 whitespace-nowrap ${
                                     selectedCategory === cat.id
                                       ? themeIsDarkMode
-                                        ? 'bg-cyan-600 text-white'
+                                        ? 'bg-[#404eed] text-white'
                                         : 'bg-purple-600 text-white'
                                       : themeIsDarkMode
                                         ? 'bg-zinc-700 text-zinc-300 border border-zinc-500'
@@ -1124,7 +1128,7 @@ export default function MessageActionsModal({
                               disabled={isGiftSending}
                               className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
                                 isGiftSending ? 'opacity-50 cursor-not-allowed' : ''
-                              } ${themeIsDarkMode ? 'bg-cyan-600 text-white' : 'bg-purple-600 text-white'}`}
+                              } ${themeIsDarkMode ? 'bg-[#404eed] hover:bg-[#3640d9] text-white' : 'bg-purple-600 text-white'}`}
                             >
                               {isGiftSending ? 'Sending...' : `Send ${formatGiftPrice(selectedGift.price)}`}
                             </button>

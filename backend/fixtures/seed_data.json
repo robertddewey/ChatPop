@@ -1,476 +1,1132 @@
 [
-  {
-    "model": "constance.constance",
-    "pk": 2,
-    "fields": {
-      "key": "MESSAGE_LIST_DEFAULT_LIMIT",
-      "value": "{\"__type__\": \"default\", \"__value__\": 50}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 3,
-    "fields": {
-      "key": "MESSAGE_HISTORY_MAX_COUNT",
-      "value": "{\"__type__\": \"default\", \"__value__\": 500}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 4,
-    "fields": {
-      "key": "REDIS_CACHE_ENABLED",
-      "value": "{\"__type__\": \"default\", \"__value__\": true}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 5,
-    "fields": {
-      "key": "ENABLE_MONITORING",
-      "value": "{\"__type__\": \"default\", \"__value__\": true}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 6,
-    "fields": {
-      "key": "MESSAGE_HISTORY_MAX_DAYS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 7}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 34,
-    "fields": {
-      "key": "MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT",
-      "value": "{\"__type__\": \"default\", \"__value__\": 3}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 35,
-    "fields": {
-      "key": "MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT",
-      "value": "{\"__type__\": \"default\", \"__value__\": 100}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 36,
-    "fields": {
-      "key": "MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL",
-      "value": "{\"__type__\": \"default\", \"__value__\": 100}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 38,
-    "fields": {
-      "key": "REDIS_CACHE_MAX_COUNT",
-      "value": "{\"__type__\": \"default\", \"__value__\": 500}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 39,
-    "fields": {
-      "key": "REDIS_CACHE_TTL_HOURS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 24}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 41,
-    "fields": {
-      "key": "USER_BLOCK_CACHE_TTL_HOURS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 0}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 42,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_OPENAI_MODEL",
-      "value": "{\"__type__\": \"default\", \"__value__\": \"gpt-4o-mini\"}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 43,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_RATE_LIMIT_AUTHENTICATED",
-      "value": "{\"__type__\": \"default\", \"__value__\": 20}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 44,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_RATE_LIMIT_ANONYMOUS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 5}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 45,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_ENABLE_RATE_LIMITING",
-      "value": "{\"__type__\": \"default\", \"__value__\": true}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 46,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_MAX_FILE_SIZE_MB",
-      "value": "{\"__type__\": \"default\", \"__value__\": 10}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 47,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_IMAGE_TTL_HOURS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 168}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 48,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_USE_S3",
-      "value": "{\"__type__\": \"default\", \"__value__\": true}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 49,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_MAX_MEGAPIXELS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 2.0}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 50,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_DETAIL_MODE",
-      "value": "{\"__type__\": \"default\", \"__value__\": \"low\"}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 52,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_TEMPERATURE",
-      "value": "{\"__type__\": \"default\", \"__value__\": 0.3}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 73,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_PROMPT",
-      "value": "{\"__type__\": \"default\", \"__value__\": \"You are a chat room title generator. Generate 5 concise chat room title ideas based on a photo or description.\\n\\nGoals:\\n- Capture core idea/vibe\\n- Keep titles short (1-4 words)\\n- For IDENTIFIED proper nouns: Use the EXACT name visible (movie titles, product names, brand names)\\n- For GENERATED generic topics: Favor general, reusable topics over one-offs\\n- Avoid filler words (like \\\"the\\\", \\\"a\\\", \\\"about\\\", \\\"of\\\") UNLESS part of an official name\\n- Include single-word version if subject is well-known (Lego, Cat, Coffee, iPhone, Ocean)\\n- Mix literal (e.g., \\\"Gray Cat\\\") and conceptual (e.g., \\\"Morning Vibes\\\") titles\\n\\nCRITICAL - Proper Noun Rules:\\nUse is_proper_noun = true ONLY for specific named entities you IDENTIFY in the photo:\\n  \\u2713 Specific brands visible in image: \\\"Budweiser\\\", \\\"Jack Daniel's\\\", \\\"Coca-Cola\\\"\\n  \\u2713 Specific movies/shows/titles: \\\"Attack of the Clones\\\", \\\"The Matrix (1999)\\\", \\\"Breaking Bad\\\"\\n  \\u2713 Specific products: \\\"iPhone 15 Pro\\\", \\\"PlayStation 5\\\"\\n  \\u2713 Specific places/landmarks: \\\"Eiffel Tower\\\", \\\"Central Park\\\"\\n  \\u2713 Use the EXACT title visible - don't generalize movie titles (e.g., \\\"Attack of the Clones\\\", NOT \\\"Clone Wars\\\")\\n\\nUse is_proper_noun = false for generic names you GENERATE:\\n  \\u2717 Generic categories: \\\"Craft Beer\\\", \\\"Video Games\\\", \\\"Coffee Shop\\\"\\n  \\u2717 Generic phrases: \\\"The Drink\\\", \\\"The Game\\\", \\\"The View\\\"\\n  \\u2717 Descriptive terms: \\\"Gray Cat\\\", \\\"Morning Light\\\", \\\"Happy Hour\\\"\\n  \\u2717 Conceptual topics: \\\"Morning Vibes\\\", \\\"Chill Space\\\", \\\"Home Life\\\"\\n\\nRule of thumb: If you're CREATING the name as a general chat topic, it's NOT a proper noun. If you're IDENTIFYING a specific brand/title/place visible in the photo, it IS a proper noun.\\n\\nCRITICAL - Description Consistency:\\nDescriptions are used for similarity matching via embeddings. When writing descriptions:\\n- Be CONSISTENT: Use the same canonical phrasing for the same brand/item across different photos\\n- Focus on CORE IDENTITY: What defines this brand/title? (product category, genre, creator, key attributes)\\n- Be SPECIFIC for proper nouns: Include product category, genre, or defining characteristics\\n- Avoid VAGUE wording: Don't use generic phrases like \\\"discuss the brand and its offerings\\\"\\n- For brands: Always mention the product category (bourbon, vodka, beer, tech product, etc.)\\n- For media titles: Always mention the genre or media type (sci-fi book, action movie, drama series)\\n- For products: Always mention the product category and primary use case\\n\\nFormat:\\n- \\\"name\\\": Title Case\\n- \\\"key\\\": lowercase-with-dashes\\n- \\\"description\\\": Two sentences focused on core identity. Be specific and consistent.\\n- \\\"is_proper_noun\\\": true ONLY for identified named entities, false for ALL generated generic topics\\n\\nResponse JSON:\\n{\\n  \\\"suggestions\\\": [\\n    {\\\"name\\\": \\\"Craft Beer\\\", \\\"key\\\": \\\"craft-beer\\\", \\\"description\\\": \\\"Chat about craft beer brewing and tasting\\\", \\\"is_proper_noun\\\": false},\\n    {\\\"name\\\": \\\"Budweiser\\\", \\\"key\\\": \\\"budweiser\\\", \\\"description\\\": \\\"Discuss Budweiser beer and American lagers\\\", \\\"is_proper_noun\\\": true}\\n  ]\\n}\"}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 74,
-    "fields": {
-      "key": "MUSIC_RECOGNITION_DURATION_SECONDS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 8}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 75,
-    "fields": {
-      "key": "MUSIC_RECOGNITION_FETCH_METADATA",
-      "value": "{\"__type__\": \"default\", \"__value__\": true}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 76,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_MAX_UPLOADS_PER_IP_PER_HOUR",
-      "value": "{\"__type__\": \"default\", \"__value__\": 20}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 77,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_ANOMALY_DETECTION_ENABLED",
-      "value": "{\"__type__\": \"default\", \"__value__\": true}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 78,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_MAX_UPLOADS_PER_MINUTE_PER_IP",
-      "value": "{\"__type__\": \"default\", \"__value__\": 5}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 79,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_MAX_FINGERPRINTS_PER_IP_PER_HOUR",
-      "value": "{\"__type__\": \"default\", \"__value__\": 5}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 80,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_SUSPICIOUS_IP_BLOCK_MINUTES",
-      "value": "{\"__type__\": \"default\", \"__value__\": 240}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 81,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_MAX_COST_PER_HOUR",
-      "value": "{\"__type__\": \"default\", \"__value__\": 10.0}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 82,
-    "fields": {
-      "key": "PHOTO_ANALYSIS_MAX_COST_PER_DAY",
-      "value": "{\"__type__\": \"default\", \"__value__\": 100.0}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 83,
-    "fields": {
-      "key": "SUGGESTION_DISCOVERY_EXTRA_COUNT",
-      "value": "{\"__type__\": \"default\", \"__value__\": 5}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 84,
-    "fields": {
-      "key": "SUGGESTION_DISCOVERY_THRESHOLD",
-      "value": "{\"__type__\": \"default\", \"__value__\": 0.35}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 85,
-    "fields": {
-      "key": "LOCATION_SUGGESTIONS_ENABLED",
-      "value": "{\"__type__\": \"default\", \"__value__\": true}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 86,
-    "fields": {
-      "key": "LOCATION_SEARCH_RADIUS_METERS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 200}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 87,
-    "fields": {
-      "key": "LOCATION_MAX_VENUES",
-      "value": "{\"__type__\": \"default\", \"__value__\": 10}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 88,
-    "fields": {
-      "key": "LOCATION_CACHE_TTL_HOURS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 24}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 89,
-    "fields": {
-      "key": "LOCATION_RATE_LIMIT_ANONYMOUS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 10}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 90,
-    "fields": {
-      "key": "LOCATION_RATE_LIMIT_AUTHENTICATED",
-      "value": "{\"__type__\": \"default\", \"__value__\": 50}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 91,
-    "fields": {
-      "key": "LOCATION_GEOHASH_PRECISION",
-      "value": "{\"__type__\": \"default\", \"__value__\": 7}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 92,
-    "fields": {
-      "key": "PLACES_PROVIDER_FALLBACK",
-      "value": "{\"__type__\": \"default\", \"__value__\": \"\"}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 93,
-    "fields": {
-      "key": "PLACES_PROVIDER",
-      "value": "{\"__type__\": \"default\", \"__value__\": \"tomtom\"}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 94,
-    "fields": {
-      "key": "LOCATION_CACHE_MAX_VENUES",
-      "value": "{\"__type__\": \"default\", \"__value__\": 100}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 95,
-    "fields": {
-      "key": "CHAT_DISCOVERY_RADIUS_OPTIONS",
-      "value": "{\"__type__\": \"default\", \"__value__\": \"[1, 5, 10, 25, 50]\"}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 98,
-    "fields": {
-      "key": "PIN_TIME_TIERS_JSON",
-      "value": "{\"__type__\": \"default\", \"__value__\": \"{\\\"100\\\":10,\\\"200\\\":15,\\\"500\\\":20,\\\"1000\\\":30,\\\"1500\\\":45,\\\"2000\\\":60}\"}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 99,
-    "fields": {
-      "key": "PIN_TIER_INCREMENT_CENTS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 500}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 100,
-    "fields": {
-      "key": "PIN_TIER_MAX_CENTS",
-      "value": "{\"__type__\": \"default\", \"__value__\": 20000}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 101,
-    "fields": {
-      "key": "PIN_MAX_EXTENSION_MINUTES",
-      "value": "{\"__type__\": \"default\", \"__value__\": 60}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 102,
-    "fields": {
-      "key": "PIN_NEW_PIN_DURATION_MINUTES",
-      "value": "{\"__type__\": \"default\", \"__value__\": 60}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 103,
-    "fields": {
-      "key": "DICEBEAR_STYLE",
-      "value": "{\"__type__\": \"default\", \"__value__\": \"pixel-art\"}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 104,
-    "fields": {
-      "key": "DICEBEAR_SIZE",
-      "value": "{\"__type__\": \"default\", \"__value__\": 40}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 105,
-    "fields": {
-      "key": "USERNAME_REGISTRATION_HOLD_TTL_MINUTES",
-      "value": "{\"__type__\": \"default\", \"__value__\": 5}"
-    }
-  },
-  {
-    "model": "constance.constance",
-    "pk": 106,
-    "fields": {
-      "key": "USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES",
-      "value": "{\"__type__\": \"default\", \"__value__\": 1}"
-    }
-  },
-  {"model": "chats.giftcatalogitem", "pk": 1, "fields": {"gift_id": "gift_coffee", "emoji": "☕", "name": "Coffee", "price_cents": 100, "category": "food", "is_active": true, "sort_order": 1}},
-  {"model": "chats.giftcatalogitem", "pk": 2, "fields": {"gift_id": "gift_donut", "emoji": "🍩", "name": "Donut", "price_cents": 100, "category": "food", "is_active": true, "sort_order": 2}},
-  {"model": "chats.giftcatalogitem", "pk": 3, "fields": {"gift_id": "gift_cookie", "emoji": "🍪", "name": "Cookie", "price_cents": 200, "category": "food", "is_active": true, "sort_order": 3}},
-  {"model": "chats.giftcatalogitem", "pk": 4, "fields": {"gift_id": "gift_icecream", "emoji": "🍦", "name": "Ice Cream", "price_cents": 200, "category": "food", "is_active": true, "sort_order": 4}},
-  {"model": "chats.giftcatalogitem", "pk": 5, "fields": {"gift_id": "gift_pizza", "emoji": "🍕", "name": "Pizza", "price_cents": 300, "category": "food", "is_active": true, "sort_order": 5}},
-  {"model": "chats.giftcatalogitem", "pk": 6, "fields": {"gift_id": "gift_taco", "emoji": "🌮", "name": "Taco", "price_cents": 300, "category": "food", "is_active": true, "sort_order": 6}},
-  {"model": "chats.giftcatalogitem", "pk": 7, "fields": {"gift_id": "gift_hamburger", "emoji": "🍔", "name": "Hamburger", "price_cents": 500, "category": "food", "is_active": true, "sort_order": 7}},
-  {"model": "chats.giftcatalogitem", "pk": 8, "fields": {"gift_id": "gift_sushi", "emoji": "🍣", "name": "Sushi", "price_cents": 500, "category": "food", "is_active": true, "sort_order": 8}},
-  {"model": "chats.giftcatalogitem", "pk": 9, "fields": {"gift_id": "gift_cake", "emoji": "🎂", "name": "Cake", "price_cents": 800, "category": "food", "is_active": true, "sort_order": 9}},
-  {"model": "chats.giftcatalogitem", "pk": 10, "fields": {"gift_id": "gift_steak", "emoji": "🥩", "name": "Steak", "price_cents": 1000, "category": "food", "is_active": true, "sort_order": 10}},
-  {"model": "chats.giftcatalogitem", "pk": 11, "fields": {"gift_id": "gift_champagne", "emoji": "🍾", "name": "Champagne", "price_cents": 1500, "category": "food", "is_active": true, "sort_order": 11}},
-  {"model": "chats.giftcatalogitem", "pk": 12, "fields": {"gift_id": "gift_lobster", "emoji": "🦞", "name": "Lobster", "price_cents": 2500, "category": "food", "is_active": true, "sort_order": 12}},
-  {"model": "chats.giftcatalogitem", "pk": 13, "fields": {"gift_id": "gift_balloon", "emoji": "🎈", "name": "Balloon", "price_cents": 100, "category": "fun", "is_active": true, "sort_order": 1}},
-  {"model": "chats.giftcatalogitem", "pk": 14, "fields": {"gift_id": "gift_party", "emoji": "🎉", "name": "Party", "price_cents": 100, "category": "fun", "is_active": true, "sort_order": 2}},
-  {"model": "chats.giftcatalogitem", "pk": 15, "fields": {"gift_id": "gift_dice", "emoji": "🎲", "name": "Dice", "price_cents": 200, "category": "fun", "is_active": true, "sort_order": 3}},
-  {"model": "chats.giftcatalogitem", "pk": 16, "fields": {"gift_id": "gift_game", "emoji": "🎮", "name": "Game", "price_cents": 300, "category": "fun", "is_active": true, "sort_order": 4}},
-  {"model": "chats.giftcatalogitem", "pk": 17, "fields": {"gift_id": "gift_guitar", "emoji": "🎸", "name": "Guitar", "price_cents": 500, "category": "fun", "is_active": true, "sort_order": 5}},
-  {"model": "chats.giftcatalogitem", "pk": 18, "fields": {"gift_id": "gift_fireworks", "emoji": "🎆", "name": "Fireworks", "price_cents": 500, "category": "fun", "is_active": true, "sort_order": 6}},
-  {"model": "chats.giftcatalogitem", "pk": 19, "fields": {"gift_id": "gift_magic", "emoji": "🪄", "name": "Magic", "price_cents": 800, "category": "fun", "is_active": true, "sort_order": 7}},
-  {"model": "chats.giftcatalogitem", "pk": 20, "fields": {"gift_id": "gift_disco", "emoji": "🪩", "name": "Disco Ball", "price_cents": 1000, "category": "fun", "is_active": true, "sort_order": 8}},
-  {"model": "chats.giftcatalogitem", "pk": 21, "fields": {"gift_id": "gift_ferris", "emoji": "🎡", "name": "Ferris Wheel", "price_cents": 1500, "category": "fun", "is_active": true, "sort_order": 9}},
-  {"model": "chats.giftcatalogitem", "pk": 22, "fields": {"gift_id": "gift_slot", "emoji": "🎰", "name": "Jackpot", "price_cents": 2500, "category": "fun", "is_active": true, "sort_order": 10}},
-  {"model": "chats.giftcatalogitem", "pk": 23, "fields": {"gift_id": "gift_flower", "emoji": "🌸", "name": "Flower", "price_cents": 200, "category": "love", "is_active": true, "sort_order": 1}},
-  {"model": "chats.giftcatalogitem", "pk": 24, "fields": {"gift_id": "gift_rose", "emoji": "🌹", "name": "Rose", "price_cents": 300, "category": "love", "is_active": true, "sort_order": 2}},
-  {"model": "chats.giftcatalogitem", "pk": 25, "fields": {"gift_id": "gift_chocolate", "emoji": "🍫", "name": "Chocolate", "price_cents": 500, "category": "love", "is_active": true, "sort_order": 3}},
-  {"model": "chats.giftcatalogitem", "pk": 26, "fields": {"gift_id": "gift_teddy", "emoji": "🧸", "name": "Teddy Bear", "price_cents": 500, "category": "love", "is_active": true, "sort_order": 4}},
-  {"model": "chats.giftcatalogitem", "pk": 27, "fields": {"gift_id": "gift_bouquet", "emoji": "💐", "name": "Bouquet", "price_cents": 1000, "category": "love", "is_active": true, "sort_order": 5}},
-  {"model": "chats.giftcatalogitem", "pk": 28, "fields": {"gift_id": "gift_lovebox", "emoji": "🎁", "name": "Gift Box", "price_cents": 1000, "category": "love", "is_active": true, "sort_order": 6}},
-  {"model": "chats.giftcatalogitem", "pk": 29, "fields": {"gift_id": "gift_heart", "emoji": "💖", "name": "Heart", "price_cents": 1500, "category": "love", "is_active": true, "sort_order": 7}},
-  {"model": "chats.giftcatalogitem", "pk": 30, "fields": {"gift_id": "gift_cupid", "emoji": "💘", "name": "Cupid", "price_cents": 2000, "category": "love", "is_active": true, "sort_order": 8}},
-  {"model": "chats.giftcatalogitem", "pk": 31, "fields": {"gift_id": "gift_lovelock", "emoji": "🔐", "name": "Love Lock", "price_cents": 3000, "category": "love", "is_active": true, "sort_order": 9}},
-  {"model": "chats.giftcatalogitem", "pk": 32, "fields": {"gift_id": "gift_ring", "emoji": "💍", "name": "Ring", "price_cents": 5000, "category": "love", "is_active": true, "sort_order": 10}},
-  {"model": "chats.giftcatalogitem", "pk": 33, "fields": {"gift_id": "gift_chick", "emoji": "🐥", "name": "Chick", "price_cents": 100, "category": "animals", "is_active": true, "sort_order": 1}},
-  {"model": "chats.giftcatalogitem", "pk": 34, "fields": {"gift_id": "gift_bunny", "emoji": "🐰", "name": "Bunny", "price_cents": 200, "category": "animals", "is_active": true, "sort_order": 2}},
-  {"model": "chats.giftcatalogitem", "pk": 35, "fields": {"gift_id": "gift_cat", "emoji": "🐱", "name": "Cat", "price_cents": 300, "category": "animals", "is_active": true, "sort_order": 3}},
-  {"model": "chats.giftcatalogitem", "pk": 36, "fields": {"gift_id": "gift_dog", "emoji": "🐶", "name": "Dog", "price_cents": 300, "category": "animals", "is_active": true, "sort_order": 4}},
-  {"model": "chats.giftcatalogitem", "pk": 37, "fields": {"gift_id": "gift_panda", "emoji": "🐼", "name": "Panda", "price_cents": 500, "category": "animals", "is_active": true, "sort_order": 5}},
-  {"model": "chats.giftcatalogitem", "pk": 38, "fields": {"gift_id": "gift_fox", "emoji": "🦊", "name": "Fox", "price_cents": 500, "category": "animals", "is_active": true, "sort_order": 6}},
-  {"model": "chats.giftcatalogitem", "pk": 39, "fields": {"gift_id": "gift_dolphin", "emoji": "🐬", "name": "Dolphin", "price_cents": 800, "category": "animals", "is_active": true, "sort_order": 7}},
-  {"model": "chats.giftcatalogitem", "pk": 40, "fields": {"gift_id": "gift_butterfly", "emoji": "🦋", "name": "Butterfly", "price_cents": 800, "category": "animals", "is_active": true, "sort_order": 8}},
-  {"model": "chats.giftcatalogitem", "pk": 41, "fields": {"gift_id": "gift_unicorn", "emoji": "🦄", "name": "Unicorn", "price_cents": 1500, "category": "animals", "is_active": true, "sort_order": 9}},
-  {"model": "chats.giftcatalogitem", "pk": 42, "fields": {"gift_id": "gift_dragon", "emoji": "🐉", "name": "Dragon", "price_cents": 5000, "category": "animals", "is_active": true, "sort_order": 10}},
-  {"model": "chats.giftcatalogitem", "pk": 43, "fields": {"gift_id": "gift_medal", "emoji": "🏅", "name": "Medal", "price_cents": 1000, "category": "premium", "is_active": true, "sort_order": 1}},
-  {"model": "chats.giftcatalogitem", "pk": 44, "fields": {"gift_id": "gift_trophy", "emoji": "🏆", "name": "Trophy", "price_cents": 2500, "category": "premium", "is_active": true, "sort_order": 2}},
-  {"model": "chats.giftcatalogitem", "pk": 45, "fields": {"gift_id": "gift_crown", "emoji": "👑", "name": "Crown", "price_cents": 5000, "category": "premium", "is_active": true, "sort_order": 3}},
-  {"model": "chats.giftcatalogitem", "pk": 46, "fields": {"gift_id": "gift_gem", "emoji": "💎", "name": "Diamond", "price_cents": 10000, "category": "premium", "is_active": true, "sort_order": 4}},
-  {"model": "chats.giftcatalogitem", "pk": 47, "fields": {"gift_id": "gift_money", "emoji": "💰", "name": "Money Bag", "price_cents": 15000, "category": "premium", "is_active": true, "sort_order": 5}},
-  {"model": "chats.giftcatalogitem", "pk": 48, "fields": {"gift_id": "gift_rocket", "emoji": "🚀", "name": "Rocket", "price_cents": 25000, "category": "premium", "is_active": true, "sort_order": 6}},
-  {"model": "chats.giftcatalogitem", "pk": 49, "fields": {"gift_id": "gift_castle", "emoji": "🏰", "name": "Castle", "price_cents": 35000, "category": "premium", "is_active": true, "sort_order": 7}},
-  {"model": "chats.giftcatalogitem", "pk": 50, "fields": {"gift_id": "gift_sportscar", "emoji": "🏎️", "name": "Sports Car", "price_cents": 50000, "category": "premium", "is_active": true, "sort_order": 8}}
+{
+  "model": "constance.constance",
+  "pk": 2,
+  "fields": {
+    "key": "MESSAGE_LIST_DEFAULT_LIMIT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 50}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 3,
+  "fields": {
+    "key": "MESSAGE_HISTORY_MAX_COUNT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 4,
+  "fields": {
+    "key": "REDIS_CACHE_ENABLED",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 5,
+  "fields": {
+    "key": "ENABLE_MONITORING",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 6,
+  "fields": {
+    "key": "MESSAGE_HISTORY_MAX_DAYS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 7}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 34,
+  "fields": {
+    "key": "MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 3}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 35,
+  "fields": {
+    "key": "MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 100}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 36,
+  "fields": {
+    "key": "MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL",
+    "value": "{\"__type__\": \"default\", \"__value__\": 100}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 38,
+  "fields": {
+    "key": "REDIS_CACHE_MAX_COUNT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 39,
+  "fields": {
+    "key": "REDIS_CACHE_TTL_HOURS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 24}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 41,
+  "fields": {
+    "key": "USER_BLOCK_CACHE_TTL_HOURS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 42,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_OPENAI_MODEL",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"gpt-4o-mini\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 43,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_RATE_LIMIT_AUTHENTICATED",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 44,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_RATE_LIMIT_ANONYMOUS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 45,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_ENABLE_RATE_LIMITING",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 46,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_MAX_FILE_SIZE_MB",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 47,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_IMAGE_TTL_HOURS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 168}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 48,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_USE_S3",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 49,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_MAX_MEGAPIXELS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 2.0}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 50,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_DETAIL_MODE",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"low\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 52,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_TEMPERATURE",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0.3}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 73,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_PROMPT",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"You are a chat room title generator. Generate 5 concise chat room title ideas based on a photo or description.\\n\\nGoals:\\n- Capture core idea/vibe\\n- Keep titles short (1-4 words)\\n- For IDENTIFIED proper nouns: Use the EXACT name visible (movie titles, product names, brand names)\\n- For GENERATED generic topics: Favor general, reusable topics over one-offs\\n- Avoid filler words (like \\\"the\\\", \\\"a\\\", \\\"about\\\", \\\"of\\\") UNLESS part of an official name\\n- Include single-word version if subject is well-known (Lego, Cat, Coffee, iPhone, Ocean)\\n- Mix literal (e.g., \\\"Gray Cat\\\") and conceptual (e.g., \\\"Morning Vibes\\\") titles\\n\\nCRITICAL - Proper Noun Rules:\\nUse is_proper_noun = true ONLY for specific named entities you IDENTIFY in the photo:\\n  \\u2713 Specific brands visible in image: \\\"Budweiser\\\", \\\"Jack Daniel's\\\", \\\"Coca-Cola\\\"\\n  \\u2713 Specific movies/shows/titles: \\\"Attack of the Clones\\\", \\\"The Matrix (1999)\\\", \\\"Breaking Bad\\\"\\n  \\u2713 Specific products: \\\"iPhone 15 Pro\\\", \\\"PlayStation 5\\\"\\n  \\u2713 Specific places/landmarks: \\\"Eiffel Tower\\\", \\\"Central Park\\\"\\n  \\u2713 Use the EXACT title visible - don't generalize movie titles (e.g., \\\"Attack of the Clones\\\", NOT \\\"Clone Wars\\\")\\n\\nUse is_proper_noun = false for generic names you GENERATE:\\n  \\u2717 Generic categories: \\\"Craft Beer\\\", \\\"Video Games\\\", \\\"Coffee Shop\\\"\\n  \\u2717 Generic phrases: \\\"The Drink\\\", \\\"The Game\\\", \\\"The View\\\"\\n  \\u2717 Descriptive terms: \\\"Gray Cat\\\", \\\"Morning Light\\\", \\\"Happy Hour\\\"\\n  \\u2717 Conceptual topics: \\\"Morning Vibes\\\", \\\"Chill Space\\\", \\\"Home Life\\\"\\n\\nRule of thumb: If you're CREATING the name as a general chat topic, it's NOT a proper noun. If you're IDENTIFYING a specific brand/title/place visible in the photo, it IS a proper noun.\\n\\nCRITICAL - Description Consistency:\\nDescriptions are used for similarity matching via embeddings. When writing descriptions:\\n- Be CONSISTENT: Use the same canonical phrasing for the same brand/item across different photos\\n- Focus on CORE IDENTITY: What defines this brand/title? (product category, genre, creator, key attributes)\\n- Be SPECIFIC for proper nouns: Include product category, genre, or defining characteristics\\n- Avoid VAGUE wording: Don't use generic phrases like \\\"discuss the brand and its offerings\\\"\\n- For brands: Always mention the product category (bourbon, vodka, beer, tech product, etc.)\\n- For media titles: Always mention the genre or media type (sci-fi book, action movie, drama series)\\n- For products: Always mention the product category and primary use case\\n\\nFormat:\\n- \\\"name\\\": Title Case\\n- \\\"key\\\": lowercase-with-dashes\\n- \\\"description\\\": Two sentences focused on core identity. Be specific and consistent.\\n- \\\"is_proper_noun\\\": true ONLY for identified named entities, false for ALL generated generic topics\\n\\nResponse JSON:\\n{\\n  \\\"suggestions\\\": [\\n    {\\\"name\\\": \\\"Craft Beer\\\", \\\"key\\\": \\\"craft-beer\\\", \\\"description\\\": \\\"Chat about craft beer brewing and tasting\\\", \\\"is_proper_noun\\\": false},\\n    {\\\"name\\\": \\\"Budweiser\\\", \\\"key\\\": \\\"budweiser\\\", \\\"description\\\": \\\"Discuss Budweiser beer and American lagers\\\", \\\"is_proper_noun\\\": true}\\n  ]\\n}\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 74,
+  "fields": {
+    "key": "MUSIC_RECOGNITION_DURATION_SECONDS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 8}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 75,
+  "fields": {
+    "key": "MUSIC_RECOGNITION_FETCH_METADATA",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 76,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_MAX_UPLOADS_PER_IP_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 77,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_ANOMALY_DETECTION_ENABLED",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 78,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_MAX_UPLOADS_PER_MINUTE_PER_IP",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 79,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_MAX_FINGERPRINTS_PER_IP_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 80,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_SUSPICIOUS_IP_BLOCK_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 240}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 81,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_MAX_COST_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10.0}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 82,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_MAX_COST_PER_DAY",
+    "value": "{\"__type__\": \"default\", \"__value__\": 100.0}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 83,
+  "fields": {
+    "key": "SUGGESTION_DISCOVERY_EXTRA_COUNT",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 84,
+  "fields": {
+    "key": "SUGGESTION_DISCOVERY_THRESHOLD",
+    "value": "{\"__type__\": \"default\", \"__value__\": 0.35}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 85,
+  "fields": {
+    "key": "LOCATION_SUGGESTIONS_ENABLED",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 86,
+  "fields": {
+    "key": "LOCATION_SEARCH_RADIUS_METERS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 200}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 87,
+  "fields": {
+    "key": "LOCATION_MAX_VENUES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 88,
+  "fields": {
+    "key": "LOCATION_CACHE_TTL_HOURS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 24}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 89,
+  "fields": {
+    "key": "LOCATION_RATE_LIMIT_ANONYMOUS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 90,
+  "fields": {
+    "key": "LOCATION_RATE_LIMIT_AUTHENTICATED",
+    "value": "{\"__type__\": \"default\", \"__value__\": 50}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 91,
+  "fields": {
+    "key": "LOCATION_GEOHASH_PRECISION",
+    "value": "{\"__type__\": \"default\", \"__value__\": 7}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 92,
+  "fields": {
+    "key": "PLACES_PROVIDER_FALLBACK",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 93,
+  "fields": {
+    "key": "PLACES_PROVIDER",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"tomtom\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 94,
+  "fields": {
+    "key": "LOCATION_CACHE_MAX_VENUES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 100}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 95,
+  "fields": {
+    "key": "CHAT_DISCOVERY_RADIUS_OPTIONS",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"[1, 5, 10, 25, 50]\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 98,
+  "fields": {
+    "key": "PIN_TIME_TIERS_JSON",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"{\\\"100\\\":10,\\\"200\\\":15,\\\"500\\\":20,\\\"1000\\\":30,\\\"1500\\\":45,\\\"2000\\\":60}\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 99,
+  "fields": {
+    "key": "PIN_TIER_INCREMENT_CENTS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 100,
+  "fields": {
+    "key": "PIN_TIER_MAX_CENTS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20000}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 101,
+  "fields": {
+    "key": "PIN_MAX_EXTENSION_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 60}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 102,
+  "fields": {
+    "key": "PIN_NEW_PIN_DURATION_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 60}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 103,
+  "fields": {
+    "key": "DICEBEAR_STYLE",
+    "value": "{\"__type__\": \"default\", \"__value__\": \"pixel-art\"}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 104,
+  "fields": {
+    "key": "DICEBEAR_SIZE",
+    "value": "{\"__type__\": \"default\", \"__value__\": 40}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 105,
+  "fields": {
+    "key": "USERNAME_REGISTRATION_HOLD_TTL_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 106,
+  "fields": {
+    "key": "USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 1}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 107,
+  "fields": {
+    "key": "LOCATION_ANALYSIS_ENABLE_RATE_LIMITING",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 108,
+  "fields": {
+    "key": "LOCATION_ANALYSIS_RATE_LIMIT_ANONYMOUS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 109,
+  "fields": {
+    "key": "MUSIC_ANALYSIS_ENABLE_RATE_LIMITING",
+    "value": "{\"__type__\": \"default\", \"__value__\": true}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 110,
+  "fields": {
+    "key": "MUSIC_ANALYSIS_RATE_LIMIT_ANONYMOUS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 111,
+  "fields": {
+    "key": "CHAT_ACTIVITY_POLL_INTERVAL_SECONDS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 112,
+  "fields": {
+    "key": "CHAT_ACTIVITY_WINDOW_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10.0}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 113,
+  "fields": {
+    "key": "GIFT_BULK_ACTION_THRESHOLD",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 1,
+  "fields": {
+    "gift_id": "gift_coffee",
+    "emoji": "☕",
+    "name": "Coffee",
+    "price_cents": 100,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 1
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 2,
+  "fields": {
+    "gift_id": "gift_donut",
+    "emoji": "🍩",
+    "name": "Donut",
+    "price_cents": 100,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 2
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 3,
+  "fields": {
+    "gift_id": "gift_cookie",
+    "emoji": "🍪",
+    "name": "Cookie",
+    "price_cents": 200,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 3
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 4,
+  "fields": {
+    "gift_id": "gift_icecream",
+    "emoji": "🍦",
+    "name": "Ice Cream",
+    "price_cents": 200,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 4
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 5,
+  "fields": {
+    "gift_id": "gift_pizza",
+    "emoji": "🍕",
+    "name": "Pizza",
+    "price_cents": 300,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 5
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 6,
+  "fields": {
+    "gift_id": "gift_taco",
+    "emoji": "🌮",
+    "name": "Taco",
+    "price_cents": 300,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 6
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 7,
+  "fields": {
+    "gift_id": "gift_hamburger",
+    "emoji": "🍔",
+    "name": "Hamburger",
+    "price_cents": 500,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 7
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 8,
+  "fields": {
+    "gift_id": "gift_sushi",
+    "emoji": "🍣",
+    "name": "Sushi",
+    "price_cents": 500,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 8
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 9,
+  "fields": {
+    "gift_id": "gift_cake",
+    "emoji": "🎂",
+    "name": "Cake",
+    "price_cents": 800,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 9
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 10,
+  "fields": {
+    "gift_id": "gift_steak",
+    "emoji": "🥩",
+    "name": "Steak",
+    "price_cents": 1000,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 10
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 11,
+  "fields": {
+    "gift_id": "gift_champagne",
+    "emoji": "🍾",
+    "name": "Champagne",
+    "price_cents": 1500,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 11
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 12,
+  "fields": {
+    "gift_id": "gift_lobster",
+    "emoji": "🦞",
+    "name": "Lobster",
+    "price_cents": 2500,
+    "category": "food",
+    "is_active": true,
+    "sort_order": 12
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 13,
+  "fields": {
+    "gift_id": "gift_balloon",
+    "emoji": "🎈",
+    "name": "Balloon",
+    "price_cents": 100,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 1
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 14,
+  "fields": {
+    "gift_id": "gift_party",
+    "emoji": "🎉",
+    "name": "Party",
+    "price_cents": 100,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 2
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 15,
+  "fields": {
+    "gift_id": "gift_dice",
+    "emoji": "🎲",
+    "name": "Dice",
+    "price_cents": 200,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 3
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 16,
+  "fields": {
+    "gift_id": "gift_game",
+    "emoji": "🎮",
+    "name": "Game",
+    "price_cents": 300,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 4
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 17,
+  "fields": {
+    "gift_id": "gift_guitar",
+    "emoji": "🎸",
+    "name": "Guitar",
+    "price_cents": 500,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 5
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 18,
+  "fields": {
+    "gift_id": "gift_fireworks",
+    "emoji": "🎆",
+    "name": "Fireworks",
+    "price_cents": 500,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 6
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 19,
+  "fields": {
+    "gift_id": "gift_magic",
+    "emoji": "🪄",
+    "name": "Magic",
+    "price_cents": 800,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 7
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 20,
+  "fields": {
+    "gift_id": "gift_disco",
+    "emoji": "🪩",
+    "name": "Disco Ball",
+    "price_cents": 1000,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 8
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 21,
+  "fields": {
+    "gift_id": "gift_ferris",
+    "emoji": "🎡",
+    "name": "Ferris Wheel",
+    "price_cents": 1500,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 9
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 22,
+  "fields": {
+    "gift_id": "gift_slot",
+    "emoji": "🎰",
+    "name": "Jackpot",
+    "price_cents": 2500,
+    "category": "fun",
+    "is_active": true,
+    "sort_order": 10
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 23,
+  "fields": {
+    "gift_id": "gift_flower",
+    "emoji": "🌸",
+    "name": "Flower",
+    "price_cents": 200,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 1
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 24,
+  "fields": {
+    "gift_id": "gift_rose",
+    "emoji": "🌹",
+    "name": "Rose",
+    "price_cents": 300,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 2
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 25,
+  "fields": {
+    "gift_id": "gift_chocolate",
+    "emoji": "🍫",
+    "name": "Chocolate",
+    "price_cents": 500,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 3
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 26,
+  "fields": {
+    "gift_id": "gift_teddy",
+    "emoji": "🧸",
+    "name": "Teddy Bear",
+    "price_cents": 500,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 4
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 27,
+  "fields": {
+    "gift_id": "gift_bouquet",
+    "emoji": "💐",
+    "name": "Bouquet",
+    "price_cents": 1000,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 5
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 28,
+  "fields": {
+    "gift_id": "gift_lovebox",
+    "emoji": "🎁",
+    "name": "Gift Box",
+    "price_cents": 1000,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 6
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 29,
+  "fields": {
+    "gift_id": "gift_heart",
+    "emoji": "💖",
+    "name": "Heart",
+    "price_cents": 1500,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 7
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 30,
+  "fields": {
+    "gift_id": "gift_cupid",
+    "emoji": "💘",
+    "name": "Cupid",
+    "price_cents": 2000,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 8
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 31,
+  "fields": {
+    "gift_id": "gift_lovelock",
+    "emoji": "🔐",
+    "name": "Love Lock",
+    "price_cents": 3000,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 9
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 32,
+  "fields": {
+    "gift_id": "gift_ring",
+    "emoji": "💍",
+    "name": "Ring",
+    "price_cents": 5000,
+    "category": "love",
+    "is_active": true,
+    "sort_order": 10
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 33,
+  "fields": {
+    "gift_id": "gift_chick",
+    "emoji": "🐥",
+    "name": "Chick",
+    "price_cents": 100,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 1
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 34,
+  "fields": {
+    "gift_id": "gift_bunny",
+    "emoji": "🐰",
+    "name": "Bunny",
+    "price_cents": 200,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 2
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 35,
+  "fields": {
+    "gift_id": "gift_cat",
+    "emoji": "🐱",
+    "name": "Cat",
+    "price_cents": 300,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 3
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 36,
+  "fields": {
+    "gift_id": "gift_dog",
+    "emoji": "🐶",
+    "name": "Dog",
+    "price_cents": 300,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 4
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 37,
+  "fields": {
+    "gift_id": "gift_panda",
+    "emoji": "🐼",
+    "name": "Panda",
+    "price_cents": 500,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 5
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 38,
+  "fields": {
+    "gift_id": "gift_fox",
+    "emoji": "🦊",
+    "name": "Fox",
+    "price_cents": 500,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 6
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 39,
+  "fields": {
+    "gift_id": "gift_dolphin",
+    "emoji": "🐬",
+    "name": "Dolphin",
+    "price_cents": 800,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 7
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 40,
+  "fields": {
+    "gift_id": "gift_butterfly",
+    "emoji": "🦋",
+    "name": "Butterfly",
+    "price_cents": 800,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 8
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 41,
+  "fields": {
+    "gift_id": "gift_unicorn",
+    "emoji": "🦄",
+    "name": "Unicorn",
+    "price_cents": 1500,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 9
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 42,
+  "fields": {
+    "gift_id": "gift_dragon",
+    "emoji": "🐉",
+    "name": "Dragon",
+    "price_cents": 5000,
+    "category": "animals",
+    "is_active": true,
+    "sort_order": 10
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 43,
+  "fields": {
+    "gift_id": "gift_medal",
+    "emoji": "🏅",
+    "name": "Medal",
+    "price_cents": 1000,
+    "category": "premium",
+    "is_active": true,
+    "sort_order": 1
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 44,
+  "fields": {
+    "gift_id": "gift_trophy",
+    "emoji": "🏆",
+    "name": "Trophy",
+    "price_cents": 2500,
+    "category": "premium",
+    "is_active": true,
+    "sort_order": 2
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 45,
+  "fields": {
+    "gift_id": "gift_crown",
+    "emoji": "👑",
+    "name": "Crown",
+    "price_cents": 5000,
+    "category": "premium",
+    "is_active": true,
+    "sort_order": 3
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 46,
+  "fields": {
+    "gift_id": "gift_gem",
+    "emoji": "💎",
+    "name": "Diamond",
+    "price_cents": 10000,
+    "category": "premium",
+    "is_active": true,
+    "sort_order": 4
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 47,
+  "fields": {
+    "gift_id": "gift_money",
+    "emoji": "💰",
+    "name": "Money Bag",
+    "price_cents": 15000,
+    "category": "premium",
+    "is_active": true,
+    "sort_order": 5
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 48,
+  "fields": {
+    "gift_id": "gift_rocket",
+    "emoji": "🚀",
+    "name": "Rocket",
+    "price_cents": 25000,
+    "category": "premium",
+    "is_active": true,
+    "sort_order": 6
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 49,
+  "fields": {
+    "gift_id": "gift_castle",
+    "emoji": "🏰",
+    "name": "Castle",
+    "price_cents": 35000,
+    "category": "premium",
+    "is_active": true,
+    "sort_order": 7
+  }
+},
+{
+  "model": "chats.giftcatalogitem",
+  "pk": 50,
+  "fields": {
+    "gift_id": "gift_sportscar",
+    "emoji": "🏎️",
+    "name": "Sports Car",
+    "price_cents": 50000,
+    "category": "premium",
+    "is_active": true,
+    "sort_order": 8
+  }
+}
 ]
