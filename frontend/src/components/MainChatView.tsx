@@ -220,6 +220,7 @@ interface MainChatViewProps {
   loadingOlder?: boolean;
   filterLoading?: boolean;
   filterMode?: 'all' | 'focus' | 'gifts';
+  onStickyHeightChange?: (height: number) => void;
 }
 
 function MainChatView({
@@ -255,6 +256,7 @@ function MainChatView({
   loadingOlder = false,
   filterLoading = false,
   filterMode = 'all',
+  onStickyHeightChange,
 }: MainChatViewProps) {
   // Ref for measuring sticky section height
   const stickySectionRef = useRef<HTMLDivElement>(null);
@@ -304,6 +306,11 @@ function MainChatView({
     resizeObserver.observe(stickyEl);
     return () => resizeObserver.disconnect();
   }, [stickyHostMessages.length, stickyPinnedMessage]);
+
+  // Notify parent of sticky height changes (for FAB strip positioning)
+  useEffect(() => {
+    onStickyHeightChange?.(stickyHeight);
+  }, [stickyHeight, onStickyHeightChange]);
 
   // Extract inline styles from messagesAreaBg for dynamic opacity/filter support
   const backgroundStyles = useMemo(() => {

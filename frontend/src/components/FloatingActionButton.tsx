@@ -30,6 +30,8 @@ export interface FloatingActionButtonProps {
   initialBounce?: boolean;
   /** Custom class names to add */
   className?: string;
+  /** When true, use relative positioning instead of fixed (for use inside a scroll container) */
+  inline?: boolean;
 }
 
 export default function FloatingActionButton({
@@ -46,6 +48,7 @@ export default function FloatingActionButton({
   design = 'dark-mode',
   initialBounce = false,
   className = '',
+  inline = false,
 }: FloatingActionButtonProps) {
   const [showInitialBounce, setShowInitialBounce] = useState(false);
 
@@ -123,10 +126,10 @@ export default function FloatingActionButton({
       onClick={onClick}
       style={showInitialBounce ? { animation: 'fab-pulsate 1s ease-in-out' } : undefined}
       className={`
-        fixed z-50
+        ${inline ? '' : 'fixed z-50'}
         transition-all duration-300
         active:scale-90 active:brightness-125
-        ${getPositionClasses()}
+        ${inline ? '' : getPositionClasses()}
         ${styles.baseClasses}
         ${colorClasses}
         ${styles.shadow}

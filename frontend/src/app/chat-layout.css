@@ -87,3 +87,12 @@ body.chat-layout * {
 .animate-message-appear {
   animation: message-appear 0.15s ease-out;
 }
+
+/* Hide scrollbar for FAB scroll strip */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

@@ -21,7 +21,7 @@ import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Star, Heart, Zap, Bell } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited, hasModalState } from '@/lib/modalState';
@@ -311,6 +311,33 @@ export default function ChatPage() {
   // Feature intro tracking
   const [seenIntros, setSeenIntros] = useState<Record<string, boolean>>({});
   const [showFeatureIntro, setShowFeatureIntro] = useState<string | null>(null);
+
+  // Sticky height from MainChatView (for FAB strip positioning)
+  const [stickyHeight, setStickyHeight] = useState(0);
+  const handleStickyHeightChange = useCallback((height: number) => {
+    setStickyHeight(height);
+  }, []);
+
+  // FAB scroll strip fade indicators
+  const fabStripRef = useRef<HTMLDivElement>(null);
+  const [fabCanScrollUp, setFabCanScrollUp] = useState(false);
+  const [fabCanScrollDown, setFabCanScrollDown] = useState(false);
+  const updateFabScrollFades = useCallback(() => {
+    const el = fabStripRef.current;
+    if (!el) return;
+    setFabCanScrollUp(el.scrollTop > 4);
+    setFabCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+  }, []);
+
+  // Initialize and update fade indicators when strip size changes
+  useEffect(() => {
+    const el = fabStripRef.current;
+    if (!el) return;
+    updateFabScrollFades();
+    const observer = new ResizeObserver(() => updateFabScrollFades());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [updateFabScrollFades, hasJoined, stickyHeight]);
 
   // Helper: get filter param for API calls (only chat filter rooms have a filter)
   const getRoomFilter = useCallback((room: Room): string | undefined => {
@@ -2051,6 +2078,7 @@ export default function ChatPage() {
             handleReactionToggle={handleReactionToggle}
             messageReactions={messageReactions}
             loadingOlder={loadingOlder}
+            onStickyHeightChange={handleStickyHeightChange}
           />
         )}
 
@@ -2062,6 +2090,120 @@ export default function ChatPage() {
             onBack={() => switchRoom('main')}
             design={'dark-mode'}
           />
+        )}
+
+        {/* FAB Scroll Strip - positioned inside content area, adjusts to sticky section */}
+        {hasJoined && (
+          <div
+            className="absolute right-0 z-50"
+            style={{
+              top: `${stickyHeight > 0 ? stickyHeight + 8 : 8}px`,
+              bottom: '8px',
+            }}
+          >
+            {/* Top fade — matches page background, icons dissolve into it */}
+            <div className={`absolute top-0 left-0 right-0 h-10 z-10 pointer-events-none transition-opacity duration-200 ${fabCanScrollUp ? 'opacity-100' : 'opacity-0'}`}
+              style={{ background: 'linear-gradient(to bottom, var(--chat-bg, #18181b) 0%, var(--chat-bg, #18181b) 30%, transparent 100%)' }}
+            />
+
+            {/* Scrollable icon strip */}
+            <div
+              ref={fabStripRef}
+              onScroll={updateFabScrollFades}
+              className="h-full flex flex-col items-center gap-2 overflow-y-auto no-scrollbar px-1 py-1"
+            >
+              {/* Dummy 1 */}
+              <FloatingActionButton
+                inline
+                icon={Zap}
+                onClick={() => {}}
+                ariaLabel="Dummy Zap"
+                design={'dark-mode'}
+              />
+              {/* Dummy 2 */}
+              <FloatingActionButton
+                inline
+                icon={Star}
+                onClick={() => {}}
+                ariaLabel="Dummy Star"
+                design={'dark-mode'}
+              />
+              {/* Crown Button */}
+              <FloatingActionButton
+                inline
+                icon={Crown}
+                onClick={() => {}}
+                ariaLabel="Host Actions"
+                design={'dark-mode'}
+              />
+              {/* Focus Filter */}
+              <FloatingActionButton
+                inline
+                icon={Eye}
+                toggledIcon={MessageSquare}
+                onClick={() => switchRoom(currentRoom === 'focus' ? 'main' : 'focus')}
+                isToggled={currentRoom === 'focus'}
+                ariaLabel="Focus Mode"
+                toggledAriaLabel="Show All Messages"
+                design={'dark-mode'}
+              />
+              {/* Gift Filter */}
+              <FloatingActionButton
+                inline
+                icon={Gift}
+                toggledIcon={MessageSquare}
+                onClick={() => switchRoom(currentRoom === 'gifts' ? 'main' : 'gifts')}
+                isToggled={currentRoom === 'gifts'}
+                ariaLabel="Filter Gifts"
+                toggledAriaLabel="Show All Messages"
+                design={'dark-mode'}
+              />
+              {/* Game Room Tab */}
+              <FloatingActionButton
+                inline
+                icon={Gamepad2}
+                toggledIcon={MessageSquare}
+                onClick={() => switchRoom(currentRoom === 'backroom' ? 'main' : 'backroom')}
+                isToggled={currentRoom === 'backroom'}
+                hasNotification={false}
+                ariaLabel="Open Game Room"
+                toggledAriaLabel="Return to Main Chat"
+                design={'dark-mode'}
+              />
+              {/* Dummy 3 */}
+              <FloatingActionButton
+                inline
+                icon={Heart}
+                onClick={() => {}}
+                ariaLabel="Dummy Heart"
+                design={'dark-mode'}
+              />
+              {/* Dummy 4 */}
+              <FloatingActionButton
+                inline
+                icon={Bell}
+                onClick={() => {}}
+                ariaLabel="Dummy Bell"
+                design={'dark-mode'}
+              />
+              {/* Settings Button */}
+              <FloatingActionButton
+                inline
+                icon={Settings}
+                onClick={() => {
+                  window.history.pushState({ view: 'settings' }, '', window.location.href);
+                  setShowSettingsSheet(true);
+                }}
+                ariaLabel="Open Settings"
+                design={'dark-mode'}
+              />
+            </div>
+
+            {/* Bottom fade — matches page background, icons dissolve into it */}
+            <div className={`absolute bottom-0 left-0 right-0 h-10 z-10 pointer-events-none transition-opacity duration-200 ${fabCanScrollDown ? 'opacity-100' : 'opacity-0'}`}
+              style={{ background: 'linear-gradient(to top, var(--chat-bg, #18181b) 0%, var(--chat-bg, #18181b) 30%, transparent 100%)' }}
+            />
+          </div>
         )}
       </div>
 
@@ -2082,82 +2224,6 @@ export default function ChatPage() {
           disabled={currentRoom === 'gifts'}
           disabledMessage="Viewing gift history"
           design={messageInputDesign}
-        />
-      )}
-
-      {/* Crown Button - Grid centered at 50%, first icon of 5-icon grid */}
-      {hasJoined && (
-        <FloatingActionButton
-          icon={Crown}
-          onClick={() => {}}
-          position="right"
-          customPosition="right-[2.5%] top-[calc(50%-156px)]"
-          ariaLabel="Host Actions"
-          design={'dark-mode'}
-        />
-      )}
-
-      {/* Focus Filter - Second icon of 5-icon grid */}
-      {hasJoined && (
-        <FloatingActionButton
-          icon={Eye}
-          toggledIcon={MessageSquare}
-          onClick={() => switchRoom(currentRoom === 'focus' ? 'main' : 'focus')}
-          isToggled={currentRoom === 'focus'}
-          position="right"
-          customPosition="right-[2.5%] top-[calc(50%-92px)]"
-          ariaLabel="Focus Mode"
-          toggledAriaLabel="Show All Messages"
-          design={'dark-mode'}
-          initialBounce={false}
-        />
-      )}
-
-      {/* Gift Filter - Third icon of 5-icon grid */}
-      {hasJoined && (
-        <FloatingActionButton
-          icon={Gift}
-          toggledIcon={MessageSquare}
-          onClick={() => switchRoom(currentRoom === 'gifts' ? 'main' : 'gifts')}
-          isToggled={currentRoom === 'gifts'}
-          position="right"
-          customPosition="right-[2.5%] top-[calc(50%-28px)]"
-          ariaLabel="Filter Gifts"
-          toggledAriaLabel="Show All Messages"
-          design={'dark-mode'}
-          initialBounce={false}
-        />
-      )}
-
-      {/* Game Room Tab - Fourth icon of 5-icon grid */}
-      {hasJoined && (
-        <FloatingActionButton
-          icon={Gamepad2}
-          toggledIcon={MessageSquare}
-          onClick={() => switchRoom(currentRoom === 'backroom' ? 'main' : 'backroom')}
-          isToggled={currentRoom === 'backroom'}
-          hasNotification={false}
-          position="right"
-          customPosition="right-[2.5%] top-[calc(50%+36px)]"
-          ariaLabel="Open Game Room"
-          toggledAriaLabel="Return to Main Chat"
-          design={'dark-mode'}
-          initialBounce={false}
-        />
-      )}
-
-      {/* Settings Button - Bottom icon of 5-icon grid */}
-      {hasJoined && (
-        <FloatingActionButton
-          icon={Settings}
-          onClick={() => {
-            window.history.pushState({ view: 'settings' }, '', window.location.href);
-            setShowSettingsSheet(true);
-          }}
-          position="right"
-          customPosition="right-[2.5%] top-[calc(50%+100px)]"
-          ariaLabel="Open Settings"
-          design={'dark-mode'}
         />
       )}
       </div>
