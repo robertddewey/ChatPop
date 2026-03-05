@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { BadgeCheck, Dices, RotateCcw } from 'lucide-react';
 import type { ChatRoom } from '@/lib/api';
@@ -9,6 +8,7 @@ import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
 import { getFingerprint } from '@/lib/usernameStorage';
 import { isDarkTheme } from '@/lib/themes';
+import { getModalTheme } from '@/lib/modal-theme';
 
 interface JoinChatModalProps {
   chatRoom: ChatRoom;
@@ -37,29 +37,19 @@ export default function JoinChatModal({
   // Always force dark mode
   const forceDarkMode = true;
 
-  // Get modal styles based on theme (no system preference detection - force theme mode)
-  const modalStyles = forceDarkMode ? {
-    overlay: 'bg-transparent',
-    container: 'bg-zinc-800 border border-zinc-700',
-    title: 'text-zinc-50',
-    subtitle: 'text-zinc-300',
-    input: 'bg-zinc-700 border border-zinc-600 text-zinc-50 placeholder-zinc-400 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400',
-    primaryButton: 'bg-[#404eed] hover:bg-[#3640d9] text-white',
-    secondaryButton: 'bg-zinc-700 hover:bg-zinc-600 text-zinc-100 border border-zinc-600',
-    divider: 'border-zinc-600',
-    dividerText: 'bg-zinc-800',
-    error: 'text-red-400',
-  } : {
-    overlay: 'bg-transparent',
-    container: 'bg-white border border-gray-200',
-    title: 'text-gray-900',
-    subtitle: 'text-gray-600',
-    input: 'bg-white border border-gray-300 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-purple-500',
-    primaryButton: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
-    secondaryButton: 'bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-300',
-    divider: 'border-gray-200',
-    dividerText: 'bg-white',
-    error: 'text-red-600',
+  // Get modal styles from centralized theme
+  const mt = getModalTheme(forceDarkMode);
+  const modalStyles = {
+    overlay: mt.backdrop,
+    container: `${mt.container} ${mt.border}`,
+    title: mt.title,
+    subtitle: forceDarkMode ? 'text-zinc-300' : 'text-gray-600',
+    input: mt.input,
+    primaryButton: mt.primaryButton,
+    secondaryButton: `${mt.secondaryButton} ${forceDarkMode ? 'border border-zinc-600' : 'border border-gray-300'}`,
+    divider: forceDarkMode ? 'border-zinc-600' : 'border-gray-200',
+    dividerText: forceDarkMode ? 'bg-zinc-900' : 'bg-white',
+    error: forceDarkMode ? 'text-red-400' : 'text-red-600',
   };
 
   // Initialize username with reserved username for logged-in users
@@ -121,20 +111,6 @@ export default function JoinChatModal({
       setDiceUsername(null);
     }
   };
-
-  // Prevent body scrolling when modal is open (only on non-chat routes)
-  // Chat routes already have body scroll locked via chat-layout.css
-  useEffect(() => {
-    const isChatRoute = window.location.pathname.startsWith('/chat/');
-    if (!isChatRoute) {
-      document.body.style.overflow = 'hidden';
-    }
-    return () => {
-      if (!isChatRoute) {
-        document.body.style.overflow = '';
-      }
-    };
-  }, []);
 
   // Check rate limit on mount (for anonymous users only)
   useEffect(() => {
@@ -302,15 +278,13 @@ export default function JoinChatModal({
     }
   }, [isLoggedIn, hasJoinedBefore, rateLimitChecked, isRateLimited]);
 
-  if (typeof document === 'undefined') return null;
-
-  return createPortal(
-    <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4`}>
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className={`absolute inset-0 ${modalStyles.overlay}`} />
 
       {/* Modal */}
-      <div className={`relative w-full max-w-md ${modalStyles.container} rounded-3xl p-8 shadow-2xl`}>
+      <div className={`relative w-full max-w-md ${modalStyles.container} ${mt.rounded} p-8 ${mt.shadow}`}>
         {/* Title */}
         <div className="mb-6 text-center">
           <h1 className={`text-2xl font-bold ${modalStyles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
@@ -474,7 +448,7 @@ export default function JoinChatModal({
           <button
             type="submit"
             disabled={isJoining || isRateLimited}
-            className="w-full px-6 py-4 rounded-xl font-semibold bg-[#404eed] hover:bg-[#3640d9] text-white transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className={`w-full px-6 py-4 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
           >
             {isJoining ? 'Joining...' : 'Join Chat'}
           </button>
@@ -513,7 +487,6 @@ export default function JoinChatModal({
           )}
         </form>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }

@@ -1986,42 +1986,9 @@ export default function ChatPage() {
   // Main chat interface
   return (
     <>
-      {/* Floating Back Button - ONLY this is clickable above the modal */}
-      {chatRoom && !hasJoined && (
-        <button
-          onClick={() => {
-            if (hasModalState()) {
-              router.back();
-            } else {
-              router.replace('/');
-            }
-          }}
-          className={`fixed top-3 left-4 z-[10000] p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
-          aria-label="Back"
-        >
-          <ArrowLeft size={18} />
-        </button>
-      )}
-
-      {/* Join Modal - rendered when user hasn't joined and auth modal is not open */}
-      {!hasJoined && chatRoom && !authMode && (
-        <JoinChatModal
-          key={joinModalKey}
-          chatRoom={chatRoom}
-          currentUserDisplayName={username}
-          hasJoinedBefore={hasJoinedBefore}
-          isBlocked={isBlocked}
-          isLoggedIn={!!currentUserId}
-          hasReservedUsername={hasReservedUsername}
-          themeIsDarkMode={themeIsDarkMode}
-          userAvatarUrl={userAvatarUrl}
-          onJoin={handleJoinChat}
-        />
-      )}
-
-      {/* Main Chat Interface - blurred when not joined */}
+      {/* Main Chat Interface */}
       <div
-        className={`${currentDesign.container} ${!hasJoined ? 'pointer-events-none' : ''}`}
+        className={`${currentDesign.container}`}
         style={{
           WebkitUserSelect: 'none',
           userSelect: 'none',
@@ -2040,11 +2007,7 @@ export default function ChatPage() {
                     } else if (hasJoined) {
                       router.back();
                     } else {
-                      if (hasModalState()) {
-                        router.back();
-                      } else {
-                        router.replace('/');
-                      }
+                      router.push('/');
                     }
                   }}
                   className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
@@ -2061,7 +2024,7 @@ export default function ChatPage() {
         </div>
 
       {/* Content Area Wrapper - View Router for Main Chat, Back Room, and future features */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className={`flex-1 relative overflow-hidden ${!hasJoined ? 'pointer-events-none' : ''}`}>
         {!isSeparateViewRoom(currentRoom) && (
           <MainChatView
             chatRoom={chatRoom}
@@ -2096,6 +2059,24 @@ export default function ChatPage() {
             loadingOlder={loadingOlder}
             onStickyHeightChange={handleStickyHeightChange}
           />
+        )}
+
+        {/* Join Modal - inline overlay within messages area */}
+        {!hasJoined && chatRoom && !authMode && (
+          <div className="pointer-events-auto">
+            <JoinChatModal
+              key={joinModalKey}
+              chatRoom={chatRoom}
+              currentUserDisplayName={username}
+              hasJoinedBefore={hasJoinedBefore}
+              isBlocked={isBlocked}
+              isLoggedIn={!!currentUserId}
+              hasReservedUsername={hasReservedUsername}
+              themeIsDarkMode={themeIsDarkMode}
+              userAvatarUrl={userAvatarUrl}
+              onJoin={handleJoinChat}
+            />
+          </div>
         )}
 
         {currentRoom === 'backroom' && hasJoined && chatRoom && (
@@ -2225,22 +2206,27 @@ export default function ChatPage() {
 
       {/* Message Input - Only show in chat rooms (not separate views like backroom) */}
       {!isSeparateViewRoom(currentRoom) && (
-        <MessageInput
-          chatRoom={chatRoom}
-          isHost={isHost}
-          hasJoined={hasJoined}
-          sending={sending}
-          username={username}
-          replyingTo={replyingTo}
-          onCancelReply={handleCancelReply}
-          onSubmitText={handleSubmitText}
-          onVoiceRecording={handleVoiceRecording}
-          onPhotoSelected={handlePhotoSelected}
-          onVideoSelected={handleVideoSelected}
-          disabled={currentRoom === 'gifts'}
-          disabledMessage="Viewing gift history"
-          design={messageInputDesign}
-        />
+        <div className="relative">
+          <MessageInput
+            chatRoom={chatRoom}
+            isHost={isHost}
+            hasJoined={hasJoined}
+            sending={sending}
+            username={username}
+            replyingTo={replyingTo}
+            onCancelReply={handleCancelReply}
+            onSubmitText={handleSubmitText}
+            onVoiceRecording={handleVoiceRecording}
+            onPhotoSelected={handlePhotoSelected}
+            onVideoSelected={handleVideoSelected}
+            disabled={currentRoom === 'gifts'}
+            disabledMessage="Viewing gift history"
+            design={messageInputDesign}
+          />
+          {!hasJoined && (
+            <div className="absolute inset-0 bg-black/40 pointer-events-auto" />
+          )}
+        </div>
       )}
       </div>
 
