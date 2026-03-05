@@ -233,9 +233,9 @@ export default function MessageActionsModal({
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [slideIn, setSlideIn] = useState(false);
 
   // Panel state: which panel is visible
   type ActivePanel = 'actions' | 'pin' | 'gift';
@@ -296,10 +296,15 @@ export default function MessageActionsModal({
   const handleOpen = () => {
     setIsOpen(true);
     setDragOffset(0);
-    setHasAnimatedIn(false);
+    setIsClosing(false);
+    setSlideIn(false);
 
-    // Mark animation as complete after it finishes (300ms)
-    setTimeout(() => setHasAnimatedIn(true), 300);
+    // Trigger slide-in on next frame so the initial off-screen position renders first
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setSlideIn(true);
+      });
+    });
 
     // Haptic feedback (Android only)
     if (typeof window !== 'undefined' && 'vibrate' in navigator) {
@@ -312,15 +317,14 @@ export default function MessageActionsModal({
   };
 
   const handleClose = () => {
-    // Trigger closing animation
     setIsClosing(true);
+    setSlideIn(false);
     setIsDragging(false);
 
-    // Wait for animation to complete before removing from DOM
+    // Wait for transition to complete before removing from DOM
     setTimeout(() => {
       setIsOpen(false);
       setIsClosing(false);
-      setHasAnimatedIn(false);
       setDragOffset(0);
       // Reset panel state
       setActivePanel('actions');
@@ -332,7 +336,7 @@ export default function MessageActionsModal({
       setShowGiftConfirmation(false);
       setIsGiftSending(false);
       setContainerHeight(undefined);
-    }, 250); // Match animation duration
+    }, 300);
   };
 
   // Handle opening the pin input step
@@ -644,10 +648,15 @@ export default function MessageActionsModal({
 
           {/* E4 Layout: Message docked above sheet, slides up as one unit */}
           <div
-            className={`relative w-full max-w-lg ${isClosing ? 'animate-slide-down' : (!hasAnimatedIn && 'animate-slide-up')}`}
+            className="relative w-full max-w-lg"
             style={{
-              transform: `translateY(${dragOffset}px)`,
-              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+              transform: isDragging
+                ? `translateY(${dragOffset}px)`
+                : slideIn && !isClosing
+                  ? 'translateY(0)'
+                  : 'translateY(100%)',
+              opacity: slideIn && !isClosing ? 1 : 0,
+              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
             }}
           >
             {/* Floating Message Preview — docked above sheet, rendered like actual chat message */}
@@ -1146,36 +1155,6 @@ export default function MessageActionsModal({
       )}
 
       <style jsx>{`
-        @keyframes slide-up {
-          from {
-            transform: translateY(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-
-        @keyframes slide-down {
-          from {
-            transform: translateY(0);
-            opacity: 1;
-          }
-          to {
-            transform: translateY(100%);
-            opacity: 0;
-          }
-        }
-
-        .animate-slide-up {
-          animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        .animate-slide-down {
-          animation: slide-down 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
         .pb-safe {
           padding-bottom: env(safe-area-inset-bottom, 2rem);
         }
