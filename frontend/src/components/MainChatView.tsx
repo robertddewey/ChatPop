@@ -601,7 +601,7 @@ function MainChatView({
         )}
         {/* Empty state for filtered views */}
         {hasJoined && !filterLoading && filteredMessages.length === 0 && filterMode !== 'all' && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <div className="flex flex-col items-center justify-center py-20 gap-3 pr-14">
             <div className={`flex items-center gap-1.5 ${themeIsDarkMode ? 'text-zinc-600' : 'text-gray-300'}`}>
               {filterMode === 'gifts'
                 ? <><Gift size={96} /><Frown size={96} /></>
@@ -1079,7 +1079,13 @@ function MainChatView({
                   </div>
                   )}
                 {/* Timestamp + Reaction pills row */}
-                <div className="flex items-center mt-1 gap-2 h-6">
+                <div className={`flex items-center gap-2 h-6 ${
+                  message.message_type === 'gift'
+                    ? 'mt-1'
+                    : (message.voice_url || message.photo_url || message.video_url)
+                      ? 'mt-0.5'
+                      : '-mt-0.5'
+                }`}>
                   <span
                     className="text-[10px] opacity-60"
                     style={{

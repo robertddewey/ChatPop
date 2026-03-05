@@ -472,8 +472,10 @@ export default function ChatPage() {
 
     shouldAutoScrollRef.current = true;
     requestAnimationFrame(() => {
-      const container = messagesContainerRef.current;
-      if (container) container.scrollTop = container.scrollHeight;
+      requestAnimationFrame(() => {
+        const container = messagesContainerRef.current;
+        if (container) container.scrollTop = container.scrollHeight;
+      });
     });
   }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
 
@@ -652,11 +654,14 @@ export default function ChatPage() {
 
 
   // Scroll to bottom when switching rooms
+  // Double rAF ensures sticky section padding is applied before scrolling
   useEffect(() => {
     shouldAutoScrollRef.current = true;
     requestAnimationFrame(() => {
-      const container = messagesContainerRef.current;
-      if (container) container.scrollTop = container.scrollHeight;
+      requestAnimationFrame(() => {
+        const container = messagesContainerRef.current;
+        if (container) container.scrollTop = container.scrollHeight;
+      });
     });
   }, [currentRoom]);
 
