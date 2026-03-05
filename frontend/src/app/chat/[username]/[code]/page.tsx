@@ -313,9 +313,20 @@ export default function ChatPage() {
   const [showFeatureIntro, setShowFeatureIntro] = useState<string | null>(null);
 
   // Sticky height from MainChatView (for FAB strip positioning)
+  // Debounce drops to 0 — room switches briefly clear sticky content but it reappears.
+  // Genuine removals (pin expiry) stay at 0 permanently, so a longer delay is fine.
   const [stickyHeight, setStickyHeight] = useState(0);
+  const stickyZeroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleStickyHeightChange = useCallback((height: number) => {
-    setStickyHeight(height);
+    if (stickyZeroTimerRef.current) {
+      clearTimeout(stickyZeroTimerRef.current);
+      stickyZeroTimerRef.current = null;
+    }
+    if (height > 0) {
+      setStickyHeight(height);
+    } else {
+      stickyZeroTimerRef.current = setTimeout(() => setStickyHeight(0), 1500);
+    }
   }, []);
 
   // FAB scroll strip fade indicators
@@ -2103,7 +2114,7 @@ export default function ChatPage() {
           >
             {/* Top fade — matches page background, icons dissolve into it */}
             <div className={`absolute top-0 left-0 right-0 h-10 z-10 pointer-events-none transition-opacity duration-200 ${fabCanScrollUp ? 'opacity-100' : 'opacity-0'}`}
-              style={{ background: 'linear-gradient(to bottom, var(--chat-bg, #18181b) 0%, var(--chat-bg, #18181b) 30%, transparent 100%)' }}
+              style={{ background: 'linear-gradient(to bottom, #18181b 0%, #18181b 30%, transparent 100%)' }}
             />
 
             {/* Scrollable icon strip */}
@@ -2201,7 +2212,7 @@ export default function ChatPage() {
 
             {/* Bottom fade — matches page background, icons dissolve into it */}
             <div className={`absolute bottom-0 left-0 right-0 h-10 z-10 pointer-events-none transition-opacity duration-200 ${fabCanScrollDown ? 'opacity-100' : 'opacity-0'}`}
-              style={{ background: 'linear-gradient(to top, var(--chat-bg, #18181b) 0%, var(--chat-bg, #18181b) 30%, transparent 100%)' }}
+              style={{ background: 'linear-gradient(to top, #18181b 0%, #18181b 30%, transparent 100%)' }}
             />
           </div>
         )}
