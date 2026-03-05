@@ -20,12 +20,11 @@ interface ReactionBarProps {
 export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMode = true, highlightTheme, fullWidth }: ReactionBarProps) {
   const [animatingEmoji, setAnimatingEmoji] = useState<string | null>(null);
 
-  if (!reactions || reactions.length === 0) {
-    return null;
-  }
+  // Filter out reactions with no count (e.g., after removal via WebSocket re-fetch)
+  const validReactions = reactions?.filter(r => r.count > 0) || [];
 
   // Show only top 3 reactions
-  const topReactions = reactions.slice(0, 3);
+  const topReactions = validReactions.slice(0, 3);
 
   const handleClick = (emoji: string) => {
     // Trigger animation
@@ -46,6 +45,8 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
   const highlightBorder = highlightTheme?.reaction_highlight_border || defaultHighlightBorder;
   const highlightText = highlightTheme?.reaction_highlight_text || defaultHighlightText;
 
+  // Always render the container to prevent browser paint artifacts
+  // when reaction buttons with shadow-lg are removed from DOM
   return (
     <div className="flex items-center gap-1">
       {topReactions.map((reaction) => {
@@ -56,7 +57,7 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
           <button
             key={reaction.emoji}
             onClick={() => handleClick(reaction.emoji)}
-            className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 shadow-lg transition-all ${
+            className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 shadow-lg ${
               isAnimating ? 'scale-110' : 'scale-100'
             } ${
               hasReacted
