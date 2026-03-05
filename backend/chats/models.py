@@ -412,6 +412,9 @@ class ChatParticipation(models.Model):
         help_text="User's preferred theme override (only if chat.theme_locked=False)"
     )
 
+    # Feature intro tracking (for anonymous users — per-chat since no global user record)
+    seen_intros = models.JSONField(default=dict, blank=True, help_text="Feature intros dismissed by anonymous user in this chat")
+
     # IP address tracking
     ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Last known IP address")
 

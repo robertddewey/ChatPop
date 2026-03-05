@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { chatApi, messageApi, authApi, backRoomApi, giftApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification } from '@/lib/api';
+import { api, chatApi, messageApi, authApi, backRoomApi, giftApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
@@ -13,6 +13,7 @@ import MainChatView from '@/components/MainChatView';
 import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
 import { GiftReceivedPopup } from '@/components/GiftReceivedPopup';
+import FeatureIntroModal from '@/components/FeatureIntroModal';
 import LoginModal from '@/components/LoginModal';
 import RegisterModal from '@/components/RegisterModal';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
@@ -307,6 +308,10 @@ export default function ChatPage() {
   const [currentRoom, setCurrentRoom] = useState<Room>('main');
   const [roomLoading, setRoomLoading] = useState(false);
 
+  // Feature intro tracking
+  const [seenIntros, setSeenIntros] = useState<Record<string, boolean>>({});
+  const [showFeatureIntro, setShowFeatureIntro] = useState<string | null>(null);
+
   // Helper: get filter param for API calls (only chat filter rooms have a filter)
   const getRoomFilter = useCallback((room: Room): string | undefined => {
     if (room === 'focus' || room === 'gifts') return room;
@@ -421,12 +426,28 @@ export default function ChatPage() {
       }
     }
 
+    // Show feature intro if user hasn't seen it for this room type
+    const introRooms: Room[] = ['focus'];
+    if (introRooms.includes(target) && !seenIntros[target]) {
+      setShowFeatureIntro(target);
+    }
+
     shouldAutoScrollRef.current = true;
     requestAnimationFrame(() => {
       const container = messagesContainerRef.current;
       if (container) container.scrollTop = container.scrollHeight;
     });
-  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom]);
+  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
+
+  // Dismiss a feature intro
+  const handleDismissIntro = useCallback((key: string) => {
+    setShowFeatureIntro(null);
+    setSeenIntros(prev => ({ ...prev, [key]: true }));
+    // Inline API call to avoid webpack chunk caching issues with chatApi.dismissIntro
+    const username = roomUsername || 'discover';
+    api.post(`/api/chats/${username}/${code}/intros/${key}/dismiss/`, { fingerprint })
+      .catch(err => console.error('[FeatureIntro] Dismiss failed:', err));
+  }, [code, fingerprint, roomUsername]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -622,6 +643,10 @@ export default function ChatPage() {
 
         if (participation.theme) {
           setParticipationTheme(participation.theme);
+        }
+        if (participation.seen_intros) {
+          console.log('[FeatureIntro] Loaded seen_intros from API:', participation.seen_intros);
+          setSeenIntros(participation.seen_intros);
         }
 
         if (currentUser) {
@@ -2188,6 +2213,17 @@ export default function ChatPage() {
         onThankAll={handleThankAllGifts}
         onClose={() => setGiftQueue([])}
       />
+
+      {/* Feature Intro Modals */}
+      {showFeatureIntro === 'focus' && (
+        <FeatureIntroModal
+          title="Focus Mode"
+          description="Focus shows messages most relevant to you — your messages, replies to you, and host messages in your threads. Everything else is filtered out."
+          icon={Eye}
+          themeIsDarkMode={themeIsDarkMode}
+          onDismiss={() => handleDismissIntro('focus')}
+        />
+      )}
     </>
   );
 }

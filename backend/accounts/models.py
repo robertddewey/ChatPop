@@ -64,6 +64,9 @@ class User(AbstractUser):
         help_text='URL to user avatar image (stored in S3 or local storage)'
     )
 
+    # Feature intro tracking (generic: {"focus": true, "gifts": true, ...})
+    seen_intros = models.JSONField(default=dict, blank=True, help_text="Feature intros the user has dismissed")
+
     # Notification preferences
     email_notifications = models.BooleanField(default=True)
     push_notifications = models.BooleanField(default=False)

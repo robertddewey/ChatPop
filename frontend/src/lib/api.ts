@@ -336,6 +336,7 @@ export interface ChatParticipation {
   last_seen_at?: string;
   theme?: ChatTheme | null;
   is_blocked?: boolean;
+  seen_intros?: Record<string, boolean>;
 }
 
 /**
@@ -867,6 +868,13 @@ export const giftApi = {
       message_id: messageId,
       thank: true,
       session_token: sessionToken,
+    });
+    return response.data;
+  },
+
+  dismissIntro: async (code: string, key: string, fingerprint?: string, roomUsername?: string): Promise<{ success: boolean }> => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/intros/${key}/dismiss/`, {
+      fingerprint,
     });
     return response.data;
   },

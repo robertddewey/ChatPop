@@ -1539,6 +1539,12 @@ class MyParticipationView(APIView):
             # Update last_seen timestamp (do this AFTER accessing theme)
             participation.save()  # auto_now updates last_seen_at
 
+            # Get seen_intros: global for registered users, per-chat for anonymous
+            if request.user.is_authenticated:
+                seen_intros = request.user.seen_intros or {}
+            else:
+                seen_intros = participation.seen_intros or {}
+
             return Response({
                 'has_joined': True,
                 'username': participation.username,
@@ -1546,7 +1552,8 @@ class MyParticipationView(APIView):
                 'first_joined_at': participation.first_joined_at,
                 'last_seen_at': participation.last_seen_at,
                 'theme': theme_data,
-                'is_blocked': is_blocked
+                'is_blocked': is_blocked,
+                'seen_intros': seen_intros
             })
 
         # No participation found - check if first-time visitor is blocked
@@ -1563,6 +1570,40 @@ class MyParticipationView(APIView):
             'has_joined': False,
             'is_blocked': is_blocked
         })
+
+
+class DismissIntroView(APIView):
+    """Dismiss a feature intro so it won't show again"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code, key, username=None):
+        chat_room = get_chat_room_by_url(code, username)
+        fingerprint = request.data.get('fingerprint')
+
+        # Registered user: store globally on User model
+        if request.user.is_authenticated:
+            user = request.user
+            if not user.seen_intros:
+                user.seen_intros = {}
+            user.seen_intros[key] = True
+            user.save(update_fields=['seen_intros'])
+            return Response({'success': True})
+
+        # Anonymous user: store on ChatParticipation
+        if fingerprint:
+            participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                fingerprint=fingerprint,
+                user__isnull=True
+            ).first()
+            if participation:
+                if not participation.seen_intros:
+                    participation.seen_intros = {}
+                participation.seen_intros[key] = True
+                participation.save(update_fields=['seen_intros'])
+                return Response({'success': True})
+
+        return Response({'success': False, 'error': 'No participation found'}, status=400)
 
 
 class UpdateMyThemeView(APIView):
