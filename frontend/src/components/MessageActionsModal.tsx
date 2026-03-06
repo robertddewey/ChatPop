@@ -822,6 +822,7 @@ export default function MessageActionsModal({
                     <ReactionBar
                       reactions={localReactions}
                       themeIsDarkMode={themeIsDarkMode}
+                      maxVisible={20}
                     />
                   </div>
                 </div>

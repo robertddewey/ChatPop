@@ -15,6 +15,7 @@ interface ReactionBarProps {
   themeIsDarkMode?: boolean;
   highlightTheme?: ReactionHighlightTheme;
   fullWidth?: boolean;
+  maxVisible?: number;
 }
 
 function formatCount(count: number): string {
@@ -23,18 +24,18 @@ function formatCount(count: number): string {
   return String(count);
 }
 
-export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMode = true, highlightTheme, fullWidth }: ReactionBarProps) {
+export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMode = true, highlightTheme, fullWidth, maxVisible = 4 }: ReactionBarProps) {
   const [animatingEmoji, setAnimatingEmoji] = useState<string | null>(null);
 
   // Filter out reactions with no count (e.g., after removal via WebSocket re-fetch)
   const validReactions = reactions?.filter(r => r.count > 0) || [];
 
-  // Show user's own reactions + top 3 by popularity (deduped), sorted by count
+  // Show top N by popularity + user's own reactions (deduped), sorted by count
   const sorted = [...validReactions].sort((a, b) => b.count - a.count);
-  const top3 = sorted.slice(0, 3);
-  const top3Emojis = new Set(top3.map(r => r.emoji));
-  const userExtras = sorted.filter(r => r.has_reacted && !top3Emojis.has(r.emoji));
-  const topReactions = [...top3, ...userExtras].sort((a, b) => b.count - a.count);
+  const topN = sorted.slice(0, maxVisible);
+  const topNEmojis = new Set(topN.map(r => r.emoji));
+  const userExtras = sorted.filter(r => r.has_reacted && !topNEmojis.has(r.emoji));
+  const topReactions = [...topN, ...userExtras].sort((a, b) => b.count - a.count);
 
   const handleClick = (emoji: string) => {
     // Trigger animation

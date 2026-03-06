@@ -902,32 +902,34 @@ class MessageListView(APIView):
             cached_reactions = reactions_by_message.get(msg_id_str, [])
 
             if cached_reactions:
-                # Use cached reactions (already top 3 format)
+                # Use cached reactions (already top 20 format)
                 top_reactions = cached_reactions
             else:
                 # Cache miss: fallback to database query (compute reaction summary)
                 from collections import defaultdict
-                reactions_list = msg.reactions.all()
-                emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0})
+                reactions_list = msg.reactions.order_by('-created_at')
+                emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'latest': None})
 
                 for reaction in reactions_list:
                     emoji = reaction.emoji
                     emoji_counts[emoji]['emoji'] = emoji
                     emoji_counts[emoji]['count'] += 1
+                    if emoji_counts[emoji]['latest'] is None:
+                        emoji_counts[emoji]['latest'] = reaction.created_at
 
-                top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+                all_sorted = sorted(emoji_counts.values(), key=lambda x: (-x['count'], -(x['latest'].timestamp() if x['latest'] else 0)))
+                top_reactions = [{'emoji': r['emoji'], 'count': r['count']} for r in all_sorted[:20]]
 
                 # Cache the computed reactions for next time
                 if top_reactions:
                     MessageCache.set_message_reactions(chat_room.id, msg_id_str, top_reactions)
 
-            # Add has_reacted + include user's reactions not in top 3
+            # Add has_reacted + include user's reactions not in top 20
             user_emojis = user_reactions.get(msg_id_str, set())
             top_emojis = {r['emoji'] for r in top_reactions}
             for reaction in top_reactions:
                 reaction['has_reacted'] = reaction['emoji'] in user_emojis
-            # Append user's own reactions that didn't make the top 3
-            # (count is unknown from cache, but they exist — use count=1 as minimum)
+            # Append user's own reactions that didn't make the top 20
             for user_emoji in user_emojis:
                 if user_emoji not in top_emojis:
                     top_reactions.append({'emoji': user_emoji, 'count': 1, 'has_reacted': True})
@@ -2200,15 +2202,18 @@ class MessageReactionsListView(APIView):
         reactions = MessageReaction.objects.filter(message=message).order_by('-created_at')
         serializer = MessageReactionSerializer(reactions, many=True)
 
-        # Group reactions by emoji with counts
+        # Group reactions by emoji with counts and most recent timestamp
         from collections import defaultdict
-        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0})
+        emoji_counts = defaultdict(lambda: {'emoji': '', 'count': 0, 'latest': None})
         user_emojis = set()  # Track current user's emojis
 
         for reaction in reactions:
             emoji = reaction.emoji
             emoji_counts[emoji]['emoji'] = emoji
             emoji_counts[emoji]['count'] += 1
+            # Track most recent reaction time (reactions ordered by -created_at)
+            if emoji_counts[emoji]['latest'] is None:
+                emoji_counts[emoji]['latest'] = reaction.created_at
             # Check if this is the current user's reaction (by fingerprint or user_id)
             is_user_reaction = (
                 (current_fingerprint and reaction.fingerprint == current_fingerprint) or
@@ -2217,17 +2222,18 @@ class MessageReactionsListView(APIView):
             if is_user_reaction:
                 user_emojis.add(emoji)
 
-        # Build summary: user's own reactions + top 3 by popularity (deduped)
-        all_sorted = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)
-        top_3 = all_sorted[:3]
-        # Include any user reactions not already in top 3
-        top_emojis = {r['emoji'] for r in top_3}
+        # Build summary: top 20 by popularity (tiebreak: most recent first) + user's extras
+        all_sorted = sorted(emoji_counts.values(), key=lambda x: (-x['count'], -(x['latest'].timestamp() if x['latest'] else 0)))
+        top_20 = all_sorted[:20]
+        # Include any user reactions not already in top 20
+        top_emojis = {r['emoji'] for r in top_20}
         user_extras = [r for r in all_sorted if r['emoji'] in user_emojis and r['emoji'] not in top_emojis]
-        top_reactions = top_3 + user_extras
+        top_reactions = top_20 + user_extras
 
-        # Add has_reacted to each summary item
+        # Add has_reacted and strip internal 'latest' field
         for reaction in top_reactions:
             reaction['has_reacted'] = reaction['emoji'] in user_emojis
+            reaction.pop('latest', None)
 
         return Response({
             'reactions': serializer.data,
