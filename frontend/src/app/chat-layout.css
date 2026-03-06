@@ -33,7 +33,7 @@ html:has(body.chat-layout) {
 
 /* Prevent pinch-to-zoom and pull-to-refresh on all elements within chat */
 body.chat-layout * {
-  touch-action: pan-y;
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 

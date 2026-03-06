@@ -390,11 +390,16 @@ function MainChatView({
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
-                  <img
-                    src={message.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
-                    alt={message.username}
-                    className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 flex-shrink-0 ${currentDesign.avatarBorder || ''}`}
-                  />
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={message.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
+                      alt={message.username}
+                      className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 ${currentDesign.avatarBorder || ''}`}
+                    />
+                    {message.username_is_reserved && (
+                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: themeIsDarkMode ? '#18181b' : '#ffffff' }} />
+                    )}
+                  </div>
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1 mb-1">
@@ -404,9 +409,6 @@ function MainChatView({
                       >
                         {message.username}
                       </span>
-                      {message.username_is_reserved && (
-                        <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                      )}
                       {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                       <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                     </div>
@@ -476,11 +478,16 @@ function MainChatView({
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
-                  <img
-                    src={stickyPinnedMessage.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', stickyPinnedMessage.username, 80)}
-                    alt={stickyPinnedMessage.username}
-                    className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 flex-shrink-0 ${currentDesign.avatarBorder || ''}`}
-                  />
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={stickyPinnedMessage.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', stickyPinnedMessage.username, 80)}
+                      alt={stickyPinnedMessage.username}
+                      className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 ${currentDesign.avatarBorder || ''}`}
+                    />
+                    {stickyPinnedMessage.username_is_reserved && (
+                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: themeIsDarkMode ? '#18181b' : '#ffffff' }} />
+                    )}
+                  </div>
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1 mb-1">
@@ -490,9 +497,6 @@ function MainChatView({
                       >
                         {stickyPinnedMessage.username}
                       </span>
-                  {stickyPinnedMessage.username_is_reserved && (
-                    <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                  )}
                   {stickyPinnedMessage.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
                     themeIsDarkMode ? 'bg-white/10' : 'bg-black/10'
@@ -688,11 +692,16 @@ function MainChatView({
                 {/* Avatar column - for all messages */}
                 <div className={`${avatarSize} flex-shrink-0 ${avatarSpacing}`}>
                   {showAvatar ? (
-                    <img
-                      src={message.avatar_url || getDiceBearUrl(avatarStyle, message.username, 80)}
-                      alt={message.username}
-                      className={`${avatarSize} rounded-full bg-zinc-700 ${avatarBorder}`}
-                    />
+                    <div className="relative">
+                      <img
+                        src={message.avatar_url || getDiceBearUrl(avatarStyle, message.username, 80)}
+                        alt={message.username}
+                        className={`${avatarSize} rounded-full bg-zinc-700 ${avatarBorder}`}
+                      />
+                      {message.username_is_reserved && (
+                        <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: themeIsDarkMode ? '#18181b' : '#ffffff' }} />
+                      )}
+                    </div>
                   ) : (
                     /* Invisible spacer to maintain alignment */
                     <div className="w-full h-full" />
@@ -747,9 +756,6 @@ function MainChatView({
                         >
                           {message.username}
                         </span>
-                        {message.username_is_reserved && (
-                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                        )}
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                       </div>
                     </div>
@@ -773,9 +779,6 @@ function MainChatView({
                         >
                           {message.username}
                         </span>
-                        {message.username_is_reserved && (
-                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                        )}
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                         <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                       </div>
@@ -801,9 +804,6 @@ function MainChatView({
                         >
                           {message.username}
                         </span>
-                        {message.username_is_reserved && (
-                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                        )}
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                         <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
                           themeIsDarkMode ? 'bg-white/10' : 'bg-black/10'
@@ -1078,8 +1078,9 @@ function MainChatView({
                     </div>
                   </div>
                   )}
-                {/* Timestamp + Reaction pills row */}
-                <div className={`flex items-center gap-2 h-6 ${
+                </MessageActionsModal>
+                {/* Timestamp + Reaction pills row — outside MessageActionsModal so touch scroll works */}
+                <div className={`flex items-center gap-2 h-6 pr-14 ${
                   message.message_type === 'gift'
                     ? 'mt-1'
                     : (message.voice_url || message.photo_url || message.video_url)
@@ -1087,7 +1088,7 @@ function MainChatView({
                       : '-mt-0.5'
                 }`}>
                   <span
-                    className="text-[10px] opacity-60"
+                    className="text-[10px] opacity-60 whitespace-nowrap flex-shrink-0"
                     style={{
                       color: getTextColor(
                         message.is_from_host
@@ -1114,7 +1115,6 @@ function MainChatView({
                     fullWidth={message.is_from_host}
                   />
                 </div>
-                </MessageActionsModal>
               </div>
             </div>
           </div>

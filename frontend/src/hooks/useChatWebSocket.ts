@@ -76,7 +76,7 @@ export function useChatWebSocket({
   useEffect(() => { onVisibilityChangeRef.current = onVisibilityChange; }, [onVisibilityChange]);
 
   const connect = useCallback(() => {
-    if (!enabled || !sessionToken || ws.current?.readyState === WebSocket.OPEN) {
+    if (!enabled || ws.current?.readyState === WebSocket.OPEN) {
       return;
     }
 
@@ -88,7 +88,10 @@ export function useChatWebSocket({
     const wsProtocol = isSecure ? 'wss:' : 'ws:';
     const wsHost = window.location.hostname;
     const wsPort = window.location.port || (isSecure ? '443' : '80');
-    const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws/chat/${chatCode}/?session_token=${sessionToken}`;
+    let wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws/chat/${chatCode}/`;
+    if (sessionToken) {
+      wsUrl += `?session_token=${sessionToken}`;
+    }
 
     const socket = new WebSocket(wsUrl);
 
@@ -195,6 +198,8 @@ export function useChatWebSocket({
 
     socket.onclose = (event) => {
       console.log('[WebSocket] Disconnected:', event.code, event.reason);
+      // Only update state if this is still the active socket (not replaced by a new connection)
+      if (ws.current !== socket) return;
       setIsConnected(false);
       setIsConnecting(false);
       ws.current = null;
@@ -202,7 +207,6 @@ export function useChatWebSocket({
       // Attempt to reconnect if not a normal closure and we haven't exceeded max attempts
       if (
         enabled &&
-        sessionToken &&
         event.code !== 1000 && // Normal closure
         event.code !== 1001 && // Going away
         reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS
@@ -260,7 +264,7 @@ export function useChatWebSocket({
 
   // Connect on mount, disconnect on unmount
   useEffect(() => {
-    if (enabled && sessionToken) {
+    if (enabled) {
       connect();
     }
 

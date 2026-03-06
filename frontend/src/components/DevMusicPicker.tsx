@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Music, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { getModalTheme } from '@/lib/modal-theme';
 
 interface RecentSong {
   id: string;
@@ -97,18 +98,20 @@ export default function DevMusicPicker({ onSelect, onClose }: DevMusicPickerProp
     return date.toLocaleDateString();
   };
 
+  const mt = getModalTheme(true);
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80">
-      <div className="w-full max-w-md bg-zinc-800 border border-zinc-700 rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85dvh]">
+    <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 ${mt.backdrop}`}>
+      <div className={`w-full max-w-md ${mt.container} ${mt.border} ${mt.rounded} ${mt.shadow} overflow-hidden flex flex-col max-h-[85dvh]`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-700 bg-amber-900/30">
           <div className="flex items-center gap-2">
             <div className="px-2 py-1 bg-amber-500 text-black text-xs font-bold rounded">DEV</div>
-            <h2 className="text-lg font-bold text-zinc-50">Select Recent Song</h2>
+            <h2 className={`text-lg font-bold ${mt.title}`}>Select Recent Song</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 cursor-pointer"
+            className={`p-2 rounded-lg cursor-pointer ${mt.closeButton}`}
           >
             <X className="w-5 h-5" />
           </button>
@@ -177,8 +180,8 @@ export default function DevMusicPicker({ onSelect, onClose }: DevMusicPickerProp
           <button
             onClick={onClose}
             disabled={selectedId !== null}
-            className={`w-full px-4 py-3 bg-zinc-700 text-white font-semibold rounded-lg transition-colors ${
-              selectedId !== null ? 'opacity-50 cursor-not-allowed' : 'hover:bg-zinc-600 cursor-pointer'
+            className={`w-full px-4 py-3 font-semibold rounded-lg transition-colors ${mt.secondaryButton} ${
+              selectedId !== null ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
             }`}
           >
             Cancel

@@ -332,6 +332,7 @@ export interface ChatParticipation {
   has_joined: boolean;
   username?: string;
   username_is_reserved?: boolean;
+  avatar_url?: string | null;
   first_joined_at?: string;
   last_seen_at?: string;
   theme?: ChatTheme | null;

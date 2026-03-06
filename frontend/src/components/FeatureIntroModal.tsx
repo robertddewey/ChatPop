@@ -3,6 +3,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { LucideIcon } from 'lucide-react';
+import { getModalTheme } from '@/lib/modal-theme';
 
 interface FeatureIntroModalProps {
   title: string;
@@ -20,16 +21,15 @@ export default function FeatureIntroModal({
   onDismiss,
 }: FeatureIntroModalProps) {
   const isDark = themeIsDarkMode;
+  const mt = getModalTheme(isDark);
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className={`fixed inset-0 z-[9999] flex items-center justify-center ${mt.backdrop}`}
       onClick={onDismiss}
     >
       <div
-        className={`mx-6 max-w-sm w-full rounded-2xl p-6 shadow-xl ${
-          isDark ? 'bg-zinc-900 text-zinc-50' : 'bg-white text-gray-900'
-        }`}
+        className={`mx-6 max-w-sm w-full ${mt.rounded} p-6 ${mt.shadow} ${mt.container} ${mt.title}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-col items-center text-center gap-4">
@@ -41,19 +41,13 @@ export default function FeatureIntroModal({
 
           <h2 className="text-lg font-semibold">{title}</h2>
 
-          <p className={`text-sm leading-relaxed ${
-            isDark ? 'text-zinc-400' : 'text-gray-600'
-          }`}>
+          <p className={`text-sm leading-relaxed ${mt.body}`}>
             {description}
           </p>
 
           <button
             onClick={onDismiss}
-            className={`w-full mt-2 py-2.5 rounded-xl font-medium text-sm transition-colors ${
-              isDark
-                ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-50'
-                : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
-            }`}
+            className={`w-full mt-2 py-2.5 rounded-xl font-medium text-sm transition-colors ${mt.secondaryButton}`}
           >
             Got it
           </button>

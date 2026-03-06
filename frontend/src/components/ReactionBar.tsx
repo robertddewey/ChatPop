@@ -17,14 +17,24 @@ interface ReactionBarProps {
   fullWidth?: boolean;
 }
 
+function formatCount(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
+  return String(count);
+}
+
 export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMode = true, highlightTheme, fullWidth }: ReactionBarProps) {
   const [animatingEmoji, setAnimatingEmoji] = useState<string | null>(null);
 
   // Filter out reactions with no count (e.g., after removal via WebSocket re-fetch)
   const validReactions = reactions?.filter(r => r.count > 0) || [];
 
-  // Show only top 3 reactions
-  const topReactions = validReactions.slice(0, 3);
+  // Show user's own reactions + top 3 by popularity (deduped), sorted by count
+  const sorted = [...validReactions].sort((a, b) => b.count - a.count);
+  const top3 = sorted.slice(0, 3);
+  const top3Emojis = new Set(top3.map(r => r.emoji));
+  const userExtras = sorted.filter(r => r.has_reacted && !top3Emojis.has(r.emoji));
+  const topReactions = [...top3, ...userExtras].sort((a, b) => b.count - a.count);
 
   const handleClick = (emoji: string) => {
     // Trigger animation
@@ -48,7 +58,9 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
   // Always render the container to prevent browser paint artifacts
   // when reaction buttons with shadow-lg are removed from DOM
   return (
-    <div className="flex items-center gap-1">
+    <div
+      className="flex-1 flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0 touch-pan-x"
+    >
       {topReactions.map((reaction) => {
         const isAnimating = animatingEmoji === reaction.emoji;
         const hasReacted = reaction.has_reacted;
@@ -57,7 +69,7 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
           <button
             key={reaction.emoji}
             onClick={() => handleClick(reaction.emoji)}
-            className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 shadow-lg ${
+            className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 shadow-lg flex-shrink-0 ${
               isAnimating ? 'scale-110' : 'scale-100'
             } ${
               hasReacted
@@ -78,7 +90,7 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
                   : themeIsDarkMode ? 'text-zinc-400' : 'text-gray-600'
               }`}
             >
-              {reaction.count}
+              {formatCount(reaction.count)}
             </span>
           </button>
         );

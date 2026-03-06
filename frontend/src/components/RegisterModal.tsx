@@ -8,6 +8,7 @@ import { MARKETING } from '@/lib/marketing';
 import { getFingerprint } from '@/lib/usernameStorage';
 import { X, Dices, ChevronLeft, ChevronRight } from 'lucide-react';
 import { isDarkTheme } from '@/lib/themes';
+import { getModalTheme } from '@/lib/modal-theme';
 
 interface RegisterModalProps {
   onClose: () => void;
@@ -257,41 +258,27 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     }
   };
 
-  // Theme-aware styles
-  const styles = useDarkMode ? {
-    // Dark mode styles (forced on homepage, conditional on chat pages) - Lightened
-    overlay: 'bg-black/60',
-    container: 'bg-zinc-800 border border-zinc-700',
-    title: 'text-zinc-50',
-    subtitle: 'text-zinc-300',
-    input: (hasError: boolean) => `bg-zinc-700 border text-zinc-50 placeholder-zinc-400 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 ${hasError ? 'border-red-500' : 'border-zinc-600'}`,
-    label: 'text-zinc-200',
-    button: 'bg-[#404eed] hover:bg-[#3640d9] text-white',
-    link: 'text-cyan-400 hover:underline hover:text-cyan-300',
-    error: 'bg-red-900/20 border-red-800 text-red-400',
-    fieldError: 'text-red-400',
-    closeButton: 'text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700',
-    diceButton: 'bg-zinc-600 border border-zinc-500 text-zinc-50 hover:bg-zinc-500',
-  } : {
-    // Light mode styles (only used on non-homepage, non-dark-theme chat pages)
-    overlay: 'bg-black/75',
-    container: 'bg-white border-0',
-    title: 'text-gray-900',
-    subtitle: 'text-gray-600',
-    input: (hasError: boolean) => `bg-white border text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${hasError ? 'border-red-500' : 'border-gray-300'}`,
-    label: 'text-gray-700',
-    button: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white',
-    link: 'text-purple-600 hover:underline',
-    error: 'bg-red-50 border-red-200 text-red-600',
-    fieldError: 'text-red-600',
-    closeButton: 'text-gray-400 hover:text-gray-600 hover:bg-gray-100',
-    diceButton: 'bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50',
+  // Theme-aware styles from centralized modal theme
+  const mt = getModalTheme(useDarkMode);
+  const styles = {
+    overlay: mt.backdrop,
+    container: `${mt.container} ${mt.border}`,
+    title: mt.title,
+    subtitle: useDarkMode ? 'text-zinc-300' : 'text-gray-600',
+    input: (hasError: boolean) => `${mt.input} ${hasError ? 'border-red-500' : ''}`,
+    label: useDarkMode ? 'text-zinc-200' : 'text-gray-700',
+    button: mt.primaryButton,
+    link: useDarkMode ? 'text-cyan-400 hover:underline hover:text-cyan-300' : 'text-purple-600 hover:underline',
+    error: mt.error,
+    fieldError: useDarkMode ? 'text-red-400' : 'text-red-600',
+    closeButton: mt.closeButton,
+    diceButton: useDarkMode ? 'bg-zinc-600 border border-zinc-500 text-zinc-50 hover:bg-zinc-500' : 'bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50',
   };
 
   return (
     <div className={`fixed inset-0 z-[10000] flex items-center justify-center p-4 ${styles.overlay}`}>
       {/* Mobile: Full screen, Desktop: Max width */}
-      <div className={`w-full max-w-md ${styles.container} rounded-2xl shadow-xl p-8 relative max-h-[90vh] overflow-y-auto`}>
+      <div className={`w-full max-w-md ${styles.container} ${mt.rounded} ${mt.shadow} p-8 relative max-h-[90vh] overflow-y-auto`}>
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -436,7 +423,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
           <button
             type="submit"
             disabled={loading}
-            className="w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-[#404eed] hover:bg-[#3640d9] text-white"
+            className={`w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${mt.primaryButton}`}
           >
             {loading ? MARKETING.auth.register.submitButtonLoading : MARKETING.auth.register.submitButton}
           </button>

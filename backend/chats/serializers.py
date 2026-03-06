@@ -213,13 +213,16 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
         if chat_room.theme and chat_room.theme.avatar_style:
             avatar_style = chat_room.theme.avatar_style
 
-        # If using reserved_username, store on User model
+        # If using reserved_username, store on User model and set proxy URL on participation
         if request.user.reserved_username and host_username.lower() == request.user.reserved_username.lower():
             if not request.user.avatar_url:
                 avatar_url = generate_and_store_avatar(host_username, style=avatar_style)
                 if avatar_url:
                     request.user.avatar_url = avatar_url
                     request.user.save(update_fields=['avatar_url'])
+            # Always set proxy URL on participation so message avatars resolve correctly
+            participation.avatar_url = f'/api/chats/media/avatars/user/{request.user.id}'
+            participation.save(update_fields=['avatar_url'])
         else:
             # Otherwise store on ChatParticipation
             avatar_url = generate_and_store_avatar(host_username, style=avatar_style)

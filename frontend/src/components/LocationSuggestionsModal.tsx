@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { locationApi, chatApi, messageApi, activityApi, LocationSuggestion, LocationAnalysisResponse, NearbyDiscoverableChat, ActivityPollResponse } from '@/lib/api';
 import { saveModalState, setFreshNavigation } from '@/lib/modalState';
+import { getModalTheme } from '@/lib/modal-theme';
 import dynamic from 'next/dynamic';
 
 // Only load DevLocationPicker in development mode
@@ -401,24 +402,26 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
     router.push(chat.url);
   };
 
+  const mt = getModalTheme(true);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${mt.backdrop}`}>
       {/* Modal Container */}
-      <div className="w-full max-w-md bg-zinc-800 border border-zinc-700 rounded-2xl shadow-xl relative max-h-[85dvh] overflow-hidden flex flex-col">
+      <div className={`w-full max-w-md ${mt.container} ${mt.border} ${mt.rounded} ${mt.shadow} relative max-h-[85dvh] overflow-hidden flex flex-col`}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-zinc-700">
           <div>
-            <h1 className="text-2xl font-bold text-zinc-50 flex items-center gap-2">
+            <h1 className={`text-2xl font-bold ${mt.title} flex items-center gap-2`}>
               <MapPin className="w-6 h-6" />
               {isLoading ? 'Finding chats...' : result?.success ? 'Nearby Places' : 'Start a local chat'}
             </h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <p className={`text-sm ${mt.body} mt-1`}>
               {isLoading ? 'Getting nearby chats' : result?.success ? `${(result.suggestions?.length || 0) + nearbyChats.length} rooms chatting nearby` : 'Tap to find chats near you'}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg transition-colors text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 cursor-pointer"
+            className={`p-2 rounded-lg transition-colors cursor-pointer ${mt.closeButton}`}
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -796,7 +799,7 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
                 onClick={() => {
                   setError(null);
                 }}
-                className="w-full px-4 py-3 bg-zinc-700 hover:bg-zinc-600 text-zinc-100 rounded-lg font-medium transition-colors"
+                className={`w-full px-4 py-3 rounded-lg font-medium transition-colors ${mt.secondaryButton}`}
               >
                 Try Again
               </button>
@@ -807,20 +810,20 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
         {/* Footer */}
         <div className="p-4 border-t border-zinc-700">
           {selectionError && (
-            <div className="mb-3 p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
+            <div className={`mb-3 p-3 rounded-lg text-sm ${mt.error}`}>
               {selectionError}
             </div>
           )}
           {!isLoading && result && (
-            <p className="text-center text-zinc-400 text-sm mb-3">
+            <p className={`text-center ${mt.body} text-sm mb-3`}>
               Tap a suggestion to join the chat room
             </p>
           )}
           <button
             onClick={onClose}
             disabled={isLoading || isSelecting}
-            className={`w-full px-6 py-3 bg-zinc-700 text-white font-semibold rounded-lg transition-all ${
-              isLoading || isSelecting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-zinc-600 cursor-pointer'
+            className={`w-full px-6 py-3 font-semibold rounded-lg transition-all ${mt.secondaryButton} ${
+              isLoading || isSelecting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
             }`}
           >
             {isSelecting ? 'Joining room...' : 'Close'}

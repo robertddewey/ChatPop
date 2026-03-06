@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Camera, RefreshCw } from 'lucide-react';
 import { devApi, DevRecentPhoto } from '@/lib/api';
+import { getModalTheme } from '@/lib/modal-theme';
 
 interface DevPhotoPickerProps {
   onSelect: (file: File) => void;
@@ -88,9 +89,11 @@ export default function DevPhotoPicker({ onSelect, onClose }: DevPhotoPickerProp
     }
   };
 
+  const mt = getModalTheme(true);
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80">
-      <div className="w-full max-w-md bg-zinc-800 border border-zinc-700 rounded-2xl shadow-xl relative max-h-[85dvh] overflow-hidden flex flex-col">
+    <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 ${mt.backdrop}`}>
+      <div className={`w-full max-w-md ${mt.container} ${mt.border} ${mt.rounded} ${mt.shadow} relative max-h-[85dvh] overflow-hidden flex flex-col`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-700">
           <div className="flex items-center gap-2">
@@ -98,21 +101,21 @@ export default function DevPhotoPicker({ onSelect, onClose }: DevPhotoPickerProp
               <Camera className="w-4 h-4 text-amber-400" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-zinc-50">Dev: Recent Photos</h2>
-              <p className="text-xs text-zinc-400">Select a photo to re-analyze</p>
+              <h2 className={`text-lg font-bold ${mt.title}`}>Dev: Recent Photos</h2>
+              <p className={`text-xs ${mt.body}`}>Select a photo to re-analyze</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleRefresh}
               disabled={isLoading || selectedId !== null}
-              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-50"
+              className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${mt.closeButton}`}
             >
               <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+              className={`p-2 rounded-lg transition-colors ${mt.closeButton}`}
             >
               <X className="w-5 h-5" />
             </button>
@@ -187,7 +190,7 @@ export default function DevPhotoPicker({ onSelect, onClose }: DevPhotoPickerProp
           <button
             onClick={onClose}
             disabled={selectedId !== null}
-            className="flex-1 px-4 py-2 bg-zinc-700 text-zinc-100 rounded-lg hover:bg-zinc-600 transition-colors disabled:opacity-50"
+            className={`flex-1 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 ${mt.secondaryButton}`}
           >
             Cancel
           </button>

@@ -921,10 +921,16 @@ class MessageListView(APIView):
                 if top_reactions:
                     MessageCache.set_message_reactions(chat_room.id, msg_id_str, top_reactions)
 
-            # Add has_reacted to each reaction
+            # Add has_reacted + include user's reactions not in top 3
             user_emojis = user_reactions.get(msg_id_str, set())
+            top_emojis = {r['emoji'] for r in top_reactions}
             for reaction in top_reactions:
                 reaction['has_reacted'] = reaction['emoji'] in user_emojis
+            # Append user's own reactions that didn't make the top 3
+            # (count is unknown from cache, but they exist — use count=1 as minimum)
+            for user_emoji in user_emojis:
+                if user_emoji not in top_emojis:
+                    top_reactions.append({'emoji': user_emoji, 'count': 1, 'has_reacted': True})
 
             serialized.append({
                 'id': str(msg.id),
@@ -2211,8 +2217,13 @@ class MessageReactionsListView(APIView):
             if is_user_reaction:
                 user_emojis.add(emoji)
 
-        # Sort by count (descending) and take top 3
-        top_reactions = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)[:3]
+        # Build summary: user's own reactions + top 3 by popularity (deduped)
+        all_sorted = sorted(emoji_counts.values(), key=lambda x: x['count'], reverse=True)
+        top_3 = all_sorted[:3]
+        # Include any user reactions not already in top 3
+        top_emojis = {r['emoji'] for r in top_3}
+        user_extras = [r for r in all_sorted if r['emoji'] in user_emojis and r['emoji'] not in top_emojis]
+        top_reactions = top_3 + user_extras
 
         # Add has_reacted to each summary item
         for reaction in top_reactions:

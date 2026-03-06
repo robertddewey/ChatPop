@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { chatApi } from '@/lib/api';
 import { X, MapPin, Loader2, Image, Mic, Video } from 'lucide-react';
+import { getModalTheme } from '@/lib/modal-theme';
 
 const FORM_STORAGE_KEY = 'create_chat_form_data';
 
@@ -246,18 +247,20 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
     }
   };
 
+  const mt = getModalTheme(true);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${mt.backdrop}`}>
       {/* Modal Container */}
-      <div className="w-full max-w-lg bg-zinc-800 border border-zinc-700 rounded-2xl shadow-xl relative max-h-[85dvh] overflow-hidden flex flex-col">
+      <div className={`w-full max-w-lg ${mt.container} ${mt.border} ${mt.rounded} ${mt.shadow} relative max-h-[85dvh] overflow-hidden flex flex-col`}>
         {/* Fixed Header */}
         <div className="flex items-center justify-between p-6 border-b border-zinc-700">
-          <h1 className="text-2xl font-bold text-zinc-50">
+          <h1 className={`text-2xl font-bold ${mt.title}`}>
             Room Settings
           </h1>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg transition-colors text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 cursor-pointer"
+            className={`p-2 rounded-lg transition-colors cursor-pointer ${mt.closeButton}`}
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -268,7 +271,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
         <div ref={scrollContainerRef} className="p-6 flex-1 overflow-y-auto">
           {/* Error Message */}
           {error && (
-            <div className="mb-6 p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400">
+            <div className={`mb-6 p-4 rounded-lg ${mt.error}`}>
               {error}
             </div>
           )}
@@ -457,7 +460,7 @@ export default function CreateChatModal({ onClose }: CreateChatModalProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full px-6 py-3 bg-[#404eed] text-white font-semibold rounded-lg hover:bg-[#3640d9] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className={`w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${mt.primaryButton}`}
             >
               {loading ? 'Creating...' : 'Create Room'}
             </button>

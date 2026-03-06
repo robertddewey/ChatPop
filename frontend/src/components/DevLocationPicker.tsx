@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { getModalTheme } from '@/lib/modal-theme';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
 
@@ -82,18 +83,20 @@ export default function DevLocationPicker({ onSelect, onClose }: DevLocationPick
     setFlyToCoords({ lat: preset.lat, lng: preset.lng });
   };
 
+  const mt = getModalTheme(true);
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80">
-      <div className="w-full max-w-lg bg-zinc-800 border border-zinc-700 rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90dvh]">
+    <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 ${mt.backdrop}`}>
+      <div className={`w-full max-w-lg ${mt.container} ${mt.border} ${mt.rounded} ${mt.shadow} overflow-hidden flex flex-col max-h-[90dvh]`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-700 bg-amber-900/30">
           <div className="flex items-center gap-2">
             <div className="px-2 py-1 bg-amber-500 text-black text-xs font-bold rounded">DEV</div>
-            <h2 className="text-lg font-bold text-zinc-50">Set Debug Location</h2>
+            <h2 className={`text-lg font-bold ${mt.title}`}>Set Debug Location</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700 cursor-pointer"
+            className={`p-2 rounded-lg cursor-pointer ${mt.closeButton}`}
           >
             <X className="w-5 h-5" />
           </button>
@@ -149,9 +152,9 @@ export default function DevLocationPicker({ onSelect, onClose }: DevLocationPick
           <button
             onClick={handleConfirm}
             disabled={!selectedCoords}
-            className={`w-full px-6 py-3 bg-zinc-700 text-white font-semibold rounded-lg transition-all ${
+            className={`w-full px-6 py-3 font-semibold rounded-lg transition-all ${mt.secondaryButton} ${
               selectedCoords
-                ? 'hover:bg-zinc-600 cursor-pointer'
+                ? 'cursor-pointer'
                 : 'opacity-50 cursor-not-allowed'
             }`}
           >

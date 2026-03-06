@@ -14,6 +14,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.username = None
         self.session_token = None
         self.user_id = None
+        self.read_only = False
         self.blocked_usernames = set()  # In-memory set for O(1) lookup
 
         # Extract session token from query string
@@ -22,9 +23,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         session_token = query_params.get('session_token', [None])[0]
 
         if not session_token:
-            # Reject connection without session token
-            await self.close(code=4001)
+            # No token — allow read-only connection for public chats
+            is_public = await self.is_public_chat(self.chat_code)
+            if not is_public:
+                await self.close(code=4001)
+                return
+
+            self.read_only = True
+            await self.channel_layer.group_add(
+                self.room_group_name,
+                self.channel_name
+            )
+            await self.accept()
             return
+
+        # Authenticated connection — full read-write access
+        self.read_only = False
 
         # Validate session token
         try:
@@ -92,6 +106,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data):
+        if self.read_only:
+            return  # Read-only connections cannot send messages
+
         data = json.loads(text_data)
         message_text = data.get('message', '')
         reply_to_id = data.get('reply_to_id')  # Optional message ID to reply to
@@ -260,6 +277,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'type': 'gift_acknowledged',
             'message_ids': event['message_ids'],
         }))
+
+    @database_sync_to_async
+    def is_public_chat(self, chat_code):
+        """Check if a chat room is public."""
+        try:
+            room = ChatRoom.objects.get(code=chat_code)
+            return room.access_mode == ChatRoom.ACCESS_PUBLIC
+        except ChatRoom.DoesNotExist:
+            return False
 
     @database_sync_to_async
     def get_unacked_gifts(self):

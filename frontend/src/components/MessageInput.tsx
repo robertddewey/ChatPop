@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, memo, useMemo, useRef, useEffect } from 'react';
-import { Crown, Reply, X, MessageSquare, ChevronLeft } from 'lucide-react';
+import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft } from 'lucide-react';
 import type { Message, ChatRoom } from '@/lib/api';
 import VoiceRecorder from './VoiceRecorder';
 import MediaPicker from './MediaPicker';
@@ -23,6 +23,8 @@ interface MessageInputProps {
   onPhotoSelected: (file: File, width: number, height: number, caption: string) => void;
   onVideoSelected: (file: File, duration: number, thumbnail: Blob | null, caption: string) => void;
   username?: string;
+  avatarUrl?: string | null;
+  hasReservedUsername?: boolean;
   disabled?: boolean;
   disabledMessage?: string;
   design: {
@@ -49,6 +51,8 @@ function MessageInputComponent({
   onPhotoSelected,
   onVideoSelected,
   username,
+  avatarUrl,
+  hasReservedUsername = false,
   disabled = false,
   disabledMessage,
   design,
@@ -194,14 +198,23 @@ function MessageInputComponent({
       <form onSubmit={handleSubmit} className={`flex items-center gap-2 ${replyingTo ? 'mt-2' : ''}`}>
         {/* Text input container */}
         <div className="relative flex-1 min-w-0 flex items-center">
-          {/* Crown for host - always visible */}
-          {isHost && (
-            <Crown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-yellow-500 pointer-events-none z-10" />
-          )}
+          {/* User avatar - always visible */}
+          <div className="absolute left-1.5 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+            <div className="relative">
+              <img
+                src={avatarUrl || ''}
+                alt=""
+                className="w-6 h-6 rounded-full bg-zinc-700"
+              />
+              {hasReservedUsername && (
+                <BadgeCheck size={10} className="absolute -bottom-0.5 -right-0.5 text-blue-500 bg-zinc-900 rounded-full" />
+              )}
+            </div>
+          </div>
 
           {/* Placeholder - only show when empty and collapsed */}
           {!message && !isExpanded && (
-            <div className={`absolute ${isHost ? 'left-10' : 'left-3'} top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-gray-400 pointer-events-none`}>
+            <div className="absolute left-10 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-gray-400 pointer-events-none">
               <MessageSquare className="w-4 h-4" />
               <span className="text-sm">Aa</span>
             </div>
@@ -214,7 +227,7 @@ function MessageInputComponent({
             onKeyDown={handleKeyDown}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            className={`w-full ${design.inputField} ${isHost ? 'pl-10' : ''} text-sm resize-none leading-5 !py-[7px] ${
+            className={`w-full ${design.inputField} pl-10 text-sm resize-none leading-5 !py-[7px] ${
               isExpanded ? '' : '!h-9 overflow-hidden whitespace-nowrap'
             }`}
             disabled={sending}

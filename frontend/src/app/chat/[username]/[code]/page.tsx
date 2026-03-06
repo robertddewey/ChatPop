@@ -700,7 +700,6 @@ export default function ChatPage() {
         if (currentUser) {
           // Logged-in user
           setCurrentUserId(currentUser.id);
-          setUserAvatarUrl(currentUser.avatar_url || null);
 
           if (participation.has_joined && participation.username) {
             // Returning user - use their locked username
@@ -708,12 +707,15 @@ export default function ChatPage() {
             setHasJoinedBefore(true);
             setIsBlocked(participation.is_blocked || false);
             setHasReservedUsername(participation.username_is_reserved || false);
+            // Use participation avatar (same source as message avatars)
+            setUserAvatarUrl(participation.avatar_url || currentUser.avatar_url || null);
           } else {
             // First-time user - pre-fill with reserved_username
             setUsername(currentUser.reserved_username || '');
             setHasJoinedBefore(false);
             setIsBlocked(false);
             setHasReservedUsername(!!currentUser.reserved_username);
+            setUserAvatarUrl(currentUser.avatar_url || null);
           }
         } else {
           // Anonymous user
@@ -2214,6 +2216,8 @@ export default function ChatPage() {
             hasJoined={hasJoined}
             sending={sending}
             username={username}
+            avatarUrl={userAvatarUrl}
+            hasReservedUsername={hasReservedUsername}
             replyingTo={replyingTo}
             onCancelReply={handleCancelReply}
             onSubmitText={handleSubmitText}

@@ -5,7 +5,9 @@ import { createPortal } from 'react-dom';
 import { Message, ReactionSummary } from '@/lib/api';
 import { Pin, Gift, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
+import ReactionBar from './ReactionBar';
 import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
+import { getModalTheme } from '@/lib/modal-theme';
 
 // "you" pill shown next to the current user's username
 function YouPill({ dark = true }: { dark?: boolean }) {
@@ -74,23 +76,22 @@ interface MessageActionsModalProps {
 
 // Get theme-aware modal styles (no system preference - force theme mode)
 const getModalStyles = (themeIsDarkMode: boolean) => {
+  const mt = getModalTheme(themeIsDarkMode);
   if (themeIsDarkMode) {
-    // Dark theme styles
     return {
-      overlay: 'bg-black/60 backdrop-blur-sm',
-      container: 'bg-zinc-900',
+      overlay: mt.backdrop,
+      container: mt.container,
       messagePreview: 'bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl',
-      messageText: 'text-zinc-50',
+      messageText: mt.title,
       actionButton: 'bg-zinc-700 hover:bg-zinc-600 active:bg-zinc-500 text-zinc-50 border border-zinc-500',
       actionIcon: 'text-cyan-400',
       dragHandle: 'bg-gray-600',
       usernameText: 'text-gray-300',
     };
   } else {
-    // Light theme styles
     return {
-      overlay: 'bg-black/20 backdrop-blur-sm',
-      container: 'bg-white',
+      overlay: mt.backdrop,
+      container: mt.container,
       messagePreview: 'bg-gray-50 border border-gray-200 rounded-2xl shadow-sm',
       messageText: 'text-gray-800',
       actionButton: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-900',
@@ -237,6 +238,9 @@ export default function MessageActionsModal({
   const [isDragging, setIsDragging] = useState(false);
   const [slideIn, setSlideIn] = useState(false);
 
+  // Local reaction state for optimistic updates while modal is open
+  const [localReactions, setLocalReactions] = useState<ReactionSummary[]>(reactions);
+
   // Panel state: which panel is visible
   type ActivePanel = 'actions' | 'pin' | 'gift';
   const [activePanel, setActivePanel] = useState<ActivePanel>('actions');
@@ -252,6 +256,35 @@ export default function MessageActionsModal({
   const [selectedGift, setSelectedGift] = useState<GiftItem | null>(null);
   const [showGiftConfirmation, setShowGiftConfirmation] = useState(false);
   const [isGiftSending, setIsGiftSending] = useState(false);
+
+  // Sync local reactions with prop when it changes
+  useEffect(() => {
+    setLocalReactions(reactions);
+  }, [reactions]);
+
+  const handleReactLocal = React.useCallback((emoji: string) => {
+    if (!onReact) return;
+    onReact(message.id, emoji);
+    // Optimistic update
+    setLocalReactions(prev => {
+      const existing = prev.find(r => r.emoji === emoji);
+      if (existing) {
+        if (existing.has_reacted) {
+          // Remove reaction
+          const newCount = existing.count - 1;
+          return newCount <= 0
+            ? prev.filter(r => r.emoji !== emoji)
+            : prev.map(r => r.emoji === emoji ? { ...r, count: newCount, has_reacted: false } : r);
+        } else {
+          // Add reaction
+          return prev.map(r => r.emoji === emoji ? { ...r, count: r.count + 1, has_reacted: true } : r);
+        }
+      } else {
+        // New reaction
+        return [...prev, { emoji, count: 1, has_reacted: true }];
+      }
+    });
+  }, [onReact, message.id]);
 
   const dragStartY = React.useRef(0);
   const actionsRef = React.useRef<HTMLDivElement>(null);
@@ -276,6 +309,7 @@ export default function MessageActionsModal({
   const isHostMessage = message.is_from_host;
 
   const modalStyles = getModalStyles(themeIsDarkMode);
+  const mt = getModalTheme(themeIsDarkMode);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
   // Chat routes already have body scroll locked via chat-layout.css
@@ -663,11 +697,16 @@ export default function MessageActionsModal({
             <div className="px-4 pb-6">
               <div className="flex">
                 <div className="w-10 flex-shrink-0 mr-3">
-                  <img
-                    src={message.avatar_url}
-                    alt={message.username}
-                    className="w-10 h-10 rounded-full bg-zinc-700"
-                  />
+                  <div className="relative w-10 h-10">
+                    <img
+                      src={message.avatar_url}
+                      alt={message.username}
+                      className="w-10 h-10 rounded-full bg-zinc-700"
+                    />
+                    {message.username_is_reserved && (
+                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: themeColors?.badgeIcon || '#3b82f6', backgroundColor: themeIsDarkMode ? '#18181b' : '#ffffff' }} />
+                    )}
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="mb-1">
@@ -685,19 +724,13 @@ export default function MessageActionsModal({
                     >
                       {message.username}
                     </span>
-                    {message.username_is_reserved && (
-                      <BadgeCheck className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.badgeIcon || '#34d399' }} />
-                    )}
-                    {message.username.toLowerCase() === currentUsername?.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
+                    {message.username.toLowerCase() === currentUsername?.toLowerCase() && <span className="ml-1"><YouPill dark={themeIsDarkMode} /></span>}
                     {message.is_from_host && (
                       <Crown className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
                     )}
                     {message.is_pinned && !message.is_from_host && (
                       <Pin className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.pinIcon || '#fbbf24' }} />
                     )}
-                    <span className={`text-xs ${themeIsDarkMode ? 'text-white opacity-60' : 'text-gray-500'} -mt-0.5 block`}>
-                      {new Date(message.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </span>
                   </div>
                   {/* Text content or gift card */}
                   {message.message_type === 'gift' ? (() => {
@@ -781,6 +814,16 @@ export default function MessageActionsModal({
                       </span>
                     </div>
                   )}
+                  {/* Timestamp + Reactions */}
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`text-[10px] ${themeIsDarkMode ? 'text-white opacity-60' : 'text-gray-500'}`}>
+                      {new Date(message.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                    <ReactionBar
+                      reactions={localReactions}
+                      themeIsDarkMode={themeIsDarkMode}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -818,15 +861,13 @@ export default function MessageActionsModal({
                     <div className="px-5 pb-4 pt-1">
                       <div className="flex items-center justify-between">
                         {REACTION_EMOJIS.map((emoji) => {
-                          const hasReacted = reactions.some(r => r.emoji === emoji && r.has_reacted);
+                          const hasReacted = localReactions.some(r => r.emoji === emoji && r.has_reacted);
                           return (
                             <button
                               key={emoji}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onReact(message.id, emoji);
-                                handleClose();
-                                setTimeout(() => onHighlight?.(message.id), 300);
+                                handleReactLocal(emoji);
                               }}
                               onTouchStart={(e) => e.stopPropagation()}
                               onTouchMove={(e) => e.stopPropagation()}
@@ -993,7 +1034,7 @@ export default function MessageActionsModal({
                       disabled={isPinning || !selectedTier}
                       className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
                         (isPinning || !selectedTier) ? 'opacity-50 cursor-not-allowed' : ''
-                      } ${themeIsDarkMode ? 'bg-[#404eed] hover:bg-[#3640d9] text-white' : 'bg-purple-600 text-white'}`}
+                      } ${mt.primaryButton}`}
                     >
                       {isPinning
                         ? 'Processing...'
@@ -1038,12 +1079,8 @@ export default function MessageActionsModal({
                                   onClick={(e) => { e.stopPropagation(); setSelectedCategory(cat.id); }}
                                   className={`px-4 py-2 rounded-full text-sm font-medium transition-all active:scale-95 whitespace-nowrap ${
                                     selectedCategory === cat.id
-                                      ? themeIsDarkMode
-                                        ? 'bg-[#404eed] text-white'
-                                        : 'bg-purple-600 text-white'
-                                      : themeIsDarkMode
-                                        ? 'bg-zinc-700 text-zinc-300 border border-zinc-500'
-                                        : 'bg-gray-100 text-gray-700 border border-gray-300'
+                                      ? mt.primaryButton
+                                      : `${mt.secondaryButton} border ${themeIsDarkMode ? 'border-zinc-500' : 'border-gray-300'}`
                                   }`}
                                 >
                                   {cat.emoji} {cat.label}
@@ -1137,7 +1174,7 @@ export default function MessageActionsModal({
                               disabled={isGiftSending}
                               className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
                                 isGiftSending ? 'opacity-50 cursor-not-allowed' : ''
-                              } ${themeIsDarkMode ? 'bg-[#404eed] hover:bg-[#3640d9] text-white' : 'bg-purple-600 text-white'}`}
+                              } ${mt.primaryButton}`}
                             >
                               {isGiftSending ? 'Sending...' : `Send ${formatGiftPrice(selectedGift.price)}`}
                             </button>
