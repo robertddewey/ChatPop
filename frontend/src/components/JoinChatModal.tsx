@@ -92,8 +92,8 @@ export default function JoinChatModal({
 
   // Get the current avatar URL based on username
   const getCurrentAvatarUrl = (): string => {
-    // If using reserved username and we have a stored avatar, use it
-    if (hasReservedUsername && userAvatarUrl && username.toLowerCase() === currentUserDisplayName.toLowerCase()) {
+    // If we have a stored avatar (from participation or user profile), use it
+    if (userAvatarUrl) {
       return userAvatarUrl;
     }
     // Otherwise generate from username seed
@@ -117,6 +117,8 @@ export default function JoinChatModal({
     const checkRateLimit = async () => {
       if (isLoggedIn || hasJoinedBefore) {
         // Logged-in users and returning users are exempt
+        setIsRateLimited(false);
+        setError('');
         setRateLimitChecked(true);
         return;
       }
@@ -284,7 +286,7 @@ export default function JoinChatModal({
       <div className={`absolute inset-0 ${modalStyles.overlay}`} />
 
       {/* Modal */}
-      <div className={`relative w-full max-w-md ${modalStyles.container} ${mt.rounded} p-8 ${mt.shadow}`}>
+      <div className={`relative w-full max-w-md max-h-full overflow-y-auto ${modalStyles.container} ${mt.rounded} p-8 ${mt.shadow}`}>
         {/* Title */}
         <div className="mb-6 text-center">
           <h1 className={`text-2xl font-bold ${modalStyles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
@@ -312,15 +314,13 @@ export default function JoinChatModal({
         </div>
 
         {/* Avatar Preview */}
-        {!hasJoinedBefore && !isReturningUser && (
-          <div className="flex justify-center mb-6">
-            <img
-              src={getCurrentAvatarUrl()}
-              alt="Your avatar"
-              className="w-20 h-20 rounded-full bg-zinc-700"
-            />
-          </div>
-        )}
+        <div className="flex justify-center mb-6">
+          <img
+            src={getCurrentAvatarUrl()}
+            alt="Your avatar"
+            className="w-20 h-20 rounded-full bg-zinc-700"
+          />
+        </div>
 
         {/* Form */}
         <form onSubmit={handleJoin} className="space-y-4">
@@ -330,7 +330,7 @@ export default function JoinChatModal({
             <div className="text-center mb-8">
               <div className="flex items-center justify-center gap-1">
                 <p className={`text-sm ${modalStyles.subtitle}`}>You&apos;ll join as: <span className={`font-semibold ${modalStyles.title}`}>{currentUserDisplayName}</span></p>
-                {hasReservedUsername && isLoggedIn && (
+                {hasReservedUsername && (
                   <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
                 )}
               </div>
@@ -387,9 +387,14 @@ export default function JoinChatModal({
           ) : isReturningUser ? (
             // Anonymous returning user - show locked username
             <div className="text-center mb-8">
-              <p className={`text-sm ${modalStyles.subtitle}`}>
-                Rejoining as: <span className={`font-semibold ${modalStyles.title}`}>{username}</span>
-              </p>
+              <div className="flex items-center justify-center gap-1">
+                <p className={`text-sm ${modalStyles.subtitle}`}>
+                  Rejoining as: <span className={`font-semibold ${modalStyles.title}`}>{username}</span>
+                </p>
+                {hasReservedUsername && (
+                  <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
+                )}
+              </div>
             </div>
           ) : (
             // Anonymous first-time user - show input with dice
@@ -444,10 +449,17 @@ export default function JoinChatModal({
             </p>
           )}
 
+          {/* Reserved username warning for anonymous users */}
+          {!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser) && (
+            <p className={`text-xs text-amber-400 text-center -mt-2`}>
+              This username is reserved. Log in to continue as {currentUserDisplayName}.
+            </p>
+          )}
+
           {/* Join Button */}
           <button
             type="submit"
-            disabled={isJoining || isRateLimited}
+            disabled={isJoining || isRateLimited || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
             className={`w-full px-6 py-4 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
           >
             {isJoining ? 'Joining...' : 'Join Chat'}

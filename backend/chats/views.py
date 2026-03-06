@@ -376,6 +376,13 @@ class ChatRoomJoinView(APIView):
 
             # If NO existing participation, verify username was generated for this fingerprint
             if not existing_participation:
+                # SECURITY: Check if username is reserved by a registered user FIRST
+                from accounts.models import User as UserModel
+                if UserModel.objects.filter(reserved_username__iexact=username).exists():
+                    raise ValidationError(
+                        f"Username '{username}' is reserved. Please log in to use this username."
+                    )
+
                 # Check Redis to verify this username was generated for this fingerprint
                 generated_key = f"username:generated_for_fingerprint:{fingerprint}"
                 generated_usernames = cache.get(generated_key, set())
@@ -438,10 +445,12 @@ class ChatRoomJoinView(APIView):
         # SECURITY CHECK 1: Check if username is reserved by another user
         from accounts.models import User
         reserved_user = User.objects.filter(reserved_username__iexact=username).first()
-        if reserved_user and request.user.is_authenticated:
-            # Only block registered users from using another user's reserved_username
-            # Anonymous users CAN use reserved usernames (they coexist with the registered user)
-            if reserved_user.id != request.user.id:
+        if reserved_user:
+            if not request.user.is_authenticated:
+                raise ValidationError(
+                    f"Username '{username}' is reserved. Please log in to use this username."
+                )
+            elif reserved_user.id != request.user.id:
                 raise ValidationError(f"Username '{username}' is reserved by another user")
 
         # SECURITY CHECK 2: Check for existing participation (username persistence)
@@ -1520,6 +1529,11 @@ class MyParticipationView(APIView):
             username_is_reserved = False
             if participation.user and participation.user.reserved_username:
                 username_is_reserved = (participation.username.lower() == participation.user.reserved_username.lower())
+            elif not participation.user:
+                # For anonymous participations, check if ANY registered user has reserved this username
+                username_is_reserved = User.objects.filter(
+                    reserved_username__iexact=participation.username
+                ).exists()
 
             # Check if user is blocked
             from .utils.security.blocking import check_if_blocked
@@ -1549,6 +1563,7 @@ class MyParticipationView(APIView):
                 'has_joined': True,
                 'username': participation.username,
                 'username_is_reserved': username_is_reserved,
+                'avatar_url': participation.avatar_url,
                 'first_joined_at': participation.first_joined_at,
                 'last_seen_at': participation.last_seen_at,
                 'theme': theme_data,
@@ -1842,20 +1857,30 @@ class SuggestUsernameView(APIView):
 
         # Check if this fingerprint already has a participation in this room
         # If so, return their existing username immediately (they're a returning user)
+        # SECURITY: Only match anonymous participations (user__isnull=True) to prevent
+        # fingerprint hijacking of registered users' reserved usernames
         existing_participation = ChatParticipation.objects.filter(
             chat_room=chat_room,
             fingerprint=fingerprint,
+            user__isnull=True,
             is_active=True
         ).first()
 
         if existing_participation:
-            logger.info(f"[USERNAME_SUGGEST] Returning user detected - fingerprint={fingerprint}, existing_username={existing_participation.username}")
-            return Response({
-                'username': existing_participation.username,
-                'is_returning': True,
-                'remaining': 0,
-                'generation_remaining': 0
-            })
+            # Defense in depth: don't return reserved usernames to unauthenticated users
+            is_reserved = User.objects.filter(
+                reserved_username__iexact=existing_participation.username
+            ).exists()
+            if is_reserved and not request.user.is_authenticated:
+                logger.info(f"[USERNAME_SUGGEST] Returning user has reserved username '{existing_participation.username}' - falling through to generation")
+            else:
+                logger.info(f"[USERNAME_SUGGEST] Returning user detected - fingerprint={fingerprint}, existing_username={existing_participation.username}")
+                return Response({
+                    'username': existing_participation.username,
+                    'is_returning': True,
+                    'remaining': 0,
+                    'generation_remaining': 0
+                })
 
         # Rate limiting key (per chat, per fingerprint/IP)
         rate_limit_key = f"username_suggest_limit:{code}:{fingerprint}"

@@ -24,7 +24,7 @@ import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
 import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Star, Heart, Zap, Bell } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
-import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited, hasModalState } from '@/lib/modalState';
+import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
 
 // Type for Axios-style errors
 interface ApiError {
@@ -602,7 +602,7 @@ export default function ChatPage() {
       ));
     }, []),
     onVisibilityChange: handleVisibilityChange,
-    enabled: hasJoined && !!sessionToken,
+    enabled: hasJoined || (!!chatRoom && chatRoom.access_mode === 'public'),
   });
 
   // Detect forward navigation and redirect back to home
@@ -652,6 +652,11 @@ export default function ChatPage() {
     }
   }, [hasJoined, sessionToken]);
 
+  // Load preview messages for public chats (shown blurred behind join modal)
+  useEffect(() => {
+    if (hasJoined || !chatRoom || chatRoom.access_mode === 'private') return;
+    loadMessages();
+  }, [chatRoom, hasJoined]);
 
   // Scroll to bottom when switching rooms
   // Double rAF ensures sticky section padding is applied before scrolling
@@ -717,6 +722,7 @@ export default function ChatPage() {
             setHasJoinedBefore(true);
             setIsBlocked(participation.is_blocked || false);
             setHasReservedUsername(participation.username_is_reserved || false);
+            setUserAvatarUrl(participation.avatar_url || null);
           } else {
             setHasJoinedBefore(false);
             setIsBlocked(participation.is_blocked || false);
@@ -834,12 +840,7 @@ export default function ChatPage() {
         window.history.pushState({ modal: true }, '', window.location.href);
       } else {
         markChatVisited(code);
-
-        if (hasModalState()) {
-          router.back();
-        } else {
-          router.replace('/');
-        }
+        router.push('/');
       }
     };
 
@@ -2061,9 +2062,9 @@ export default function ChatPage() {
           />
         )}
 
-        {/* Join Modal - inline overlay within messages area */}
-        {!hasJoined && chatRoom && !authMode && (
-          <div className="pointer-events-auto">
+        {/* Join Modal - inline overlay within messages area (hidden when auth modal is open to preserve state) */}
+        {!hasJoined && chatRoom && (
+          <div className={`pointer-events-auto ${authMode ? 'hidden' : ''}`}>
             <JoinChatModal
               key={joinModalKey}
               chatRoom={chatRoom}

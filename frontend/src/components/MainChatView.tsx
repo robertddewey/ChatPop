@@ -264,7 +264,7 @@ function MainChatView({
 
   // Compute theme colors for modal badges/icons (memoized)
   const modalThemeColors = useMemo(() => ({
-    badgeIcon: getIconColor(currentDesign.badgeIconColor) || '#34d399',
+    badgeIcon: getIconColor(currentDesign.badgeIconColor) || '#3b82f6',
     crownIcon: getIconColor(currentDesign.crownIconColor) || '#2dd4bf',
     pinIcon: getIconColor(currentDesign.pinIconColor) || '#fbbf24',
     hostUsername: getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff',
@@ -405,7 +405,7 @@ function MainChatView({
                         {message.username}
                       </span>
                       {message.username_is_reserved && (
-                        <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                        <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                       )}
                       {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                       <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
@@ -491,7 +491,7 @@ function MainChatView({
                         {stickyPinnedMessage.username}
                       </span>
                   {stickyPinnedMessage.username_is_reserved && (
-                    <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                    <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                   )}
                   {stickyPinnedMessage.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
@@ -613,7 +613,7 @@ function MainChatView({
             </span>
           </div>
         )}
-        {hasJoined && (() => {
+        {(hasJoined || filteredMessages.length > 0) && (() => {
           // Pre-compute thread groups for continuous thread lines
           const THREAD_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
           type ThreadGroup = { messages: { message: Message; index: number }[] };
@@ -748,7 +748,7 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username_is_reserved && (
-                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                         )}
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                       </div>
@@ -774,7 +774,7 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username_is_reserved && (
-                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                         )}
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                         <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
@@ -802,7 +802,7 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username_is_reserved && (
-                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                         )}
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                         <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
@@ -924,7 +924,7 @@ function MainChatView({
                             {message.reply_to_message.username}
                           </span>
                           {message.reply_to_message.username_is_reserved && (
-                            <BadgeCheck size={12} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#34d399' }} />
+                            <BadgeCheck size={12} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                           )}
                           {message.reply_to_message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
                           {message.reply_to_message.is_from_host && (

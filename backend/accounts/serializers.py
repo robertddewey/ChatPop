@@ -19,7 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
             'subscriber_count', 'subscription_count',
             'created_at', 'last_active', 'avatar_url'
         ]
-        read_only_fields = ['id', 'created_at', 'last_active', 'subscriber_count', 'subscription_count', 'avatar_url']
+        read_only_fields = ['id', 'created_at', 'last_active', 'subscriber_count', 'subscription_count', 'avatar_url', 'reserved_username']
 
     def get_subscriber_count(self, obj):
         return obj.subscribers.count()

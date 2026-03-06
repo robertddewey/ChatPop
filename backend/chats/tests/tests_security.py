@@ -728,3 +728,161 @@ class UsernameReservationSecurityTests(TestCase):
         )
         # Generated usernames like "HappyTiger42" have mixed case - verify it's preserved
         self.assertEqual(participation.username, username)
+
+
+@allure.feature('Chat Security')
+@allure.story('Reserved Username Protection')
+class ReservedUsernameSecurityTests(TestCase):
+    """
+    Test suite for reserved username fingerprint hijacking prevention.
+
+    Ensures that:
+    - Anonymous users cannot join with reserved usernames
+    - SuggestUsernameView doesn't leak reserved usernames to anonymous users
+    - Authenticated users can still use their own reserved usernames
+    - Pre-existing anonymous participations are grandfathered
+    """
+
+    def setUp(self):
+        """Set up test data"""
+        cache.clear()
+        self.client = Client()
+
+        # Create a registered user with reserved username
+        self.registered_user = User.objects.create_user(
+            email='reserved@example.com',
+            password='testpass123',
+            reserved_username='ReservedUser'
+        )
+
+        # Create host user
+        self.host_user = User.objects.create_user(
+            email='host@example.com',
+            password='testpass123',
+            reserved_username='HostUser'
+        )
+
+        # Create test chat room
+        self.chat_room = ChatRoom.objects.create(
+            name='Test Chat',
+            host=self.host_user,
+            access_mode='public'
+        )
+        self.chat_code = self.chat_room.code
+
+        # Host joins
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.host_user,
+            username='HostUser',
+            fingerprint='host_fp'
+        )
+
+    @allure.title("Anonymous user cannot join with a reserved username")
+    @allure.severity(allure.severity_level.CRITICAL)
+    def test_anonymous_cannot_join_with_reserved_username(self):
+        """Anonymous user trying to join with a reserved username should be rejected"""
+        response = self.client.post(
+            f'/api/chats/HostUser/{self.chat_code}/join/',
+            data={
+                'username': 'ReservedUser',
+                'fingerprint': 'attacker_fingerprint'
+            },
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        response_text = str(response.json()).lower()
+        self.assertIn('reserved', response_text)
+
+    @allure.title("Authenticated user can join with their own reserved username")
+    @allure.severity(allure.severity_level.CRITICAL)
+    def test_authenticated_user_can_use_own_reserved_username(self):
+        """Authenticated user should be able to join with their own reserved username"""
+        # Get auth token via login endpoint
+        login_response = self.client.post(
+            '/api/auth/login/',
+            data={'email': 'reserved@example.com', 'password': 'testpass123'},
+            content_type='application/json'
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+        token = login_response.json().get('access')
+
+        response = self.client.post(
+            f'/api/chats/HostUser/{self.chat_code}/join/',
+            data={
+                'username': 'ReservedUser',
+                'fingerprint': 'registered_user_fp'
+            },
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {token}'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @allure.title("SuggestUsernameView doesn't return registered user's username to anonymous visitor")
+    @allure.severity(allure.severity_level.CRITICAL)
+    def test_suggest_username_doesnt_leak_registered_username(self):
+        """SuggestUsernameView should not return a registered user's participation username via fingerprint"""
+        # Create a registered user's participation with a specific fingerprint
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.registered_user,
+            username='ReservedUser',
+            fingerprint='shared_fingerprint'
+        )
+
+        # Anonymous user with same fingerprint calls suggest
+        response = self.client.post(
+            f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
+            data={'fingerprint': 'shared_fingerprint'},
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        # Should NOT return the registered user's username
+        if data.get('is_returning'):
+            self.assertNotEqual(data['username'].lower(), 'reserveduser')
+
+    @allure.title("SuggestUsernameView doesn't return reserved username to anonymous visitor")
+    @allure.severity(allure.severity_level.CRITICAL)
+    def test_suggest_username_doesnt_return_reserved_to_anonymous(self):
+        """Even if anonymous participation exists with reserved username, suggest should not return it"""
+        # Create an anonymous participation that happens to have a reserved username
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=None,
+            username='ReservedUser',
+            fingerprint='anon_with_reserved_fp',
+            is_active=True
+        )
+
+        response = self.client.post(
+            f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
+            data={'fingerprint': 'anon_with_reserved_fp'},
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        # Should NOT return the reserved username as a returning user suggestion
+        if data.get('is_returning'):
+            self.assertNotEqual(data['username'].lower(), 'reserveduser')
+
+    @allure.title("MyParticipationView flags reserved username for anonymous participation")
+    @allure.severity(allure.severity_level.NORMAL)
+    def test_my_participation_flags_reserved_username_for_anonymous(self):
+        """MyParticipationView should flag username_is_reserved for anonymous participations with reserved names"""
+        # Create an anonymous participation with a reserved username
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=None,
+            username='ReservedUser',
+            fingerprint='anon_reserved_fp',
+            is_active=True
+        )
+
+        response = self.client.get(
+            f'/api/chats/HostUser/{self.chat_code}/my-participation/',
+            {'fingerprint': 'anon_reserved_fp'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertTrue(data.get('username_is_reserved', False))
