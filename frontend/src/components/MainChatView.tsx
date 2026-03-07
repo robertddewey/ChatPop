@@ -305,7 +305,7 @@ function MainChatView({
 
     resizeObserver.observe(stickyEl);
     return () => resizeObserver.disconnect();
-  }, [stickyHostMessages.length, stickyPinnedMessage]);
+  }, [stickyHostMessages.length, stickyPinnedMessage, hasJoined]);
 
   // Notify parent of sticky height changes (for FAB strip positioning)
   useEffect(() => {
