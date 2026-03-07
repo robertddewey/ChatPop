@@ -571,17 +571,12 @@ class ChatRoomJoinView(APIView):
         """
         from chatpop.utils.media import generate_and_store_avatar
 
-        # Get avatar style from theme
-        avatar_style = None
-        if chat_room.theme and chat_room.theme.avatar_style:
-            avatar_style = chat_room.theme.avatar_style
-
         # If logged-in user using their reserved_username
         if user and user.reserved_username:
             if participation.username.lower() == user.reserved_username.lower():
                 # Ensure User.avatar_url exists (the actual avatar file)
                 if not user.avatar_url:
-                    avatar_url = generate_and_store_avatar(participation.username, style=avatar_style)
+                    avatar_url = generate_and_store_avatar(participation.username)
                     if avatar_url:
                         user.avatar_url = avatar_url
                         user.save(update_fields=['avatar_url'])
@@ -594,7 +589,7 @@ class ChatRoomJoinView(APIView):
         # For anonymous users or registered users using different username:
         # Generate and store direct URL on ChatParticipation
         if not participation.avatar_url:
-            avatar_url = generate_and_store_avatar(participation.username, style=avatar_style)
+            avatar_url = generate_and_store_avatar(participation.username)
             if avatar_url:
                 participation.avatar_url = avatar_url
                 participation.save(update_fields=['avatar_url'])
@@ -865,9 +860,6 @@ class MessageListView(APIView):
 
         # Build avatar_map: username (lowercase) -> avatar_url
         from chatpop.utils.media import get_fallback_dicebear_url
-        avatar_style = None
-        if chat_room.theme and chat_room.theme.avatar_style:
-            avatar_style = chat_room.theme.avatar_style
 
         avatar_map = {}
         for p in participations:
@@ -880,7 +872,7 @@ class MessageListView(APIView):
         for msg in messages:
             username_is_reserved = MessageCache._compute_username_is_reserved(msg)
             # Lookup avatar from map, fallback to DiceBear if not found
-            avatar_url = avatar_map.get(msg.username.lower()) or get_fallback_dicebear_url(msg.username, style=avatar_style)
+            avatar_url = avatar_map.get(msg.username.lower()) or get_fallback_dicebear_url(msg.username)
 
             # Convert relative voice_url to absolute URL if present
             voice_url = msg.voice_url

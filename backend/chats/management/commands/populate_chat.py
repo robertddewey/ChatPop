@@ -312,11 +312,6 @@ class Command(BaseCommand):
         from chatpop.utils.media import generate_and_store_avatar
         from chats.models import ChatParticipation
 
-        # Get avatar style from theme
-        avatar_style = None
-        if chat_room.theme and chat_room.theme.avatar_style:
-            avatar_style = chat_room.theme.avatar_style
-
         if user:
             # Registered user
             participation, created = ChatParticipation.objects.get_or_create(
@@ -328,7 +323,7 @@ class Command(BaseCommand):
             if user.reserved_username and username.lower() == user.reserved_username.lower():
                 # Using reserved_username - ensure User.avatar_url exists
                 if not user.avatar_url:
-                    avatar_url = generate_and_store_avatar(username, style=avatar_style)
+                    avatar_url = generate_and_store_avatar(username)
                     if avatar_url:
                         user.avatar_url = avatar_url
                         user.save(update_fields=['avatar_url'])
@@ -340,7 +335,7 @@ class Command(BaseCommand):
             else:
                 # Using different username - direct URL on participation
                 if not participation.avatar_url:
-                    avatar_url = generate_and_store_avatar(username, style=avatar_style)
+                    avatar_url = generate_and_store_avatar(username)
                     if avatar_url:
                         participation.avatar_url = avatar_url
                         participation.save(update_fields=['avatar_url'])
@@ -353,7 +348,7 @@ class Command(BaseCommand):
                 defaults={'fingerprint': f'test-fingerprint-{username.lower()}'}
             )
             if not participation.avatar_url:
-                avatar_url = generate_and_store_avatar(username, style=avatar_style)
+                avatar_url = generate_and_store_avatar(username)
                 if avatar_url:
                     participation.avatar_url = avatar_url
                     participation.save(update_fields=['avatar_url'])

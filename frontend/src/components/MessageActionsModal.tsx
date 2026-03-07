@@ -10,10 +10,10 @@ import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, ty
 import { getModalTheme } from '@/lib/modal-theme';
 
 // "you" pill shown next to the current user's username
-function YouPill({ dark = true }: { dark?: boolean }) {
+function YouPill({ className }: { className?: string }) {
   return (
     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none ${
-      dark ? 'bg-white/10 text-zinc-400' : 'bg-black/10 text-gray-500'
+      className || 'bg-white/10 text-zinc-400'
     }`}>you</span>
   );
 }
@@ -69,44 +69,36 @@ interface MessageActionsModalProps {
   onHighlight?: (messageId: string) => void;
   sessionToken?: string | null;
   themeColors?: ThemeColors;
+  modalStyles?: Record<string, string>;
+  emojiPickerStyles?: Record<string, string>;
+  giftStyles?: Record<string, string>;
+  videoPlayerStyles?: Record<string, string>;
   // Legacy props (deprecated, will be removed)
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
 }
 
-// Get theme-aware modal styles (no system preference - force theme mode)
-const getModalStyles = (themeIsDarkMode: boolean) => {
+// Get theme-aware modal styles (dark-mode only)
+const getModalStyles = (themeIsDarkMode: boolean, themeModalStyles?: Record<string, string>) => {
   const mt = getModalTheme(themeIsDarkMode);
-  if (themeIsDarkMode) {
-    return {
-      overlay: mt.backdrop,
-      container: mt.container,
-      messagePreview: 'bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl',
-      messageText: mt.title,
-      actionButton: 'bg-zinc-700 hover:bg-zinc-600 active:bg-zinc-500 text-zinc-50 border border-zinc-500',
-      actionIcon: 'text-cyan-400',
-      dragHandle: 'bg-gray-600',
-      usernameText: 'text-gray-300',
-    };
-  } else {
-    return {
-      overlay: mt.backdrop,
-      container: mt.container,
-      messagePreview: 'bg-gray-50 border border-gray-200 rounded-2xl shadow-sm',
-      messageText: 'text-gray-800',
-      actionButton: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-900',
-      actionIcon: 'text-purple-600',
-      dragHandle: 'bg-gray-300',
-      usernameText: 'text-gray-700',
-    };
-  }
+  return {
+    overlay: mt.backdrop,
+    container: mt.container,
+    messagePreview: themeModalStyles?.messagePreview || 'bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl',
+    messageText: mt.title,
+    actionButton: themeModalStyles?.actionButton || 'bg-zinc-700 hover:bg-zinc-600 active:bg-zinc-500 text-zinc-50 border border-zinc-500',
+    actionIcon: themeModalStyles?.actionIcon || 'text-cyan-400',
+    dragHandle: themeModalStyles?.dragHandle || 'bg-gray-600',
+    usernameText: themeModalStyles?.usernameText || 'text-gray-300',
+    divider: themeModalStyles?.divider || 'border-zinc-700/50',
+  };
 };
 
 // Allowed reaction emojis (matching backend)
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
 
 // Inline video player for modal preview (matches chat VideoMessage style)
-function ModalVideoPlayer({ videoUrl, thumbnailUrl, duration }: { videoUrl: string; thumbnailUrl: string; duration: number }) {
+function ModalVideoPlayer({ videoUrl, thumbnailUrl, duration, videoPlayerStyles }: { videoUrl: string; thumbnailUrl: string; duration: number; videoPlayerStyles?: Record<string, string> }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -153,7 +145,7 @@ function ModalVideoPlayer({ videoUrl, thumbnailUrl, duration }: { videoUrl: stri
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="mt-1 max-w-[240px] rounded-lg overflow-hidden bg-black relative" onClick={(e) => e.stopPropagation()}>
+    <div className={`mt-1 max-w-[240px] rounded-lg overflow-hidden relative ${videoPlayerStyles?.container || 'bg-black'}`} onClick={(e) => e.stopPropagation()}>
       <video
         ref={videoRef}
         src={videoUrl}
@@ -171,35 +163,35 @@ function ModalVideoPlayer({ videoUrl, thumbnailUrl, duration }: { videoUrl: stri
       >
         {!isPlaying && (
           <>
-            <div className="absolute inset-0 bg-black/30 rounded-lg" />
-            <div className="relative z-10 w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+            <div className={`absolute inset-0 rounded-lg ${videoPlayerStyles?.pausedOverlay || 'bg-black/30'}`} />
+            <div className={`relative z-10 w-12 h-12 rounded-full flex items-center justify-center shadow-lg ${videoPlayerStyles?.playButton || 'bg-white/90'}`}>
               {isLoading ? (
-                <div className="w-5 h-5 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+                <div className={`w-5 h-5 border-2 border-t-transparent rounded-full animate-spin ${videoPlayerStyles?.spinner || 'border-gray-600'}`} />
               ) : (
-                <Play size={20} className="text-gray-800 ml-1" fill="currentColor" />
+                <Play size={20} className={`ml-1 ${videoPlayerStyles?.playIcon || 'text-gray-800'}`} fill="currentColor" />
               )}
             </div>
           </>
         )}
         {isPlaying && (
-          <div className="absolute inset-0 bg-black/20 opacity-0 hover:opacity-100 active:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
-            <Pause size={32} className="text-white" fill="white" />
+          <div className={`absolute inset-0 opacity-0 hover:opacity-100 active:opacity-100 transition-opacity flex items-center justify-center rounded-lg ${videoPlayerStyles?.playingOverlay || 'bg-black/20'}`}>
+            <Pause size={32} className={videoPlayerStyles?.pauseIcon || 'text-white'} fill={videoPlayerStyles?.pauseIconFill || 'white'} />
           </div>
         )}
       </div>
 
       {/* Duration badge */}
-      <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs font-mono">
+      <div className={`absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-xs font-mono ${videoPlayerStyles?.durationBadge || 'bg-black/70 text-white'}`}>
         {formatTime(isPlaying ? currentTime : duration)}
       </div>
 
       {/* Progress bar */}
       {isPlaying && (
         <div
-          className="absolute bottom-0 left-0 right-0 h-1 bg-black/30 cursor-pointer rounded-b-lg"
+          className={`absolute bottom-0 left-0 right-0 h-1 cursor-pointer rounded-b-lg ${videoPlayerStyles?.progressTrack || 'bg-black/30'}`}
           onClick={handleSeek}
         >
-          <div className="h-full bg-white transition-all" style={{ width: `${progress}%` }} />
+          <div className={`h-full transition-all ${videoPlayerStyles?.progressBar || 'bg-white'}`} style={{ width: `${progress}%` }} />
         </div>
       )}
     </div>
@@ -228,6 +220,10 @@ export default function MessageActionsModal({
   onHighlight,
   sessionToken,
   themeColors,
+  modalStyles: themeModalStyles,
+  emojiPickerStyles: themeEmojiPickerStyles,
+  giftStyles: themeGiftStyles,
+  videoPlayerStyles: themeVideoPlayerStyles,
   // Legacy props
   onPinSelf,
   onPinOther,
@@ -308,7 +304,7 @@ export default function MessageActionsModal({
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
 
-  const modalStyles = getModalStyles(themeIsDarkMode);
+  const modalStyles = getModalStyles(themeIsDarkMode, themeModalStyles);
   const mt = getModalTheme(themeIsDarkMode);
 
   // Prevent body scrolling when modal is open (only on non-chat routes)
@@ -701,10 +697,10 @@ export default function MessageActionsModal({
                     <img
                       src={message.avatar_url}
                       alt={message.username}
-                      className="w-10 h-10 rounded-full bg-zinc-700"
+                      className={`w-10 h-10 rounded-full ${themeModalStyles?.avatarFallbackBg || 'bg-zinc-700'}`}
                     />
                     {message.username_is_reserved && (
-                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: themeColors?.badgeIcon || '#3b82f6', backgroundColor: themeIsDarkMode ? '#18181b' : '#ffffff' }} />
+                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: themeColors?.badgeIcon || '#3b82f6', backgroundColor: themeModalStyles?.badgeIconBg || '#18181b' }} />
                     )}
                   </div>
                 </div>
@@ -719,12 +715,12 @@ export default function MessageActionsModal({
                             ? (themeColors?.myUsername || '#ef4444')
                             : message.is_pinned
                               ? (themeColors?.pinnedUsername || '#c084fc')
-                              : (themeColors?.regularUsername || (themeIsDarkMode ? '#ffffff' : '#111827'))
+                              : (themeColors?.regularUsername || '#ffffff')
                       }}
                     >
                       {message.username}
                     </span>
-                    {message.username.toLowerCase() === currentUsername?.toLowerCase() && <span className="ml-1"><YouPill dark={themeIsDarkMode} /></span>}
+                    {message.username.toLowerCase() === currentUsername?.toLowerCase() && <span className="ml-1"><YouPill className={themeModalStyles?.youPill} /></span>}
                     {message.is_from_host && (
                       <Crown className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
                     )}
@@ -743,12 +739,8 @@ export default function MessageActionsModal({
                     return (
                       <div className={`relative rounded-xl px-2.5 py-2 flex items-center gap-2 max-w-[calc(100%-2.5%-5rem+5px)] ${
                         isForMe
-                          ? themeIsDarkMode
-                            ? 'bg-purple-950/50 border border-purple-500/50'
-                            : 'bg-purple-100/80 border border-purple-400/50'
-                          : themeIsDarkMode
-                            ? 'bg-zinc-800/80 border border-zinc-700'
-                            : 'bg-gray-50 border border-gray-200'
+                          ? themeGiftStyles?.cardForMe || 'bg-purple-950/50 border border-purple-500/50'
+                          : themeGiftStyles?.card || 'bg-zinc-800/80 border border-zinc-700'
                       }`}>
                         {message.is_gift_acknowledged && (
                           <div className="absolute -top-1.5 -right-1.5 text-sm" title="Thanked">
@@ -756,41 +748,41 @@ export default function MessageActionsModal({
                           </div>
                         )}
                         <div className={`text-xl flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center animate-gift-breath ${
-                          themeIsDarkMode ? 'bg-zinc-700/80' : 'bg-gray-100'
+                          themeGiftStyles?.emojiBox || 'bg-zinc-700/80'
                         }`}>
                           {emoji}
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className={`text-xs font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>{giftName}</span>
+                            <span className={`text-xs font-semibold ${themeGiftStyles?.nameText || 'text-white'}`}>{giftName}</span>
                             {price && (
                               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                                themeIsDarkMode ? 'bg-cyan-900/50 text-cyan-400' : 'bg-purple-100 text-purple-600'
+                                themeGiftStyles?.priceBadge || 'bg-cyan-900/50 text-cyan-400'
                               }`}>{price}</span>
                             )}
                           </div>
                           {recipient && (
-                            <div className={`text-[10px] ${themeIsDarkMode ? 'text-zinc-400' : 'text-gray-500'}`}>
+                            <div className={`text-[10px] ${themeGiftStyles?.toPrefix || themeGiftStyles?.recipientText || 'text-zinc-400'}`}>
                               to <span className={`font-semibold ${
                                 isForMe
-                                  ? (themeIsDarkMode ? 'text-purple-400' : 'text-purple-600')
-                                  : (themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600')
+                                  ? (themeGiftStyles?.recipientHighlight || 'text-purple-400')
+                                  : (themeGiftStyles?.recipientNormal || 'text-zinc-300')
                               }`}>@{recipient}</span>
-                              {isForMe && <span className="ml-1"><YouPill dark={themeIsDarkMode} /></span>}
+                              {isForMe && <span className="ml-1"><YouPill className={themeGiftStyles?.youPill} /></span>}
                             </div>
                           )}
                         </div>
                       </div>
                     );
                   })() : message.content && (
-                    <p className={`text-sm ${themeIsDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                    <p className={`text-sm ${themeModalStyles?.messageText || 'text-white'}`}>
                       {message.content}
                     </p>
                   )}
                   {/* Photo */}
                   {message.photo_url && (
                     <div
-                      className="mt-1 max-w-[240px] rounded-lg overflow-hidden bg-zinc-700"
+                      className={`mt-1 max-w-[240px] rounded-lg overflow-hidden ${themeModalStyles?.photoThumbnailBg || 'bg-zinc-700'}`}
                       style={message.photo_width && message.photo_height ? { aspectRatio: `${message.photo_width} / ${message.photo_height}` } : undefined}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -803,25 +795,25 @@ export default function MessageActionsModal({
                       videoUrl={`${message.video_url}${message.video_url.includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`}
                       thumbnailUrl={`${message.video_thumbnail_url || ''}${(message.video_thumbnail_url || '').includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`}
                       duration={message.video_duration || 0}
+                      videoPlayerStyles={themeVideoPlayerStyles}
                     />
                   )}
                   {/* Voice message */}
                   {message.voice_url && !message.content && (
                     <div className="flex items-center gap-2 mt-1" onClick={(e) => e.stopPropagation()}>
-                      <Mic className={`w-4 h-4 ${themeIsDarkMode ? 'text-white/60' : 'text-gray-500'}`} />
-                      <span className={`text-sm ${themeIsDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                      <Mic className={`w-4 h-4 ${themeModalStyles?.voiceText || 'text-white/60'}`} />
+                      <span className={`text-sm ${themeModalStyles?.voiceText || 'text-white/60'}`}>
                         Voice message{message.voice_duration ? ` (${Math.floor(message.voice_duration / 60)}:${String(Math.floor(message.voice_duration % 60)).padStart(2, '0')})` : ''}
                       </span>
                     </div>
                   )}
                   {/* Timestamp + Reactions */}
                   <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-[10px] ${themeIsDarkMode ? 'text-white opacity-60' : 'text-gray-500'}`}>
+                    <span className={`text-[10px] ${themeModalStyles?.timestampText || 'text-white opacity-60'}`}>
                       {new Date(message.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
                     <ReactionBar
                       reactions={localReactions}
-                      themeIsDarkMode={themeIsDarkMode}
                       maxVisible={20}
                     />
                   </div>
@@ -833,7 +825,11 @@ export default function MessageActionsModal({
             <div
               className={`w-full ${modalStyles.container} rounded-t-3xl`}
               onClick={(e) => e.stopPropagation()}
-              style={{ paddingBottom: `calc(1.5rem + env(safe-area-inset-bottom, 0px))` }}
+              style={{
+                paddingBottom: `calc(1.5rem + env(safe-area-inset-bottom, 0px))`,
+                '--action-btn-bg': themeModalStyles?.actionBtnBg || '#27272a',
+                '--action-btn-border': themeModalStyles?.actionBtnBorder || '#3f3f46',
+              } as React.CSSProperties}
             >
               {/* Draggable handle area */}
               <div
@@ -875,10 +871,8 @@ export default function MessageActionsModal({
                               onTouchEnd={(e) => e.stopPropagation()}
                               className={`flex items-center justify-center rounded-full transition-all active:scale-110 cursor-pointer ${
                                 hasReacted
-                                  ? themeIsDarkMode
-                                    ? 'bg-purple-500/30 ring-2 ring-purple-500/60'
-                                    : 'bg-purple-100 ring-2 ring-purple-400'
-                                  : themeIsDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
+                                  ? themeEmojiPickerStyles?.selected || 'bg-purple-500/30 ring-2 ring-purple-500/60'
+                                  : themeEmojiPickerStyles?.unselected || 'bg-zinc-800 hover:bg-zinc-700'
                               }`}
                               style={{ width: '52px', height: '52px' }}
                             >
@@ -891,7 +885,7 @@ export default function MessageActionsModal({
                   )}
 
                   {/* Divider */}
-                  <div className={`mx-5 border-t ${themeIsDarkMode ? 'border-zinc-700/50' : 'border-gray-200'}`} />
+                  <div className={`mx-5 border-t ${modalStyles.divider}`} />
 
                   {/* Horizontal Scrollable Action Row */}
                   <div className="pt-3">
@@ -913,8 +907,8 @@ export default function MessageActionsModal({
                               }}
                               className={`flex flex-col items-center justify-center gap-2 py-3 rounded-2xl transition-all w-[88px] h-[80px] action-btn ${action.disabled ? 'opacity-30 cursor-not-allowed' : 'active:scale-95 cursor-pointer'}`}
                             >
-                              <Icon className={`w-6 h-6 ${action.destructive ? 'text-red-400' : modalStyles.actionIcon}`} />
-                              <span className={`text-xs font-medium truncate w-full text-center ${action.destructive ? 'text-red-400' : themeIsDarkMode ? 'text-zinc-50' : 'text-gray-900'}`}>{action.label}</span>
+                              <Icon className={`w-6 h-6 ${action.destructive ? (themeModalStyles?.destructiveText || 'text-red-400') : modalStyles.actionIcon}`} />
+                              <span className={`text-xs font-medium truncate w-full text-center ${action.destructive ? (themeModalStyles?.destructiveText || 'text-red-400') : themeModalStyles?.actionLabel || 'text-zinc-50'}`}>{action.label}</span>
                             </div>
                           );
                         })}
@@ -929,7 +923,7 @@ export default function MessageActionsModal({
                 <div className="space-y-4 max-h-[320px] overflow-y-auto w-full">
                   {/* Pin Amount Header */}
                   <div className="text-center px-6">
-                    <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    <h3 className={`text-lg font-semibold ${themeModalStyles?.messageText || 'text-white'}`}>
                       {pinRequirements.is_current_sticky
                         ? 'Add to Pin'
                         : pinRequirements.is_outbid
@@ -939,7 +933,7 @@ export default function MessageActionsModal({
                             : 'Re-pin Message'
                       }
                     </h3>
-                    <p className={`text-sm mt-1 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <p className={`text-sm mt-1 ${themeModalStyles?.subtitle || 'text-gray-400'}`}>
                       {(() => {
                         if (pinRequirements.is_current_sticky) {
                           return 'Extend pin duration';
@@ -987,9 +981,7 @@ export default function MessageActionsModal({
                                     }}
                                     className={`flex flex-col items-center justify-center gap-2 py-3 rounded-2xl transition-all w-[88px] h-[80px] action-btn active:scale-95 cursor-pointer ${
                                       isSelected
-                                        ? themeIsDarkMode
-                                          ? 'ring-2 ring-cyan-400'
-                                          : 'ring-2 ring-purple-400'
+                                        ? 'ring-2 ring-cyan-400'
                                         : ''
                                     }`}
                                   >
@@ -1001,7 +993,7 @@ export default function MessageActionsModal({
                                       ${(tier.amount_cents / 100).toFixed(0)}
                                     </span>
                                     <span className={`text-xs font-medium whitespace-nowrap ${
-                                      themeIsDarkMode ? 'text-zinc-50' : 'text-gray-900'
+                                      themeModalStyles?.actionLabel || 'text-zinc-50'
                                     }`}>
                                       {showTimeExtension ? `+${formatDurationMedium(tier.duration_minutes)}` : formatDurationMedium(pinRequirements.duration_minutes)}
                                     </span>
@@ -1017,7 +1009,7 @@ export default function MessageActionsModal({
 
                   {/* Error message */}
                   {pinError && (
-                    <p className="text-center text-sm text-red-500 px-6">{pinError}</p>
+                    <p className={`text-center text-sm px-6 ${themeModalStyles?.destructiveText || 'text-red-400'}`}>{pinError}</p>
                   )}
 
                   {/* Buttons */}
@@ -1025,7 +1017,7 @@ export default function MessageActionsModal({
                     <button
                       onClick={(e) => { e.stopPropagation(); setActivePanel('actions'); setSelectedTier(null); }}
                       className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
-                        themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
+                        themeModalStyles?.inputField || 'bg-zinc-700 text-white'
                       }`}
                     >
                       Back
@@ -1060,11 +1052,11 @@ export default function MessageActionsModal({
                         <>
                           {/* Header */}
                           <div className="text-center px-6">
-                            <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            <h3 className={`text-lg font-semibold ${themeModalStyles?.messageText || 'text-white'}`}>
                               Send a Gift
                             </h3>
-                            <p className={`text-sm mt-1 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              to <span className={`font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>@{message.username}</span>
+                            <p className={`text-sm mt-1 ${themeModalStyles?.subtitle || 'text-gray-400'}`}>
+                              to <span className={`font-semibold ${themeModalStyles?.messageText || 'text-white'}`}>@{message.username}</span>
                             </p>
                           </div>
 
@@ -1081,7 +1073,7 @@ export default function MessageActionsModal({
                                   className={`px-4 py-2 rounded-full text-sm font-medium transition-all active:scale-95 whitespace-nowrap ${
                                     selectedCategory === cat.id
                                       ? mt.primaryButton
-                                      : `${mt.secondaryButton} border ${themeIsDarkMode ? 'border-zinc-500' : 'border-gray-300'}`
+                                      : `${mt.secondaryButton} border ${themeModalStyles?.inputBorder || 'border-zinc-500'}`
                                   }`}
                                 >
                                   {cat.emoji} {cat.label}
@@ -1109,7 +1101,7 @@ export default function MessageActionsModal({
                                   className="flex flex-col items-center justify-center gap-1 py-3 rounded-2xl transition-all w-[72px] h-[72px] action-btn active:scale-95 cursor-pointer"
                                 >
                                   <span className="text-2xl">{gift.emoji}</span>
-                                  <span className={`text-[10px] font-medium ${themeIsDarkMode ? 'text-zinc-50' : 'text-gray-900'}`}>
+                                  <span className={`text-[10px] font-medium ${themeModalStyles?.actionLabel || 'text-zinc-50'}`}>
                                     {formatGiftPrice(gift.price)}
                                   </span>
                                 </div>
@@ -1122,7 +1114,7 @@ export default function MessageActionsModal({
                             <button
                               onClick={(e) => { e.stopPropagation(); setActivePanel('actions'); }}
                               className={`w-full py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
-                                themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'
+                                themeModalStyles?.inputField || 'bg-zinc-700 text-white'
                               }`}
                             >
                               Back
@@ -1134,14 +1126,14 @@ export default function MessageActionsModal({
                           {/* Confirmation View */}
                           <div className="text-center px-6 pt-2">
                             <span className="text-6xl block mb-3">{selectedGift.emoji}</span>
-                            <h3 className={`text-lg font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            <h3 className={`text-lg font-semibold ${themeModalStyles?.messageText || 'text-white'}`}>
                               {selectedGift.name}
                             </h3>
                             <p className={`text-2xl font-bold mt-1 ${modalStyles.actionIcon}`}>
                               {formatGiftPrice(selectedGift.price)}
                             </p>
-                            <p className={`text-sm mt-2 ${themeIsDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Send to <span className={`font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>@{message.username}</span>
+                            <p className={`text-sm mt-2 ${themeModalStyles?.subtitle || 'text-gray-400'}`}>
+                              Send to <span className={`font-semibold ${themeModalStyles?.messageText || 'text-white'}`}>@{message.username}</span>
                             </p>
                           </div>
 
@@ -1152,7 +1144,7 @@ export default function MessageActionsModal({
                               disabled={isGiftSending}
                               className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all active:scale-95 ${
                                 isGiftSending ? 'opacity-50 cursor-not-allowed' : ''
-                              } ${themeIsDarkMode ? 'bg-zinc-700 text-white' : 'bg-gray-200 text-gray-700'}`}
+                              } ${themeModalStyles?.inputField || 'bg-zinc-700 text-white'}`}
                             >
                               Back
                             </button>
@@ -1210,8 +1202,8 @@ export default function MessageActionsModal({
           touch-action: pan-x pan-y !important;
         }
         .action-btn {
-          background-color: #27272a !important;
-          border: 1px solid #3f3f46 !important;
+          background-color: var(--action-btn-bg, #27272a) !important;
+          border: 1px solid var(--action-btn-border, #3f3f46) !important;
         }
       `}</style>
     </>

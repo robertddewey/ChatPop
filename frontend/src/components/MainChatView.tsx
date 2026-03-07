@@ -162,10 +162,10 @@ function getTextColor(classString: string | undefined): string | undefined {
 }
 
 // "you" pill shown next to the current user's username
-function YouPill({ dark = true }: { dark?: boolean }) {
+function YouPill({ className }: { className?: string }) {
   return (
     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none ${
-      dark ? 'bg-white/10 text-zinc-400' : 'bg-black/10 text-gray-500'
+      className || 'bg-white/10 text-zinc-400'
     }`}>you</span>
   );
 }
@@ -371,6 +371,10 @@ function MainChatView({
               themeIsDarkMode={themeIsDarkMode}
               sessionToken={sessionToken}
               themeColors={modalThemeColors}
+              modalStyles={currentDesign.modalStyles}
+              emojiPickerStyles={currentDesign.emojiPickerStyles}
+              giftStyles={currentDesign.giftStyles}
+              videoPlayerStyles={currentDesign.videoPlayerStyles}
               onReply={disableReply ? undefined : handleReply}
               onPin={handlePin}
               onAddToPin={handleAddToPin}
@@ -394,10 +398,10 @@ function MainChatView({
                     <img
                       src={message.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
                       alt={message.username}
-                      className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 ${currentDesign.avatarBorder || ''}`}
+                      className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${currentDesign.avatarBorder || ''}`}
                     />
                     {message.username_is_reserved && (
-                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: themeIsDarkMode ? '#18181b' : '#ffffff' }} />
+                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
                     )}
                   </div>
                   {/* Content */}
@@ -409,7 +413,7 @@ function MainChatView({
                       >
                         {message.username}
                       </span>
-                      {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
+                      {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                       <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                     </div>
                 <span
@@ -459,6 +463,10 @@ function MainChatView({
               themeIsDarkMode={themeIsDarkMode}
               sessionToken={sessionToken}
               themeColors={modalThemeColors}
+              modalStyles={currentDesign.modalStyles}
+              emojiPickerStyles={currentDesign.emojiPickerStyles}
+              giftStyles={currentDesign.giftStyles}
+              videoPlayerStyles={currentDesign.videoPlayerStyles}
               onReply={disableReply ? undefined : handleReply}
               onPin={handlePin}
               onAddToPin={handleAddToPin}
@@ -482,10 +490,10 @@ function MainChatView({
                     <img
                       src={stickyPinnedMessage.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', stickyPinnedMessage.username, 80)}
                       alt={stickyPinnedMessage.username}
-                      className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full bg-zinc-700 ${currentDesign.avatarBorder || ''}`}
+                      className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${currentDesign.avatarBorder || ''}`}
                     />
                     {stickyPinnedMessage.username_is_reserved && (
-                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: themeIsDarkMode ? '#18181b' : '#ffffff' }} />
+                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
                     )}
                   </div>
                   {/* Content */}
@@ -497,9 +505,9 @@ function MainChatView({
                       >
                         {stickyPinnedMessage.username}
                       </span>
-                  {stickyPinnedMessage.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
+                  {stickyPinnedMessage.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
-                    themeIsDarkMode ? 'bg-white/10' : 'bg-black/10'
+                    currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'
                   }`}>
                     <Pin size={12} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                     <span className={`text-xs font-medium ${currentDesign.pinnedText}`}>
@@ -545,9 +553,9 @@ function MainChatView({
                       <span className="flex-shrink-0">{emoji}</span>
                       <span className={`${currentDesign.pinnedText} truncate`}>
                         sent <span className="font-semibold">{name}</span> to <span className="font-semibold">@{recipient}</span>
-                        {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill dark={themeIsDarkMode} /></span>}
+                        {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
                       </span>
-                      <span className="font-semibold text-cyan-400 flex-shrink-0">{price}</span>
+                      <span className={`font-semibold flex-shrink-0 ${currentDesign.giftStyles?.priceText || 'text-cyan-400'}`}>{price}</span>
                     </div>
                   );
                 })() : (
@@ -572,10 +580,10 @@ function MainChatView({
       {/* Filter Loading Overlay */}
       {filterLoading && (
         <div className={`absolute inset-0 z-40 flex items-center justify-center ${
-          themeIsDarkMode ? 'bg-zinc-900' : 'bg-white'
+          currentDesign.uiStyles?.loadingBg || 'bg-zinc-900'
         }`}>
           <div className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl ${
-            themeIsDarkMode ? 'bg-zinc-800 text-zinc-200' : 'bg-gray-100 text-gray-700'
+            currentDesign.uiStyles?.loadingCard || 'bg-zinc-800 text-zinc-200'
           }`}>
             <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
             <span className="text-sm font-medium">
@@ -600,19 +608,19 @@ function MainChatView({
         {/* Loading indicator for infinite scroll - positioned absolutely to avoid layout shift */}
         {loadingOlder && (
           <div className="absolute top-0 left-0 right-0 flex justify-center py-2 pointer-events-none z-30">
-            <div className="animate-pulse text-gray-400 text-sm bg-black/50 px-3 py-1 rounded-full">Loading...</div>
+            <div className={`animate-pulse text-sm px-3 py-1 rounded-full ${currentDesign.uiStyles?.loadingIndicatorText || 'text-gray-400'} ${currentDesign.uiStyles?.loadingIndicatorBg || 'bg-black/50'}`}>Loading...</div>
           </div>
         )}
         {/* Empty state for filtered views */}
         {hasJoined && !filterLoading && filteredMessages.length === 0 && filterMode !== 'all' && (
           <div className="flex flex-col items-center justify-center py-20 gap-3 pr-14">
-            <div className={`flex items-center gap-1.5 ${themeIsDarkMode ? 'text-zinc-600' : 'text-gray-300'}`}>
+            <div className={`flex items-center gap-1.5 ${currentDesign.uiStyles?.emptyStateText || 'text-zinc-600'}`}>
               {filterMode === 'gifts'
                 ? <><Gift size={96} /><Frown size={96} /></>
                 : <><Eye size={96} /><Frown size={96} /></>
               }
             </div>
-            <span className={`text-sm ${themeIsDarkMode ? 'text-zinc-500' : 'text-gray-400'}`}>
+            <span className={`text-sm ${currentDesign.uiStyles?.emptyStateSubtext || 'text-zinc-500'}`}>
               {filterMode === 'gifts' ? 'No gifts yet' : 'Nothing in focus yet'}
             </span>
           </div>
@@ -667,7 +675,7 @@ function MainChatView({
                 {/* Single continuous thread line for multi-message groups */}
                 {isMultiMessage && (
                   <div
-                    className="absolute w-0.5 bg-zinc-600/30 pointer-events-none"
+                    className={`absolute w-0.5 ${currentDesign.uiStyles?.avatarConnector || 'bg-zinc-600/30'} pointer-events-none`}
                     style={{
                       left: `${avatarWidthRem / 2}rem`,
                       transform: 'translateX(-50%)',
@@ -696,10 +704,10 @@ function MainChatView({
                       <img
                         src={message.avatar_url || getDiceBearUrl(avatarStyle, message.username, 80)}
                         alt={message.username}
-                        className={`${avatarSize} rounded-full bg-zinc-700 ${avatarBorder}`}
+                        className={`${avatarSize} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${avatarBorder}`}
                       />
                       {message.username_is_reserved && (
-                        <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: themeIsDarkMode ? '#18181b' : '#ffffff' }} />
+                        <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
                       )}
                     </div>
                   ) : (
@@ -717,6 +725,10 @@ function MainChatView({
                   themeIsDarkMode={themeIsDarkMode}
                   sessionToken={sessionToken}
                   themeColors={modalThemeColors}
+                  modalStyles={currentDesign.modalStyles}
+                  emojiPickerStyles={currentDesign.emojiPickerStyles}
+                  giftStyles={currentDesign.giftStyles}
+                  videoPlayerStyles={currentDesign.videoPlayerStyles}
                   isOutbid={!!(
                     message.is_pinned &&
                     message.sticky_until &&
@@ -756,7 +768,7 @@ function MainChatView({
                         >
                           {message.username}
                         </span>
-                        {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
+                        {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                       </div>
                     </div>
                   )}
@@ -779,7 +791,7 @@ function MainChatView({
                         >
                           {message.username}
                         </span>
-                        {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
+                        {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                         <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                       </div>
                     </div>
@@ -804,13 +816,13 @@ function MainChatView({
                         >
                           {message.username}
                         </span>
-                        {message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
+                        {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                         <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
-                          themeIsDarkMode ? 'bg-white/10' : 'bg-black/10'
+                          currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'
                         }`}>
                           <Pin size={12} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                           {message.pin_amount_paid && parseFloat(message.pin_amount_paid) > 0 && (
-                            <span className={`text-xs font-medium ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600'}`}>
+                            <span className={`text-xs font-medium ${currentDesign.uiStyles?.pinAmountText || 'text-zinc-300'}`}>
                               ${message.pin_amount_paid}
                             </span>
                           )}
@@ -832,12 +844,8 @@ function MainChatView({
                       return (
                         <div className={`relative rounded-xl px-3 py-2.5 flex items-center gap-2.5 max-w-[calc(100%-2.5%-5rem+5px)] ${
                           isForMe
-                            ? themeIsDarkMode
-                              ? 'bg-purple-950/50 border border-purple-500/50'
-                              : 'bg-purple-100/80 border border-purple-400/50'
-                            : themeIsDarkMode
-                              ? 'bg-zinc-800/80 border border-zinc-700'
-                              : 'bg-gray-50 border border-gray-200'
+                            ? currentDesign.giftStyles?.cardBgForMe || 'bg-purple-950/50 border border-purple-500/50'
+                            : currentDesign.giftStyles?.cardBg || 'bg-zinc-800/80 border border-zinc-700'
                         }`}>
                           {message.is_gift_acknowledged && (
                             <div className="absolute -top-1.5 -right-1.5 text-sm" title="Thanked">
@@ -845,27 +853,27 @@ function MainChatView({
                             </div>
                           )}
                           <div className={`text-2xl flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center animate-gift-breath ${
-                            themeIsDarkMode ? 'bg-zinc-700/80' : 'bg-gray-100'
+                            currentDesign.giftStyles?.emojiContainer || 'bg-zinc-700/80'
                           }`}>
                             {emoji}
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className={`text-sm font-semibold ${themeIsDarkMode ? 'text-white' : 'text-gray-900'}`}>{giftName || message.content}</span>
+                              <span className={`text-sm font-semibold ${currentDesign.giftStyles?.nameText || 'text-white'}`}>{giftName || message.content}</span>
                               {price && (
                                 <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                                  themeIsDarkMode ? 'bg-cyan-900/50 text-cyan-400' : 'bg-purple-100 text-purple-600'
+                                  currentDesign.giftStyles?.priceBadge || 'bg-cyan-900/50 text-cyan-400'
                                 }`}>{price}</span>
                               )}
                             </div>
                             {recipient && (
-                              <div className={`text-xs ${themeIsDarkMode ? 'text-zinc-400' : 'text-gray-500'}`}>
+                              <div className={`text-xs ${currentDesign.giftStyles?.toPrefix || 'text-zinc-400'}`}>
                                 to <span className={`font-semibold ${
                                   isForMe
-                                    ? (themeIsDarkMode ? 'text-purple-400' : 'text-purple-600')
-                                    : (themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600')
+                                    ? (currentDesign.giftStyles?.recipientTextForMe || 'text-purple-400')
+                                    : (currentDesign.giftStyles?.recipientText || 'text-zinc-300')
                                 }`}>@{recipient}</span>
-                                {isForMe && <span className="ml-1"><YouPill dark={themeIsDarkMode} /></span>}
+                                {isForMe && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
                               </div>
                             )}
                           </div>
@@ -897,18 +905,14 @@ function MainChatView({
                     {message.reply_to_message && (
                       <div
                         className={`mb-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                          themeIsDarkMode
-                            ? message.username.toLowerCase() === username.toLowerCase()
-                              ? 'bg-white/10 border border-white/10 hover:bg-white/15'
-                              : 'bg-white/10 border border-zinc-600 hover:bg-white/15'
-                            : message.username.toLowerCase() === username.toLowerCase()
-                              ? 'bg-white/95 border border-gray-200 hover:bg-white shadow-sm'
-                              : 'bg-white border border-gray-200 hover:bg-gray-50 shadow-sm'
+                          message.username.toLowerCase() === username.toLowerCase()
+                            ? currentDesign.uiStyles?.replyContextOwn || 'bg-white/10 border border-white/10 hover:bg-white/15'
+                            : currentDesign.uiStyles?.replyContextOther || 'bg-white/10 border border-zinc-600 hover:bg-white/15'
                         }`}
                         onClick={() => scrollToMessage(message.reply_to_message!.id)}
                       >
                         <div className="flex items-center gap-1 mb-0.5">
-                          <Reply className={`w-3 h-3 flex-shrink-0 ${themeIsDarkMode ? 'text-gray-300' : 'text-blue-600'}`} />
+                          <Reply className={`w-3 h-3 flex-shrink-0 ${currentDesign.uiStyles?.replyIconColor || 'text-gray-300'}`} />
                           <span
                             className="text-xs font-semibold"
                             style={{
@@ -918,7 +922,7 @@ function MainChatView({
                                   ? (getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff')
                                   : message.reply_to_message.username.toLowerCase() === username.toLowerCase()
                                     ? (getTextColor(currentDesign.myUsername) || '#ef4444')
-                                    : (getTextColor(currentDesign.regularUsername) || (themeIsDarkMode ? '#ffffff' : '#111827'))
+                                    : (getTextColor(currentDesign.regularUsername) || '#ffffff')
                             }}
                           >
                             {message.reply_to_message.username}
@@ -926,7 +930,7 @@ function MainChatView({
                           {message.reply_to_message.username_is_reserved && (
                             <BadgeCheck size={12} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                           )}
-                          {message.reply_to_message.username.toLowerCase() === username.toLowerCase() && <YouPill dark={themeIsDarkMode} />}
+                          {message.reply_to_message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                           {message.reply_to_message.is_from_host && (
                             <Crown size={12} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                           )}
@@ -944,21 +948,17 @@ function MainChatView({
                             const price = m ? m[3] : '';
                             const recipient = m ? m[4] : '';
                             return (
-                              <div className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 mt-1 text-xs ${
-                                themeIsDarkMode
-                                  ? 'bg-zinc-700/60 border border-zinc-600/50'
-                                  : 'bg-gray-100 border border-gray-200/50'
-                              }`}>
+                              <div className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 mt-1 text-xs ${currentDesign.uiStyles?.replyGiftBadge || 'bg-zinc-700/60 border border-zinc-600/50'}`}>
                                 <span className="text-sm flex-shrink-0">{emoji}</span>
-                                <span className={themeIsDarkMode ? 'text-zinc-300' : 'text-gray-600'}>
+                                <span className={currentDesign.uiStyles?.replyGiftText || 'text-zinc-300'}>
                                   sent to <span className="font-semibold">@{recipient}</span>
-                                  {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill dark={themeIsDarkMode} /></span>}
+                                  {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
                                 </span>
                               </div>
                             );
                           }
                           return (
-                            <p className={`text-xs truncate ${themeIsDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                            <p className={`text-xs truncate ${currentDesign.uiStyles?.replyPreviewText || 'text-gray-300'}`}>
                               {c || '[Voice message]'}
                             </p>
                           );
@@ -1071,7 +1071,7 @@ function MainChatView({
                         {message.content}
                       </p>
                     ) : (
-                      <p className="text-sm text-gray-500 italic">
+                      <p className={`text-sm italic ${currentDesign.uiStyles?.mediaLoadingText || 'text-gray-500'}`}>
                         [Media message - loading...]
                       </p>
                     )}
@@ -1106,13 +1106,12 @@ function MainChatView({
                   <ReactionBar
                     reactions={messageReactions[message.id] || message.reactions || []}
                     onReactionClick={(emoji) => handleReactionToggle(message.id, emoji)}
-                    themeIsDarkMode={themeIsDarkMode}
                     highlightTheme={currentDesign.reactionHighlightBg ? {
                       reaction_highlight_bg: currentDesign.reactionHighlightBg,
                       reaction_highlight_border: currentDesign.reactionHighlightBorder,
                       reaction_highlight_text: currentDesign.reactionHighlightText,
                     } : undefined}
-                    fullWidth={message.is_from_host}
+                    uiStyles={currentDesign.uiStyles}
                   />
                 </div>
               </div>

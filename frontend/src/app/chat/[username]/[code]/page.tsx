@@ -98,6 +98,15 @@ interface CamelCaseTheme {
   reactionHighlightBg: string;
   reactionHighlightBorder: string;
   reactionHighlightText: string;
+  modalStyles: Record<string, string>;
+  emojiPickerStyles: Record<string, string>;
+  giftStyles: Record<string, string>;
+  inputStyles: Record<string, string>;
+  videoPlayerStyles: Record<string, string>;
+  uiStyles: Record<string, string>;
+  avatarSize: string | null;
+  avatarBorder: string | null;
+  avatarSpacing: string;
 }
 
 // Convert snake_case API theme to camelCase for component compatibility
@@ -157,6 +166,15 @@ function convertThemeToCamelCase(theme: ChatTheme): CamelCaseTheme {
     reactionHighlightBg: theme.reaction_highlight_bg,
     reactionHighlightBorder: theme.reaction_highlight_border,
     reactionHighlightText: theme.reaction_highlight_text,
+    modalStyles: theme.modal_styles || {},
+    emojiPickerStyles: theme.emoji_picker_styles || {},
+    giftStyles: theme.gift_styles || {},
+    inputStyles: theme.input_styles || {},
+    videoPlayerStyles: theme.video_player_styles || {},
+    uiStyles: theme.ui_styles || {},
+    avatarSize: theme.avatar_size,
+    avatarBorder: theme.avatar_border,
+    avatarSpacing: theme.avatar_spacing,
   };
 }
 
@@ -228,7 +246,7 @@ const defaultTheme: ChatTheme = {
   },
   pin_icon_color: "text-purple-400",
   crown_icon_color: "text-amber-400",
-  badge_icon_color: "text-emerald-400",
+  badge_icon_color: "text-blue-500",
   reply_icon_color: "text-emerald-300",
   reaction_highlight_bg: "bg-purple-500/20",
   reaction_highlight_border: "border border-purple-500/50",
@@ -244,14 +262,106 @@ const defaultTheme: ChatTheme = {
   regular_timestamp: "text-xs text-white opacity-60",
   host_timestamp: "text-xs opacity-60",
   pinned_timestamp: "text-xs opacity-60",
-  reply_preview_container: "flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700",
-  reply_preview_icon: "w-4 h-4 flex-shrink-0 text-blue-500",
-  reply_preview_username: "text-xs font-semibold text-gray-700 dark:text-gray-300",
-  reply_preview_content: "text-xs text-gray-600 dark:text-gray-400 truncate",
-  reply_preview_close_button: "p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded",
-  reply_preview_close_icon: "w-4 h-4 text-gray-500",
+  reply_preview_container: "flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700",
+  reply_preview_icon: "w-4 h-4 flex-shrink-0 text-cyan-400",
+  reply_preview_username: "text-xs font-semibold text-zinc-300",
+  reply_preview_content: "text-xs text-zinc-400 truncate",
+  reply_preview_close_button: "p-1 hover:bg-zinc-700 rounded",
+  reply_preview_close_icon: "w-4 h-4 text-zinc-500",
+  // Component style overrides
+  modal_styles: {
+    overlay: "bg-black/60 backdrop-blur-md",
+    container: "bg-zinc-900",
+    border: "border border-zinc-700",
+    dragHandle: "bg-gray-600",
+    messagePreview: "bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl",
+    actionButton: "bg-zinc-700 hover:bg-zinc-600 active:bg-zinc-500 text-zinc-50 border border-zinc-500",
+    actionIcon: "text-cyan-400",
+    divider: "border-zinc-700/50",
+    usernameText: "text-gray-300",
+    title: "text-zinc-50",
+    body: "text-zinc-400",
+    primaryButton: "bg-[#404eed] hover:bg-[#3640d9] text-white",
+    secondaryButton: "bg-zinc-700 hover:bg-zinc-600 text-zinc-50",
+    input: "bg-zinc-800 border border-zinc-600 text-zinc-50 placeholder-zinc-400 focus:ring-2 focus:ring-cyan-400",
+    closeButton: "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800",
+    error: "bg-red-900/20 border border-red-800 text-red-400",
+    messageText: "text-white",
+    photoThumbnailBg: "bg-zinc-700",
+    voiceText: "text-white/60",
+    timestampText: "text-white opacity-60",
+    actionLabel: "text-zinc-50",
+    subtitle: "text-gray-400",
+    inputField: "bg-zinc-700 text-white",
+    inputBorder: "border-zinc-500",
+    avatarFallbackBg: "bg-zinc-700",
+    badgeIconBg: "#18181b",
+    destructiveText: "text-red-400",
+    actionBtnBg: "#27272a",
+    actionBtnBorder: "#3f3f46",
+  },
+  emoji_picker_styles: {
+    selectedBg: "bg-purple-500/30",
+    selectedRing: "ring-2 ring-purple-500/60",
+    unselectedBg: "bg-zinc-800 hover:bg-zinc-700",
+  },
+  gift_styles: {
+    cardBgForMe: "bg-purple-950/50 border border-purple-500/50",
+    cardBg: "bg-zinc-800/80 border border-zinc-700",
+    emojiContainer: "bg-zinc-700/80",
+    nameText: "text-white",
+    priceBadge: "bg-cyan-900/50 text-cyan-400",
+    priceText: "text-cyan-400",
+    recipientTextForMe: "text-purple-400",
+    recipientText: "text-zinc-300",
+    toPrefix: "text-zinc-400",
+  },
+  input_styles: {
+    sendButton: "bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700",
+    collapseButton: "bg-zinc-700 text-gray-400 hover:bg-zinc-600",
+    disabledBg: "bg-zinc-800/60 border border-zinc-700/50",
+    disabledText: "text-zinc-500",
+    textFadeGradient: "rgb(39, 39, 42)",
+    avatarFallbackBg: "bg-zinc-700",
+    youPill: "bg-white/10 text-zinc-400",
+  },
+  video_player_styles: {
+    overlay: "bg-black/30",
+    playButtonBg: "bg-white/90",
+    playIcon: "text-gray-800",
+    spinner: "border-gray-600",
+    hoverOverlay: "bg-black/20",
+    pauseIcon: "text-white",
+    durationBadge: "bg-black/70 text-white",
+    progressBg: "bg-black/30",
+    progressFill: "bg-white",
+  },
+  ui_styles: {
+    emptyStateText: "text-zinc-600",
+    emptyStateSubtext: "text-zinc-500",
+    avatarConnector: "bg-zinc-600/30",
+    avatarFallbackBg: "bg-zinc-700",
+    badgeIconBg: "#18181b",
+    loadingBg: "bg-zinc-900",
+    loadingCard: "bg-zinc-800 text-zinc-200",
+    pinAmountText: "text-zinc-300",
+    reactionPillBg: "bg-zinc-800 border border-zinc-700",
+    reactionPillText: "text-zinc-400",
+    reactionHighlightBg: "bg-purple-500/20",
+    reactionHighlightBorder: "border border-purple-500/50",
+    reactionHighlightText: "text-zinc-200",
+    pinBadgeBg: "bg-white/10",
+    loadingIndicatorText: "text-gray-400",
+    loadingIndicatorBg: "bg-black/50",
+    replyContextOwn: "bg-white/10 border border-white/10 hover:bg-white/15",
+    replyContextOther: "bg-white/10 border border-zinc-600 hover:bg-white/15",
+    replyIconColor: "text-gray-300",
+    replyGiftBadge: "bg-zinc-700/60 border border-zinc-600/50",
+    replyGiftText: "text-zinc-300",
+    replyPreviewText: "text-gray-300",
+    mediaLoadingText: "text-gray-500",
+  },
   // Avatar settings
-  avatar_style: null,
   avatar_size: null,
   avatar_border: null,
   avatar_spacing: "mr-3",
@@ -1904,6 +2014,7 @@ export default function ChatPage() {
     replyPreviewContent: currentDesign.replyPreviewContent as string,
     replyPreviewCloseButton: currentDesign.replyPreviewCloseButton as string,
     replyPreviewCloseIcon: currentDesign.replyPreviewCloseIcon as string,
+    inputStyles: currentDesign.inputStyles as Record<string, string> | undefined,
   }), [currentDesign]);
 
   // Update theme-color meta tags when theme changes

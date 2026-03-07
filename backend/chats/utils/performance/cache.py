@@ -103,11 +103,7 @@ class MessageCache:
             pass
 
         # Fallback to DiceBear for orphaned/legacy data
-        avatar_style = None
-        if message.chat_room.theme and message.chat_room.theme.avatar_style:
-            avatar_style = message.chat_room.theme.avatar_style
-
-        return get_fallback_dicebear_url(message.username, style=avatar_style)
+        return get_fallback_dicebear_url(message.username)
 
     @classmethod
     def _serialize_message(cls, message: Message, username_is_reserved: bool = False, avatar_url: str = None) -> Dict[str, Any]:

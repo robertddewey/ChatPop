@@ -9,12 +9,19 @@ interface ReactionHighlightTheme {
   reaction_highlight_text: string;
 }
 
+interface UiStyles {
+  reactionPillBg?: string;
+  reactionPillText?: string;
+  reactionHighlightBg?: string;
+  reactionHighlightBorder?: string;
+  reactionHighlightText?: string;
+}
+
 interface ReactionBarProps {
   reactions: ReactionSummary[];
   onReactionClick?: (emoji: string) => void;
-  themeIsDarkMode?: boolean;
   highlightTheme?: ReactionHighlightTheme;
-  fullWidth?: boolean;
+  uiStyles?: UiStyles;
   maxVisible?: number;
 }
 
@@ -24,7 +31,7 @@ function formatCount(count: number): string {
   return String(count);
 }
 
-export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMode = true, highlightTheme, fullWidth, maxVisible = 4 }: ReactionBarProps) {
+export default function ReactionBar({ reactions, onReactionClick, highlightTheme, uiStyles, maxVisible = 4 }: ReactionBarProps) {
   const [animatingEmoji, setAnimatingEmoji] = useState<string | null>(null);
 
   // Filter out reactions with no count (e.g., after removal via WebSocket re-fetch)
@@ -46,15 +53,14 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
     onReactionClick?.(emoji);
   };
 
-  // Default highlight styles (fallback if no theme provided)
-  const defaultHighlightBg = themeIsDarkMode ? 'bg-purple-500/20' : 'bg-purple-100';
-  const defaultHighlightBorder = themeIsDarkMode ? 'border border-purple-500/50' : 'border border-purple-500';
-  const defaultHighlightText = themeIsDarkMode ? 'text-zinc-200' : 'text-purple-700';
+  // Highlight styles: theme JSON > highlightTheme prop > dark-mode fallback
+  const highlightBg = uiStyles?.reactionHighlightBg || highlightTheme?.reaction_highlight_bg || 'bg-purple-500/20';
+  const highlightBorder = uiStyles?.reactionHighlightBorder || highlightTheme?.reaction_highlight_border || 'border border-purple-500/50';
+  const highlightText = uiStyles?.reactionHighlightText || highlightTheme?.reaction_highlight_text || 'text-zinc-200';
 
-  // Use theme values if provided, otherwise fallback to defaults
-  const highlightBg = highlightTheme?.reaction_highlight_bg || defaultHighlightBg;
-  const highlightBorder = highlightTheme?.reaction_highlight_border || defaultHighlightBorder;
-  const highlightText = highlightTheme?.reaction_highlight_text || defaultHighlightText;
+  // Non-reacted pill styles
+  const pillBg = uiStyles?.reactionPillBg || 'bg-zinc-800 border border-zinc-700';
+  const pillText = uiStyles?.reactionPillText || 'text-zinc-400';
 
   // Always render the container to prevent browser paint artifacts
   // when reaction buttons with shadow-lg are removed from DOM
@@ -75,9 +81,7 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
             } ${
               hasReacted
                 ? `${highlightBg} ${highlightBorder}`
-                : themeIsDarkMode
-                  ? 'bg-zinc-800 border border-zinc-700'
-                  : 'bg-white border border-gray-200'
+                : pillBg
             }`}
             style={{
               transition: 'transform 0.15s ease-out, background-color 0.2s, border-color 0.2s',
@@ -86,9 +90,7 @@ export default function ReactionBar({ reactions, onReactionClick, themeIsDarkMod
             <span className="text-xs">{reaction.emoji}</span>
             <span
               className={`text-[10px] font-medium ${
-                hasReacted
-                  ? highlightText
-                  : themeIsDarkMode ? 'text-zinc-400' : 'text-gray-600'
+                hasReacted ? highlightText : pillText
               }`}
             >
               {formatCount(reaction.count)}

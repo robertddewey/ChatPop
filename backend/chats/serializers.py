@@ -12,8 +12,6 @@ from chatpop.utils.media import get_fallback_dicebear_url
 class ChatThemeSerializer(serializers.ModelSerializer):
     """Serializer for ChatTheme model"""
     theme_color = serializers.SerializerMethodField()
-    # Avatar fields with Constance fallbacks
-    avatar_style = serializers.SerializerMethodField()
     avatar_size = serializers.SerializerMethodField()
 
     class Meta:
@@ -30,13 +28,15 @@ class ChatThemeSerializer(serializers.ModelSerializer):
             'filter_button_active', 'filter_button_inactive',
             'input_area', 'input_field',
             'pin_icon_color', 'crown_icon_color', 'badge_icon_color', 'reply_icon_color',
-            'my_username', 'regular_username', 'host_username', 'pinned_username',
+            'my_username', 'regular_username', 'host_username', 'my_host_username', 'pinned_username',
             'sticky_host_username', 'sticky_pinned_username',
             'my_timestamp', 'regular_timestamp', 'host_timestamp', 'pinned_timestamp',
             'reply_preview_container', 'reply_preview_icon', 'reply_preview_username',
             'reply_preview_content', 'reply_preview_close_button', 'reply_preview_close_icon',
             'reaction_highlight_bg', 'reaction_highlight_border', 'reaction_highlight_text',
-            'avatar_style', 'avatar_size', 'avatar_border', 'avatar_spacing'
+            'avatar_size', 'avatar_border', 'avatar_spacing',
+            'modal_styles', 'emoji_picker_styles', 'gift_styles',
+            'input_styles', 'video_player_styles', 'ui_styles'
         ]
 
     def get_theme_color(self, obj):
@@ -45,10 +45,6 @@ class ChatThemeSerializer(serializers.ModelSerializer):
             'light': obj.theme_color_light,
             'dark': obj.theme_color_dark
         }
-
-    def get_avatar_style(self, obj):
-        """Return avatar style with Constance fallback"""
-        return obj.avatar_style or config.DICEBEAR_STYLE
 
     def get_avatar_size(self, obj):
         """Return avatar size with Constance fallback (as Tailwind classes)"""
@@ -209,14 +205,10 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
         # Generate avatar for host at join time
         from chatpop.utils.media import generate_and_store_avatar
 
-        avatar_style = None
-        if chat_room.theme and chat_room.theme.avatar_style:
-            avatar_style = chat_room.theme.avatar_style
-
         # If using reserved_username, store on User model and set proxy URL on participation
         if request.user.reserved_username and host_username.lower() == request.user.reserved_username.lower():
             if not request.user.avatar_url:
-                avatar_url = generate_and_store_avatar(host_username, style=avatar_style)
+                avatar_url = generate_and_store_avatar(host_username)
                 if avatar_url:
                     request.user.avatar_url = avatar_url
                     request.user.save(update_fields=['avatar_url'])
@@ -225,7 +217,7 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
             participation.save(update_fields=['avatar_url'])
         else:
             # Otherwise store on ChatParticipation
-            avatar_url = generate_and_store_avatar(host_username, style=avatar_style)
+            avatar_url = generate_and_store_avatar(host_username)
             if avatar_url:
                 participation.avatar_url = avatar_url
                 participation.save(update_fields=['avatar_url'])
@@ -391,11 +383,7 @@ class MessageSerializer(serializers.ModelSerializer):
             pass
 
         # Fallback to DiceBear for orphaned/legacy data
-        avatar_style = None
-        if obj.chat_room.theme and obj.chat_room.theme.avatar_style:
-            avatar_style = obj.chat_room.theme.avatar_style
-
-        return get_fallback_dicebear_url(obj.username, style=avatar_style)
+        return get_fallback_dicebear_url(obj.username)
 
 
 class MessageCreateSerializer(serializers.ModelSerializer):

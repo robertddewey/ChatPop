@@ -87,11 +87,6 @@ class Command(BaseCommand):
         self.stdout.write(f"\nProcessing {total} ChatParticipation records...")
 
         for i, p in enumerate(participations, 1):
-            # Get avatar style from theme
-            avatar_style = None
-            if p.chat_room.theme and p.chat_room.theme.avatar_style:
-                avatar_style = p.chat_room.theme.avatar_style
-
             if p.user and p.user.reserved_username:
                 # Registered user
                 if p.username.lower() == p.user.reserved_username.lower():
@@ -118,7 +113,7 @@ class Command(BaseCommand):
                             f"  [{i}/{total}] {p.username} (registered, different name) → generate direct URL"
                         )
                         if apply:
-                            avatar_url = generate_and_store_avatar(p.username, style=avatar_style)
+                            avatar_url = generate_and_store_avatar(p.username)
                             if avatar_url:
                                 p.avatar_url = avatar_url
                                 p.save(update_fields=['avatar_url'])
@@ -135,7 +130,7 @@ class Command(BaseCommand):
                         f"  [{i}/{total}] {p.username} (anonymous) → generate direct URL"
                     )
                     if apply:
-                        avatar_url = generate_and_store_avatar(p.username, style=avatar_style)
+                        avatar_url = generate_and_store_avatar(p.username)
                         if avatar_url:
                             p.avatar_url = avatar_url
                             p.save(update_fields=['avatar_url'])
