@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, Dices, RotateCcw } from 'lucide-react';
+import { BadgeCheck, ChevronLeft, ChevronRight, Dices, RotateCcw } from 'lucide-react';
 import type { ChatRoom } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
@@ -19,7 +19,8 @@ interface JoinChatModalProps {
   hasReservedUsername?: boolean;
   themeIsDarkMode?: boolean;
   userAvatarUrl?: string | null;
-  onJoin: (username: string, accessCode?: string) => void;
+  onAvatarChange?: (avatarUrl: string) => void;
+  onJoin: (username: string, accessCode?: string, avatarSeed?: string) => void;
 }
 
 export default function JoinChatModal({
@@ -30,6 +31,7 @@ export default function JoinChatModal({
   hasReservedUsername = false,
   themeIsDarkMode = true,
   userAvatarUrl,
+  onAvatarChange,
   onJoin,
 }: JoinChatModalProps) {
   const router = useRouter();
@@ -90,15 +92,45 @@ export default function JoinChatModal({
     return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
   };
 
-  // Get the current avatar URL based on username
+  // Avatar seed browsing state
+  const [avatarSeeds, setAvatarSeeds] = useState<string[]>([username || currentUserDisplayName || 'anonymous']);
+  const [avatarIndex, setAvatarIndex] = useState(0);
+
+  // Whether to show avatar chevrons (only for first-time users)
+  const showAvatarChevrons = !hasJoinedBefore && !isReturningUser;
+
+  // Get the current avatar URL
   const getCurrentAvatarUrl = (): string => {
-    // If we have a stored avatar (from participation or user profile), use it
-    if (userAvatarUrl) {
+    // Returning users: use stored avatar
+    if (userAvatarUrl && !showAvatarChevrons) {
       return userAvatarUrl;
     }
-    // Otherwise generate from username seed
-    return getDiceBearUrl(username || currentUserDisplayName || 'anonymous');
+    // First-time users: use the currently selected seed
+    return getDiceBearUrl(avatarSeeds[avatarIndex]);
   };
+
+  // Avatar chevron handlers
+  const handlePrevAvatar = () => {
+    if (avatarIndex > 0) setAvatarIndex(avatarIndex - 1);
+  };
+
+  const handleNextAvatar = () => {
+    if (avatarIndex < avatarSeeds.length - 1) {
+      setAvatarIndex(avatarIndex + 1);
+    } else {
+      const newSeed = crypto.randomUUID();
+      setAvatarSeeds([...avatarSeeds, newSeed]);
+      setAvatarIndex(avatarIndex + 1);
+    }
+  };
+
+  // Notify parent of avatar changes so MessageInput stays in sync
+  // Only for first-time users browsing avatars — returning users keep their stored avatar
+  useEffect(() => {
+    if (showAvatarChevrons) {
+      onAvatarChange?.(getDiceBearUrl(avatarSeeds[avatarIndex]));
+    }
+  }, [avatarSeeds, avatarIndex, showAvatarChevrons]);
 
   // Check if reset button should be enabled (username differs from reserved)
   const isResetEnabled = hasReservedUsername && username.toLowerCase() !== currentUserDisplayName.toLowerCase();
@@ -207,7 +239,7 @@ export default function JoinChatModal({
     setIsJoining(true);
 
     try {
-      await onJoin(finalUsername.trim(), accessCode.trim() || undefined);
+      await onJoin(finalUsername.trim(), accessCode.trim() || undefined, showAvatarChevrons ? avatarSeeds[avatarIndex] : undefined);
     } catch (err: unknown) {
       const error = err as Error;
       setError(error.message || 'Failed to join chat');
@@ -314,12 +346,34 @@ export default function JoinChatModal({
         </div>
 
         {/* Avatar Preview */}
-        <div className="flex justify-center mb-6">
+        <div className="flex items-center justify-center gap-3 mb-6">
+          {showAvatarChevrons && (
+            <button
+              type="button"
+              onClick={handlePrevAvatar}
+              disabled={avatarIndex === 0 || isJoining}
+              className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+              aria-label="Previous avatar"
+            >
+              <ChevronLeft size={24} />
+            </button>
+          )}
           <img
             src={getCurrentAvatarUrl()}
             alt="Your avatar"
             className="w-20 h-20 rounded-full bg-zinc-700"
           />
+          {showAvatarChevrons && (
+            <button
+              type="button"
+              onClick={handleNextAvatar}
+              disabled={isJoining}
+              className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Next avatar"
+            >
+              <ChevronRight size={24} />
+            </button>
+          )}
         </div>
 
         {/* Form */}

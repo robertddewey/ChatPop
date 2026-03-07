@@ -36,6 +36,7 @@ interface MessageInputProps {
     replyPreviewContent?: string;
     replyPreviewCloseButton?: string;
     replyPreviewCloseIcon?: string;
+    inputStyles?: Record<string, string>;
   };
 }
 
@@ -57,6 +58,7 @@ function MessageInputComponent({
   disabledMessage,
   design,
 }: MessageInputProps) {
+  const inputStyles = design.inputStyles;
   const [message, setMessage] = useState('');
   const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
   const [hasMediaSelected, setHasMediaSelected] = useState(false);
@@ -158,8 +160,8 @@ function MessageInputComponent({
   if (disabled) {
     return (
       <div className={design.inputArea} style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))` }}>
-        <div className="flex items-center justify-center h-9 rounded-lg bg-zinc-800/60 border border-zinc-700/50">
-          <span className="text-sm text-zinc-500">{disabledMessage || 'Messaging disabled'}</span>
+        <div className={`flex items-center justify-center h-9 rounded-lg ${inputStyles?.disabledBg || 'bg-zinc-800/60 border border-zinc-700/50'}`}>
+          <span className={`text-sm ${inputStyles?.disabledText || 'text-zinc-500'}`}>{disabledMessage || 'Messaging disabled'}</span>
         </div>
       </div>
     );
@@ -176,7 +178,7 @@ function MessageInputComponent({
               <div className={design.replyPreviewUsername}>
                 Replying to {replyingTo.username}
                 {username && replyingTo.username.toLowerCase() === username.toLowerCase() && (
-                  <span className="ml-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none bg-white/10 text-zinc-400">you</span>
+                  <span className={`ml-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none ${inputStyles?.youPill || 'bg-white/10 text-zinc-400'}`}>you</span>
                 )}
               </div>
               <div className={design.replyPreviewContent}>
@@ -204,7 +206,7 @@ function MessageInputComponent({
               <img
                 src={avatarUrl || ''}
                 alt=""
-                className="w-6 h-6 rounded-full bg-zinc-700"
+                className={`w-6 h-6 rounded-full ${inputStyles?.avatarFallbackBg || 'bg-zinc-700'}`}
               />
               {hasReservedUsername && (
                 <BadgeCheck size={10} className="absolute -bottom-0.5 -right-0.5 text-blue-500 bg-zinc-900 rounded-full" />
@@ -243,7 +245,7 @@ function MessageInputComponent({
             <div
               className="absolute right-0 top-0 bottom-0 w-8 pointer-events-none rounded-r-lg"
               style={{
-                background: 'linear-gradient(to right, transparent, rgb(39, 39, 42))',
+                background: `linear-gradient(to right, transparent, ${inputStyles?.textFadeGradient || 'rgb(39, 39, 42)'})`,
               }}
             />
           )}
@@ -283,7 +285,7 @@ function MessageInputComponent({
               e.preventDefault(); // Prevent blur before click registers
               handleCollapse();
             }}
-            className="w-9 h-9 flex items-center justify-center rounded-lg bg-zinc-700 text-gray-400 hover:bg-zinc-600 transition-colors flex-shrink-0"
+            className={`w-9 h-9 flex items-center justify-center rounded-lg ${inputStyles?.collapseButton || 'bg-zinc-700 text-gray-400 hover:bg-zinc-600'} transition-colors flex-shrink-0`}
             aria-label="Collapse input"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -294,7 +296,7 @@ function MessageInputComponent({
         <button
           type="submit"
           disabled={isSubmitDisabled}
-          className="h-9 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-semibold rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+          className={`h-9 px-4 ${inputStyles?.sendButton || 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700'} text-sm font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0`}
         >
           Send
         </button>

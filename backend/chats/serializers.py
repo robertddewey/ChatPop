@@ -258,6 +258,14 @@ class ChatRoomJoinSerializer(serializers.Serializer):
     """Serializer for joining a chat room"""
     username = serializers.CharField(max_length=15, required=True)
     access_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    avatar_seed = serializers.CharField(max_length=36, required=False, allow_blank=True)
+
+    def validate_avatar_seed(self, value):
+        """Validate avatar seed is alphanumeric/hyphens/underscores only (UUID format)."""
+        import re
+        if value and not re.match(r'^[a-zA-Z0-9_-]+$', value):
+            raise serializers.ValidationError("Invalid avatar seed format")
+        return value
 
     def validate_username(self, value):
         """

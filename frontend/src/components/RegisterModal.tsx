@@ -45,19 +45,12 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   const [diceUsername, setDiceUsername] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(false);
 
-  // Avatar state - random seed independent of username
-  const [avatarBaseSeed] = useState(() => crypto.randomUUID().slice(0, 8));
+  // Avatar state - array of random seeds, navigate with index
+  const [avatarSeeds, setAvatarSeeds] = useState<string[]>(() => [crypto.randomUUID()]);
   const [avatarIndex, setAvatarIndex] = useState(0);
 
   // Fingerprint state - cached for username availability checks
   const [fingerprint, setFingerprint] = useState<string | null>(null);
-
-  // Generate avatar seed based on index
-  const getAvatarSeed = (baseSeed: string, index: number): string => {
-    if (index === 0) return baseSeed;
-    if (index > 0) return `${baseSeed}+${index}`;
-    return `${baseSeed}${index}`; // negative includes minus sign
-  };
 
   // Get DiceBear avatar URL
   const getAvatarUrl = (seed: string, size: number = 80): string => {
@@ -65,12 +58,22 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   };
 
   // Current avatar seed and URL
-  const currentAvatarSeed = getAvatarSeed(avatarBaseSeed, avatarIndex);
+  const currentAvatarSeed = avatarSeeds[avatarIndex];
   const currentAvatarUrl = getAvatarUrl(currentAvatarSeed);
 
   // Avatar navigation
-  const handleAvatarPrev = () => setAvatarIndex(prev => prev - 1);
-  const handleAvatarNext = () => setAvatarIndex(prev => prev + 1);
+  const handleAvatarPrev = () => {
+    if (avatarIndex > 0) setAvatarIndex(avatarIndex - 1);
+  };
+  const handleAvatarNext = () => {
+    if (avatarIndex < avatarSeeds.length - 1) {
+      setAvatarIndex(avatarIndex + 1);
+    } else {
+      const newSeed = crypto.randomUUID();
+      setAvatarSeeds([...avatarSeeds, newSeed]);
+      setAvatarIndex(avatarIndex + 1);
+    }
+  };
 
   // Fetch fingerprint on mount for username availability checks
   useEffect(() => {
@@ -278,7 +281,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   return (
     <div className={`fixed inset-0 z-[10000] flex items-center justify-center p-4 ${styles.overlay}`}>
       {/* Mobile: Full screen, Desktop: Max width */}
-      <div className={`w-full max-w-md ${styles.container} ${mt.rounded} ${mt.shadow} p-8 relative max-h-[90vh] overflow-y-auto`}>
+      <div className={`w-full max-w-md ${styles.container} ${mt.rounded} ${mt.shadow} p-8 relative max-h-[90svh] overflow-y-auto`}>
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -294,30 +297,29 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
         </h1>
 
         {/* Avatar Preview */}
-        <div className="text-center mb-4">
+        <div className="flex items-center justify-center gap-3 mb-4">
+          <button
+            type="button"
+            onClick={handleAvatarPrev}
+            disabled={avatarIndex === 0}
+            className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+            aria-label="Previous avatar"
+          >
+            <ChevronLeft size={24} />
+          </button>
           <img
             src={currentAvatarUrl}
             alt="Avatar preview"
-            className="w-20 h-20 rounded-full border-2 border-zinc-600 mx-auto mb-3"
+            className="w-20 h-20 rounded-full bg-zinc-700"
           />
-          <div className="inline-flex items-center gap-4">
-            <button
-              type="button"
-              onClick={handleAvatarPrev}
-              className={`p-2 rounded-lg ${styles.diceButton} transition-all active:scale-95 cursor-pointer`}
-              title="Previous avatar"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button
-              type="button"
-              onClick={handleAvatarNext}
-              className={`p-2 rounded-lg ${styles.diceButton} transition-all active:scale-95 cursor-pointer`}
-              title="Next avatar"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleAvatarNext}
+            className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors"
+            aria-label="Next avatar"
+          >
+            <ChevronRight size={24} />
+          </button>
         </div>
 
         {/* Error Message */}
@@ -328,14 +330,14 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
           <div>
-            <label htmlFor="email" className={`block text-sm font-bold ${styles.label} mb-2`}>
+            <label htmlFor="reg-email" className={`block text-sm font-bold ${styles.label} mb-2`}>
               {MARKETING.forms.email}
             </label>
             <input
               type="email"
-              id="email"
+              id="reg-email"
               required
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -403,12 +405,12 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
           </div>
 
           <div>
-            <label htmlFor="password" className={`block text-sm font-bold ${styles.label} mb-2`}>
+            <label htmlFor="reg-password" className={`block text-sm font-bold ${styles.label} mb-2`}>
               {MARKETING.forms.password}
             </label>
             <input
               type="password"
-              id="password"
+              id="reg-password"
               required
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}

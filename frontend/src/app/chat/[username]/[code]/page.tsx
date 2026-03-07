@@ -1119,7 +1119,7 @@ export default function ChatPage() {
   };
 
   // Join handler for modal
-  const handleJoinChat = async (username: string, accessCode?: string) => {
+  const handleJoinChat = async (username: string, accessCode?: string, avatarSeed?: string) => {
     try {
       // Get fingerprint
       let fingerprint: string | undefined;
@@ -1129,7 +1129,7 @@ export default function ChatPage() {
         console.warn('Failed to get fingerprint:', fpErr);
       }
 
-      await chatApi.joinChat(code, username, accessCode, fingerprint, roomUsername);
+      await chatApi.joinChat(code, username, accessCode, fingerprint, roomUsername, avatarSeed);
 
       // Update session token immediately after joining
       const newSessionToken = localStorage.getItem(`chat_session_${code}`);
@@ -2188,6 +2188,7 @@ export default function ChatPage() {
               hasReservedUsername={hasReservedUsername}
               themeIsDarkMode={themeIsDarkMode}
               userAvatarUrl={userAvatarUrl}
+              onAvatarChange={setUserAvatarUrl}
               onJoin={handleJoinChat}
             />
           </div>

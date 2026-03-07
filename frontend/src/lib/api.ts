@@ -143,9 +143,15 @@ export interface ChatTheme {
   reaction_highlight_bg: string;
   reaction_highlight_border: string;
   reaction_highlight_text: string;
+  // Component style overrides
+  modal_styles: Record<string, string>;
+  emoji_picker_styles: Record<string, string>;
+  gift_styles: Record<string, string>;
+  input_styles: Record<string, string>;
+  video_player_styles: Record<string, string>;
+  ui_styles: Record<string, string>;
   // Avatar settings
-  avatar_style: string;
-  avatar_size: string;
+  avatar_size: string | null;
   avatar_border: string | null;
   avatar_spacing: string;
 }
@@ -428,11 +434,12 @@ export const chatApi = {
     return response.data;
   },
 
-  joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string, roomUsername?: string) => {
+  joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string, roomUsername?: string, avatarSeed?: string) => {
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/join/`, {
       username,
       access_code: accessCode,
       fingerprint,
+      avatar_seed: avatarSeed,
     });
 
     // Store session token if provided

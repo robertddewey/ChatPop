@@ -327,6 +327,7 @@ class ChatRoomJoinView(APIView):
 
         username = serializer.validated_data['username']
         fingerprint = request.data.get('fingerprint')
+        avatar_seed = serializer.validated_data.get('avatar_seed', None)
         user_id = str(request.user.id) if request.user.is_authenticated else None
         ip_address = get_client_ip(request)
 
@@ -523,7 +524,7 @@ class ChatRoomJoinView(APIView):
 
             # Generate avatar at join time for logged-in users
             if created:
-                self._generate_avatar_for_participation(participation, chat_room, request.user)
+                self._generate_avatar_for_participation(participation, chat_room, request.user, avatar_seed=avatar_seed)
         elif fingerprint:
             # Anonymous user - find/create by fingerprint
             participation, created = ChatParticipation.objects.get_or_create(
@@ -542,7 +543,7 @@ class ChatRoomJoinView(APIView):
 
             # Generate avatar at join time for anonymous users
             if created and not participation.avatar_url:
-                self._generate_avatar_for_participation(participation, chat_room)
+                self._generate_avatar_for_participation(participation, chat_room, avatar_seed=avatar_seed)
 
         # Create JWT session token
         session_token = ChatSessionValidator.create_session_token(
@@ -560,7 +561,7 @@ class ChatRoomJoinView(APIView):
             'message': 'Successfully joined chat room'
         })
 
-    def _generate_avatar_for_participation(self, participation, chat_room, user=None):
+    def _generate_avatar_for_participation(self, participation, chat_room, user=None, avatar_seed=None):
         """
         Generate and store avatar at join time.
 
@@ -568,15 +569,20 @@ class ChatRoomJoinView(APIView):
         - Registered user using reserved_username: proxy URL (allows avatar changes)
         - Registered user using different username: direct storage URL
         - Anonymous user: direct storage URL
+
+        If avatar_seed is provided, it is used as the DiceBear seed instead of
+        the username, allowing users to choose a different avatar via the UI.
         """
         from chatpop.utils.media import generate_and_store_avatar
+
+        seed = avatar_seed or participation.username
 
         # If logged-in user using their reserved_username
         if user and user.reserved_username:
             if participation.username.lower() == user.reserved_username.lower():
-                # Ensure User.avatar_url exists (the actual avatar file)
-                if not user.avatar_url:
-                    avatar_url = generate_and_store_avatar(participation.username)
+                # Generate avatar (always regenerate if custom seed provided)
+                if not user.avatar_url or avatar_seed:
+                    avatar_url = generate_and_store_avatar(seed)
                     if avatar_url:
                         user.avatar_url = avatar_url
                         user.save(update_fields=['avatar_url'])
@@ -589,7 +595,7 @@ class ChatRoomJoinView(APIView):
         # For anonymous users or registered users using different username:
         # Generate and store direct URL on ChatParticipation
         if not participation.avatar_url:
-            avatar_url = generate_and_store_avatar(participation.username)
+            avatar_url = generate_and_store_avatar(seed)
             if avatar_url:
                 participation.avatar_url = avatar_url
                 participation.save(update_fields=['avatar_url'])
@@ -1379,7 +1385,10 @@ class AddToPinView(APIView):
         # Extend time from current expiry (stacks)
         message.sticky_until = message.sticky_until + timezone.timedelta(minutes=extension_minutes)
 
-        message.save(update_fields=['pin_amount_paid', 'current_pin_amount', 'sticky_until'])
+        # Update pinned_at to reflect the latest pin action
+        message.pinned_at = timezone.now()
+
+        message.save(update_fields=['pin_amount_paid', 'current_pin_amount', 'sticky_until', 'pinned_at'])
 
         # Update both caches: main messages list and pinned messages
         MessageCache.update_message(message)
