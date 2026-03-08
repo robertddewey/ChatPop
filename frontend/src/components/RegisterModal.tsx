@@ -2,22 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { authApi, chatApi } from '@/lib/api';
+import { authApi } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
 import { MARKETING } from '@/lib/marketing';
 import { getFingerprint } from '@/lib/usernameStorage';
 import { X, Dices, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isDarkTheme } from '@/lib/themes';
 import { getModalTheme } from '@/lib/modal-theme';
 
-interface RegisterModalProps {
+interface RegisterFormContentProps {
   onClose: () => void;
-  theme?: 'homepage' | 'chat';
-  chatTheme?: 'dark-mode';
+  onSwitchToLogin?: () => void;
+  hideTitle?: boolean;
 }
 
-export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }: RegisterModalProps) {
-  // Always force dark mode
+export function RegisterFormContent({ onClose, onSwitchToLogin, hideTitle }: RegisterFormContentProps) {
   const useDarkMode = true;
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -45,23 +43,20 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   const [diceUsername, setDiceUsername] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(false);
 
-  // Avatar state - array of random seeds, navigate with index
+  // Avatar state
   const [avatarSeeds, setAvatarSeeds] = useState<string[]>(() => [crypto.randomUUID()]);
   const [avatarIndex, setAvatarIndex] = useState(0);
 
-  // Fingerprint state - cached for username availability checks
+  // Fingerprint state
   const [fingerprint, setFingerprint] = useState<string | null>(null);
 
-  // Get DiceBear avatar URL
   const getAvatarUrl = (seed: string, size: number = 80): string => {
     return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
   };
 
-  // Current avatar seed and URL
   const currentAvatarSeed = avatarSeeds[avatarIndex];
   const currentAvatarUrl = getAvatarUrl(currentAvatarSeed);
 
-  // Avatar navigation
   const handleAvatarPrev = () => {
     if (avatarIndex > 0) setAvatarIndex(avatarIndex - 1);
   };
@@ -75,35 +70,17 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     }
   };
 
-  // Fetch fingerprint on mount for username availability checks
   useEffect(() => {
     getFingerprint().then(setFingerprint);
-  }, []);
-
-  // Prevent body scrolling when modal is open (only on non-chat routes)
-  // Chat routes already have body scroll locked via chat-layout.css
-  useEffect(() => {
-    const isChatRoute = window.location.pathname.startsWith('/chat/');
-    if (!isChatRoute) {
-      document.body.style.overflow = 'hidden';
-    }
-    return () => {
-      if (!isChatRoute) {
-        document.body.style.overflow = '';
-      }
-    };
   }, []);
 
   // Validate username format in real-time
   useEffect(() => {
     const username = formData.reserved_username;
-
     if (!username) {
       setUsernameValidation({ valid: true, message: '' });
       return;
     }
-
-    // Use shared validation
     const validation = validateUsername(username);
     setUsernameValidation({
       valid: validation.isValid,
@@ -111,37 +88,23 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     });
   }, [formData.reserved_username]);
 
-  // Check username availability with debounce (only if format is valid)
+  // Check username availability with debounce
   useEffect(() => {
     const username = formData.reserved_username.trim();
-
     if (!username || !usernameValidation.valid) {
       setUsernameStatus({ checking: false, available: null, message: '' });
       return;
     }
-
-    // OPTIMIZATION: Skip validation for dice-generated usernames
-    // Generated usernames are already validated server-side during generation and reserved globally
     if (usernameSource === 'dice') {
-      // Dice-generated username is pre-validated and reserved for 60 minutes
-      setUsernameStatus({
-        checking: false,
-        available: true,
-        message: 'Username is available',
-      });
+      setUsernameStatus({ checking: false, available: true, message: 'Username is available' });
       return;
     }
-
-    // Wait for fingerprint to be loaded before checking
-    if (!fingerprint) {
-      return;
-    }
+    if (!fingerprint) return;
 
     setUsernameStatus({ checking: true, available: null, message: 'Checking...' });
 
     const timeoutId = setTimeout(async () => {
       try {
-        // Pass fingerprint to allow same user to re-check previously checked usernames
         const result = await authApi.checkUsername(username, fingerprint);
         setUsernameStatus({
           checking: false,
@@ -149,12 +112,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
           message: result.available ? 'Username is available' : 'Unavailable',
         });
       } catch (error) {
-        // If we get a 400 error (profanity or other validation error), show "Unavailable"
-        setUsernameStatus({
-          checking: false,
-          available: false,
-          message: 'Unavailable',
-        });
+        setUsernameStatus({ checking: false, available: false, message: 'Unavailable' });
       }
     }, 500);
 
@@ -166,19 +124,14 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     setError('');
     setFieldErrors({});
 
-    // Validate reserved username is provided
     if (!formData.reserved_username.trim()) {
       setFieldErrors({ reserved_username: 'Reserved username is required' });
       return;
     }
-
-    // Validate username format
     if (!usernameValidation.valid) {
       setFieldErrors({ reserved_username: usernameValidation.message });
       return;
     }
-
-    // Validate username is available
     if (usernameStatus.available === false) {
       setFieldErrors({ reserved_username: 'This username is not available' });
       return;
@@ -187,10 +140,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
     setLoading(true);
 
     try {
-      // Get fingerprint for API bypass prevention validation
       const fingerprint = await getFingerprint();
-
-      // Send registration with fingerprint and avatar seed
       await authApi.register({
         ...formData,
         fingerprint,
@@ -198,13 +148,10 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
       });
       await authApi.login(formData.email, formData.password);
 
-      // On chat pages, auth-change listener will handle modal close and state refresh
-      // On other pages, navigate to redirect
       const isChatRoute = window.location.pathname.startsWith('/chat/');
       if (!isChatRoute) {
         router.push(redirect);
       }
-      // Modal will be closed by auth-change listener for chat routes
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: unknown } };
       const errorData = axiosError.response?.data;
@@ -238,51 +185,233 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
   };
 
   const switchToLogin = () => {
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set('auth', 'login');
-    router.push(`${window.location.pathname}?${newParams.toString()}`);
+    if (onSwitchToLogin) {
+      onSwitchToLogin();
+      return;
+    }
+    const path = window.location.pathname;
+    // Chat page path-based auth: replace /signup with /login
+    if (path.endsWith('/signup')) {
+      router.replace(path.replace(/\/signup$/, '/login'));
+    } else {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.set('auth', 'login');
+      router.replace(`${path}?${newParams.toString()}`);
+    }
   };
 
   const handleSuggestUsername = async () => {
     setIsSuggestingUsername(true);
-
     try {
       const fingerprint = await getFingerprint();
       const result = await authApi.suggestUsername(fingerprint);
       setFormData({ ...formData, reserved_username: result.username });
-      setDiceUsername(result.username);  // Remember the dice username
-      setUsernameSource('dice');  // Mark as dice-generated (skip validation)
-      setIsRotating(result.is_rotating || false);  // Track if we're rotating through previous usernames
+      setDiceUsername(result.username);
+      setUsernameSource('dice');
+      setIsRotating(result.is_rotating || false);
     } catch (error) {
       console.error('Failed to suggest username:', error);
-      // If API fails, user can just try again or type their own
     } finally {
       setIsSuggestingUsername(false);
     }
   };
 
-  // Theme-aware styles from centralized modal theme
+  const mt = getModalTheme(useDarkMode);
+  const styles = {
+    title: mt.title,
+    subtitle: 'text-zinc-300',
+    input: (hasError: boolean) => `${mt.input} ${hasError ? 'border-red-500' : ''}`,
+    label: 'text-zinc-200',
+    link: 'text-cyan-400 hover:underline hover:text-cyan-300',
+    error: mt.error,
+    fieldError: 'text-red-400',
+    diceButton: 'bg-zinc-600 border border-zinc-500 text-zinc-50 hover:bg-zinc-500',
+  };
+
+  return (
+    <>
+      {!hideTitle && (
+        <h1 className={`text-2xl md:text-3xl font-bold ${styles.title} mb-4 text-center`}>
+          {MARKETING.auth.register.title}
+        </h1>
+      )}
+
+      {/* Avatar Preview */}
+      <div className="flex items-center justify-center gap-3 mb-4">
+        <button
+          type="button"
+          onClick={handleAvatarPrev}
+          disabled={avatarIndex === 0}
+          className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+          aria-label="Previous avatar"
+        >
+          <ChevronLeft size={24} />
+        </button>
+        <img
+          src={currentAvatarUrl}
+          alt="Avatar preview"
+          className="w-20 h-20 rounded-full bg-zinc-700"
+        />
+        <button
+          type="button"
+          onClick={handleAvatarNext}
+          className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors"
+          aria-label="Next avatar"
+        >
+          <ChevronRight size={24} />
+        </button>
+      </div>
+
+      {error && (
+        <div className={`mb-6 p-4 border rounded-lg ${styles.error}`}>
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
+        <div>
+          <label htmlFor="reg-email" className={`block text-sm font-bold ${styles.label} mb-2`}>
+            {MARKETING.forms.email}
+          </label>
+          <input
+            type="email"
+            id="reg-email"
+            required
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            className={`w-full px-4 py-3 rounded-xl ${styles.input(!!fieldErrors.email)} transition-colors focus:outline-none`}
+            placeholder=""
+          />
+          {fieldErrors.email && (
+            <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.email}</p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="reserved_username" className={`block text-sm font-bold ${styles.label} mb-2`}>
+            Reserved username <span className="text-[10px] font-normal">(across all chats)</span>
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              id="reserved_username"
+              required
+              value={formData.reserved_username}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                setFormData({ ...formData, reserved_username: newValue });
+                if (diceUsername && newValue === diceUsername) {
+                  setUsernameSource('dice');
+                } else {
+                  setUsernameSource('manual');
+                }
+              }}
+              className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input(!!fieldErrors.reserved_username || !usernameValidation.valid || (usernameStatus.available === false))} transition-colors focus:outline-none`}
+              placeholder=""
+              maxLength={15}
+            />
+            <button
+              type="button"
+              onClick={handleSuggestUsername}
+              disabled={loading || isSuggestingUsername}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${styles.diceButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+              title="Suggest random username"
+            >
+              <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
+            </button>
+          </div>
+          {fieldErrors.reserved_username && (
+            <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.reserved_username}</p>
+          )}
+          {!fieldErrors.reserved_username && !usernameValidation.valid && (
+            <p className={`mt-1 text-sm ${styles.fieldError}`}>{usernameValidation.message}</p>
+          )}
+          {!fieldErrors.reserved_username && usernameValidation.valid && usernameStatus.message && (
+            <p className={`mt-1 text-sm ${usernameStatus.available === true ? 'text-green-600 dark:text-green-400' : usernameStatus.available === false ? styles.fieldError : styles.subtitle}`}>
+              {usernameStatus.message}
+              {isRotating && usernameStatus.available && (
+                <span className={`text-xs ${styles.subtitle} ml-2`}>(browsing generated options)</span>
+              )}
+            </p>
+          )}
+          {!fieldErrors.reserved_username && usernameValidation.valid && !usernameStatus.message && (
+            <p className={`mt-1 text-xs ${styles.subtitle}`}>
+              5-15 characters. Letters, numbers & underscores.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="reg-password" className={`block text-sm font-bold ${styles.label} mb-2`}>
+            {MARKETING.forms.password}
+          </label>
+          <input
+            type="password"
+            id="reg-password"
+            required
+            value={formData.password}
+            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            className={`w-full px-4 py-3 rounded-xl ${styles.input(!!fieldErrors.password)} transition-colors focus:outline-none`}
+            placeholder=""
+          />
+          {fieldErrors.password && (
+            <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.password}</p>
+          )}
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className={`w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${mt.primaryButton}`}
+        >
+          {loading ? MARKETING.auth.register.submitButtonLoading : MARKETING.auth.register.submitButton}
+        </button>
+      </form>
+
+      <p className={`mt-6 text-center ${styles.subtitle}`}>
+        {MARKETING.auth.register.switchToLogin}{' '}
+        <button
+          onClick={switchToLogin}
+          className={`font-medium cursor-pointer ${styles.link}`}
+        >
+          {MARKETING.auth.register.switchToLoginLink}
+        </button>
+      </p>
+    </>
+  );
+}
+
+interface RegisterModalProps {
+  onClose: () => void;
+  theme?: 'homepage' | 'chat';
+  chatTheme?: 'dark-mode';
+}
+
+export default function RegisterModal({ onClose }: RegisterModalProps) {
+  const useDarkMode = true;
   const mt = getModalTheme(useDarkMode);
   const styles = {
     overlay: mt.backdrop,
     container: `${mt.container} ${mt.border}`,
-    title: mt.title,
-    subtitle: useDarkMode ? 'text-zinc-300' : 'text-gray-600',
-    input: (hasError: boolean) => `${mt.input} ${hasError ? 'border-red-500' : ''}`,
-    label: useDarkMode ? 'text-zinc-200' : 'text-gray-700',
-    button: mt.primaryButton,
-    link: useDarkMode ? 'text-cyan-400 hover:underline hover:text-cyan-300' : 'text-purple-600 hover:underline',
-    error: mt.error,
-    fieldError: useDarkMode ? 'text-red-400' : 'text-red-600',
     closeButton: mt.closeButton,
-    diceButton: useDarkMode ? 'bg-zinc-600 border border-zinc-500 text-zinc-50 hover:bg-zinc-500' : 'bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50',
   };
+
+  // Prevent body scrolling when modal is open on desktop (only on non-chat routes)
+  useEffect(() => {
+    const isChatRoute = window.location.pathname.startsWith('/chat/');
+    if (!isChatRoute) {
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      if (!isChatRoute) {
+        document.body.style.overflow = '';
+      }
+    };
+  }, []);
 
   return (
     <div className={`fixed inset-0 z-[10000] flex items-center justify-center p-4 ${styles.overlay}`}>
-      {/* Mobile: Full screen, Desktop: Max width */}
-      <div className={`w-full max-w-md ${styles.container} ${mt.rounded} ${mt.shadow} p-8 relative max-h-[90svh] overflow-y-auto`}>
-        {/* Close Button */}
+      <div className={`w-full max-w-md ${styles.container} ${mt.rounded} ${mt.shadow} p-8 relative max-h-[90vh] overflow-y-auto`}>
         <button
           onClick={onClose}
           className={`absolute top-4 right-4 p-2 rounded-lg transition-colors cursor-pointer ${styles.closeButton}`}
@@ -291,156 +420,7 @@ export default function RegisterModal({ onClose, theme = 'homepage', chatTheme }
           <X className="w-5 h-5" />
         </button>
 
-        {/* Header */}
-        <h1 className={`text-2xl md:text-3xl font-bold ${styles.title} mb-4 text-center`}>
-          {MARKETING.auth.register.title}
-        </h1>
-
-        {/* Avatar Preview */}
-        <div className="flex items-center justify-center gap-3 mb-4">
-          <button
-            type="button"
-            onClick={handleAvatarPrev}
-            disabled={avatarIndex === 0}
-            className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
-            aria-label="Previous avatar"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <img
-            src={currentAvatarUrl}
-            alt="Avatar preview"
-            className="w-20 h-20 rounded-full bg-zinc-700"
-          />
-          <button
-            type="button"
-            onClick={handleAvatarNext}
-            className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors"
-            aria-label="Next avatar"
-          >
-            <ChevronRight size={24} />
-          </button>
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className={`mb-6 p-4 border rounded-lg ${styles.error}`}>
-            {error}
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
-          <div>
-            <label htmlFor="reg-email" className={`block text-sm font-bold ${styles.label} mb-2`}>
-              {MARKETING.forms.email}
-            </label>
-            <input
-              type="email"
-              id="reg-email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full px-4 py-3 rounded-xl ${styles.input(!!fieldErrors.email)} transition-colors focus:outline-none`}
-              placeholder=""
-            />
-            {fieldErrors.email && (
-              <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.email}</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="reserved_username" className={`block text-sm font-bold ${styles.label} mb-2`}>
-              Reserved username <span className="text-[10px] font-normal">(across all chats)</span>
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                id="reserved_username"
-                required
-                value={formData.reserved_username}
-                onChange={(e) => {
-                  const newValue = e.target.value;
-                  setFormData({ ...formData, reserved_username: newValue });
-                  // If user edits back to the original dice username, restore dice mode
-                  if (diceUsername && newValue === diceUsername) {
-                    setUsernameSource('dice');
-                  } else {
-                    setUsernameSource('manual');  // Mark as manually typed
-                  }
-                }}
-                className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input(!!fieldErrors.reserved_username || !usernameValidation.valid || (usernameStatus.available === false))} transition-colors focus:outline-none`}
-                placeholder=""
-                maxLength={15}
-              />
-              <button
-                type="button"
-                onClick={handleSuggestUsername}
-                disabled={loading || isSuggestingUsername}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${styles.diceButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
-                title="Suggest random username"
-              >
-                <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
-              </button>
-            </div>
-            {fieldErrors.reserved_username && (
-              <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.reserved_username}</p>
-            )}
-            {!fieldErrors.reserved_username && !usernameValidation.valid && (
-              <p className={`mt-1 text-sm ${styles.fieldError}`}>{usernameValidation.message}</p>
-            )}
-            {!fieldErrors.reserved_username && usernameValidation.valid && usernameStatus.message && (
-              <p className={`mt-1 text-sm ${usernameStatus.available === true ? 'text-green-600 dark:text-green-400' : usernameStatus.available === false ? styles.fieldError : styles.subtitle}`}>
-                {usernameStatus.message}
-                {isRotating && usernameStatus.available && (
-                  <span className={`text-xs ${styles.subtitle} ml-2`}>(browsing generated options)</span>
-                )}
-              </p>
-            )}
-            {!fieldErrors.reserved_username && usernameValidation.valid && !usernameStatus.message && (
-              <p className={`mt-1 text-xs ${styles.subtitle}`}>
-                5-15 characters. Letters, numbers & underscores.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="reg-password" className={`block text-sm font-bold ${styles.label} mb-2`}>
-              {MARKETING.forms.password}
-            </label>
-            <input
-              type="password"
-              id="reg-password"
-              required
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className={`w-full px-4 py-3 rounded-xl ${styles.input(!!fieldErrors.password)} transition-colors focus:outline-none`}
-              placeholder=""
-            />
-            {fieldErrors.password && (
-              <p className={`mt-1 text-sm ${styles.fieldError}`}>{fieldErrors.password}</p>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${mt.primaryButton}`}
-          >
-            {loading ? MARKETING.auth.register.submitButtonLoading : MARKETING.auth.register.submitButton}
-          </button>
-        </form>
-
-        {/* Switch to Login */}
-        <p className={`mt-6 text-center ${styles.subtitle}`}>
-          {MARKETING.auth.register.switchToLogin}{' '}
-          <button
-            onClick={switchToLogin}
-            className={`font-medium cursor-pointer ${styles.link}`}
-          >
-            {MARKETING.auth.register.switchToLoginLink}
-          </button>
-        </p>
+        <RegisterFormContent onClose={onClose} />
       </div>
     </div>
   );

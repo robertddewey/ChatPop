@@ -7,8 +7,8 @@ import type { ChatRoom } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
 import { getFingerprint } from '@/lib/usernameStorage';
-import { isDarkTheme } from '@/lib/themes';
 import { getModalTheme } from '@/lib/modal-theme';
+
 
 interface JoinChatModalProps {
   chatRoom: ChatRoom;
@@ -21,6 +21,8 @@ interface JoinChatModalProps {
   userAvatarUrl?: string | null;
   onAvatarChange?: (avatarUrl: string) => void;
   onJoin: (username: string, accessCode?: string, avatarSeed?: string) => void;
+  onLogin?: () => void;
+  onSignup?: () => void;
 }
 
 export default function JoinChatModal({
@@ -33,6 +35,8 @@ export default function JoinChatModal({
   userAvatarUrl,
   onAvatarChange,
   onJoin,
+  onLogin,
+  onSignup,
 }: JoinChatModalProps) {
   const router = useRouter();
 
@@ -248,21 +252,29 @@ export default function JoinChatModal({
   };
 
   const handleLogin = () => {
-    const currentPath = window.location.pathname;
-    const currentSearch = window.location.search;
-    const params = new URLSearchParams(currentSearch);
-    params.set('auth', 'login');
-    params.set('redirect', currentPath + currentSearch);
-    router.replace(`${currentPath}?${params.toString()}`);
+    if (onLogin) {
+      onLogin();
+    } else {
+      const currentPath = window.location.pathname;
+      const currentSearch = window.location.search;
+      const params = new URLSearchParams(currentSearch);
+      params.set('auth', 'login');
+      params.set('redirect', currentPath + currentSearch);
+      router.push(`${currentPath}?${params.toString()}`);
+    }
   };
 
   const handleSignup = () => {
-    const currentPath = window.location.pathname;
-    const currentSearch = window.location.search;
-    const params = new URLSearchParams(currentSearch);
-    params.set('auth', 'register');
-    params.set('redirect', currentPath + currentSearch);
-    router.replace(`${currentPath}?${params.toString()}`);
+    if (onSignup) {
+      onSignup();
+    } else {
+      const currentPath = window.location.pathname;
+      const currentSearch = window.location.search;
+      const params = new URLSearchParams(currentSearch);
+      params.set('auth', 'register');
+      params.set('redirect', currentPath + currentSearch);
+      router.push(`${currentPath}?${params.toString()}`);
+    }
   };
 
   const handleSuggestUsername = async () => {
@@ -312,246 +324,286 @@ export default function JoinChatModal({
     }
   }, [isLoggedIn, hasJoinedBefore, rateLimitChecked, isRateLimited]);
 
-  return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className={`absolute inset-0 ${modalStyles.overlay}`} />
+  const [isMobile, setIsMobile] = useState(false);
 
-      {/* Modal */}
-      <div className={`relative w-full max-w-md max-h-full overflow-y-auto ${modalStyles.container} ${mt.rounded} p-8 ${mt.shadow}`}>
-        {/* Title */}
-        <div className="mb-6 text-center">
-          <h1 className={`text-2xl font-bold ${modalStyles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
-            {hasJoinedBefore || isReturningUser ? (
-              'Welcome back!'
-            ) : isLoggedIn ? (
-              <>
-                <span>Come join us,</span>
-                <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                  {currentUserDisplayName}
-                  {hasReservedUsername && (
-                    <BadgeCheck className="text-blue-500 flex-shrink-0" size={20} />
-                  )}
-                </span>
-              </>
-            ) : (
-              'Start chatting'
-            )}
-          </h1>
-          {chatRoom.is_private && (
-            <p className={`text-sm ${modalStyles.subtitle}`}>
-              This is a private chat
-            </p>
-          )}
-        </div>
+  // Detect mobile viewport
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
-        {/* Avatar Preview */}
-        <div className="flex items-center justify-center gap-3 mb-6">
-          {showAvatarChevrons && (
-            <button
-              type="button"
-              onClick={handlePrevAvatar}
-              disabled={avatarIndex === 0 || isJoining}
-              className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
-              aria-label="Previous avatar"
-            >
-              <ChevronLeft size={24} />
-            </button>
-          )}
-          <img
-            src={getCurrentAvatarUrl()}
-            alt="Your avatar"
-            className="w-20 h-20 rounded-full bg-zinc-700"
-          />
-          {showAvatarChevrons && (
-            <button
-              type="button"
-              onClick={handleNextAvatar}
-              disabled={isJoining}
-              className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Next avatar"
-            >
-              <ChevronRight size={24} />
-            </button>
-          )}
-        </div>
+  // Determine the title text
+  const titleContent = hasJoinedBefore || isReturningUser ? (
+    'Welcome back!'
+  ) : isLoggedIn ? (
+    <>
+      <span>Come join us,</span>
+      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+        {currentUserDisplayName}
+        {hasReservedUsername && (
+          <BadgeCheck className="text-blue-500 flex-shrink-0" size={20} />
+        )}
+      </span>
+    </>
+  ) : (
+    'Start chatting'
+  );
 
-        {/* Form */}
-        <form onSubmit={handleJoin} className="space-y-4">
-          {/* Username Display or Input */}
-          {hasJoinedBefore ? (
-            // Returning user (logged-in or anonymous) - show locked username
-            <div className="text-center mb-8">
-              <div className="flex items-center justify-center gap-1">
-                <p className={`text-sm ${modalStyles.subtitle}`}>You&apos;ll join as: <span className={`font-semibold ${modalStyles.title}`}>{currentUserDisplayName}</span></p>
-                {hasReservedUsername && (
-                  <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
-                )}
-              </div>
-            </div>
-          ) : isLoggedIn ? (
-            // Logged-in first-time user - read-only username with dice/reset buttons
-            <div>
-              <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
-                Your username
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={username}
-                  readOnly
-                  tabIndex={-1}
-                  placeholder={currentUserDisplayName || "Your username"}
-                  className={`w-full px-4 py-3 pr-24 rounded-xl ${modalStyles.input} transition-colors pointer-events-none select-none cursor-default ${
-                    usernameError ? 'border-red-500' : ''
-                  }`}
-                  maxLength={15}
-                />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  {/* Reset button - always visible for logged-in users with reserved username */}
-                  {hasReservedUsername && (
-                    <button
-                      type="button"
-                      onClick={handleResetUsername}
-                      disabled={!isResetEnabled || isJoining || isSuggestingUsername}
-                      className={`p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer`}
-                      title="Reset to your username"
-                    >
-                      <RotateCcw size={20} />
-                    </button>
-                  )}
-                  {/* Dice button */}
-                  <button
-                    type="button"
-                    onClick={handleSuggestUsername}
-                    disabled={isJoining || isSuggestingUsername}
-                    className={`p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
-                    title="Suggest random username"
-                  >
-                    <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
-                  </button>
-                </div>
-              </div>
-              {usernameError && (
-                <p className={`text-xs text-red-500 mt-1`}>
-                  {usernameError}
-                </p>
+  // Shared form content rendered in both mobile and desktop
+  const formContent = (
+    <>
+      {/* Title */}
+      <div className="mb-6 text-center">
+        <h1 className={`text-2xl font-bold ${modalStyles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
+          {titleContent}
+        </h1>
+        {chatRoom.is_private && (
+          <p className={`text-sm ${modalStyles.subtitle}`}>
+            This is a private chat
+          </p>
+        )}
+      </div>
+
+      {/* Avatar Preview */}
+      <div className="flex items-center justify-center gap-3 mb-6">
+        {showAvatarChevrons && (
+          <button
+            type="button"
+            onClick={handlePrevAvatar}
+            disabled={avatarIndex === 0 || isJoining}
+            className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+            aria-label="Previous avatar"
+          >
+            <ChevronLeft size={24} />
+          </button>
+        )}
+        <img
+          src={getCurrentAvatarUrl()}
+          alt="Your avatar"
+          className="w-20 h-20 rounded-full bg-zinc-700"
+        />
+        {showAvatarChevrons && (
+          <button
+            type="button"
+            onClick={handleNextAvatar}
+            disabled={isJoining}
+            className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Next avatar"
+          >
+            <ChevronRight size={24} />
+          </button>
+        )}
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleJoin} className="space-y-4">
+        {/* Username Display or Input */}
+        {hasJoinedBefore ? (
+          // Returning user (logged-in or anonymous) - show locked username
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center gap-1">
+              <p className={`text-sm ${modalStyles.subtitle}`}>You&apos;ll join as: <span className={`font-semibold ${modalStyles.title}`}>{currentUserDisplayName}</span></p>
+              {hasReservedUsername && (
+                <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
               )}
             </div>
-          ) : isReturningUser ? (
-            // Anonymous returning user - show locked username
-            <div className="text-center mb-8">
-              <div className="flex items-center justify-center gap-1">
-                <p className={`text-sm ${modalStyles.subtitle}`}>
-                  Rejoining as: <span className={`font-semibold ${modalStyles.title}`}>{username}</span>
-                </p>
+          </div>
+        ) : isLoggedIn ? (
+          // Logged-in first-time user - read-only username with dice/reset buttons
+          <div>
+            <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
+              Your username
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={username}
+                readOnly
+                tabIndex={-1}
+                placeholder={currentUserDisplayName || "Your username"}
+                className={`w-full px-4 py-3 pr-24 rounded-xl ${modalStyles.input} transition-colors pointer-events-none select-none cursor-default ${
+                  usernameError ? 'border-red-500' : ''
+                }`}
+                maxLength={15}
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {/* Reset button - always visible for logged-in users with reserved username */}
                 {hasReservedUsername && (
-                  <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
+                  <button
+                    type="button"
+                    onClick={handleResetUsername}
+                    disabled={!isResetEnabled || isJoining || isSuggestingUsername}
+                    className={`p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer`}
+                    title="Reset to your username"
+                  >
+                    <RotateCcw size={20} />
+                  </button>
                 )}
-              </div>
-            </div>
-          ) : (
-            // Anonymous first-time user - show input with dice
-            <div>
-              <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
-                Your username
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={username}
-                  readOnly
-                  tabIndex={-1}
-                  placeholder={isSuggestingUsername ? "Generating..." : "Click the dice to generate"}
-                  className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors pointer-events-none select-none cursor-default`}
-                  maxLength={15}
-                />
+                {/* Dice button */}
                 <button
                   type="button"
                   onClick={handleSuggestUsername}
-                  disabled={isJoining || isSuggestingUsername || isRateLimited}
-                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
-                  title="Generate random username"
+                  disabled={isJoining || isSuggestingUsername}
+                  className={`p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+                  title="Suggest random username"
                 >
                   <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
                 </button>
               </div>
             </div>
-          )}
-
-          {/* Access Code Input (only for private chats) */}
-          {chatRoom.access_mode === 'private' && (
-            <div>
-              <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
-                Access Code
-              </label>
-              <input
-                type="password"
-                value={accessCode}
-                onChange={(e) => setAccessCode(e.target.value)}
-                placeholder="Enter access code"
-                className={`w-full px-4 py-3 rounded-xl ${modalStyles.input} transition-colors focus:outline-none`}
-                disabled={isJoining}
-              />
+            {usernameError && (
+              <p className={`text-xs text-red-500 mt-1`}>
+                {usernameError}
+              </p>
+            )}
+          </div>
+        ) : isReturningUser ? (
+          // Anonymous returning user - show locked username
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center gap-1">
+              <p className={`text-sm ${modalStyles.subtitle}`}>
+                Rejoining as: <span className={`font-semibold ${modalStyles.title}`}>{username}</span>
+              </p>
+              {hasReservedUsername && (
+                <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
+              )}
             </div>
-          )}
+          </div>
+        ) : (
+          // Anonymous first-time user - show input with dice
+          <div>
+            <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
+              Your username
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={username}
+                readOnly
+                tabIndex={-1}
+                placeholder={isSuggestingUsername ? "Generating..." : "Click the dice to generate"}
+                className={`w-full px-4 py-3 pr-12 rounded-xl ${modalStyles.input} transition-colors pointer-events-none select-none cursor-default`}
+                maxLength={15}
+              />
+              <button
+                type="button"
+                onClick={handleSuggestUsername}
+                disabled={isJoining || isSuggestingUsername || isRateLimited}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+                title="Generate random username"
+              >
+                <Dices size={20} className={isSuggestingUsername ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+        )}
 
-          {/* Error Message */}
-          {error && (
-            <p className={`text-xs ${modalStyles.error} text-left -mt-3`}>
-              {error}
-            </p>
-          )}
+        {/* Access Code Input (only for private chats) */}
+        {chatRoom.access_mode === 'private' && (
+          <div>
+            <label className={`block text-sm font-medium ${modalStyles.subtitle} mb-2`}>
+              Access Code
+            </label>
+            <input
+              type="password"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              placeholder="Enter access code"
+              className={`w-full px-4 py-3 rounded-xl ${modalStyles.input} transition-colors focus:outline-none`}
+              disabled={isJoining}
+            />
+          </div>
+        )}
 
-          {/* Reserved username warning for anonymous users */}
-          {!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser) && (
-            <p className={`text-xs text-amber-400 text-center -mt-2`}>
-              This username is reserved. Log in to continue as {currentUserDisplayName}.
-            </p>
-          )}
+        {/* Error Message */}
+        {error && (
+          <p className={`text-xs ${modalStyles.error} text-left -mt-3`}>
+            {error}
+          </p>
+        )}
 
-          {/* Join Button */}
-          <button
-            type="submit"
-            disabled={isJoining || isRateLimited || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
-            className={`w-full px-6 py-4 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
-          >
-            {isJoining ? 'Joining...' : 'Join Chat'}
-          </button>
+        {/* Reserved username warning for anonymous users */}
+        {!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser) && (
+          <p className={`text-xs text-amber-400 text-center -mt-2`}>
+            This username is reserved. Log in to continue as {currentUserDisplayName}.
+          </p>
+        )}
 
-          {/* Divider and Auth Buttons (only for non-logged-in users) */}
-          {!isLoggedIn && (
-            <>
-              <div className="relative my-3">
-                <div className={`absolute inset-0 flex items-center`}>
-                  <div className={`w-full border-t ${modalStyles.divider}`} />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className={`px-4 ${modalStyles.dividerText} ${modalStyles.subtitle}`}>
-                    or
-                  </span>
-                </div>
+        {/* Join Button */}
+        <button
+          type="submit"
+          disabled={isJoining || isRateLimited || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
+          className={`w-full px-6 py-4 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+        >
+          {isJoining ? 'Joining...' : 'Join Chat'}
+        </button>
+
+        {/* Divider and Auth Buttons (only for non-logged-in users) */}
+        {!isLoggedIn && (
+          <>
+            <div className="relative my-3">
+              <div className={`absolute inset-0 flex items-center`}>
+                <div className={`w-full border-t ${modalStyles.divider}`} />
               </div>
-
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={handleLogin}
-                  className={`w-full px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95 cursor-pointer`}
-                >
-                  Log in
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSignup}
-                  className={`w-full px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95 cursor-pointer`}
-                >
-                  Sign up
-                </button>
+              <div className="relative flex justify-center text-sm">
+                <span className={`px-4 ${modalStyles.dividerText} ${modalStyles.subtitle}`}>
+                  or
+                </span>
               </div>
-            </>
-          )}
-        </form>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleLogin}
+                className={`flex-1 px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95 cursor-pointer`}
+              >
+                Log in
+              </button>
+              <button
+                type="button"
+                onClick={handleSignup}
+                className={`flex-1 px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95 cursor-pointer`}
+              >
+                Sign up
+              </button>
+            </div>
+          </>
+        )}
+      </form>
+    </>
+  );
+
+  // Mobile: Bottom-anchored panel within chat container (keeps header accessible)
+  if (isMobile) {
+    return (
+      <div className="absolute inset-0 z-30 flex flex-col pointer-events-none">
+        {/* Backdrop - covers messages area but header stays above via z-index */}
+        <div className={`absolute inset-0 ${modalStyles.overlay} pointer-events-auto`} />
+
+        {/* Spacer — guaranteed gap between header and drawer top */}
+        <div className="shrink-0 h-[108px]" />
+
+        {/* Bottom-anchored panel — fills remaining space, content scrolls if needed */}
+        <div className={`relative flex-1 flex flex-col justify-end pointer-events-auto overflow-hidden`}>
+          <div className={`${mt.container} border-t border-x border-zinc-700 rounded-t-2xl p-8 overflow-y-auto overscroll-contain max-h-full`}>
+            {formContent}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop: Centered modal
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div className={`absolute inset-0 ${modalStyles.overlay}`} />
+
+      <div className={`relative w-full max-w-md max-h-full overflow-y-auto ${modalStyles.container} ${mt.rounded} p-8 ${mt.shadow}`}>
+        {formContent}
       </div>
     </div>
   );

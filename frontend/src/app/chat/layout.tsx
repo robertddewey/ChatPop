@@ -13,6 +13,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover', // iOS Safari needs this for theme-color to work properly
+  // Note: no interactiveWidget — body uses position:fixed which handles keyboard differently
 };
 
 // Note: Layout doesn't receive params in Next.js App Router

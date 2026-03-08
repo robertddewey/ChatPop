@@ -14,8 +14,8 @@ import MessageActionsModal from '@/components/MessageActionsModal';
 import JoinChatModal from '@/components/JoinChatModal';
 import { GiftReceivedPopup } from '@/components/GiftReceivedPopup';
 import FeatureIntroModal from '@/components/FeatureIntroModal';
-import LoginModal from '@/components/LoginModal';
-import RegisterModal from '@/components/RegisterModal';
+import LoginModal, { LoginFormContent } from '@/components/LoginModal';
+import RegisterModal, { RegisterFormContent } from '@/components/RegisterModal';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
 import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
@@ -369,21 +369,50 @@ const defaultTheme: ChatTheme = {
 
 export default function ChatPage() {
   const params = useParams();
-  const code = params.code as string;
-  const roomUsername = params.username as string; // Extract username from URL for manual rooms
+  const codeSegments = params.code as string[];
+  const code = codeSegments[0];
+  const authSegment = codeSegments[1] as 'login' | 'signup' | undefined;
+  const roomUsername = params.username as string;
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const authMode = searchParams.get('auth');
+  // Auth mode: URL path segment (mobile: /login, /signup) or query param (desktop: ?auth=login)
+  const [authModeState, setAuthModeState] = useState<string | null>(
+    authSegment === 'login' ? 'login'
+    : authSegment === 'signup' ? 'register'
+    : null
+  );
+  const authMode = authModeState || searchParams.get('auth');
+
+  // Base chat URL without auth segments
+  const baseChatUrl = `/chat/${roomUsername}/${code}`;
+
+  const openAuth = (mode: 'login' | 'signup') => {
+    setAuthModeState(mode === 'signup' ? 'register' : 'login');
+    window.history.pushState(null, '', `${baseChatUrl}/${mode}`);
+  };
+
+  const switchAuth = (mode: 'login' | 'signup') => {
+    setAuthModeState(mode === 'signup' ? 'register' : 'login');
+    window.history.replaceState(null, '', `${baseChatUrl}/${mode}`);
+  };
 
   const closeModal = () => {
-    const newParams = new URLSearchParams(searchParams);
-    newParams.delete('auth');
-    newParams.delete('redirect');
-    router.replace(`${window.location.pathname}?${newParams.toString()}`);
+    setAuthModeState(null);
+    window.history.pushState(null, '', baseChatUrl);
   };
 
   // No theme switching - always use dark-mode
+
+  // Detect mobile viewport for inline auth rendering
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -740,14 +769,19 @@ export default function ChatPage() {
     // First-time visit via direct URL or existing session - allow
   }, [code, router]);
 
-  // Add chat-layout class to body on mount, remove on unmount
-  // This enables the chat-specific CSS (position: fixed, overflow: hidden, etc.)
+  // Add chat-layout class to body (position:fixed, overflow:hidden, etc.)
+  // Remove during mobile inline auth so the page scrolls naturally with the keyboard
+  const inlineAuthActive = !!(authMode && isMobile);
   useEffect(() => {
-    document.body.classList.add('chat-layout');
+    if (inlineAuthActive) {
+      document.body.classList.remove('chat-layout');
+    } else {
+      document.body.classList.add('chat-layout');
+    }
     return () => {
       document.body.classList.remove('chat-layout');
     };
-  }, []);
+  }, [inlineAuthActive]);
 
   // Load session token from localStorage on mount and when joining
   useEffect(() => {
@@ -929,9 +963,24 @@ export default function ChatPage() {
     }
   }, [isBlocked, router]);
 
-  // Listen for back button to handle settings overlay and chat exit
+  // Listen for back button to handle auth, settings overlay, and chat exit
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
+      const path = window.location.pathname;
+
+      // Auth navigation: going back/forward between /login, /signup, and base chat URL
+      if (path.endsWith('/login')) {
+        setAuthModeState('login');
+        return;
+      } else if (path.endsWith('/signup')) {
+        setAuthModeState('register');
+        return;
+      } else if (authModeState) {
+        // Was in auth mode, now back to chat page — just close auth
+        setAuthModeState(null);
+        return;
+      }
+
       // If settings sheet is open, close it (settings uses pushState)
       if (showSettingsSheet) {
         setShowSettingsSheet(false);
@@ -958,7 +1007,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, showSettingsSheet, currentRoom, router, code]);
+  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -2097,6 +2146,33 @@ export default function ChatPage() {
     );
   }
 
+  // Mobile inline auth — completely separate from the chat layout to avoid
+  // position:fixed / 100dvh conflicts with the virtual keyboard
+  if (authMode && isMobile) {
+    return (
+      <div className="min-h-[100dvh] bg-zinc-900">
+        <div className={`${currentDesign.header} sticky top-0 z-50 bg-zinc-900`}>
+          <div className="flex items-center justify-between gap-3">
+            <h1 className={`${currentDesign.headerTitle} text-lg font-semibold`}>
+              {authMode === 'login' ? 'Log in' : 'Sign up'}
+            </h1>
+            <button
+              onClick={closeModal}
+              className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+        <div className="p-6">
+          {authMode === 'login' && <LoginFormContent onClose={closeModal} onSwitchToRegister={() => switchAuth('signup')} hideTitle />}
+          {authMode === 'register' && <RegisterFormContent onClose={closeModal} onSwitchToLogin={() => switchAuth('login')} hideTitle />}
+        </div>
+      </div>
+    );
+  }
+
   // Main chat interface
   return (
     <>
@@ -2140,59 +2216,61 @@ export default function ChatPage() {
       {/* Content Area Wrapper - View Router for Main Chat, Back Room, and future features */}
       <div className={`flex-1 relative overflow-hidden ${!hasJoined ? 'pointer-events-none' : ''}`}>
         {!isSeparateViewRoom(currentRoom) && (
-          <MainChatView
-            chatRoom={chatRoom}
-            currentUserId={currentUserId ?? null}
-            username={username}
-            hasJoined={hasJoined}
-            sessionToken={sessionToken}
-            filteredMessages={filteredMessages}
-            stickyHostMessages={stickyHostMessages}
-            stickyPinnedMessage={stickyPinnedMessage}
-            messagesContainerRef={messagesContainerRef}
-            messagesEndRef={messagesEndRef}
-            currentDesign={currentDesign}
-            themeIsDarkMode={themeIsDarkMode}
-            handleScroll={handleScroll}
-            scrollToMessage={scrollToMessage}
-            highlightMessage={highlightMessage}
-            handleReply={handleReply}
-            disableReply={currentRoom === 'gifts'}
-            filterLoading={roomLoading}
-            filterMode={currentRoom === 'main' ? 'all' : currentRoom as 'focus' | 'gifts'}
-            handlePin={handlePin}
-            handleAddToPin={handleAddToPin}
-            getPinRequirements={getPinRequirements}
-            handleBlockUser={handleBlockUser}
-            handleTipUser={handleTipUser}
-            handleSendGift={handleSendGift}
-            handleThankGift={handleThankGift}
-            handleDeleteMessage={handleDeleteMessage}
-            handleReactionToggle={handleReactionToggle}
-            messageReactions={messageReactions}
-            loadingOlder={loadingOlder}
-            onStickyHeightChange={handleStickyHeightChange}
-          />
-        )}
+              <MainChatView
+                chatRoom={chatRoom}
+                currentUserId={currentUserId ?? null}
+                username={username}
+                hasJoined={hasJoined}
+                sessionToken={sessionToken}
+                filteredMessages={filteredMessages}
+                stickyHostMessages={stickyHostMessages}
+                stickyPinnedMessage={stickyPinnedMessage}
+                messagesContainerRef={messagesContainerRef}
+                messagesEndRef={messagesEndRef}
+                currentDesign={currentDesign}
+                themeIsDarkMode={themeIsDarkMode}
+                handleScroll={handleScroll}
+                scrollToMessage={scrollToMessage}
+                highlightMessage={highlightMessage}
+                handleReply={handleReply}
+                disableReply={currentRoom === 'gifts'}
+                filterLoading={roomLoading}
+                filterMode={currentRoom === 'main' ? 'all' : currentRoom as 'focus' | 'gifts'}
+                handlePin={handlePin}
+                handleAddToPin={handleAddToPin}
+                getPinRequirements={getPinRequirements}
+                handleBlockUser={handleBlockUser}
+                handleTipUser={handleTipUser}
+                handleSendGift={handleSendGift}
+                handleThankGift={handleThankGift}
+                handleDeleteMessage={handleDeleteMessage}
+                handleReactionToggle={handleReactionToggle}
+                messageReactions={messageReactions}
+                loadingOlder={loadingOlder}
+                onStickyHeightChange={handleStickyHeightChange}
+              />
+            )}
 
-        {/* Join Modal - inline overlay within messages area (hidden when auth modal is open to preserve state) */}
-        {!hasJoined && chatRoom && (
-          <div className={`pointer-events-auto ${authMode ? 'hidden' : ''}`}>
-            <JoinChatModal
-              key={joinModalKey}
-              chatRoom={chatRoom}
-              currentUserDisplayName={username}
-              hasJoinedBefore={hasJoinedBefore}
-              isBlocked={isBlocked}
-              isLoggedIn={!!currentUserId}
-              hasReservedUsername={hasReservedUsername}
-              themeIsDarkMode={themeIsDarkMode}
-              userAvatarUrl={userAvatarUrl}
-              onAvatarChange={setUserAvatarUrl}
-              onJoin={handleJoinChat}
-            />
-          </div>
-        )}
+            {/* Join Modal - inline overlay within messages area */}
+            {!hasJoined && chatRoom && (
+              <div className="pointer-events-auto">
+                <JoinChatModal
+                  key={joinModalKey}
+                  chatRoom={chatRoom}
+                  currentUserDisplayName={username}
+                  hasJoinedBefore={hasJoinedBefore}
+                  isBlocked={isBlocked}
+                  isLoggedIn={!!currentUserId}
+                  hasReservedUsername={hasReservedUsername}
+                  themeIsDarkMode={themeIsDarkMode}
+                  userAvatarUrl={userAvatarUrl}
+                  onAvatarChange={setUserAvatarUrl}
+                  onJoin={handleJoinChat}
+                  onLogin={() => openAuth('login')}
+                  onSignup={() => openAuth('signup')}
+                />
+              </div>
+            )}
 
         {currentRoom === 'backroom' && hasJoined && chatRoom && (
           <GameRoomView
@@ -2347,15 +2425,15 @@ export default function ChatPage() {
       )}
       </div>
 
-      {/* Auth Modals */}
-      {authMode === 'login' && (
+      {/* Auth Modals (desktop only — mobile renders inline in content area) */}
+      {!isMobile && authMode === 'login' && (
         <LoginModal
           onClose={closeModal}
           theme="chat"
           chatTheme={'dark-mode'}
         />
       )}
-      {authMode === 'register' && (
+      {!isMobile && authMode === 'register' && (
         <RegisterModal
           onClose={closeModal}
           theme="chat"

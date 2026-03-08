@@ -50,9 +50,10 @@ function HomeContent() {
   });
 
   // State for restoring modals after back navigation
-  const [audioModalInitialState, setAudioModalInitialState] = useState<{ result: unknown } | undefined>(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [audioModalInitialState, setAudioModalInitialState] = useState<any>(() => {
     if (restoredModalState?.type === 'audio') {
-      return restoredModalState.results as { result: unknown };
+      return restoredModalState.results;
     }
     return undefined;
   });
@@ -198,6 +199,28 @@ function HomeContent() {
     }
   }, []);
 
+  // On mobile, redirect auth/create URL params to full pages
+  useEffect(() => {
+    if (!isMobile) return;
+    if (authMode === 'login') {
+      const params = new URLSearchParams(searchParams);
+      params.delete('auth');
+      const redirect = params.get('redirect');
+      const newParams = new URLSearchParams();
+      if (redirect) newParams.set('redirect', redirect);
+      router.replace(`/login${newParams.toString() ? `?${newParams.toString()}` : ''}`);
+    } else if (authMode === 'register') {
+      const params = new URLSearchParams(searchParams);
+      params.delete('auth');
+      const redirect = params.get('redirect');
+      const newParams = new URLSearchParams();
+      if (redirect) newParams.set('redirect', redirect);
+      router.replace(`/register${newParams.toString() ? `?${newParams.toString()}` : ''}`);
+    } else if (modalMode === 'create') {
+      router.replace('/create');
+    }
+  }, [isMobile, authMode, modalMode]);
+
   const closeModal = () => {
     router.push('/', { scroll: false });
   };
@@ -209,7 +232,11 @@ function HomeContent() {
   };
 
   const openCreateModal = () => {
-    router.push('/?modal=create', { scroll: false });
+    if (isMobile) {
+      router.push('/create');
+    } else {
+      router.push('/?modal=create', { scroll: false });
+    }
   };
 
   const handleCameraClick = () => {
@@ -459,10 +486,10 @@ function HomeContent() {
         </div>
       </main>
 
-      {/* Modals */}
-      {authMode === 'login' && <LoginModal onClose={closeModal} />}
-      {authMode === 'register' && <RegisterModal onClose={closeModal} />}
-      {modalMode === 'create' && <CreateChatModal onClose={closeModal} />}
+      {/* Modals (desktop only — mobile uses full pages) */}
+      {!isMobile && authMode === 'login' && <LoginModal onClose={closeModal} />}
+      {!isMobile && authMode === 'register' && <RegisterModal onClose={closeModal} />}
+      {!isMobile && modalMode === 'create' && <CreateChatModal onClose={closeModal} />}
       {(isAnalyzing || analysisResult) && (
         <PhotoAnalysisModal
           result={analysisResult}

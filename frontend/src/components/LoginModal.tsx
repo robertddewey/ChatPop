@@ -5,18 +5,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '@/lib/api';
 import { MARKETING } from '@/lib/marketing';
 import { X } from 'lucide-react';
-import { isDarkTheme } from '@/lib/themes';
 import { getModalTheme } from '@/lib/modal-theme';
 
-interface LoginModalProps {
+interface LoginFormContentProps {
   onClose: () => void;
-  theme?: 'homepage' | 'chat';
-  chatTheme?: 'dark-mode';
+  onSwitchToRegister?: () => void;
+  hideTitle?: boolean;
 }
 
-export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: LoginModalProps) {
-  // Always force dark mode
-  const useDarkMode = true;
+export function LoginFormContent({ onClose, onSwitchToRegister, hideTitle }: LoginFormContentProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
@@ -28,8 +25,135 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
     password: '',
   });
 
-  // Prevent body scrolling when modal is open (only on non-chat routes)
-  // Chat routes already have body scroll locked via chat-layout.css
+  const useDarkMode = true;
+  const mt = getModalTheme(useDarkMode);
+  const styles = {
+    title: mt.title,
+    subtitle: 'text-zinc-300',
+    input: mt.input,
+    label: 'text-zinc-200',
+    link: 'text-cyan-400 hover:underline hover:text-cyan-300',
+    error: mt.error,
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await authApi.login(formData.email, formData.password);
+
+      const isChatRoute = window.location.pathname.startsWith('/chat/');
+      if (!isChatRoute) {
+        router.push(redirect);
+      }
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } } };
+      setError(error.response?.data?.detail || 'Invalid email or password');
+      setLoading(false);
+    }
+  };
+
+  const switchToRegister = () => {
+    if (onSwitchToRegister) {
+      onSwitchToRegister();
+      return;
+    }
+    const path = window.location.pathname;
+    // Chat page path-based auth: replace /login with /signup
+    if (path.endsWith('/login')) {
+      router.replace(path.replace(/\/login$/, '/signup'));
+    } else {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.set('auth', 'register');
+      router.replace(`${path}?${newParams.toString()}`);
+    }
+  };
+
+  return (
+    <>
+      {!hideTitle && (
+        <h1 className={`text-2xl md:text-3xl font-bold ${styles.title} mb-4`}>
+          {MARKETING.auth.login.title}
+        </h1>
+      )}
+
+      {error && (
+        <div className={`mb-6 p-4 border rounded-lg ${styles.error}`}>
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="email" className={`block text-sm font-bold ${styles.label} mb-2`}>
+            {MARKETING.forms.email}
+          </label>
+          <input
+            type="email"
+            id="email"
+            required
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
+            placeholder=""
+          />
+        </div>
+
+        <div>
+          <label htmlFor="password" className={`block text-sm font-bold ${styles.label} mb-2`}>
+            {MARKETING.forms.password}
+          </label>
+          <input
+            type="password"
+            id="password"
+            required
+            value={formData.password}
+            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
+            placeholder=""
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className={`w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${mt.primaryButton}`}
+        >
+          {loading ? MARKETING.auth.login.submitButtonLoading : MARKETING.auth.login.submitButton}
+        </button>
+      </form>
+
+      <p className={`mt-6 text-center ${styles.subtitle}`}>
+        {MARKETING.auth.login.switchToRegister}{' '}
+        <button
+          onClick={switchToRegister}
+          className={`font-medium cursor-pointer ${styles.link}`}
+        >
+          {MARKETING.auth.login.switchToRegisterLink}
+        </button>
+      </p>
+    </>
+  );
+}
+
+interface LoginModalProps {
+  onClose: () => void;
+  theme?: 'homepage' | 'chat';
+  chatTheme?: 'dark-mode';
+}
+
+export default function LoginModal({ onClose }: LoginModalProps) {
+  const useDarkMode = true;
+  const mt = getModalTheme(useDarkMode);
+  const styles = {
+    overlay: mt.backdrop,
+    container: `${mt.container} ${mt.border}`,
+    closeButton: mt.closeButton,
+  };
+
+  // Prevent body scrolling when modal is open on desktop (only on non-chat routes)
   useEffect(() => {
     const isChatRoute = window.location.pathname.startsWith('/chat/');
     if (!isChatRoute) {
@@ -42,55 +166,9 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
     };
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      await authApi.login(formData.email, formData.password);
-
-      // On chat pages, auth-change listener will handle modal close and state refresh
-      // On other pages, navigate to redirect
-      const isChatRoute = window.location.pathname.startsWith('/chat/');
-      if (!isChatRoute) {
-        router.push(redirect);
-      }
-      // Modal will be closed by auth-change listener for chat routes
-    } catch (err: unknown) {
-      const error = err as { response?: { data?: { detail?: string } } };
-      setError(error.response?.data?.detail || 'Invalid email or password');
-      setLoading(false);
-    }
-  };
-
-  const switchToRegister = () => {
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set('auth', 'register');
-    const redirectParam = newParams.get('redirect');
-    router.push(`${window.location.pathname}?${newParams.toString()}`);
-  };
-
-  // Theme-aware styles from centralized modal theme
-  const mt = getModalTheme(useDarkMode);
-  const styles = {
-    overlay: mt.backdrop,
-    container: `${mt.container} ${mt.border}`,
-    title: mt.title,
-    subtitle: useDarkMode ? 'text-zinc-300' : 'text-gray-600',
-    input: mt.input,
-    label: useDarkMode ? 'text-zinc-200' : 'text-gray-700',
-    button: mt.primaryButton,
-    link: useDarkMode ? 'text-cyan-400 hover:underline hover:text-cyan-300' : 'text-purple-600 hover:underline',
-    error: mt.error,
-    closeButton: mt.closeButton,
-  };
-
   return (
     <div className={`fixed inset-0 z-[10000] flex items-center justify-center p-4 ${styles.overlay}`}>
-      {/* Mobile: Full screen, Desktop: Max width */}
-      <div className={`w-full max-w-md ${styles.container} ${mt.rounded} ${mt.shadow} p-8 relative max-h-[90svh] overflow-y-auto`}>
-        {/* Close Button */}
+      <div className={`w-full max-w-md ${styles.container} ${mt.rounded} ${mt.shadow} p-8 relative max-h-[90vh] overflow-y-auto`}>
         <button
           onClick={onClose}
           className={`absolute top-4 right-4 p-2 rounded-lg transition-colors cursor-pointer ${styles.closeButton}`}
@@ -99,69 +177,7 @@ export default function LoginModal({ onClose, theme = 'homepage', chatTheme }: L
           <X className="w-5 h-5" />
         </button>
 
-        {/* Header */}
-        <h1 className={`text-2xl md:text-3xl font-bold ${styles.title} mb-4`}>
-          {MARKETING.auth.login.title}
-        </h1>
-
-        {/* Error Message */}
-        {error && (
-          <div className={`mb-6 p-4 border rounded-lg ${styles.error}`}>
-            {error}
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="email" className={`block text-sm font-bold ${styles.label} mb-2`}>
-              {MARKETING.forms.email}
-            </label>
-            <input
-              type="email"
-              id="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
-              placeholder=""
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className={`block text-sm font-bold ${styles.label} mb-2`}>
-              {MARKETING.forms.password}
-            </label>
-            <input
-              type="password"
-              id="password"
-              required
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className={`w-full px-4 py-3 rounded-xl ${styles.input} transition-colors focus:outline-none`}
-              placeholder=""
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full px-6 py-3 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${mt.primaryButton}`}
-          >
-            {loading ? MARKETING.auth.login.submitButtonLoading : MARKETING.auth.login.submitButton}
-          </button>
-        </form>
-
-        {/* Switch to Register */}
-        <p className={`mt-6 text-center ${styles.subtitle}`}>
-          {MARKETING.auth.login.switchToRegister}{' '}
-          <button
-            onClick={switchToRegister}
-            className={`font-medium cursor-pointer ${styles.link}`}
-          >
-            {MARKETING.auth.login.switchToRegisterLink}
-          </button>
-        </p>
+        <LoginFormContent onClose={onClose} />
       </div>
     </div>
   );
