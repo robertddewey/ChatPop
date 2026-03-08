@@ -262,6 +262,15 @@ function MainChatView({
   const stickySectionRef = useRef<HTMLDivElement>(null);
   const [stickyHeight, setStickyHeight] = useState(0);
 
+  // Track viewport height for responsive photo sizing
+  const [viewportHeight, setViewportHeight] = useState(0);
+  useEffect(() => {
+    setViewportHeight(window.innerHeight);
+    const handleResize = () => setViewportHeight(window.innerHeight);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Compute theme colors for modal badges/icons (memoized)
   const modalThemeColors = useMemo(() => ({
     badgeIcon: getIconColor(currentDesign.badgeIconColor) || '#3b82f6',
@@ -1049,6 +1058,7 @@ function MainChatView({
                         photoUrl={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
                         width={message.photo_width || 300}
                         height={message.photo_height || 200}
+                        maxDisplayHeight={viewportHeight ? Math.min(320, Math.round(viewportHeight * 0.4)) : 320}
                       />
                     ) : message.video_url ? (
                       <VideoMessage

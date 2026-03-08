@@ -59,7 +59,7 @@ const lanIp = getLanIpAddress();
 // Enable proxy in dev mode OR when FORCE_PROXY=true (for local production testing)
 const ENABLE_PROXY = dev || process.env.FORCE_PROXY === 'true';
 
-const app = next({ dev, hostname, port });
+const app = next({ dev, hostname, port, turbopack: dev });
 const handle = app.getRequestHandler();
 
 const httpsOptions = {

@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
     'https://10.0.0.119:4000',
     'http://10.0.0.119:4000',
     '*.ngrok-free.dev',
+    '*.ngrok.dev',
     '*.ngrok.io',
   ],
   experimental: {

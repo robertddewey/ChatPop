@@ -632,6 +632,18 @@ Response JSON:
         int
     ),
 
+    # Chat Photo Upload Settings
+    'PHOTO_MAX_DIMENSION': (
+        1920,
+        'Maximum pixel dimension (longest side) for uploaded photos. Images exceeding this are resized.',
+        int
+    ),
+    'PHOTO_MAX_FILE_SIZE_MB': (
+        10,
+        'Maximum file size for photo uploads in megabytes (before compression)',
+        int
+    ),
+
     # Avatar Settings (DiceBear)
     'DICEBEAR_STYLE': (
         'pixel-art',

@@ -67,7 +67,7 @@ export default function PhotoMessage({
     return (
       <div
         className={`flex items-center justify-center bg-gray-100 dark:bg-zinc-800 rounded-lg text-gray-500 dark:text-gray-400 text-sm max-w-full ${className}`}
-        style={{ width: displayWidth, height: displayHeight, maxWidth: '100%' }}
+        style={{ width: displayWidth, maxWidth: '100%', aspectRatio: `${displayWidth} / ${displayHeight}` }}
       >
         Failed to load image
       </div>
@@ -88,7 +88,7 @@ export default function PhotoMessage({
         {/* Thumbnail in message */}
         <div
           className={`relative rounded-lg overflow-hidden cursor-pointer group max-w-full ${className}`}
-          style={{ width: displayWidth, height: displayHeight, maxWidth: '100%' }}
+          style={{ width: displayWidth, maxWidth: '100%', aspectRatio: `${displayWidth} / ${displayHeight}` }}
           onClick={openFullscreen}
         >
           {isLoading && (
@@ -97,10 +97,11 @@ export default function PhotoMessage({
           <img
             src={photoUrl}
             alt="Photo message"
-            className={`w-full h-full object-cover transition-opacity ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+            className={`w-full h-full object-contain transition-opacity ${isLoading ? 'opacity-0' : 'opacity-100'}`}
             onLoad={handleImageLoad}
             onError={handleImageError}
             loading="lazy"
+            draggable={false}
           />
           {/* Zoom overlay on hover */}
           <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

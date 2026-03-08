@@ -2637,10 +2637,11 @@ class PhotoUploadView(APIView):
                 'error': 'No photo file provided'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate file size (max 10MB before compression)
-        if photo_file.size > 10 * 1024 * 1024:
+        # Validate file size (configurable via constance)
+        max_file_size_mb = config.PHOTO_MAX_FILE_SIZE_MB
+        if photo_file.size > max_file_size_mb * 1024 * 1024:
             return Response({
-                'error': 'Photo too large (max 10MB)'
+                'error': f'Photo too large (max {max_file_size_mb}MB)'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Validate file type
@@ -2676,8 +2677,8 @@ class PhotoUploadView(APIView):
             # Get original dimensions
             original_width, original_height = img.size
 
-            # Resize if larger than 1920px on longest side
-            max_dimension = 1920
+            # Resize if larger than configured max dimension
+            max_dimension = config.PHOTO_MAX_DIMENSION
             if original_width > max_dimension or original_height > max_dimension:
                 if original_width > original_height:
                     new_width = max_dimension

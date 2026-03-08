@@ -478,5 +478,21 @@
       "key": "GIFT_BULK_ACTION_THRESHOLD",
       "value": "{\"__type__\": \"default\", \"__value__\": 10}"
     }
+  },
+  {
+    "model": "constance.constance",
+    "pk": 114,
+    "fields": {
+      "key": "PHOTO_MAX_DIMENSION",
+      "value": "{\"__type__\": \"default\", \"__value__\": 1920}"
+    }
+  },
+  {
+    "model": "constance.constance",
+    "pk": 115,
+    "fields": {
+      "key": "PHOTO_MAX_FILE_SIZE_MB",
+      "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+    }
   }
 ]

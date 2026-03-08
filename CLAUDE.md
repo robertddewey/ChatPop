@@ -153,6 +153,8 @@ cp .env.example .env
 
 **⚠️ CRITICAL: Frontend MUST also use HTTPS to match the backend!**
 
+**⚠️ ALWAYS use `npm run dev:https`** — never `npm run dev`. The `dev:https` script uses the custom `server.js` which provides HTTPS, WebSocket proxying to the backend, and Turbopack (fast hot-reload with the "N" debug indicator). Using `npm run dev` directly will break API/WebSocket proxying and SSL.
+
 ```bash
 cd frontend
 npm run dev:https
