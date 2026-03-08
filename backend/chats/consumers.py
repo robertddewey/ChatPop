@@ -417,10 +417,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Fallback to DiceBear for orphaned/legacy data
         if not avatar_url:
-            avatar_style = None
-            if message.chat_room.theme and message.chat_room.theme.avatar_style:
-                avatar_style = message.chat_room.theme.avatar_style
-            avatar_url = get_fallback_dicebear_url(message.username, style=avatar_style)
+            avatar_url = get_fallback_dicebear_url(message.username, style=None)
 
         return {
             'id': str(message.id),

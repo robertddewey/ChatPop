@@ -130,6 +130,7 @@ function InAppBrowserInterstitial({
           const { icon: Icon, color } = browserIcons[browser];
           return (
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-zinc-800 border border-zinc-700 mb-6">
+              {/* @ts-expect-error - lucide icon accepts style prop at runtime */}
               <Icon className="w-4 h-4" style={{ color }} />
               <span className="text-sm text-zinc-300">
                 Opened from {appName}

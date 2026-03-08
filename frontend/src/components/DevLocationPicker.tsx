@@ -55,14 +55,16 @@ export default function DevLocationPicker({ onSelect, onClose }: DevLocationPick
     if (typeof window !== 'undefined') {
       import('leaflet').then((L) => {
         // Fix default marker icon issue with webpack
-        delete (L.Icon.Default.prototype as Record<string, unknown>)._getIconUrl;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (L.Icon.Default.prototype as any)._getIconUrl;
         L.Icon.Default.mergeOptions({
           iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
           iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
           shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
         });
 
-        setCustomIcon(new L.Icon.Default());
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setCustomIcon(new L.Icon.Default() as any);
         setMapReady(true);
       });
     }
