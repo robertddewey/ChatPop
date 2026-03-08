@@ -815,7 +815,6 @@ export default function ChatPage() {
     };
   }, [inlineAuthActive, authMode]);
 
-
   // Load session token from localStorage on mount and when joining
   useEffect(() => {
     const token = localStorage.getItem(`chat_session_${code}`);
@@ -2317,6 +2316,7 @@ export default function ChatPage() {
         {hasJoined && (
           <div
             className="absolute right-0 z-50"
+            onTouchStart={() => { (document.activeElement as HTMLElement)?.blur(); }}
             style={{
               top: `${stickyHeight > 0 ? stickyHeight + 8 : 8}px`,
               bottom: '8px',

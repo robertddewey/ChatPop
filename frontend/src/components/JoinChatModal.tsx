@@ -588,7 +588,7 @@ export default function JoinChatModal({
 
         {/* Bottom-anchored panel — fills remaining space, content scrolls if needed */}
         <div className={`relative flex-1 flex flex-col justify-end pointer-events-auto overflow-hidden`}>
-          <div className={`${mt.container} border-t border-x border-zinc-700 rounded-t-2xl p-8 overflow-y-auto overscroll-contain max-h-full`}>
+          <div className={`${mt.container} border-t border-x border-zinc-700 border-b border-b-zinc-800 rounded-t-2xl p-8 overflow-y-auto overscroll-contain max-h-full`}>
             {formContent}
           </div>
         </div>
