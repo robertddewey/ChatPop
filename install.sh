@@ -10,6 +10,9 @@ set -e  # Exit on error
 # Store the directory where the script is located (for finding .env files)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Set by detect_previous_installation() — true when user chose full cleanup
+FRESH_INSTALL=false
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -292,13 +295,33 @@ setup_backend() {
     print_success "Database migrations completed"
 
     # Load fixtures
-    if [ -f "fixtures/seed_data.json" ]; then
-        print_info "Loading seed data (chat themes, config settings)..."
-        ./venv/bin/python manage.py loaddata fixtures/seed_data.json
-        print_success "Seed data loaded"
-    else
-        print_warning "Seed data fixture not found (fixtures/seed_data.json)"
-    fi
+    load_fixture() {
+        local fixture_file="$1"
+        local description="$2"
+        if [ ! -f "$fixture_file" ]; then
+            print_warning "Fixture not found: $fixture_file"
+            return
+        fi
+        if [ "$FRESH_INSTALL" = true ]; then
+            print_info "Loading $description..."
+            ./venv/bin/python manage.py loaddata "$fixture_file"
+            print_success "$description loaded"
+        else
+            read -p "Load $description? (overwrites current data) (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                print_info "Loading $description..."
+                ./venv/bin/python manage.py loaddata "$fixture_file"
+                print_success "$description loaded"
+            else
+                print_info "Skipping $description"
+            fi
+        fi
+    }
+
+    load_fixture "fixtures/theme.json" "chat themes"
+    load_fixture "fixtures/config.json" "config settings"
+    load_fixture "fixtures/gifts.json" "gift catalog"
 
     # Create system user (needed for AI-generated discover rooms)
     print_info "Creating system user (ChatPopDiscover)..."
@@ -498,6 +521,7 @@ detect_previous_installation() {
 
     if [ $needs_cleanup -eq 0 ]; then
         print_success "No previous installation detected"
+        FRESH_INSTALL=true
         return 0
     fi
 
@@ -563,6 +587,7 @@ detect_previous_installation() {
 
     # Note: We keep node_modules and SSL certificates to save time
 
+    FRESH_INSTALL=true
     print_success "Cleanup completed"
     echo ""
 }

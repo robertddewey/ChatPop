@@ -563,6 +563,40 @@ Before merging a theme with SVG background:
 
 ---
 
+## Migration & Fixture Policy
+
+### Migrations are Schema Only
+- **Never** use `RunPython` in migrations to seed or modify data
+- Migrations define tables, columns, indexes, and constraints only
+- All reference/seed data lives in fixture files
+
+### Fixture Files
+
+| File | Model | Count | Purpose |
+|------|-------|-------|---------|
+| `fixtures/theme.json` | `chats.ChatTheme` | 1 | Chat theme definitions (colors, styles) |
+| `fixtures/config.json` | `constance.Constance` | 60 | Runtime config settings (rate limits, cache TTLs, etc.) |
+| `fixtures/gifts.json` | `chats.GiftCatalogItem` | 50 | Gift catalog (emoji, prices, categories) |
+
+### Adding New Reference Data
+1. Add the data in the database (Django admin or shell)
+2. Dump to the appropriate fixture: `./venv/bin/python manage.py dumpdata <app.Model> --indent 2 > fixtures/<name>.json`
+3. Commit the updated fixture file
+
+### Updating Existing Fixture Data
+1. Modify the data in the database
+2. Re-dump: `./venv/bin/python manage.py dumpdata <app.Model> --indent 2 > fixtures/<name>.json`
+3. Commit the updated fixture file
+
+### Loading Fixtures
+```bash
+./venv/bin/python manage.py loaddata fixtures/theme.json
+./venv/bin/python manage.py loaddata fixtures/config.json
+./venv/bin/python manage.py loaddata fixtures/gifts.json
+```
+
+---
+
 ## Future Enhancements
 - **Custom Themes:** Option to set specific themes/branding for chats
 - **Enhanced Engagement:** Additional tipping options and gamification

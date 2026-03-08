@@ -1,0 +1,652 @@
+[
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 1,
+    "fields": {
+      "gift_id": "gift_coffee",
+      "emoji": "\u2615",
+      "name": "Coffee",
+      "price_cents": 100,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 2,
+    "fields": {
+      "gift_id": "gift_donut",
+      "emoji": "\ud83c\udf69",
+      "name": "Donut",
+      "price_cents": 100,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 3,
+    "fields": {
+      "gift_id": "gift_cookie",
+      "emoji": "\ud83c\udf6a",
+      "name": "Cookie",
+      "price_cents": 200,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 4,
+    "fields": {
+      "gift_id": "gift_icecream",
+      "emoji": "\ud83c\udf66",
+      "name": "Ice Cream",
+      "price_cents": 200,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 4
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 5,
+    "fields": {
+      "gift_id": "gift_pizza",
+      "emoji": "\ud83c\udf55",
+      "name": "Pizza",
+      "price_cents": 300,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 5
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 6,
+    "fields": {
+      "gift_id": "gift_taco",
+      "emoji": "\ud83c\udf2e",
+      "name": "Taco",
+      "price_cents": 300,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 6
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 7,
+    "fields": {
+      "gift_id": "gift_hamburger",
+      "emoji": "\ud83c\udf54",
+      "name": "Hamburger",
+      "price_cents": 500,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 7
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 8,
+    "fields": {
+      "gift_id": "gift_sushi",
+      "emoji": "\ud83c\udf63",
+      "name": "Sushi",
+      "price_cents": 500,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 8
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 9,
+    "fields": {
+      "gift_id": "gift_cake",
+      "emoji": "\ud83c\udf82",
+      "name": "Cake",
+      "price_cents": 800,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 9
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 10,
+    "fields": {
+      "gift_id": "gift_steak",
+      "emoji": "\ud83e\udd69",
+      "name": "Steak",
+      "price_cents": 1000,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 10
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 11,
+    "fields": {
+      "gift_id": "gift_champagne",
+      "emoji": "\ud83c\udf7e",
+      "name": "Champagne",
+      "price_cents": 1500,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 11
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 12,
+    "fields": {
+      "gift_id": "gift_lobster",
+      "emoji": "\ud83e\udd9e",
+      "name": "Lobster",
+      "price_cents": 2500,
+      "category": "food",
+      "is_active": true,
+      "sort_order": 12
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 13,
+    "fields": {
+      "gift_id": "gift_balloon",
+      "emoji": "\ud83c\udf88",
+      "name": "Balloon",
+      "price_cents": 100,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 14,
+    "fields": {
+      "gift_id": "gift_party",
+      "emoji": "\ud83c\udf89",
+      "name": "Party",
+      "price_cents": 100,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 15,
+    "fields": {
+      "gift_id": "gift_dice",
+      "emoji": "\ud83c\udfb2",
+      "name": "Dice",
+      "price_cents": 200,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 16,
+    "fields": {
+      "gift_id": "gift_game",
+      "emoji": "\ud83c\udfae",
+      "name": "Game",
+      "price_cents": 300,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 4
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 17,
+    "fields": {
+      "gift_id": "gift_guitar",
+      "emoji": "\ud83c\udfb8",
+      "name": "Guitar",
+      "price_cents": 500,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 5
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 18,
+    "fields": {
+      "gift_id": "gift_fireworks",
+      "emoji": "\ud83c\udf86",
+      "name": "Fireworks",
+      "price_cents": 500,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 6
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 19,
+    "fields": {
+      "gift_id": "gift_magic",
+      "emoji": "\ud83e\ude84",
+      "name": "Magic",
+      "price_cents": 800,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 7
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 20,
+    "fields": {
+      "gift_id": "gift_disco",
+      "emoji": "\ud83e\udea9",
+      "name": "Disco Ball",
+      "price_cents": 1000,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 8
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 21,
+    "fields": {
+      "gift_id": "gift_ferris",
+      "emoji": "\ud83c\udfa1",
+      "name": "Ferris Wheel",
+      "price_cents": 1500,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 9
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 22,
+    "fields": {
+      "gift_id": "gift_slot",
+      "emoji": "\ud83c\udfb0",
+      "name": "Jackpot",
+      "price_cents": 2500,
+      "category": "fun",
+      "is_active": true,
+      "sort_order": 10
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 23,
+    "fields": {
+      "gift_id": "gift_flower",
+      "emoji": "\ud83c\udf38",
+      "name": "Flower",
+      "price_cents": 200,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 24,
+    "fields": {
+      "gift_id": "gift_rose",
+      "emoji": "\ud83c\udf39",
+      "name": "Rose",
+      "price_cents": 300,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 25,
+    "fields": {
+      "gift_id": "gift_chocolate",
+      "emoji": "\ud83c\udf6b",
+      "name": "Chocolate",
+      "price_cents": 500,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 26,
+    "fields": {
+      "gift_id": "gift_teddy",
+      "emoji": "\ud83e\uddf8",
+      "name": "Teddy Bear",
+      "price_cents": 500,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 4
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 27,
+    "fields": {
+      "gift_id": "gift_bouquet",
+      "emoji": "\ud83d\udc90",
+      "name": "Bouquet",
+      "price_cents": 1000,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 5
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 28,
+    "fields": {
+      "gift_id": "gift_lovebox",
+      "emoji": "\ud83c\udf81",
+      "name": "Gift Box",
+      "price_cents": 1000,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 6
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 29,
+    "fields": {
+      "gift_id": "gift_heart",
+      "emoji": "\ud83d\udc96",
+      "name": "Heart",
+      "price_cents": 1500,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 7
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 30,
+    "fields": {
+      "gift_id": "gift_cupid",
+      "emoji": "\ud83d\udc98",
+      "name": "Cupid",
+      "price_cents": 2000,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 8
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 31,
+    "fields": {
+      "gift_id": "gift_lovelock",
+      "emoji": "\ud83d\udd10",
+      "name": "Love Lock",
+      "price_cents": 3000,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 9
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 32,
+    "fields": {
+      "gift_id": "gift_ring",
+      "emoji": "\ud83d\udc8d",
+      "name": "Ring",
+      "price_cents": 5000,
+      "category": "love",
+      "is_active": true,
+      "sort_order": 10
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 33,
+    "fields": {
+      "gift_id": "gift_chick",
+      "emoji": "\ud83d\udc25",
+      "name": "Chick",
+      "price_cents": 100,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 34,
+    "fields": {
+      "gift_id": "gift_bunny",
+      "emoji": "\ud83d\udc30",
+      "name": "Bunny",
+      "price_cents": 200,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 35,
+    "fields": {
+      "gift_id": "gift_cat",
+      "emoji": "\ud83d\udc31",
+      "name": "Cat",
+      "price_cents": 300,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 36,
+    "fields": {
+      "gift_id": "gift_dog",
+      "emoji": "\ud83d\udc36",
+      "name": "Dog",
+      "price_cents": 300,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 4
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 37,
+    "fields": {
+      "gift_id": "gift_panda",
+      "emoji": "\ud83d\udc3c",
+      "name": "Panda",
+      "price_cents": 500,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 5
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 38,
+    "fields": {
+      "gift_id": "gift_fox",
+      "emoji": "\ud83e\udd8a",
+      "name": "Fox",
+      "price_cents": 500,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 6
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 39,
+    "fields": {
+      "gift_id": "gift_dolphin",
+      "emoji": "\ud83d\udc2c",
+      "name": "Dolphin",
+      "price_cents": 800,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 7
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 40,
+    "fields": {
+      "gift_id": "gift_butterfly",
+      "emoji": "\ud83e\udd8b",
+      "name": "Butterfly",
+      "price_cents": 800,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 8
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 41,
+    "fields": {
+      "gift_id": "gift_unicorn",
+      "emoji": "\ud83e\udd84",
+      "name": "Unicorn",
+      "price_cents": 1500,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 9
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 42,
+    "fields": {
+      "gift_id": "gift_dragon",
+      "emoji": "\ud83d\udc09",
+      "name": "Dragon",
+      "price_cents": 5000,
+      "category": "animals",
+      "is_active": true,
+      "sort_order": 10
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 43,
+    "fields": {
+      "gift_id": "gift_medal",
+      "emoji": "\ud83c\udfc5",
+      "name": "Medal",
+      "price_cents": 1000,
+      "category": "premium",
+      "is_active": true,
+      "sort_order": 1
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 44,
+    "fields": {
+      "gift_id": "gift_trophy",
+      "emoji": "\ud83c\udfc6",
+      "name": "Trophy",
+      "price_cents": 2500,
+      "category": "premium",
+      "is_active": true,
+      "sort_order": 2
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 45,
+    "fields": {
+      "gift_id": "gift_crown",
+      "emoji": "\ud83d\udc51",
+      "name": "Crown",
+      "price_cents": 5000,
+      "category": "premium",
+      "is_active": true,
+      "sort_order": 3
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 46,
+    "fields": {
+      "gift_id": "gift_gem",
+      "emoji": "\ud83d\udc8e",
+      "name": "Diamond",
+      "price_cents": 10000,
+      "category": "premium",
+      "is_active": true,
+      "sort_order": 4
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 47,
+    "fields": {
+      "gift_id": "gift_money",
+      "emoji": "\ud83d\udcb0",
+      "name": "Money Bag",
+      "price_cents": 15000,
+      "category": "premium",
+      "is_active": true,
+      "sort_order": 5
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 48,
+    "fields": {
+      "gift_id": "gift_rocket",
+      "emoji": "\ud83d\ude80",
+      "name": "Rocket",
+      "price_cents": 25000,
+      "category": "premium",
+      "is_active": true,
+      "sort_order": 6
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 49,
+    "fields": {
+      "gift_id": "gift_castle",
+      "emoji": "\ud83c\udff0",
+      "name": "Castle",
+      "price_cents": 35000,
+      "category": "premium",
+      "is_active": true,
+      "sort_order": 7
+    }
+  },
+  {
+    "model": "chats.giftcatalogitem",
+    "pk": 50,
+    "fields": {
+      "gift_id": "gift_sportscar",
+      "emoji": "\ud83c\udfce\ufe0f",
+      "name": "Sports Car",
+      "price_cents": 50000,
+      "category": "premium",
+      "is_active": true,
+      "sort_order": 8
+    }
+  }
+]

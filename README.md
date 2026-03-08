@@ -141,17 +141,17 @@ cp .env.example .env
 ./venv/bin/python manage.py migrate
 ```
 
-#### Load Seed Data and Initialize
+#### Load Fixtures and Initialize
 
 ```bash
-# Load constance config settings (44 dynamic settings for pins, rate limits, etc.)
-./venv/bin/python manage.py loaddata fixtures/seed_data.json
+# Load chat themes, config settings, and gift catalog
+./venv/bin/python manage.py loaddata fixtures/theme.json
+./venv/bin/python manage.py loaddata fixtures/config.json
+./venv/bin/python manage.py loaddata fixtures/gifts.json
 
 # Create system user (required for AI-generated discover rooms)
 ./venv/bin/python manage.py create_system_user
 ```
-
-**Note:** Chat themes (Dark Mode, Light Mode) are created automatically by data migrations during `migrate` - no fixture loading needed for themes.
 
 #### Create Test Data (Optional)
 
@@ -278,7 +278,9 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 ./venv/bin/python manage.py migrate
-./venv/bin/python manage.py loaddata fixtures/seed_data.json
+./venv/bin/python manage.py loaddata fixtures/theme.json
+./venv/bin/python manage.py loaddata fixtures/config.json
+./venv/bin/python manage.py loaddata fixtures/gifts.json
 ./venv/bin/python manage.py create_system_user
 ./venv/bin/python manage.py collectstatic --noinput
 
@@ -312,7 +314,7 @@ ChatPop/
 ├── backend/              # Django backend
 │   ├── chatpop/         # Main Django project
 │   ├── chats/           # Chat app (models, views, WebSocket consumers)
-│   ├── fixtures/        # Seed data (constance config settings)
+│   ├── fixtures/        # Reference data (themes, config, gifts)
 │   ├── .env             # Backend environment variables
 │   ├── .env.example     # Backend environment template
 │   ├── manage.py
