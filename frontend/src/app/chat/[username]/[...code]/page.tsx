@@ -2236,7 +2236,7 @@ export default function ChatPage() {
                   <ArrowLeft size={18} />
                 </button>
                 <h1 className={`${currentDesign.headerTitle} truncate text-base`}>
-                  {chatRoom.name}
+                  <span className="opacity-50">@{roomUsername}</span> #{chatRoom.name.replace(/\s+/g, '')}
                 </h1>
               </div>
             )}
