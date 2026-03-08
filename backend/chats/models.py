@@ -83,9 +83,8 @@ class ChatTheme(models.Model):
     reaction_highlight_border = models.CharField(max_length=100, default='border border-zinc-500', help_text="Border classes for highlighted reaction pill")
     reaction_highlight_text = models.CharField(max_length=100, default='text-zinc-200', help_text="Text color classes for highlighted reaction count")
 
-    # Avatar Styling (DiceBear profile photos)
-    avatar_style = models.CharField(max_length=50, null=True, blank=True, help_text="DiceBear avatar style override (e.g., 'pixel-art', 'initials'). Null = use Constance default")
-    avatar_size = models.CharField(max_length=50, null=True, blank=True, help_text="Tailwind size classes for avatar (e.g., 'w-10 h-10'). Null = use Constance default")
+    # Avatar Styling
+    avatar_size = models.CharField(max_length=50, null=True, blank=True, help_text="Tailwind size classes for avatar (e.g., 'w-10 h-10'). Null = use default")
     avatar_border = models.CharField(max_length=100, null=True, blank=True, help_text="Optional border/ring classes (e.g., 'ring-2 ring-zinc-700')")
     avatar_spacing = models.CharField(max_length=50, default='mr-3', help_text="Spacing between avatar and message content")
 
@@ -111,6 +110,14 @@ class ChatTheme(models.Model):
     reply_preview_content = models.CharField(max_length=200, default='text-xs text-gray-600 dark:text-gray-400 truncate', help_text="Tailwind classes for reply preview message content")
     reply_preview_close_button = models.CharField(max_length=200, default='p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded', help_text="Tailwind classes for reply preview close button")
     reply_preview_close_icon = models.CharField(max_length=200, default='w-4 h-4 text-gray-500', help_text="Tailwind classes for reply preview close icon (X)")
+
+    # Component Style Overrides (JSON fields for grouped styles)
+    modal_styles = models.JSONField(default=dict, blank=True, help_text="Styles for long-press modal and overlays")
+    emoji_picker_styles = models.JSONField(default=dict, blank=True, help_text="Styles for emoji reaction picker")
+    gift_styles = models.JSONField(default=dict, blank=True, help_text="Styles for gift message cards")
+    input_styles = models.JSONField(default=dict, blank=True, help_text="Styles for message input components")
+    video_player_styles = models.JSONField(default=dict, blank=True, help_text="Styles for video player overlay")
+    ui_styles = models.JSONField(default=dict, blank=True, help_text="Styles for misc UI elements")
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

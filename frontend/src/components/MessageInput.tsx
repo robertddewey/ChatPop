@@ -237,6 +237,8 @@ function MessageInputComponent({
             style={{
               WebkitUserSelect: 'text',
               userSelect: 'text',
+              WebkitTapHighlightColor: 'transparent',
+              outline: 'none',
             }}
           />
 
