@@ -773,15 +773,48 @@ export default function ChatPage() {
   // Remove during mobile inline auth so the page scrolls naturally with the keyboard
   const inlineAuthActive = !!(authMode && isMobile);
   useEffect(() => {
-    if (inlineAuthActive) {
-      document.body.classList.remove('chat-layout');
-    } else {
-      document.body.classList.add('chat-layout');
-    }
+    document.body.classList.add('chat-layout');
     return () => {
       document.body.classList.remove('chat-layout');
     };
-  }, [inlineAuthActive]);
+  }, []);
+
+  // Track visual viewport for auth container — height shrinks when keyboard opens,
+  // Track visual viewport to size auth container when keyboard opens
+  // Login: pin at top:0 (short form, no scroll needed)
+  // Signup: track offsetTop (tall form, iOS scrolls visual viewport)
+  const [authStyle, setAuthStyle] = useState<React.CSSProperties>({ height: '100dvh' });
+  useEffect(() => {
+    if (!inlineAuthActive) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const isLogin = authMode === 'login';
+    let lastHeight = 0;
+    let lastOffset = 0;
+    const update = () => {
+      const h = Math.round(vv.height);
+      const t = isLogin ? 0 : Math.round(vv.offsetTop);
+      if (h === lastHeight && t === lastOffset) return;
+      lastHeight = h;
+      lastOffset = t;
+      setAuthStyle({
+        position: 'fixed',
+        top: `${t}px`,
+        left: 0,
+        right: 0,
+        height: `${h}px`,
+        ...(isLogin ? { overflow: 'hidden' } : {}),
+      });
+    };
+    update();
+    vv.addEventListener('resize', update);
+    if (!isLogin) vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      if (!isLogin) vv.removeEventListener('scroll', update);
+    };
+  }, [inlineAuthActive, authMode]);
+
 
   // Load session token from localStorage on mount and when joining
   useEffect(() => {
@@ -2146,11 +2179,9 @@ export default function ChatPage() {
     );
   }
 
-  // Mobile inline auth — completely separate from the chat layout to avoid
-  // position:fixed / 100dvh conflicts with the virtual keyboard
   if (authMode && isMobile) {
     return (
-      <div className="min-h-[100dvh] bg-zinc-900">
+      <div className="overflow-y-auto bg-zinc-900" style={authStyle}>
         <div className={`${currentDesign.header} sticky top-0 z-50 bg-zinc-900`}>
           <div className="flex items-center justify-between gap-3">
             <h1 className={`${currentDesign.headerTitle} text-lg font-semibold`}>
