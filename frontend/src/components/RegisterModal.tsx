@@ -231,7 +231,7 @@ export function RegisterFormContent({ onClose, onSwitchToLogin, hideTitle }: Reg
   return (
     <>
       {!hideTitle && (
-        <h1 className={`text-2xl md:text-3xl font-bold ${styles.title} mb-4 text-center`}>
+        <h1 className={`text-xl md:text-2xl font-bold ${styles.title} mb-4 text-center`}>
           {MARKETING.auth.register.title}
         </h1>
       )}
@@ -411,7 +411,7 @@ export default function RegisterModal({ onClose }: RegisterModalProps) {
 
   return (
     <div className={`fixed inset-0 z-[10000] flex items-center justify-center p-4 ${styles.overlay}`}>
-      <div className={`w-full max-w-md ${styles.container} ${mt.rounded} ${mt.shadow} p-8 relative max-h-[90vh] overflow-y-auto`}>
+      <div className={`w-full max-w-md ${styles.container} ${mt.rounded} ${mt.shadow} p-6 md:p-8 relative max-h-[90vh] overflow-y-auto`}>
         <button
           onClick={onClose}
           className={`absolute top-4 right-4 p-2 rounded-lg transition-colors cursor-pointer ${styles.closeButton}`}

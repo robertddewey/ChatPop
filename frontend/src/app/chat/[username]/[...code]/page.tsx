@@ -2219,26 +2219,34 @@ export default function ChatPage() {
         <div data-chat-header className={currentDesign.header}>
           <div className="flex items-center justify-between gap-3">
             {chatRoom && (
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+              <>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <button
+                    onClick={() => {
+                      if (currentRoom !== 'main') {
+                        switchRoom('main');  // Return to main chat
+                      } else if (hasJoined) {
+                        router.back();
+                      } else {
+                        router.push('/');
+                      }
+                    }}
+                    className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
+                    aria-label="Back"
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
+                  <h1 className={`${currentDesign.headerTitle} truncate text-base`}>
+                    <span className="text-sm opacity-50 relative -top-px">@{roomUsername}&apos;s</span> #{chatRoom.name.replace(/\s+/g, '')}
+                  </h1>
+                </div>
                 <button
-                  onClick={() => {
-                    if (currentRoom !== 'main') {
-                      switchRoom('main');  // Return to main chat
-                    } else if (hasJoined) {
-                      router.back();
-                    } else {
-                      router.push('/');
-                    }
-                  }}
                   className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
-                  aria-label="Back"
+                  aria-label="Notifications"
                 >
-                  <ArrowLeft size={18} />
+                  <Bell size={18} />
                 </button>
-                <h1 className={`${currentDesign.headerTitle} truncate text-base`}>
-                  <span className="opacity-50">@{roomUsername}</span> #{chatRoom.name.replace(/\s+/g, '')}
-                </h1>
-              </div>
+              </>
             )}
           </div>
         </div>

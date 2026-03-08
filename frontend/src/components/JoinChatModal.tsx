@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, ChevronLeft, ChevronRight, Dices, RotateCcw } from 'lucide-react';
+import { BadgeCheck, ChevronDown, ChevronLeft, ChevronRight, Dices, RotateCcw } from 'lucide-react';
 import type { ChatRoom } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
@@ -77,6 +77,22 @@ export default function JoinChatModal({
   const [diceUsername, setDiceUsername] = useState<string | null>(null);
   const [isReturningUser, setIsReturningUser] = useState(false);
   const audioContextRef = React.useRef<AudioContext | null>(null);
+  const drawerScrollRef = useRef<HTMLDivElement>(null);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+
+  // Check if drawer content is scrollable and update hint visibility
+  const checkScrollable = useCallback(() => {
+    const el = drawerScrollRef.current;
+    if (!el) return;
+    const hasMoreBelow = el.scrollHeight - el.scrollTop - el.clientHeight > 8;
+    setShowScrollHint(hasMoreBelow);
+  }, []);
+
+  useEffect(() => {
+    // Check on mount and after a short delay (for content to render)
+    const timer = setTimeout(checkScrollable, 100);
+    return () => clearTimeout(timer);
+  }, [checkScrollable]);
   const validationTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Import the audio functions lazily
@@ -356,7 +372,7 @@ export default function JoinChatModal({
     <>
       {/* Title */}
       <div className="mb-6 text-center">
-        <h1 className={`text-2xl font-bold ${modalStyles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
+        <h1 className={`text-xl font-bold ${modalStyles.title} mb-2 flex flex-wrap items-center justify-center gap-2`}>
           {titleContent}
         </h1>
         {chatRoom.is_private && (
@@ -535,42 +551,23 @@ export default function JoinChatModal({
         <button
           type="submit"
           disabled={isJoining || isRateLimited || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
-          className={`w-full px-6 py-4 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+          className={`w-full px-6 py-3 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
         >
           {isJoining ? 'Joining...' : 'Join Chat'}
         </button>
 
-        {/* Divider and Auth Buttons (only for non-logged-in users) */}
+        {/* Auth links (only for non-logged-in users) */}
         {!isLoggedIn && (
-          <>
-            <div className="relative my-3">
-              <div className={`absolute inset-0 flex items-center`}>
-                <div className={`w-full border-t ${modalStyles.divider}`} />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className={`px-4 ${modalStyles.dividerText} ${modalStyles.subtitle}`}>
-                  or
-                </span>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={handleLogin}
-                className={`flex-1 px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95 cursor-pointer`}
-              >
-                Log in
-              </button>
-              <button
-                type="button"
-                onClick={handleSignup}
-                className={`flex-1 px-6 py-3 rounded-xl font-bold ${modalStyles.secondaryButton} transition-all active:scale-95 cursor-pointer`}
-              >
-                Sign up
-              </button>
-            </div>
-          </>
+          <p className={`text-sm text-center mt-3 ${modalStyles.subtitle}`}>
+            Have an account?{' '}
+            <button type="button" onClick={handleLogin} className="font-semibold text-blue-400 hover:text-blue-300 cursor-pointer">
+              Log in
+            </button>
+            {' · '}
+            <button type="button" onClick={handleSignup} className="font-semibold text-blue-400 hover:text-blue-300 cursor-pointer">
+              Sign up
+            </button>
+          </p>
         )}
       </form>
     </>
@@ -588,8 +585,18 @@ export default function JoinChatModal({
 
         {/* Bottom-anchored panel — fills remaining space, content scrolls if needed */}
         <div className={`relative flex-1 flex flex-col justify-end pointer-events-auto overflow-hidden`}>
-          <div className={`${mt.container} border-t border-x border-zinc-700 border-b border-b-zinc-800 rounded-t-2xl p-8 overflow-y-auto overscroll-contain max-h-full`}>
+          <div
+            ref={drawerScrollRef}
+            onScroll={checkScrollable}
+            className={`${mt.container} border-t border-x border-zinc-700 border-b border-b-zinc-800 rounded-t-2xl p-6 md:p-8 overflow-y-auto overscroll-contain max-h-full`}
+          >
             {formContent}
+          </div>
+          {/* Scroll hint — fades out when user scrolls to bottom */}
+          <div
+            className={`absolute bottom-0 left-0 right-0 flex justify-center py-1.5 bg-black/80 pointer-events-none transition-opacity duration-300 ${showScrollHint ? 'opacity-100' : 'opacity-0'}`}
+          >
+            <ChevronDown size={24} strokeWidth={3} className="text-white" />
           </div>
         </div>
       </div>
@@ -602,7 +609,7 @@ export default function JoinChatModal({
       {/* Backdrop */}
       <div className={`absolute inset-0 ${modalStyles.overlay}`} />
 
-      <div className={`relative w-full max-w-md max-h-full overflow-y-auto ${modalStyles.container} ${mt.rounded} p-8 ${mt.shadow}`}>
+      <div className={`relative w-full max-w-md max-h-full overflow-y-auto ${modalStyles.container} ${mt.rounded} p-6 md:p-8 ${mt.shadow}`}>
         {formContent}
       </div>
     </div>
