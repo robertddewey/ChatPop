@@ -42,6 +42,11 @@ export function useLongPress({
 
       target.current = event.target;
       timeout.current = setTimeout(() => {
+        // Dismiss keyboard before triggering long-press action
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+
         onLongPress();
         setLongPressTriggered(true);
       }, threshold);

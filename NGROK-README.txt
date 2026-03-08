@@ -1,6 +1,9 @@
 ngrok Quick Reference
 ====================
 
+Kill:
+  pkill ngrok; sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder
+
 Start tunnel (with static domain):
   ngrok http https://localhost:4000 --url=YOUR-DOMAIN.ngrok-free.app
 

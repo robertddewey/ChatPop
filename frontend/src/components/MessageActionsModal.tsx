@@ -301,6 +301,7 @@ export default function MessageActionsModal({
     });
     return () => cancelAnimationFrame(raf);
   }, [isOpen, activePanel, pinRequirements, selectedTier, pinError, selectedCategory, selectedGift, showGiftConfirmation]);
+
   const isOwnMessage = message.username === currentUsername;
   const isHostMessage = message.is_from_host;
 
@@ -779,16 +780,36 @@ export default function MessageActionsModal({
                       {message.content}
                     </p>
                   )}
-                  {/* Photo */}
-                  {message.photo_url && (
-                    <div
-                      className={`mt-1 max-w-[240px] rounded-lg overflow-hidden ${themeModalStyles?.photoThumbnailBg || 'bg-zinc-700'}`}
-                      style={message.photo_width && message.photo_height ? { aspectRatio: `${message.photo_width} / ${message.photo_height}` } : undefined}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <img src={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`} alt="Photo" className="w-full h-full object-cover rounded-lg" />
-                    </div>
-                  )}
+                  {/* Photo — sized to fit available space above the sheet */}
+                  {message.photo_url && (() => {
+                    const imgW = message.photo_width || 300;
+                    const imgH = message.photo_height || 200;
+                    const aspect = imgW / imgH;
+
+                    // Available height: viewport minus sheet (~280px) minus preview chrome
+                    // (username ~24px, timestamp ~20px, padding ~48px = ~92px)
+                    const maxH = Math.max(120, (typeof window !== 'undefined' ? window.innerHeight : 800) - 280 - 92);
+                    const maxW = 240;
+
+                    let w = Math.min(maxW, imgW);
+                    let h = Math.round(w / aspect);
+
+                    // If height exceeds budget, scale down by height
+                    if (h > maxH) {
+                      h = maxH;
+                      w = Math.round(h * aspect);
+                    }
+
+                    return (
+                      <div
+                        className={`mt-1 rounded-lg overflow-hidden ${themeModalStyles?.photoThumbnailBg || 'bg-zinc-700'}`}
+                        style={{ width: w, height: h }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <img src={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`} alt="Photo" className="w-full h-full object-cover rounded-lg" draggable={false} />
+                      </div>
+                    );
+                  })()}
                   {/* Video player */}
                   {message.video_url && (
                     <ModalVideoPlayer
