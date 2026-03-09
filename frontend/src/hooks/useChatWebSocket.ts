@@ -190,7 +190,7 @@ export function useChatWebSocket({
     };
 
     socket.onerror = (error) => {
-      console.error('[WebSocket] Error:', error);
+      console.warn('[WebSocket] Connection error (will reconnect)');
       if (onErrorRef.current) {
         onErrorRef.current(error);
       }

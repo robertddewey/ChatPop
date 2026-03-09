@@ -714,9 +714,12 @@ export default function ChatPage() {
   }, []);
 
   // Handle visibility changes (mobile app switching)
-  // WebSocket handles real-time messages, no need to refetch on tab return
-  const handleVisibilityChange = useCallback((_isVisible: boolean) => {
-    // No action needed - WebSocket delivers messages in real-time
+  // Refetch messages to catch any missed while page was hidden
+  const loadMessagesRef = useRef<() => void>(null);
+  const handleVisibilityChange = useCallback((isVisible: boolean) => {
+    if (isVisible && loadMessagesRef.current) {
+      loadMessagesRef.current();
+    }
   }, []);
 
   // WebSocket connection
@@ -1133,6 +1136,7 @@ export default function ChatPage() {
       isLoadingMessagesRef.current = false;
     }
   };
+  loadMessagesRef.current = loadMessages;
 
   // Load older messages for infinite scroll
   const loadOlderMessages = async () => {
