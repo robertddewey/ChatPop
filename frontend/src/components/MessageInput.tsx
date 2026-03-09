@@ -183,21 +183,6 @@ function MessageInputComponent({
             <div className="flex-1 min-w-0">
               <div className={design.replyPreviewUsername}>
                 Replying to {replyingTo.username}
-                {username && replyingTo.username.toLowerCase() === username.toLowerCase() && (
-                  <span className={`ml-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none ${inputStyles?.youPill || 'bg-white/10 text-zinc-400'}`}>you</span>
-                )}
-                {replyingTo.is_from_host && (() => {
-                  const c = inputStyles?.crownIconColor || '#2dd4bf';
-                  return (
-                    <>
-                      <span
-                        className="ml-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
-                        style={{ backgroundColor: `${c}20`, color: c }}
-                      >host</span>
-                      <Crown className="ml-1 inline-block flex-shrink-0" size={12} style={{ color: c }} />
-                    </>
-                  );
-                })()}
               </div>
               <div className={design.replyPreviewContent}>
                 {replyingTo.content}
@@ -292,6 +277,18 @@ function MessageInputComponent({
           </div>
         );
       })()}
+
+      {/* Chatting as indicator */}
+      {username && (
+        <div className={`flex items-center gap-1 ${replyingTo || mediaPreview ? 'mt-1' : '-mt-1'} mb-0.5 px-1`}>
+          <span className={`text-[11px] ${inputStyles?.chattingAsText || 'text-zinc-500'}`}>
+            Chatting as <span className="font-medium">@{username}</span>
+          </span>
+          {hasReservedUsername && (
+            <BadgeCheck size={11} className={inputStyles?.chattingAsBadge || 'text-blue-400'} />
+          )}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className={`flex items-center gap-2 ${replyingTo && !mediaPreview ? 'mt-2' : ''}`}>
         {/* Text input container */}
