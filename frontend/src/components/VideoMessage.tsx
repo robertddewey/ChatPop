@@ -53,6 +53,7 @@ export default function VideoMessage({
   maxDisplayHeight = 320,
 }: VideoMessageProps) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -93,6 +94,7 @@ export default function VideoMessage({
         });
         await video.play();
         setIsPlaying(true);
+        setHasStarted(true);
         setIsLoading(false);
       }
     } catch (error) {
@@ -111,6 +113,7 @@ export default function VideoMessage({
 
   const handleVideoEnd = () => {
     setIsPlaying(false);
+    setHasStarted(false);
     setCurrentTime(0);
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
@@ -182,19 +185,22 @@ export default function VideoMessage({
           onError={() => setHasError(true)}
         />
 
-        {/* Play overlay (shown when not playing) */}
+        {/* Play overlay (shown before first play or when paused) */}
         {!isPlaying && (
           <div
             className="absolute inset-0 flex items-center justify-center cursor-pointer"
             onClick={togglePlayPause}
           >
-            {/* Thumbnail background */}
-            <div
-              className="absolute inset-0 bg-contain bg-center bg-no-repeat"
-              style={{ backgroundImage: `url(${thumbnailUrl})` }}
-            />
-            {/* Dark overlay */}
-            <div className="absolute inset-0 bg-black/30" />
+            {/* Thumbnail background — only before first play; after that the video element shows the paused frame */}
+            {!hasStarted && (
+              <>
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: `url(${thumbnailUrl})` }}
+                />
+                <div className="absolute inset-0 bg-black/30" />
+              </>
+            )}
             {/* Play button */}
             <div className="relative z-10 w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
               {isLoading ? (
