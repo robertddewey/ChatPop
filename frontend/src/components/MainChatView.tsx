@@ -170,6 +170,17 @@ function YouPill({ className }: { className?: string }) {
   );
 }
 
+// "host" pill shown next to host usernames
+function HostPill({ color }: { color?: string }) {
+  const c = color || '#2dd4bf';
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      style={{ backgroundColor: `${c}20`, color: c }}
+    >host</span>
+  );
+}
+
 // Generate DiceBear avatar URL
 function getDiceBearUrl(style: string, seed: string, size: number = 80): string {
   return `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
@@ -423,6 +434,7 @@ function MainChatView({
                         {message.username}
                       </span>
                       {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
+                      <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
                       <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                     </div>
                 <span
@@ -801,6 +813,7 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
+                        <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
                         <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                       </div>
                     </div>
@@ -941,7 +954,10 @@ function MainChatView({
                           )}
                           {message.reply_to_message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                           {message.reply_to_message.is_from_host && (
-                            <Crown size={12} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                            <>
+                              <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
+                              <Crown size={12} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                            </>
                           )}
                           {message.reply_to_message.is_pinned && !message.reply_to_message.is_from_host && (
                             <Pin size={12} className="flex-shrink-0" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />

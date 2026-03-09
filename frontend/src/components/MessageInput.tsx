@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, memo, useMemo, useRef, useEffect } from 'react';
-import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff } from 'lucide-react';
+import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown } from 'lucide-react';
 import type { Message, ChatRoom } from '@/lib/api';
 import VoiceRecorder from './VoiceRecorder';
 import MediaPicker from './MediaPicker';
@@ -186,6 +186,18 @@ function MessageInputComponent({
                 {username && replyingTo.username.toLowerCase() === username.toLowerCase() && (
                   <span className={`ml-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none ${inputStyles?.youPill || 'bg-white/10 text-zinc-400'}`}>you</span>
                 )}
+                {replyingTo.is_from_host && (() => {
+                  const c = inputStyles?.crownIconColor || '#2dd4bf';
+                  return (
+                    <>
+                      <span
+                        className="ml-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+                        style={{ backgroundColor: `${c}20`, color: c }}
+                      >host</span>
+                      <Crown className="ml-1 inline-block flex-shrink-0" size={12} style={{ color: c }} />
+                    </>
+                  );
+                })()}
               </div>
               <div className={design.replyPreviewContent}>
                 {replyingTo.content}

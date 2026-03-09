@@ -2099,7 +2099,10 @@ export default function ChatPage() {
     replyPreviewContent: currentDesign.replyPreviewContent as string,
     replyPreviewCloseButton: currentDesign.replyPreviewCloseButton as string,
     replyPreviewCloseIcon: currentDesign.replyPreviewCloseIcon as string,
-    inputStyles: currentDesign.inputStyles as Record<string, string> | undefined,
+    inputStyles: {
+      ...(currentDesign.inputStyles as Record<string, string> | undefined),
+      crownIconColor: currentDesign.crownIconColor as string,
+    },
   }), [currentDesign]);
 
   // Update theme-color meta tags when theme changes

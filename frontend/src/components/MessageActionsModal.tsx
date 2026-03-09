@@ -18,6 +18,17 @@ function YouPill({ className }: { className?: string }) {
   );
 }
 
+// "host" pill shown next to host usernames
+function HostPill({ color }: { color?: string }) {
+  const c = color || '#2dd4bf';
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      style={{ backgroundColor: `${c}20`, color: c }}
+    >host</span>
+  );
+}
+
 interface PinTier {
   amount_cents: number;
   duration_minutes: number;
@@ -723,7 +734,10 @@ export default function MessageActionsModal({
                     </span>
                     {message.username.toLowerCase() === currentUsername?.toLowerCase() && <span className="ml-1"><YouPill className={themeModalStyles?.youPill} /></span>}
                     {message.is_from_host && (
-                      <Crown className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
+                      <>
+                        <span className="ml-1"><HostPill color={themeColors?.crownIcon || '#2dd4bf'} /></span>
+                        <Crown className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
+                      </>
                     )}
                     {message.is_pinned && !message.is_from_host && (
                       <Pin className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.pinIcon || '#fbbf24' }} />
