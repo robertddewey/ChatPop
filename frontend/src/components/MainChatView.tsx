@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronUp, ChevronDown } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
@@ -272,6 +272,10 @@ function MainChatView({
   // Ref for measuring sticky section height
   const stickySectionRef = useRef<HTMLDivElement>(null);
   const [stickyHeight, setStickyHeight] = useState(0);
+  const [stickyHidden, setStickyHidden] = useState(false);
+  const stickyContentKeyRef = useRef<string>('');
+  const stickyToggleRef = useRef(false);
+  const prevStickyHeightRef = useRef(0);
 
   // Track viewport height for responsive photo sizing
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -332,6 +336,47 @@ function MainChatView({
     onStickyHeightChange?.(stickyHeight);
   }, [stickyHeight, onStickyHeightChange]);
 
+  // Compensate scroll position when sticky height changes from user toggle
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (stickyToggleRef.current && container) {
+      const delta = stickyHeight - prevStickyHeightRef.current;
+      // When collapsing (delta < 0), padding shrinks but scrollHeight also shrinks,
+      // so if we're near the bottom there's not enough room to offset.
+      // In that case, just scroll to the bottom.
+      const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < Math.abs(delta) + 20;
+      if (wasAtBottom && delta < 0) {
+        container.scrollTop = container.scrollHeight - container.clientHeight;
+      } else {
+        container.scrollTop += delta;
+      }
+      stickyToggleRef.current = false;
+    }
+    prevStickyHeightRef.current = stickyHeight;
+  }, [stickyHeight]);
+
+  // Track sticky content identity to detect new arrivals
+  const stickyContentKey = useMemo(() => {
+    const hostIds = stickyHostMessages.map(m => m.id).join(',');
+    const pinnedId = stickyPinnedMessage?.id || '';
+    return `${hostIds}|${pinnedId}`;
+  }, [stickyHostMessages, stickyPinnedMessage]);
+
+  // Auto-reopen sticky section when new sticky content arrives
+  useEffect(() => {
+    if (!stickyContentKeyRef.current) {
+      stickyContentKeyRef.current = stickyContentKey;
+      return;
+    }
+    if (stickyContentKey !== stickyContentKeyRef.current) {
+      stickyContentKeyRef.current = stickyContentKey;
+      if (stickyHidden) {
+        stickyToggleRef.current = true;
+      }
+      setStickyHidden(false);
+    }
+  }, [stickyContentKey]);
+
   // Extract inline styles from messagesAreaBg for dynamic opacity/filter support
   const backgroundStyles = useMemo(() => {
     if (!currentDesign?.messagesAreaBg) return { classes: '', style: {} };
@@ -381,6 +426,8 @@ function MainChatView({
       {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
       {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
         <div ref={stickySectionRef} data-sticky-section className={currentDesign.stickySection}>
+          {!stickyHidden && (
+            <>
           {/* Host Messages */}
           {stickyHostMessages.map((message) => (
             <MessageActionsModal
@@ -589,6 +636,17 @@ function MainChatView({
               </div>
             </MessageActionsModal>
           )}
+            </>
+          )}
+          <button
+            onClick={() => {
+              stickyToggleRef.current = true;
+              setStickyHidden(h => !h);
+            }}
+            className={`w-full flex items-center justify-center -my-1 transition-opacity`}
+          >
+            {stickyHidden ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          </button>
         </div>
       )}
 
