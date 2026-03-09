@@ -325,7 +325,7 @@ function MainChatView({
 
     resizeObserver.observe(stickyEl);
     return () => resizeObserver.disconnect();
-  }, [stickyHostMessages.length, stickyPinnedMessage, hasJoined]);
+  }, [stickyHostMessages.length, stickyPinnedMessage]);
 
   // Notify parent of sticky height changes (for FAB strip positioning)
   useEffect(() => {
@@ -379,7 +379,7 @@ function MainChatView({
   return (
     <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-white'}`}>
       {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
-      {hasJoined && (stickyHostMessages.length > 0 || stickyPinnedMessage) && (
+      {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
         <div ref={stickySectionRef} data-sticky-section className={currentDesign.stickySection}>
           {/* Host Messages */}
           {stickyHostMessages.map((message) => (

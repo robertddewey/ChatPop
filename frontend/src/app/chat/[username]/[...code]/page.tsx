@@ -832,9 +832,17 @@ export default function ChatPage() {
   }, [hasJoined, sessionToken]);
 
   // Load preview messages for public chats (shown blurred behind join modal)
+  // Double rAF ensures messages are rendered before scrolling to bottom
   useEffect(() => {
     if (hasJoined || !chatRoom || chatRoom.access_mode === 'private') return;
-    loadMessages();
+    loadMessages().then(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const container = messagesContainerRef.current;
+          if (container) container.scrollTop = container.scrollHeight;
+        });
+      });
+    });
   }, [chatRoom, hasJoined]);
 
   // Scroll to bottom when switching rooms
