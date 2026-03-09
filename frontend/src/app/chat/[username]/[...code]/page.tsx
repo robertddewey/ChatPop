@@ -434,6 +434,9 @@ export default function ChatPage() {
   const [accessCode, setAccessCode] = useState('');
   const [joinError, setJoinError] = useState('');
 
+  // Scroll-to-bottom indicator
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
   // Message input state (message text is managed locally in MessageInput component)
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -1545,8 +1548,20 @@ export default function ChatPage() {
   }, [sending, username, code, chatRoom, roomUsername, replyingTo?.id, sendRawMessage]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   };
+
+  const handleScrollToBottom = useCallback(() => {
+    shouldAutoScrollRef.current = true;
+    setShowScrollToBottom(false);
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, []);
 
   const highlightMessage = useCallback((messageId: string) => {
     const element = document.querySelector(`[data-message-id="${messageId}"]`);
@@ -1611,36 +1626,6 @@ export default function ChatPage() {
     };
   }, []);
 
-  // Anchor scroll position when content height changes above viewport
-  // (e.g., reaction bars appearing/disappearing on messages the user has scrolled past).
-  // Uses ResizeObserver on the content wrapper so it's decoupled from React rendering.
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container || !hasJoined) return;
-
-    const content = container.firstElementChild;
-    if (!content) return;
-
-    let prevScrollHeight = container.scrollHeight;
-
-    const observer = new ResizeObserver(() => {
-      const newScrollHeight = container.scrollHeight;
-      const heightDiff = newScrollHeight - prevScrollHeight;
-
-      // Only adjust if:
-      // - Height actually changed
-      // - User is scrolled up (not auto-scrolling at bottom)
-      // - Not during infinite scroll prepend (that handles its own adjustment)
-      if (heightDiff !== 0 && !shouldAutoScrollRef.current && !isInsertingRef.current) {
-        container.scrollTop += heightDiff;
-      }
-
-      prevScrollHeight = newScrollHeight;
-    });
-
-    observer.observe(content);
-    return () => observer.disconnect();
-  }, [hasJoined]);
 
 
   // Note: We previously tracked scroll-based visibility for sticky host messages,
@@ -1999,6 +1984,7 @@ export default function ChatPage() {
       if (nearBottom) {
         // Always enable auto-scroll when near bottom
         shouldAutoScrollRef.current = true;
+        setShowScrollToBottom(false);
 
         // Mark initial scroll as complete once we reach bottom for the first time
         if (!initialScrollDoneRef.current) {
@@ -2008,6 +1994,7 @@ export default function ChatPage() {
         // User manually scrolled up significantly while auto-scroll was on
         // Disable auto-scroll
         shouldAutoScrollRef.current = false;
+        setShowScrollToBottom(true);
       }
       // If we're just temporarily not at bottom (e.g., content added), keep auto-scroll enabled
 
@@ -2301,6 +2288,8 @@ export default function ChatPage() {
                 messageReactions={messageReactions}
                 loadingOlder={loadingOlder}
                 onStickyHeightChange={handleStickyHeightChange}
+                showScrollToBottom={showScrollToBottom}
+                onScrollToBottom={handleScrollToBottom}
               />
             )}
 

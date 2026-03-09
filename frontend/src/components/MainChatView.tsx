@@ -232,6 +232,8 @@ interface MainChatViewProps {
   filterLoading?: boolean;
   filterMode?: 'all' | 'focus' | 'gifts';
   onStickyHeightChange?: (height: number) => void;
+  showScrollToBottom?: boolean;
+  onScrollToBottom?: () => void;
 }
 
 function MainChatView({
@@ -268,6 +270,8 @@ function MainChatView({
   filterLoading = false,
   filterMode = 'all',
   onStickyHeightChange,
+  showScrollToBottom = false,
+  onScrollToBottom,
 }: MainChatViewProps) {
   // Ref for measuring sticky section height
   const stickySectionRef = useRef<HTMLDivElement>(null);
@@ -341,11 +345,9 @@ function MainChatView({
     const container = messagesContainerRef.current;
     if (stickyToggleRef.current && container) {
       const delta = stickyHeight - prevStickyHeightRef.current;
-      // When collapsing (delta < 0), padding shrinks but scrollHeight also shrinks,
-      // so if we're near the bottom there's not enough room to offset.
-      // In that case, just scroll to the bottom.
-      const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < Math.abs(delta) + 20;
-      if (wasAtBottom && delta < 0) {
+      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      const wasAtBottom = distFromBottom < 150;
+      if (wasAtBottom) {
         container.scrollTop = container.scrollHeight - container.clientHeight;
       } else {
         container.scrollTop += delta;
@@ -1211,6 +1213,20 @@ function MainChatView({
         <div ref={messagesEndRef} style={{ overflowAnchor: 'none' }} />
         </div>
       </div>
+
+      {/* Scroll to bottom button */}
+      {showScrollToBottom && (
+        <button
+          onClick={onScrollToBottom}
+          className={`absolute bottom-4 left-1/2 -translate-x-1/2 z-30 rounded-full p-2 shadow-lg transition-opacity ${
+            themeIsDarkMode
+              ? 'bg-zinc-800/90 text-zinc-200 border border-zinc-700'
+              : 'bg-white/90 text-gray-700 border border-gray-200'
+          }`}
+        >
+          <ChevronDown size={20} />
+        </button>
+      )}
     </div>
   );
 }
