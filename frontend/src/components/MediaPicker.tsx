@@ -1,13 +1,24 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Video, X, Play, Pause } from 'lucide-react';
+import { Camera, Video } from 'lucide-react';
+
+export interface MediaPreview {
+  type: 'photo' | 'video';
+  url: string;
+  file: File;
+  dimensions?: { width: number; height: number };
+  duration?: number;
+  thumbnailUrl?: string;
+}
 
 interface MediaPickerProps {
   onPhotoSelected?: (file: File, width: number, height: number, caption: string) => void;
   onVideoSelected?: (file: File, duration: number, thumbnail: Blob | null, caption: string) => void;
   onMediaReady?: (hasMedia: boolean) => void;
   onSendComplete?: () => void;
+  onPreviewChange?: (preview: MediaPreview | null) => void;
+  clearRef?: React.MutableRefObject<(() => void) | null>;
   caption?: string;
   photoEnabled?: boolean;
   videoEnabled?: boolean;
@@ -23,6 +34,8 @@ export default function MediaPicker({
   onVideoSelected,
   onMediaReady,
   onSendComplete,
+  onPreviewChange,
+  clearRef,
   caption = '',
   photoEnabled = true,
   videoEnabled = true,
@@ -35,13 +48,12 @@ export default function MediaPicker({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [photoDimensions, setPhotoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoDuration, setVideoDuration] = useState<number | null>(null);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoThumbnail, setVideoThumbnail] = useState<Blob | null>(null);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
-  const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
   // Cleanup preview URLs on unmount
   useEffect(() => {
@@ -52,12 +64,40 @@ export default function MediaPicker({
     };
   }, [previewUrl]);
 
+  // Expose clearSelection to parent via ref
+  useEffect(() => {
+    if (clearRef) clearRef.current = clearSelection;
+  });
+
   // Notify parent when media selection changes
   useEffect(() => {
     if (onMediaReady) {
       onMediaReady(mediaState !== 'idle' && selectedFile !== null);
     }
   }, [mediaState, selectedFile, onMediaReady]);
+
+  // Create a stable thumbnail URL from the blob
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (videoThumbnail) {
+      const url = URL.createObjectURL(videoThumbnail);
+      setThumbnailUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setThumbnailUrl(null);
+  }, [videoThumbnail]);
+
+  // Notify parent of preview state changes
+  useEffect(() => {
+    if (!onPreviewChange) return;
+    if (mediaState === 'photo_preview' && previewUrl && selectedFile) {
+      onPreviewChange({ type: 'photo', url: previewUrl, file: selectedFile, dimensions: photoDimensions || undefined });
+    } else if (mediaState === 'video_preview' && previewUrl && selectedFile) {
+      onPreviewChange({ type: 'video', url: previewUrl, file: selectedFile, dimensions: videoDimensions || undefined, duration: videoDuration || undefined, thumbnailUrl: thumbnailUrl || undefined });
+    } else {
+      onPreviewChange(null);
+    }
+  }, [mediaState, previewUrl, selectedFile, photoDimensions, videoDimensions, videoDuration, thumbnailUrl, onPreviewChange]);
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -121,6 +161,9 @@ export default function MediaPicker({
 
     // Get video duration and generate thumbnail
     const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
     const objectUrl = URL.createObjectURL(file);
 
     video.onloadedmetadata = () => {
@@ -132,12 +175,18 @@ export default function MediaPicker({
       }
 
       setVideoDuration(video.duration);
+    };
 
-      // Generate thumbnail from first frame
-      video.currentTime = 0;
+    // Wait until actual frame data is available before seeking
+    video.onloadeddata = () => {
+      // Seek past potential black first frame
+      video.currentTime = Math.min(0.1, video.duration);
     };
 
     video.onseeked = () => {
+      // Capture video dimensions
+      setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+
       // Create canvas and draw video frame
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
@@ -171,6 +220,7 @@ export default function MediaPicker({
     };
 
     video.src = objectUrl;
+    video.load();
 
     // Reset input so same file can be selected again
     if (videoInputRef.current) {
@@ -186,21 +236,10 @@ export default function MediaPicker({
     setSelectedFile(null);
     setPhotoDimensions(null);
     setVideoDuration(null);
+    setVideoDimensions(null);
     setVideoThumbnail(null);
-    setIsVideoPlaying(false);
     setMediaState('idle');
     setError(null);
-  };
-
-  const toggleVideoPlayback = () => {
-    if (!videoPreviewRef.current) return;
-
-    if (isVideoPlaying) {
-      videoPreviewRef.current.pause();
-    } else {
-      videoPreviewRef.current.play();
-    }
-    setIsVideoPlaying(!isVideoPlaying);
   };
 
   // Use refs to store latest callbacks and caption to avoid stale closures
@@ -242,12 +281,6 @@ export default function MediaPicker({
     };
   }, [selectedFile, mediaState, photoDimensions, videoDuration, videoThumbnail]);
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       {/* Hidden file inputs */}
@@ -268,88 +301,28 @@ export default function MediaPicker({
         className="hidden"
       />
 
-      {/* Idle state - show buttons */}
-      {mediaState === 'idle' && (
-        <>
-          {photoEnabled && (
-            <button
-              type="button"
-              onClick={() => photoInputRef.current?.click()}
-              disabled={disabled}
-              className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Take or select photo"
-            >
-              <Camera size={20} />
-            </button>
-          )}
-          {videoEnabled && (
-            <button
-              type="button"
-              onClick={() => videoInputRef.current?.click()}
-              disabled={disabled}
-              className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Record or select video"
-            >
-              <Video size={20} />
-            </button>
-          )}
-        </>
+      {/* Always show buttons — clicking when media is selected replaces it */}
+      {photoEnabled && (
+        <button
+          type="button"
+          onClick={() => photoInputRef.current?.click()}
+          disabled={disabled}
+          className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Take or select photo"
+        >
+          <Camera size={20} />
+        </button>
       )}
-
-      {/* Photo preview state */}
-      {mediaState === 'photo_preview' && previewUrl && (
-        <div className="flex items-center gap-2">
-          <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-gray-200 dark:bg-zinc-700">
-            <img
-              src={previewUrl}
-              alt="Photo preview"
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={clearSelection}
-            className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-            title="Remove photo"
-          >
-            <X size={18} />
-          </button>
-        </div>
-      )}
-
-      {/* Video preview state */}
-      {mediaState === 'video_preview' && previewUrl && (
-        <div className="flex items-center gap-2">
-          <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-gray-200 dark:bg-zinc-700">
-            <video
-              ref={videoPreviewRef}
-              src={previewUrl}
-              className="w-full h-full object-cover"
-              muted
-              playsInline
-              onEnded={() => setIsVideoPlaying(false)}
-            />
-            <button
-              type="button"
-              onClick={toggleVideoPlayback}
-              className="absolute inset-0 flex items-center justify-center bg-black/30"
-            >
-              {isVideoPlaying ? (
-                <Pause size={16} className="text-white" />
-              ) : (
-                <Play size={16} className="text-white" fill="white" />
-              )}
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={clearSelection}
-            className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-            title="Remove video"
-          >
-            <X size={18} />
-          </button>
-        </div>
+      {videoEnabled && (
+        <button
+          type="button"
+          onClick={() => videoInputRef.current?.click()}
+          disabled={disabled}
+          className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Record or select video"
+        >
+          <Video size={20} />
+        </button>
       )}
 
       {/* Error display */}

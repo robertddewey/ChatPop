@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useCallback, memo, useMemo, useRef, useEffect } from 'react';
-import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft } from 'lucide-react';
+import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff } from 'lucide-react';
 import type { Message, ChatRoom } from '@/lib/api';
 import VoiceRecorder from './VoiceRecorder';
 import MediaPicker from './MediaPicker';
+import type { MediaPreview } from './MediaPicker';
 
 interface RecordingMetadata {
   duration: number;
@@ -62,8 +63,13 @@ function MessageInputComponent({
   const [message, setMessage] = useState('');
   const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
   const [hasMediaSelected, setHasMediaSelected] = useState(false);
+  const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isVideoMuted, setIsVideoMuted] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const clearMediaRef = useRef<(() => void) | null>(null);
+  const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
   // Auto-resize textarea when expanded and typing
   useEffect(() => {
@@ -197,17 +203,99 @@ function MessageInputComponent({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className={`flex items-center gap-2 ${replyingTo ? 'mt-2' : ''}`}>
+      {/* Media Preview Card */}
+      {mediaPreview && (() => {
+        const MAX = 120;
+        const d = mediaPreview.dimensions;
+        let w = MAX, h = MAX;
+        if (d) {
+          const scale = Math.min(MAX / Math.max(d.width, d.height), 1);
+          w = Math.round(d.width * scale);
+          h = Math.round(d.height * scale);
+        }
+        return (
+          <div className={`${replyingTo ? 'mt-2' : ''} mb-2`}>
+            <div className="relative inline-block">
+              <div
+                className="rounded-lg overflow-hidden bg-zinc-700"
+                style={{ width: w, height: h }}
+              >
+                {mediaPreview.type === 'photo' ? (
+                  <img src={mediaPreview.url} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="relative w-full h-full">
+                    <video
+                      ref={videoPreviewRef}
+                      src={mediaPreview.url}
+                      poster={mediaPreview.thumbnailUrl}
+                      className="w-full h-full object-cover"
+                      muted={isVideoMuted}
+                      playsInline
+                      preload="metadata"
+                      onEnded={() => setIsVideoPlaying(false)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const vid = videoPreviewRef.current;
+                        if (!vid) return;
+                        if (isVideoPlaying) { vid.pause(); } else { vid.play(); }
+                        setIsVideoPlaying(!isVideoPlaying);
+                      }}
+                      className={`absolute inset-0 flex items-center justify-center ${isVideoPlaying ? '' : 'bg-black/30'}`}
+                    >
+                      {isVideoPlaying ? null : (
+                        <Play size={20} className="text-white" fill="white" />
+                      )}
+                    </button>
+                    {/* Mute/unmute toggle — bottom-left, always visible */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                          const vid = videoPreviewRef.current;
+                          if (vid) vid.muted = !isVideoMuted;
+                          setIsVideoMuted(!isVideoMuted);
+                        }}
+                        className="absolute bottom-1 left-1 w-5 h-5 flex items-center justify-center rounded-full bg-black/60 text-white"
+                      >
+                        {isVideoMuted ? <VolumeOff size={10} /> : <Volume2 size={10} />}
+                      </button>
+                    {mediaPreview.duration != null && (
+                      <span className="absolute bottom-1 right-1 text-[10px] text-white bg-black/60 px-1 py-0.5 rounded">
+                        {`${Math.floor(mediaPreview.duration / 60)}:${Math.floor(mediaPreview.duration % 60).toString().padStart(2, '0')}`}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setIsVideoPlaying(false); setIsVideoMuted(true); clearMediaRef.current?.(); }}
+                className="absolute -top-2 -right-2 w-6 h-6 bg-zinc-700 hover:bg-zinc-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+                aria-label="Remove media"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      <form onSubmit={handleSubmit} className={`flex items-center gap-2 ${replyingTo && !mediaPreview ? 'mt-2' : ''}`}>
         {/* Text input container */}
         <div className="relative flex-1 min-w-0 flex items-center">
           {/* User avatar - always visible */}
           <div className="absolute left-1.5 top-1/2 -translate-y-1/2 pointer-events-none z-10">
             <div className="relative">
-              <img
-                src={avatarUrl || ''}
-                alt=""
-                className={`w-6 h-6 rounded-full ${inputStyles?.avatarFallbackBg || 'bg-zinc-700'}`}
-              />
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className={`w-6 h-6 rounded-full ${inputStyles?.avatarFallbackBg || 'bg-zinc-700'}`}
+                />
+              ) : (
+                <div className={`w-6 h-6 rounded-full ${inputStyles?.avatarFallbackBg || 'bg-zinc-700'}`} />
+              )}
               {hasReservedUsername && (
                 <BadgeCheck size={10} className="absolute -bottom-0.5 -right-0.5 text-blue-500 bg-zinc-900 rounded-full" />
               )}
@@ -269,6 +357,8 @@ function MessageInputComponent({
               onPhotoSelected={onPhotoSelected}
               onVideoSelected={onVideoSelected}
               onMediaReady={setHasMediaSelected}
+              onPreviewChange={setMediaPreview}
+              clearRef={clearMediaRef}
               onSendComplete={() => setMessage('')}
               caption={message}
               photoEnabled={chatRoom?.photo_enabled}

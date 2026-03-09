@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Play, Pause, X, Maximize2 } from 'lucide-react';
+import { Play, Pause, Maximize2, Volume2, VolumeOff } from 'lucide-react';
 
 interface VideoMessageProps {
   videoUrl: string;
@@ -53,13 +53,12 @@ export default function VideoMessage({
   maxDisplayHeight = 320,
 }: VideoMessageProps) {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
 
   // Use actual video dimensions if available, fall back to 16:9
   const aspectRatio = (videoWidth && videoHeight) ? videoWidth / videoHeight : 16 / 9;
@@ -79,7 +78,7 @@ export default function VideoMessage({
   };
 
   const togglePlayPause = async () => {
-    const video = isFullscreen ? fullscreenVideoRef.current : videoRef.current;
+    const video = videoRef.current;
     if (!video) return;
 
     try {
@@ -105,54 +104,42 @@ export default function VideoMessage({
   };
 
   const handleTimeUpdate = () => {
-    const video = isFullscreen ? fullscreenVideoRef.current : videoRef.current;
-    if (video) {
-      setCurrentTime(video.currentTime);
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
     }
   };
 
   const handleVideoEnd = () => {
     setIsPlaying(false);
     setCurrentTime(0);
-    const video = isFullscreen ? fullscreenVideoRef.current : videoRef.current;
-    if (video) {
-      video.currentTime = 0;
-      GlobalVideoManager.stop(video);
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      GlobalVideoManager.stop(videoRef.current);
     }
   };
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    const video = isFullscreen ? fullscreenVideoRef.current : videoRef.current;
-    if (!video) return;
+    if (!videoRef.current) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const percentage = clickX / rect.width;
     const newTime = percentage * duration;
 
-    video.currentTime = newTime;
+    videoRef.current.currentTime = newTime;
     setCurrentTime(newTime);
   };
 
   const openFullscreen = () => {
-    // Pause inline video if playing
-    if (videoRef.current && isPlaying) {
-      videoRef.current.pause();
+    const video = videoRef.current;
+    if (!video) return;
+    // Use native fullscreen API — browser provides native controls and exit gesture
+    if (video.requestFullscreen) {
+      video.requestFullscreen();
+    } else if ((video as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen) {
+      // iOS Safari doesn't support requestFullscreen on video, use webkitEnterFullscreen
+      (video as HTMLVideoElement & { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
     }
-    setIsFullscreen(true);
-    // Prevent body scroll when fullscreen is open
-    document.body.style.overflow = 'hidden';
-  };
-
-  const closeFullscreen = () => {
-    // Pause fullscreen video if playing
-    if (fullscreenVideoRef.current) {
-      fullscreenVideoRef.current.pause();
-      GlobalVideoManager.stop(fullscreenVideoRef.current);
-    }
-    setIsFullscreen(false);
-    setIsPlaying(false);
-    document.body.style.overflow = '';
   };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -169,8 +156,6 @@ export default function VideoMessage({
   }
 
   return (
-    <>
-      {/* Video container with optional caption */}
       <div className="flex flex-col gap-1.5">
         {/* Caption - above the video like regular text messages */}
         {caption && (
@@ -190,6 +175,7 @@ export default function VideoMessage({
           src={videoUrl}
           poster={thumbnailUrl}
           className={`w-full h-full ${videoWidth && videoHeight ? 'object-cover' : 'object-contain'}`}
+          muted={isMuted}
           playsInline
           onTimeUpdate={handleTimeUpdate}
           onEnded={handleVideoEnd}
@@ -238,6 +224,20 @@ export default function VideoMessage({
           {formatTime(isPlaying ? currentTime : duration)}
         </div>
 
+        {/* Mute/unmute toggle — always visible */}
+        <button
+          className="absolute bottom-2 left-2 p-1.5 rounded bg-black/50 text-white hover:bg-black/70 transition-colors z-10"
+          onClick={(e) => {
+            e.stopPropagation();
+            const vid = videoRef.current;
+            if (vid) vid.muted = !isMuted;
+            setIsMuted(!isMuted);
+          }}
+          aria-label={isMuted ? 'Unmute' : 'Mute'}
+        >
+          {isMuted ? <VolumeOff size={14} /> : <Volume2 size={14} />}
+        </button>
+
         {/* Fullscreen button */}
         <button
           className="absolute top-2 right-2 p-1.5 rounded bg-black/50 text-white hover:bg-black/70 transition-colors"
@@ -268,34 +268,5 @@ export default function VideoMessage({
         </div>
       </div>
 
-      {/* Fullscreen video player */}
-      {isFullscreen && (
-        <div
-          className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center"
-          onClick={closeFullscreen}
-        >
-          {/* Close button */}
-          <button
-            className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors z-10"
-            onClick={closeFullscreen}
-            aria-label="Close fullscreen"
-          >
-            <X size={24} />
-          </button>
-
-          {/* Full-size video */}
-          <video
-            ref={fullscreenVideoRef}
-            src={videoUrl}
-            className="max-w-[95vw] max-h-[85vh] object-contain"
-            playsInline
-            controls
-            onClick={(e) => e.stopPropagation()}
-            onTimeUpdate={handleTimeUpdate}
-            onEnded={handleVideoEnd}
-          />
-        </div>
-      )}
-    </>
   );
 }
