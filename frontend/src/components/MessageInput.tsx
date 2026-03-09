@@ -278,15 +278,12 @@ function MessageInputComponent({
         );
       })()}
 
-      {/* Chatting as indicator */}
+      {/* Username indicator */}
       {username && (
-        <div className={`flex items-center gap-1 ${replyingTo || mediaPreview ? 'mt-1' : '-mt-1'} mb-0.5 px-1`}>
-          <span className={`text-[11px] ${inputStyles?.chattingAsText || 'text-zinc-500'}`}>
-            Chatting as <span className="font-medium">@{username}</span>
+        <div className={`flex items-center gap-1 ${replyingTo || mediaPreview ? 'mt-0.5' : '-mt-2'} mb-0.5 px-1`}>
+          <span className={`text-[9px] ${inputStyles?.chattingAsText || 'text-zinc-600'}`}>
+            You are <span className="font-medium">@{username}</span>
           </span>
-          {hasReservedUsername && (
-            <BadgeCheck size={11} className={inputStyles?.chattingAsBadge || 'text-blue-400'} />
-          )}
         </div>
       )}
 
