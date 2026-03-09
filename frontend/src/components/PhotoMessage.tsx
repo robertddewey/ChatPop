@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, ZoomIn } from 'lucide-react';
+import React, { useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { ZoomIn } from 'lucide-react';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 
 interface PhotoMessageProps {
   photoUrl: string;
@@ -110,30 +112,74 @@ export default function PhotoMessage({
         </div>
       </div>
 
-      {/* Fullscreen lightbox */}
-      {isFullscreen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
-          onClick={closeFullscreen}
-        >
-          {/* Close button */}
-          <button
-            className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors z-10"
-            onClick={closeFullscreen}
-            aria-label="Close fullscreen"
-          >
-            <X size={24} />
-          </button>
+      {/* Fullscreen lightbox with pinch-to-zoom — portal to body to escape stacking contexts */}
+      {isFullscreen && createPortal(
+        <FullscreenViewer photoUrl={photoUrl} onClose={closeFullscreen} />,
+        document.body
+      )}
+    </>
+  );
+}
 
-          {/* Full-size image */}
+function FullscreenViewer({ photoUrl, onClose }: { photoUrl: string; onClose: () => void }) {
+  const touchStartY = useRef<number | null>(null);
+  const currentScale = useRef(1);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation();
+    if (e.touches.length === 1 && currentScale.current <= 1) {
+      touchStartY.current = e.touches[0].clientY;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation();
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation();
+    if (touchStartY.current !== null && e.changedTouches.length === 1 && currentScale.current <= 1) {
+      const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+      if (deltaY > 100) {
+        onClose();
+      }
+    }
+    touchStartY.current = null;
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black flex items-center justify-center"
+      style={{ touchAction: 'none' }}
+      onClick={onClose}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Zoomable image */}
+      <TransformWrapper
+        initialScale={1}
+        minScale={1}
+        maxScale={4}
+        doubleClick={{ mode: 'toggle', step: 2 }}
+        onTransformed={(_ref, state) => { currentScale.current = state.scale; }}
+        panning={{ disabled: false }}
+        wheel={{ step: 0.5 }}
+        centerOnInit
+      >
+        <TransformComponent
+          wrapperStyle={{ width: '100vw', height: '100vh' }}
+          contentStyle={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
           <img
             src={photoUrl}
             alt="Photo message fullscreen"
-            className="max-w-[95vw] max-h-[95vh] object-contain"
+            className="max-w-[100vw] max-h-[100vh] object-contain"
+            draggable={false}
             onClick={(e) => e.stopPropagation()}
           />
-        </div>
-      )}
-    </>
+        </TransformComponent>
+      </TransformWrapper>
+    </div>
   );
 }
