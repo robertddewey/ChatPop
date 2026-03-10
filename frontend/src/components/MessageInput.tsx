@@ -281,8 +281,9 @@ function MessageInputComponent({
       {/* Username indicator */}
       {username && (
         <div className={`flex items-center gap-1 ${replyingTo || mediaPreview ? 'mt-0.5' : '-mt-2'} mb-0.5 px-1`}>
-          <span className={`text-[9px] ${inputStyles?.chattingAsText || 'text-zinc-600'}`}>
+          <span className={`text-[10px] ${inputStyles?.chattingAsText || 'text-zinc-600'} flex items-center gap-0.5`}>
             You are <span className="font-medium">@{username}</span>
+            {isHost && <Crown size={10} style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />}
           </span>
         </div>
       )}

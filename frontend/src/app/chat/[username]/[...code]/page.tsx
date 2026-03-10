@@ -2149,7 +2149,7 @@ export default function ChatPage() {
     replyPreviewCloseIcon: currentDesign.replyPreviewCloseIcon as string,
     inputStyles: {
       ...(currentDesign.inputStyles as Record<string, string> | undefined),
-      crownIconColor: currentDesign.crownIconColor as string,
+      crownIconColor: ({ 'text-teal-400': '#2dd4bf', 'text-amber-400': '#fbbf24', 'text-cyan-400': '#22d3ee', 'text-emerald-400': '#34d399', 'text-purple-400': '#c084fc', 'text-yellow-400': '#facc15' } as Record<string, string>)[(currentDesign.crownIconColor as string)?.trim()] || '#2dd4bf',
     },
   }), [currentDesign]);
 

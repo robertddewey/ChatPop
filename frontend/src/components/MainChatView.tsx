@@ -833,6 +833,9 @@ function MainChatView({
           </div>
         )}
         {(hasJoined || filteredMessages.length > 0) && (() => {
+          // Helper: treat any message from the host user as a host message
+          const hostUsername = chatRoom?.host?.reserved_username?.toLowerCase();
+          const isMsgFromHost = (msg: Message) => msg.is_from_host || (!!hostUsername && msg.username.toLowerCase() === hostUsername);
           // Pre-compute thread groups for continuous thread lines
           const THREAD_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
           type ThreadGroup = { messages: { message: Message; index: number }[] };
@@ -847,8 +850,8 @@ function MainChatView({
 
             const isFirstInThread = !prevMessage ||
               prevMessage.username !== message.username ||
-              prevMessage.is_from_host ||
-              message.is_from_host ||
+              isMsgFromHost(prevMessage) ||
+              isMsgFromHost(message) ||
               message.is_pinned ||
               timeDiff > THREAD_WINDOW_MS;
 
@@ -894,8 +897,9 @@ function MainChatView({
 
                 {group.messages.map(({ message, index: msgIndex }, groupIndex) => {
                   const isFirstInGroup = groupIndex === 0;
-                  const isRegularMessage = !message.is_from_host && !message.is_pinned;
-                  const showAvatar = isFirstInGroup || message.is_from_host || message.is_pinned;
+                  const isHostMessage = isMsgFromHost(message);
+                  const isRegularMessage = !isHostMessage && !message.is_pinned;
+                  const showAvatar = isFirstInGroup || isHostMessage || message.is_pinned;
                   const isLastMessage = msgIndex === filteredMessages.length - 1;
                   const innerMargin = isFirstInGroup ? '' : 'mt-0.5';
                   const bottomMargin = isLastMessage ? 'mb-3' : 'mb-3';
@@ -913,6 +917,9 @@ function MainChatView({
                         alt={message.username}
                         className={`${avatarSize} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${avatarBorder}`}
                       />
+                      {isHostMessage && (
+                        <Crown size={20} className="absolute -top-3 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
+                      )}
                       {message.username_is_reserved && (
                         <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
                       )}
@@ -980,7 +987,7 @@ function MainChatView({
                     </div>
                   )}
                   {/* Host message header - OUTSIDE bubble */}
-                  {message.is_from_host && (
+                  {isHostMessage && (
                     <div className="mb-1">
                       <div className="flex items-center gap-1">
                         <span
@@ -1001,12 +1008,15 @@ function MainChatView({
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                         <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
                         <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                        {message.is_pinned && (
+                          <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                        )}
                       </div>
                     </div>
                   )}
 
-                  {/* Pinned message header - OUTSIDE bubble (no $ value - only shown in sticky section) */}
-                  {message.is_pinned && !message.is_from_host && (
+                  {/* Pinned message header - OUTSIDE bubble */}
+                  {message.is_pinned && !isHostMessage && (
                     <div className="mb-1">
                       <div className="flex items-center gap-1">
                         <span
@@ -1025,16 +1035,7 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                        <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
-                          currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'
-                        }`}>
-                          <Pin size={12} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
-                          {message.pin_amount_paid && parseFloat(message.pin_amount_paid) > 0 && (
-                            <span className={`text-xs font-medium ${currentDesign.uiStyles?.pinAmountText || 'text-zinc-300'}`}>
-                              ${message.pin_amount_paid}
-                            </span>
-                          )}
-                        </div>
+                        <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                       </div>
                     </div>
                   )}
@@ -1093,7 +1094,7 @@ function MainChatView({
                   <div
                     className={(() => {
                       const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                      const selectedStyle = message.is_from_host
+                      const selectedStyle = isHostMessage
                         ? currentDesign.hostMessage + ' flex-1'
                         : message.is_pinned
                         ? currentDesign.pinnedMessage
@@ -1180,7 +1181,7 @@ function MainChatView({
                     {/* Caption text - shown above media when message has both */}
                     {message.content && (message.voice_url || message.photo_url || message.video_url) && (
                       <p className={`mb-2 ${
-                        message.is_from_host
+                        isHostMessage
                           ? currentDesign.hostText
                           : message.is_pinned
                           ? currentDesign.pinnedText
@@ -1201,7 +1202,7 @@ function MainChatView({
                         waveformData={message.voice_waveform || []}
                         isMyMessage={message.username.toLowerCase() === username.toLowerCase()}
                         voiceContainerBg={
-                          message.is_from_host
+                          isHostMessage
                             ? currentDesign.hostVoiceMessageStyles?.containerBg
                             : message.is_pinned
                             ? currentDesign.pinnedVoiceMessageStyles?.containerBg
@@ -1210,7 +1211,7 @@ function MainChatView({
                             : currentDesign.voiceMessageStyles?.containerBg
                         }
                         voicePlayButton={
-                          message.is_from_host
+                          isHostMessage
                             ? currentDesign.hostVoiceMessageStyles?.playButton
                             : message.is_pinned
                             ? currentDesign.pinnedVoiceMessageStyles?.playButton
@@ -1219,7 +1220,7 @@ function MainChatView({
                             : currentDesign.voiceMessageStyles?.playButton
                         }
                         voicePlayIconColor={
-                          message.is_from_host
+                          isHostMessage
                             ? currentDesign.hostVoiceMessageStyles?.playIconColor
                             : message.is_pinned
                             ? currentDesign.pinnedVoiceMessageStyles?.playIconColor
@@ -1228,7 +1229,7 @@ function MainChatView({
                             : currentDesign.voiceMessageStyles?.playIconColor
                         }
                         voiceWaveformActive={
-                          message.is_from_host
+                          isHostMessage
                             ? currentDesign.hostVoiceMessageStyles?.waveformActive
                             : message.is_pinned
                             ? currentDesign.pinnedVoiceMessageStyles?.waveformActive
@@ -1237,7 +1238,7 @@ function MainChatView({
                             : currentDesign.voiceMessageStyles?.waveformActive
                         }
                         voiceWaveformInactive={
-                          message.is_from_host
+                          isHostMessage
                             ? currentDesign.hostVoiceMessageStyles?.waveformInactive
                             : message.is_pinned
                             ? currentDesign.pinnedVoiceMessageStyles?.waveformInactive
@@ -1246,7 +1247,7 @@ function MainChatView({
                             : currentDesign.voiceMessageStyles?.waveformInactive
                         }
                         durationTextColor={
-                          message.is_from_host
+                          isHostMessage
                             ? currentDesign.hostVoiceMessageStyles?.durationTextColor
                             : message.is_pinned
                             ? currentDesign.pinnedVoiceMessageStyles?.durationTextColor
@@ -1272,7 +1273,7 @@ function MainChatView({
                       />
                     ) : message.content ? (
                       <p className={
-                        message.is_from_host
+                        isHostMessage
                           ? currentDesign.hostText
                           : message.is_pinned
                           ? currentDesign.pinnedText
@@ -1303,7 +1304,7 @@ function MainChatView({
                     className="text-[10px] opacity-60 whitespace-nowrap flex-shrink-0"
                     style={{
                       color: getTextColor(
-                        message.is_from_host
+                        isHostMessage
                           ? currentDesign.hostTimestamp
                           : message.is_pinned
                           ? currentDesign.pinnedTimestamp
