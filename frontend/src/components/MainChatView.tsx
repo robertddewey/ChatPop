@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronUp, ChevronDown, CornerDownRight } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
 import VideoMessage from './VideoMessage';
 import ReactionBar from './ReactionBar';
+import StickySection from './StickySection';
 import { ChatRoom, Message, ReactionSummary } from '@/lib/api';
 
 // Extract inline styles from Tailwind classes (opacity and filter)
@@ -279,57 +280,14 @@ function MainChatView({
   onScrollToBottom,
   expandStickySignal,
 }: MainChatViewProps) {
-  // Ref for measuring sticky section height
-  const stickySectionRef = useRef<HTMLDivElement>(null);
+  // Local stickyHeight for paddingTop — updated via callback from StickySection
   const [stickyHeight, setStickyHeight] = useState(0);
-  const [stickyHidden, setStickyHidden] = useState(false);
-  const stickyContentKeyRef = useRef<string>('');
-  const stickyToggleRef = useRef(false);
-  const stickyToggleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevStickyHeightRef = useRef(0);
-  const touchStartYRef = useRef<number | null>(null);
 
-  // Mark a toggle in progress — blocks ResizeObserver and scroll compensation for 220ms
-  // pendingToggleRef + savedDistFromBottomRef: after the toggle animation completes,
-  // restore the exact scroll position (distance-from-bottom) to prevent visual shift.
+  // Shared refs for scroll compensation — StickySection writes, MainChatView reads
+  const stickyToggleRef = useRef(false);
   const pendingToggleRef = useRef(false);
   const savedDistFromBottomRef = useRef(0);
-  const markStickyToggle = () => {
-    stickyToggleRef.current = true;
-    // Cancel any in-progress rAF scroll animation (e.g. from scrollToMessage)
-    cancelScrollAnimation?.();
-    // Save scroll position before toggle for post-animation restoration
-    const container = messagesContainerRef.current;
-    if (container) {
-      savedDistFromBottomRef.current = Math.max(0,
-        container.scrollHeight - container.scrollTop - container.clientHeight
-      );
-    }
-    pendingToggleRef.current = true;
-    if (stickyToggleTimerRef.current) clearTimeout(stickyToggleTimerRef.current);
-    stickyToggleTimerRef.current = setTimeout(() => {
-      stickyToggleRef.current = false;
-      // Force re-measurement — ResizeObserver may have already delivered the
-      // final size during the blocked window and won't fire again
-      const el = stickySectionRef.current;
-      if (el) {
-        setStickyHeight(el.offsetHeight);
-      }
-    }, 220);
-  };
-
-  // Expand sticky section when signaled from parent (e.g. header swipe-down)
-  useEffect(() => {
-    if (expandStickySignal && stickyHidden) {
-      markStickyToggle();
-      setStickyHidden(false);
-    }
-  }, [expandStickySignal]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Notify parent when stickyHidden changes (for FAB strip animation)
-  useEffect(() => {
-    onStickyHiddenChange?.(stickyHidden);
-  }, [stickyHidden, onStickyHiddenChange]);
+  const prevStickyHeightRef = useRef(0);
 
   // Track viewport height for responsive photo sizing
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -353,60 +311,26 @@ function MainChatView({
 
   // Track if initial render is complete - skip all animations until then
   const initialRenderDoneRef = useRef(false);
-  // State version for sticky section animations (refs don't trigger re-renders)
-  const [allowAnimations, setAllowAnimations] = useState(false);
 
   // Track message IDs we've already seen to only animate new messages
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
-
-  // Measure sticky section height dynamically
-  useLayoutEffect(() => {
-    const stickyEl = stickySectionRef.current;
-    const hasSticky = stickyHostMessages.length > 0 || stickyPinnedMessage;
-
-    if (!stickyEl || !hasSticky) {
-      setStickyHeight(0);
-      return;
-    }
-
-    // Initial measurement
-    const height = stickyEl.offsetHeight;
-    setStickyHeight(height);
-
-    // Watch for size changes (skip during toggle animation — paddingTop stays frozen)
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const height = entry.borderBoxSize?.[0]?.blockSize ?? (entry.target as HTMLElement).offsetHeight;
-        if (stickyToggleRef.current) return;
-        setStickyHeight(height);
-      }
-    });
-
-    resizeObserver.observe(stickyEl);
-    return () => resizeObserver.disconnect();
-  }, [stickyHostMessages.length, stickyPinnedMessage]);
 
   // Notify parent of sticky height changes (for FAB strip positioning)
   useEffect(() => {
     onStickyHeightChange?.(stickyHeight);
   }, [stickyHeight, onStickyHeightChange]);
 
-  // Compensate scroll position when sticky height changes
-  // Toggle: restore saved distance-from-bottom (robust against rounding/timing issues)
-  // Non-toggle (new content): compensate so messages don't jump
+  // Compensate scroll position when sticky height changes (runs in same render as paddingTop update)
   useLayoutEffect(() => {
     if (stickyToggleRef.current) {
-      // Toggle animation in progress — skip, paddingTop is frozen
       prevStickyHeightRef.current = stickyHeight;
       return;
     }
     if (pendingToggleRef.current) {
-      // Post-toggle height change — restore saved scroll position
       pendingToggleRef.current = false;
       const container = messagesContainerRef.current;
       if (container) {
         const currentDist = container.scrollHeight - container.scrollTop - container.clientHeight;
-        // If already at bottom (e.g., auto-scroll fired during toggle), just stay there
         if (currentDist < 50) {
           container.scrollTo({ top: container.scrollHeight - container.clientHeight, behavior: 'instant' });
         } else {
@@ -418,7 +342,6 @@ function MainChatView({
       prevStickyHeightRef.current = stickyHeight;
       return;
     }
-    // Non-toggle height change (new content) — use delta compensation
     const container = messagesContainerRef.current;
     if (container) {
       const delta = stickyHeight - prevStickyHeightRef.current;
@@ -434,28 +357,6 @@ function MainChatView({
     }
     prevStickyHeightRef.current = stickyHeight;
   }, [stickyHeight]);
-
-  // Track sticky content identity to detect new arrivals
-  const stickyContentKey = useMemo(() => {
-    const hostIds = stickyHostMessages.map(m => m.id).join(',');
-    const pinnedId = stickyPinnedMessage?.id || '';
-    return `${hostIds}|${pinnedId}`;
-  }, [stickyHostMessages, stickyPinnedMessage]);
-
-  // Auto-reopen sticky section when new sticky content arrives
-  useEffect(() => {
-    if (!stickyContentKeyRef.current) {
-      stickyContentKeyRef.current = stickyContentKey;
-      return;
-    }
-    if (stickyContentKey !== stickyContentKeyRef.current) {
-      stickyContentKeyRef.current = stickyContentKey;
-      if (stickyHidden) {
-        markStickyToggle();
-      }
-      setStickyHidden(false);
-    }
-  }, [stickyContentKey]);
 
   // Extract inline styles from messagesAreaBg for dynamic opacity/filter support
   const backgroundStyles = useMemo(() => {
@@ -493,294 +394,47 @@ function MainChatView({
     }
     // Mark initial render as done after first batch of messages is seen
     if (!initialRenderDoneRef.current && filteredMessages.length > 0) {
-      // Use a small delay to ensure DOM has settled before allowing animations
       setTimeout(() => {
         initialRenderDoneRef.current = true;
-        setAllowAnimations(true);
       }, 100);
     }
   }, [filteredMessages]);
 
   return (
     <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-white'}`}>
-      {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
-      {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
-        <div
-          ref={stickySectionRef}
-          data-sticky-section
-          className={currentDesign.stickySection}
-          onTouchStart={(e) => {
-            touchStartYRef.current = e.touches[0].clientY;
-          }}
-          onTouchEnd={(e) => {
-            if (touchStartYRef.current !== null) {
-              const deltaY = touchStartYRef.current - e.changedTouches[0].clientY;
-              if (deltaY > 30 && !stickyHidden) {
-                markStickyToggle();
-                setStickyHidden(true);
-              } else if (deltaY < -30 && stickyHidden) {
-                markStickyToggle();
-                setStickyHidden(false);
-              }
-              touchStartYRef.current = null;
-            }
-          }}
-        >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateRows: stickyHidden ? '0fr' : '1fr',
-              transition: 'grid-template-rows 200ms ease-out',
-            }}
-          >
-            <div className="space-y-2" style={{ overflow: 'hidden' }}>
-          {/* Host Messages */}
-          {stickyHostMessages.map((message) => (
-            <MessageActionsModal
-              key={`sticky-${message.id}`}
-              message={message}
-              currentUsername={username}
-              isHost={chatRoom?.host.id === currentUserId}
-              themeIsDarkMode={themeIsDarkMode}
-              sessionToken={sessionToken}
-              themeColors={modalThemeColors}
-              modalStyles={currentDesign.modalStyles}
-              emojiPickerStyles={currentDesign.emojiPickerStyles}
-              giftStyles={currentDesign.giftStyles}
-              videoPlayerStyles={currentDesign.videoPlayerStyles}
-              onReply={disableReply ? undefined : handleReply}
-              onPin={handlePin}
-              onAddToPin={handleAddToPin}
-              getPinRequirements={getPinRequirements}
-              onBlock={handleBlockUser}
-              onTip={handleTipUser}
-              onSendGift={handleSendGift}
-              onThankGift={handleThankGift}
-              onDelete={handleDeleteMessage}
-              onReact={handleReactionToggle}
-              onHighlight={highlightMessage}
-              reactions={messageReactions[message.id] || message.reactions || []}
-            >
-              <div
-                className={`${currentDesign.stickyHostMessage} w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
-              >
-                <div className="flex gap-3">
-                  {/* Avatar */}
-                  <div className="relative flex-shrink-0 mt-1.5">
-                    <img
-                      src={message.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
-                      alt={message.username}
-                      className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${currentDesign.avatarBorder || ''}`}
-                    />
-                    <Crown size={20} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
-                    {message.username_is_reserved && (
-                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
-                    )}
-                  </div>
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1 mb-1">
-                      <span
-                        className={currentDesign.stickyHostUsername || 'text-sm font-semibold'}
-                        style={{ color: getTextColor(currentDesign.stickyHostUsername || currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff' }}
-                      >
-                        {message.username}
-                      </span>
-                      {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                      <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
-                      <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                    </div>
-                <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
-                  <span
-                    className="text-xs opacity-60"
-                    style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
-                  >
-                    {formatTimestamp(message.created_at)}
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); scrollToMessage(message.id); }}
-                    className="p-1 rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity"
-                    aria-label="Go to message"
-                  >
-                    <CornerDownRight size={14} style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }} />
-                  </button>
-                </div>
-                {message.voice_url ? (
-                  <div className="flex items-center gap-2">
-                    <Mic size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.hostText} opacity-70 truncate`}>
-                      Voice{message.content ? `: ${message.content}` : message.voice_duration ? ` (${Math.floor(message.voice_duration / 60)}:${String(Math.floor(message.voice_duration % 60)).padStart(2, '0')})` : ''}
-                    </span>
-                  </div>
-                ) : message.photo_url ? (
-                  <div className="flex items-center gap-2">
-                    <ImageIcon size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.hostText} opacity-70 truncate`}>
-                      Photo{message.content ? `: ${message.content}` : ''}
-                    </span>
-                  </div>
-                ) : message.video_url ? (
-                  <div className="flex items-center gap-2">
-                    <Video size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.hostText} opacity-70 truncate`}>
-                      Video{message.content ? `: ${message.content}` : message.video_duration ? ` (${Math.floor(message.video_duration / 60)}:${String(Math.floor(message.video_duration % 60)).padStart(2, '0')})` : ''}
-                    </span>
-                  </div>
-                ) : (
-                  <p className={`text-sm ${currentDesign.hostText} truncate`}>
-                    {message.content}
-                  </p>
-                )}
-                  </div>
-                </div>
-              </div>
-            </MessageActionsModal>
-          ))}
-
-          {/* Pinned Message */}
-          {stickyPinnedMessage && (
-            <MessageActionsModal
-              message={stickyPinnedMessage}
-              currentUsername={username}
-              isHost={chatRoom?.host.id === currentUserId}
-              themeIsDarkMode={themeIsDarkMode}
-              sessionToken={sessionToken}
-              themeColors={modalThemeColors}
-              modalStyles={currentDesign.modalStyles}
-              emojiPickerStyles={currentDesign.emojiPickerStyles}
-              giftStyles={currentDesign.giftStyles}
-              videoPlayerStyles={currentDesign.videoPlayerStyles}
-              onReply={disableReply ? undefined : handleReply}
-              onPin={handlePin}
-              onAddToPin={handleAddToPin}
-              getPinRequirements={getPinRequirements}
-              onBlock={handleBlockUser}
-              onTip={handleTipUser}
-              onSendGift={handleSendGift}
-              onThankGift={handleThankGift}
-              onDelete={handleDeleteMessage}
-              onReact={handleReactionToggle}
-              onHighlight={highlightMessage}
-              reactions={messageReactions[stickyPinnedMessage.id] || stickyPinnedMessage.reactions || []}
-            >
-              <div
-                className={`${currentDesign.stickyPinnedMessage} w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
-              >
-                <div className="flex gap-3">
-                  {/* Avatar */}
-                  <div className="relative flex-shrink-0 mt-1.5">
-                    <img
-                      src={stickyPinnedMessage.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', stickyPinnedMessage.username, 80)}
-                      alt={stickyPinnedMessage.username}
-                      className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${currentDesign.avatarBorder || ''}`}
-                    />
-                    {stickyPinnedMessage.username.toLowerCase() === chatRoom?.host?.reserved_username?.toLowerCase() && (
-                      <Crown size={20} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
-                    )}
-                    {stickyPinnedMessage.username_is_reserved && (
-                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
-                    )}
-                  </div>
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1 mb-1">
-                      <span
-                        className={currentDesign.stickyPinnedUsername || 'text-sm font-semibold'}
-                        style={{ color: getTextColor(currentDesign.stickyPinnedUsername || currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
-                      >
-                        {stickyPinnedMessage.username}
-                      </span>
-                  {stickyPinnedMessage.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
-                    currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'
-                  }`}>
-                    <Pin size={12} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
-                    <span className={`text-xs font-medium ${currentDesign.pinnedText}`}>
-                      ${stickyPinnedMessage.current_pin_amount}
-                    </span>
-                  </div>
-                </div>
-                <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
-                  <span
-                    className="text-xs opacity-60"
-                    style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
-                  >
-                    {formatTimestamp(stickyPinnedMessage.created_at)}
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); scrollToMessage(stickyPinnedMessage.id); }}
-                    className="p-1 rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity"
-                    aria-label="Go to message"
-                  >
-                    <CornerDownRight size={14} style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }} />
-                  </button>
-                </div>
-                {stickyPinnedMessage.voice_url ? (
-                  <div className="flex items-center gap-2">
-                    <Mic size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70 truncate`}>
-                      Voice{stickyPinnedMessage.content ? `: ${stickyPinnedMessage.content}` : stickyPinnedMessage.voice_duration ? ` (${Math.floor(stickyPinnedMessage.voice_duration / 60)}:${String(Math.floor(stickyPinnedMessage.voice_duration % 60)).padStart(2, '0')})` : ''}
-                    </span>
-                  </div>
-                ) : stickyPinnedMessage.photo_url ? (
-                  <div className="flex items-center gap-2">
-                    <ImageIcon size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70 truncate`}>
-                      Photo{stickyPinnedMessage.content ? `: ${stickyPinnedMessage.content}` : ''}
-                    </span>
-                  </div>
-                ) : stickyPinnedMessage.video_url ? (
-                  <div className="flex items-center gap-2">
-                    <Video size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.pinnedText} opacity-70 truncate`}>
-                      Video{stickyPinnedMessage.content ? `: ${stickyPinnedMessage.content}` : stickyPinnedMessage.video_duration ? ` (${Math.floor(stickyPinnedMessage.video_duration / 60)}:${String(Math.floor(stickyPinnedMessage.video_duration % 60)).padStart(2, '0')})` : ''}
-                    </span>
-                  </div>
-                ) : stickyPinnedMessage.message_type === 'gift' ? (() => {
-                  const m = stickyPinnedMessage.content.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
-                  const emoji = m ? m[1] : '🎁';
-                  const name = m ? m[2] : '';
-                  const price = m ? m[3] : '';
-                  const recipient = m ? m[4] : '';
-                  return (
-                    <div className="flex items-center gap-1.5 text-sm">
-                      <span className="flex-shrink-0">{emoji}</span>
-                      <span className={`${currentDesign.pinnedText} truncate`}>
-                        sent <span className="font-semibold">{name}</span> to <span className="font-semibold">@{recipient}</span>
-                        {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
-                      </span>
-                      <span className={`font-semibold flex-shrink-0 ${currentDesign.giftStyles?.priceText || 'text-cyan-400'}`}>{price}</span>
-                    </div>
-                  );
-                })() : (
-                  <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
-                    {stickyPinnedMessage.content}
-                  </p>
-                )}
-                  </div>
-                </div>
-              </div>
-            </MessageActionsModal>
-          )}
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              markStickyToggle();
-              setStickyHidden(h => !h);
-            }}
-            className={`w-full flex items-center justify-center -my-1 transition-opacity`}
-          >
-            <ChevronUp
-              size={14}
-              style={{
-                transition: 'transform 200ms ease-out',
-                transform: stickyHidden ? 'rotate(180deg)' : 'rotate(0deg)',
-              }}
-            />
-          </button>
-        </div>
-      )}
+      {/* Sticky Section: Host + Pinned Messages - Extracted component for Android perf */}
+      <StickySection
+        stickyHostMessages={stickyHostMessages}
+        stickyPinnedMessage={stickyPinnedMessage}
+        messageReactions={messageReactions}
+        username={username}
+        currentUserId={currentUserId}
+        chatRoom={chatRoom}
+        sessionToken={sessionToken}
+        currentDesign={currentDesign}
+        themeIsDarkMode={themeIsDarkMode}
+        messagesContainerRef={messagesContainerRef}
+        scrollToMessage={scrollToMessage}
+        cancelScrollAnimation={cancelScrollAnimation}
+        highlightMessage={highlightMessage}
+        expandStickySignal={expandStickySignal}
+        onStickyHeightChange={setStickyHeight}
+        onStickyHiddenChange={onStickyHiddenChange}
+        handleReply={handleReply}
+        disableReply={disableReply}
+        handlePin={handlePin}
+        handleAddToPin={handleAddToPin}
+        getPinRequirements={getPinRequirements}
+        handleBlockUser={handleBlockUser}
+        handleTipUser={handleTipUser}
+        handleSendGift={handleSendGift}
+        handleThankGift={handleThankGift}
+        handleDeleteMessage={handleDeleteMessage}
+        handleReactionToggle={handleReactionToggle}
+        stickyToggleRef={stickyToggleRef}
+        pendingToggleRef={pendingToggleRef}
+        savedDistFromBottomRef={savedDistFromBottomRef}
+      />
 
       {/* Background Pattern Layer - Fixed behind everything */}
       <div
