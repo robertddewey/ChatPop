@@ -58,9 +58,22 @@ export default function JoinChatModal({
     error: forceDarkMode ? 'text-red-400' : 'text-red-600',
   };
 
-  // Initialize username with reserved username for logged-in users
+  // Restore persisted state from sessionStorage (survives auth modal navigation)
+  const storageKey = `joinModal_${chatRoom.code}`;
+  const getPersistedState = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  };
+  const persisted = useRef(getPersistedState());
+
+  // Initialize username with reserved username for logged-in users, or persisted state
   const [username, setUsername] = useState(
-    isLoggedIn && hasReservedUsername && currentUserDisplayName ? currentUserDisplayName : ''
+    isLoggedIn && hasReservedUsername && currentUserDisplayName
+      ? currentUserDisplayName
+      : persisted.current?.username || ''
   );
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
@@ -73,8 +86,8 @@ export default function JoinChatModal({
   const [rateLimitChecked, setRateLimitChecked] = useState(false);
   const [generationRemaining, setGenerationRemaining] = useState<number | null>(null);
   const [suggestionRemaining, setSuggestionRemaining] = useState<number | null>(null);
-  const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>('manual');
-  const [diceUsername, setDiceUsername] = useState<string | null>(null);
+  const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>(persisted.current?.usernameSource || 'manual');
+  const [diceUsername, setDiceUsername] = useState<string | null>(persisted.current?.diceUsername || null);
   const [isReturningUser, setIsReturningUser] = useState(false);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const drawerScrollRef = useRef<HTMLDivElement>(null);
@@ -112,9 +125,11 @@ export default function JoinChatModal({
     return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
   };
 
-  // Avatar seed browsing state
-  const [avatarSeeds, setAvatarSeeds] = useState<string[]>([username || currentUserDisplayName || 'anonymous']);
-  const [avatarIndex, setAvatarIndex] = useState(0);
+  // Avatar seed browsing state (restore from persisted if available)
+  const [avatarSeeds, setAvatarSeeds] = useState<string[]>(
+    persisted.current?.avatarSeeds || [username || currentUserDisplayName || 'anonymous']
+  );
+  const [avatarIndex, setAvatarIndex] = useState(persisted.current?.avatarIndex || 0);
 
   // Whether to show avatar chevrons (only for first-time users)
   const showAvatarChevrons = !hasJoinedBefore && !isReturningUser;
@@ -260,6 +275,8 @@ export default function JoinChatModal({
 
     try {
       await onJoin(finalUsername.trim(), accessCode.trim() || undefined, showAvatarChevrons ? avatarSeeds[avatarIndex] : undefined);
+      // Clean up persisted state on successful join
+      try { sessionStorage.removeItem(storageKey); } catch { /* ignore */ }
     } catch (err: unknown) {
       const error = err as Error;
       setError(error.message || 'Failed to join chat');
@@ -334,11 +351,22 @@ export default function JoinChatModal({
   };
 
   // Auto-fetch username for anonymous users on mount to detect returning users
+  // Skip if we already have a persisted username (returning from auth modal)
   useEffect(() => {
-    if (!isLoggedIn && !hasJoinedBefore && rateLimitChecked && !isRateLimited) {
+    if (!isLoggedIn && !hasJoinedBefore && rateLimitChecked && !isRateLimited && !persisted.current?.username) {
       handleSuggestUsername();
     }
   }, [isLoggedIn, hasJoinedBefore, rateLimitChecked, isRateLimited]);
+
+  // Persist join modal state to sessionStorage so it survives auth modal navigation
+  useEffect(() => {
+    if (!username) return;
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({
+        username, usernameSource, diceUsername, avatarSeeds, avatarIndex,
+      }));
+    } catch { /* ignore */ }
+  }, [username, usernameSource, diceUsername, avatarSeeds, avatarIndex, storageKey]);
 
   const [isMobile, setIsMobile] = useState(false);
 

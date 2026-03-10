@@ -307,7 +307,7 @@ export function RegisterFormContent({ onClose, onSwitchToLogin, hideTitle }: Reg
                 }
               }}
               className={`w-full px-4 py-3 pr-12 rounded-xl ${styles.input(!!fieldErrors.reserved_username || !usernameValidation.valid || (usernameStatus.available === false))} transition-colors focus:outline-none`}
-              placeholder=""
+              placeholder="Type a username"
               maxLength={15}
             />
             <button
