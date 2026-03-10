@@ -460,6 +460,23 @@ export default function ChatPage() {
   // Debounce drops to 0 — room switches briefly clear sticky content but it reappears.
   // Genuine removals (pin expiry) stay at 0 permanently, so a longer delay is fine.
   const [stickyHeight, setStickyHeight] = useState(0);
+  const [stickyIsHidden, setStickyIsHidden] = useState(false);
+  const expandedStickyHeightRef = useRef(0);
+  // Remember the last expanded height so we can use it instantly on expand
+  // (before ResizeObserver reports the new full height)
+  useEffect(() => {
+    if (!stickyIsHidden && stickyHeight > 40) {
+      expandedStickyHeightRef.current = stickyHeight;
+    }
+  }, [stickyHeight, stickyIsHidden]);
+  // Compute FAB top: use remembered expanded height when expanding to avoid intermediate jump
+  // Collapsed sticky is ~31px tall; expanded is ~87px. Always add 8px gap.
+  const COLLAPSED_STICKY_HEIGHT = 31;
+  const fabTop = stickyHeight > 0
+    ? (stickyIsHidden
+        ? COLLAPSED_STICKY_HEIGHT + 8
+        : (stickyHeight > 40 ? stickyHeight + 8 : (expandedStickyHeightRef.current || stickyHeight) + 8))
+    : 8;
   const stickyZeroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleStickyHeightChange = useCallback((height: number) => {
     if (stickyZeroTimerRef.current) {
@@ -2305,6 +2322,7 @@ export default function ChatPage() {
                 messageReactions={messageReactions}
                 loadingOlder={loadingOlder}
                 onStickyHeightChange={handleStickyHeightChange}
+                onStickyHiddenChange={setStickyIsHidden}
                 showScrollToBottom={showScrollToBottom}
                 onScrollToBottom={handleScrollToBottom}
                 expandStickySignal={expandStickySignal}
@@ -2348,8 +2366,9 @@ export default function ChatPage() {
             className="absolute right-0 z-50"
             onTouchStart={() => { (document.activeElement as HTMLElement)?.blur(); }}
             style={{
-              top: `${stickyHeight > 0 ? stickyHeight + 8 : 8}px`,
+              top: `${fabTop}px`,
               bottom: '8px',
+              transition: 'top 200ms ease-out',
             }}
           >
             {/* Top fade — matches page background, icons dissolve into it */}

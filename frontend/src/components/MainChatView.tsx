@@ -232,6 +232,7 @@ interface MainChatViewProps {
   filterLoading?: boolean;
   filterMode?: 'all' | 'focus' | 'gifts';
   onStickyHeightChange?: (height: number) => void;
+  onStickyHiddenChange?: (hidden: boolean) => void;
   showScrollToBottom?: boolean;
   onScrollToBottom?: () => void;
   expandStickySignal?: number;
@@ -271,6 +272,7 @@ function MainChatView({
   filterLoading = false,
   filterMode = 'all',
   onStickyHeightChange,
+  onStickyHiddenChange,
   showScrollToBottom = false,
   onScrollToBottom,
   expandStickySignal,
@@ -281,16 +283,31 @@ function MainChatView({
   const [stickyHidden, setStickyHidden] = useState(false);
   const stickyContentKeyRef = useRef<string>('');
   const stickyToggleRef = useRef(false);
+  const stickyToggleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevStickyHeightRef = useRef(0);
   const touchStartYRef = useRef<number | null>(null);
+
+  // Mark a toggle in progress — blocks ResizeObserver and scroll compensation for 220ms
+  const markStickyToggle = () => {
+    stickyToggleRef.current = true;
+    if (stickyToggleTimerRef.current) clearTimeout(stickyToggleTimerRef.current);
+    stickyToggleTimerRef.current = setTimeout(() => {
+      stickyToggleRef.current = false;
+    }, 220);
+  };
 
   // Expand sticky section when signaled from parent (e.g. header swipe-down)
   useEffect(() => {
     if (expandStickySignal && stickyHidden) {
-      stickyToggleRef.current = true;
+      markStickyToggle();
       setStickyHidden(false);
     }
   }, [expandStickySignal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Notify parent when stickyHidden changes (for FAB strip animation)
+  useEffect(() => {
+    onStickyHiddenChange?.(stickyHidden);
+  }, [stickyHidden, onStickyHiddenChange]);
 
   // Track viewport height for responsive photo sizing
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -334,8 +351,9 @@ function MainChatView({
     const height = stickyEl.offsetHeight;
     setStickyHeight(height);
 
-    // Watch for size changes
+    // Watch for size changes (skip during toggle animation — paddingTop stays frozen)
     const resizeObserver = new ResizeObserver((entries) => {
+      if (stickyToggleRef.current) return;
       for (const entry of entries) {
         const height = entry.borderBoxSize?.[0]?.blockSize ?? (entry.target as HTMLElement).offsetHeight;
         setStickyHeight(height);
@@ -351,19 +369,27 @@ function MainChatView({
     onStickyHeightChange?.(stickyHeight);
   }, [stickyHeight, onStickyHeightChange]);
 
-  // Compensate scroll position when sticky height changes from user toggle
+  // Compensate scroll position when sticky height changes
+  // Toggle: no compensation needed (paddingTop stays frozen, messages don't move)
+  // Non-toggle (new content): compensate so messages don't jump
   useLayoutEffect(() => {
+    if (stickyToggleRef.current) {
+      // Toggle in progress — skip compensation, timeout will clear the flag
+      prevStickyHeightRef.current = stickyHeight;
+      return;
+    }
     const container = messagesContainerRef.current;
-    if (stickyToggleRef.current && container) {
+    if (container) {
       const delta = stickyHeight - prevStickyHeightRef.current;
-      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      const wasAtBottom = distFromBottom < 150;
-      if (wasAtBottom) {
-        container.scrollTop = container.scrollHeight - container.clientHeight;
-      } else {
-        container.scrollTop += delta;
+      if (delta !== 0) {
+        const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+        const wasAtBottom = distFromBottom < 150;
+        if (wasAtBottom) {
+          container.scrollTop = container.scrollHeight - container.clientHeight;
+        } else {
+          container.scrollTop += delta;
+        }
       }
-      stickyToggleRef.current = false;
     }
     prevStickyHeightRef.current = stickyHeight;
   }, [stickyHeight]);
@@ -384,7 +410,7 @@ function MainChatView({
     if (stickyContentKey !== stickyContentKeyRef.current) {
       stickyContentKeyRef.current = stickyContentKey;
       if (stickyHidden) {
-        stickyToggleRef.current = true;
+        markStickyToggle();
       }
       setStickyHidden(false);
     }
@@ -449,10 +475,10 @@ function MainChatView({
             if (touchStartYRef.current !== null) {
               const deltaY = touchStartYRef.current - e.changedTouches[0].clientY;
               if (deltaY > 30 && !stickyHidden) {
-                stickyToggleRef.current = true;
+                markStickyToggle();
                 setStickyHidden(true);
               } else if (deltaY < -30 && stickyHidden) {
-                stickyToggleRef.current = true;
+                markStickyToggle();
                 setStickyHidden(false);
               }
               touchStartYRef.current = null;
@@ -679,7 +705,7 @@ function MainChatView({
           </div>
           <button
             onClick={() => {
-              stickyToggleRef.current = true;
+              markStickyToggle();
               setStickyHidden(h => !h);
             }}
             className={`w-full flex items-center justify-center -my-1 transition-opacity`}
