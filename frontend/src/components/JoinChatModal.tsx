@@ -621,12 +621,12 @@ export default function JoinChatModal({
             {formContent}
           </div>
           {/* Scroll hint — fades out when user scrolls to bottom */}
-          <div
+          <button
             onClick={() => drawerScrollRef.current?.scrollTo({ top: drawerScrollRef.current.scrollHeight, behavior: 'smooth' })}
-            className={`absolute bottom-0 left-0 right-0 flex justify-center py-1.5 bg-black/80 cursor-pointer transition-opacity duration-300 ${showScrollHint ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            className={`absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full p-2 shadow-lg bg-zinc-800/90 text-zinc-200 border border-zinc-700 transition-opacity duration-300 ${showScrollHint ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           >
-            <ChevronDown size={24} strokeWidth={3} className="text-white" />
-          </div>
+            <ChevronDown size={20} />
+          </button>
         </div>
       </div>
     );
