@@ -635,7 +635,7 @@ export default function ChatPage() {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const container = messagesContainerRef.current;
-        if (container) container.scrollTop = container.scrollHeight;
+        if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
       });
     });
   }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
@@ -861,7 +861,7 @@ export default function ChatPage() {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const container = messagesContainerRef.current;
-          if (container) container.scrollTop = container.scrollHeight;
+          if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
         });
       });
     });
@@ -874,7 +874,7 @@ export default function ChatPage() {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const container = messagesContainerRef.current;
-        if (container) container.scrollTop = container.scrollHeight;
+        if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
       });
     });
   }, [currentRoom]);
@@ -1156,7 +1156,7 @@ export default function ChatPage() {
       requestAnimationFrame(() => {
         const container = messagesContainerRef.current;
         if (container) {
-          container.scrollTop = container.scrollHeight;
+          container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
         }
         initialScrollDoneRef.current = true; // Mark scroll complete
       });
@@ -1214,7 +1214,7 @@ export default function ChatPage() {
         const newScrollHeight = container.scrollHeight;
         const heightDifference = newScrollHeight - previousScrollHeight;
         const targetScrollTop = previousScrollTop + heightDifference;
-        container.scrollTop = targetScrollTop;
+        container.scrollTo({ top: targetScrollTop, behavior: 'instant' });
 
         // Unfreeze sticky after scroll adjustment settles
         requestAnimationFrame(() => {
@@ -1569,7 +1569,7 @@ export default function ChatPage() {
   const scrollToBottom = () => {
     const container = messagesContainerRef.current;
     if (container) {
-      container.scrollTop = container.scrollHeight;
+      container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
     }
   };
 
@@ -1578,7 +1578,7 @@ export default function ChatPage() {
     setShowScrollToBottom(false);
     const container = messagesContainerRef.current;
     if (container) {
-      container.scrollTop = container.scrollHeight;
+      container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
     }
   }, []);
 
@@ -1594,13 +1594,47 @@ export default function ChatPage() {
     }
   }, []);
 
+  // Track rAF-based scroll animation so it can be cancelled (e.g. by sticky toggle)
+  const scrollAnimationRef = useRef<number | null>(null);
+  const cancelScrollAnimation = useCallback(() => {
+    if (scrollAnimationRef.current !== null) {
+      cancelAnimationFrame(scrollAnimationRef.current);
+      scrollAnimationRef.current = null;
+    }
+  }, []);
+
   const scrollToMessage = useCallback((messageId: string) => {
     const element = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const container = messagesContainerRef.current;
+    if (element && container) {
+      cancelScrollAnimation();
+      const containerRect = container.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      const elementCenter = elementRect.top + elementRect.height / 2;
+      const containerCenter = containerRect.top + containerRect.height / 2;
+      const scrollOffset = elementCenter - containerCenter;
+      const targetScrollTop = container.scrollTop + scrollOffset;
+      // Manual smooth scroll via rAF — avoids browser native smooth scroll
+      // state that corrupts subsequent scrollTop assignments (toggle bug)
+      const startScrollTop = container.scrollTop;
+      const distance = targetScrollTop - startScrollTop;
+      const duration = 300;
+      const startTime = performance.now();
+      const animate = (currentTime: number) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+        container.scrollTop = startScrollTop + distance * eased;
+        if (progress < 1) {
+          scrollAnimationRef.current = requestAnimationFrame(animate);
+        } else {
+          scrollAnimationRef.current = null;
+        }
+      };
+      scrollAnimationRef.current = requestAnimationFrame(animate);
       highlightMessage(messageId);
     }
-  }, [highlightMessage]);
+  }, [highlightMessage, cancelScrollAnimation]);
 
   // Track if user is near bottom
   const shouldAutoScrollRef = useRef(true);
@@ -2305,6 +2339,7 @@ export default function ChatPage() {
                 themeIsDarkMode={themeIsDarkMode}
                 handleScroll={handleScroll}
                 scrollToMessage={scrollToMessage}
+                cancelScrollAnimation={cancelScrollAnimation}
                 highlightMessage={highlightMessage}
                 handleReply={handleReply}
                 disableReply={currentRoom === 'gifts'}

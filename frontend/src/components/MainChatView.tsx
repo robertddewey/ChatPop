@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronUp, ChevronDown } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronUp, ChevronDown, CornerDownRight } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
@@ -202,6 +202,7 @@ interface MainChatViewProps {
   themeIsDarkMode?: boolean;
   handleScroll: () => void;
   scrollToMessage: (messageId: string) => void;
+  cancelScrollAnimation?: () => void;
   highlightMessage?: (messageId: string) => void;
   handleReply: (message: Message) => void;
   disableReply?: boolean;
@@ -253,6 +254,7 @@ function MainChatView({
   themeIsDarkMode = true,
   handleScroll,
   scrollToMessage,
+  cancelScrollAnimation,
   highlightMessage,
   handleReply,
   disableReply = false,
@@ -288,11 +290,31 @@ function MainChatView({
   const touchStartYRef = useRef<number | null>(null);
 
   // Mark a toggle in progress — blocks ResizeObserver and scroll compensation for 220ms
+  // pendingToggleRef + savedDistFromBottomRef: after the toggle animation completes,
+  // restore the exact scroll position (distance-from-bottom) to prevent visual shift.
+  const pendingToggleRef = useRef(false);
+  const savedDistFromBottomRef = useRef(0);
   const markStickyToggle = () => {
     stickyToggleRef.current = true;
+    // Cancel any in-progress rAF scroll animation (e.g. from scrollToMessage)
+    cancelScrollAnimation?.();
+    // Save scroll position before toggle for post-animation restoration
+    const container = messagesContainerRef.current;
+    if (container) {
+      savedDistFromBottomRef.current = Math.max(0,
+        container.scrollHeight - container.scrollTop - container.clientHeight
+      );
+    }
+    pendingToggleRef.current = true;
     if (stickyToggleTimerRef.current) clearTimeout(stickyToggleTimerRef.current);
     stickyToggleTimerRef.current = setTimeout(() => {
       stickyToggleRef.current = false;
+      // Force re-measurement — ResizeObserver may have already delivered the
+      // final size during the blocked window and won't fire again
+      const el = stickySectionRef.current;
+      if (el) {
+        setStickyHeight(el.offsetHeight);
+      }
     }, 220);
   };
 
@@ -353,9 +375,9 @@ function MainChatView({
 
     // Watch for size changes (skip during toggle animation — paddingTop stays frozen)
     const resizeObserver = new ResizeObserver((entries) => {
-      if (stickyToggleRef.current) return;
       for (const entry of entries) {
         const height = entry.borderBoxSize?.[0]?.blockSize ?? (entry.target as HTMLElement).offsetHeight;
+        if (stickyToggleRef.current) return;
         setStickyHeight(height);
       }
     });
@@ -370,14 +392,33 @@ function MainChatView({
   }, [stickyHeight, onStickyHeightChange]);
 
   // Compensate scroll position when sticky height changes
-  // Toggle: no compensation needed (paddingTop stays frozen, messages don't move)
+  // Toggle: restore saved distance-from-bottom (robust against rounding/timing issues)
   // Non-toggle (new content): compensate so messages don't jump
   useLayoutEffect(() => {
     if (stickyToggleRef.current) {
-      // Toggle in progress — skip compensation, timeout will clear the flag
+      // Toggle animation in progress — skip, paddingTop is frozen
       prevStickyHeightRef.current = stickyHeight;
       return;
     }
+    if (pendingToggleRef.current) {
+      // Post-toggle height change — restore saved scroll position
+      pendingToggleRef.current = false;
+      const container = messagesContainerRef.current;
+      if (container) {
+        const currentDist = container.scrollHeight - container.scrollTop - container.clientHeight;
+        // If already at bottom (e.g., auto-scroll fired during toggle), just stay there
+        if (currentDist < 50) {
+          container.scrollTo({ top: container.scrollHeight - container.clientHeight, behavior: 'instant' });
+        } else {
+          const maxScroll = container.scrollHeight - container.clientHeight;
+          const savedDist = Math.max(0, savedDistFromBottomRef.current);
+          container.scrollTo({ top: Math.max(0, Math.min(maxScroll, maxScroll - savedDist)), behavior: 'instant' });
+        }
+      }
+      prevStickyHeightRef.current = stickyHeight;
+      return;
+    }
+    // Non-toggle height change (new content) — use delta compensation
     const container = messagesContainerRef.current;
     if (container) {
       const delta = stickyHeight - prevStickyHeightRef.current;
@@ -385,9 +426,9 @@ function MainChatView({
         const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
         const wasAtBottom = distFromBottom < 150;
         if (wasAtBottom) {
-          container.scrollTop = container.scrollHeight - container.clientHeight;
+          container.scrollTo({ top: container.scrollHeight - container.clientHeight, behavior: 'instant' });
         } else {
-          container.scrollTop += delta;
+          container.scrollTo({ top: container.scrollTop + delta, behavior: 'instant' });
         }
       }
     }
@@ -492,7 +533,7 @@ function MainChatView({
               transition: 'grid-template-rows 200ms ease-out',
             }}
           >
-            <div style={{ overflow: 'hidden' }}>
+            <div className="space-y-2" style={{ overflow: 'hidden' }}>
           {/* Host Messages */}
           {stickyHostMessages.map((message) => (
             <MessageActionsModal
@@ -521,8 +562,7 @@ function MainChatView({
               reactions={messageReactions[message.id] || message.reactions || []}
             >
               <div
-                className={`${currentDesign.stickyHostMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
-                onClick={() => scrollToMessage(message.id)}
+                className={`${currentDesign.stickyHostMessage} w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
@@ -549,12 +589,21 @@ function MainChatView({
                       <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
                       <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                     </div>
-                <span
-                  className="absolute top-3 right-3 text-xs opacity-60"
-                  style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
-                >
-                  {formatTimestamp(message.created_at)}
-                </span>
+                <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+                  <span
+                    className="text-xs opacity-60"
+                    style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
+                  >
+                    {formatTimestamp(message.created_at)}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); scrollToMessage(message.id); }}
+                    className="p-1 rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity"
+                    aria-label="Go to message"
+                  >
+                    <CornerDownRight size={14} style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }} />
+                  </button>
+                </div>
                 {message.voice_url ? (
                   <div className="flex items-center gap-2">
                     <Mic size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
@@ -614,8 +663,7 @@ function MainChatView({
               reactions={messageReactions[stickyPinnedMessage.id] || stickyPinnedMessage.reactions || []}
             >
               <div
-                className={`${currentDesign.stickyPinnedMessage} w-full relative cursor-pointer hover:opacity-90 transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
-                onClick={() => scrollToMessage(stickyPinnedMessage.id)}
+                className={`${currentDesign.stickyPinnedMessage} w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
@@ -648,12 +696,21 @@ function MainChatView({
                     </span>
                   </div>
                 </div>
-                <span
-                  className="absolute top-3 right-3 text-xs opacity-60"
-                  style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
-                >
-                  {formatTimestamp(stickyPinnedMessage.created_at)}
-                </span>
+                <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+                  <span
+                    className="text-xs opacity-60"
+                    style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }}
+                  >
+                    {formatTimestamp(stickyPinnedMessage.created_at)}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); scrollToMessage(stickyPinnedMessage.id); }}
+                    className="p-1 rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity"
+                    aria-label="Go to message"
+                  >
+                    <CornerDownRight size={14} style={{ color: getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff' }} />
+                  </button>
+                </div>
                 {stickyPinnedMessage.voice_url ? (
                   <div className="flex items-center gap-2">
                     <Mic size={16} className={currentDesign.pinnedText} style={{ opacity: 0.7 }} />
