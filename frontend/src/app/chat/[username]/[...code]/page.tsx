@@ -436,6 +436,8 @@ export default function ChatPage() {
 
   // Scroll-to-bottom indicator
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [expandStickySignal, setExpandStickySignal] = useState(0);
+  const headerTouchStartYRef = useRef<number | null>(null);
 
   // Message input state (message text is managed locally in MessageInput component)
   const [sending, setSending] = useState(false);
@@ -2218,7 +2220,22 @@ export default function ChatPage() {
         }}
       >
         {/* Chat Header */}
-        <div data-chat-header className={currentDesign.header}>
+        <div
+          data-chat-header
+          className={currentDesign.header}
+          onTouchStart={(e) => {
+            headerTouchStartYRef.current = e.touches[0].clientY;
+          }}
+          onTouchEnd={(e) => {
+            if (headerTouchStartYRef.current !== null) {
+              const deltaY = e.changedTouches[0].clientY - headerTouchStartYRef.current;
+              if (deltaY > 30) {
+                setExpandStickySignal(s => s + 1);
+              }
+              headerTouchStartYRef.current = null;
+            }
+          }}
+        >
           <div className="flex items-center justify-between gap-3">
             {chatRoom && (
               <>
@@ -2290,6 +2307,7 @@ export default function ChatPage() {
                 onStickyHeightChange={handleStickyHeightChange}
                 showScrollToBottom={showScrollToBottom}
                 onScrollToBottom={handleScrollToBottom}
+                expandStickySignal={expandStickySignal}
               />
             )}
 

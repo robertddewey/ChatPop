@@ -234,6 +234,7 @@ interface MainChatViewProps {
   onStickyHeightChange?: (height: number) => void;
   showScrollToBottom?: boolean;
   onScrollToBottom?: () => void;
+  expandStickySignal?: number;
 }
 
 function MainChatView({
@@ -272,6 +273,7 @@ function MainChatView({
   onStickyHeightChange,
   showScrollToBottom = false,
   onScrollToBottom,
+  expandStickySignal,
 }: MainChatViewProps) {
   // Ref for measuring sticky section height
   const stickySectionRef = useRef<HTMLDivElement>(null);
@@ -280,6 +282,15 @@ function MainChatView({
   const stickyContentKeyRef = useRef<string>('');
   const stickyToggleRef = useRef(false);
   const prevStickyHeightRef = useRef(0);
+  const touchStartYRef = useRef<number | null>(null);
+
+  // Expand sticky section when signaled from parent (e.g. header swipe-down)
+  useEffect(() => {
+    if (expandStickySignal && stickyHidden) {
+      stickyToggleRef.current = true;
+      setStickyHidden(false);
+    }
+  }, [expandStickySignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track viewport height for responsive photo sizing
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -427,9 +438,35 @@ function MainChatView({
     <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-white'}`}>
       {/* Sticky Section: Host + Pinned Messages - Absolutely positioned overlay */}
       {(stickyHostMessages.length > 0 || stickyPinnedMessage) && (
-        <div ref={stickySectionRef} data-sticky-section className={currentDesign.stickySection}>
-          {!stickyHidden && (
-            <>
+        <div
+          ref={stickySectionRef}
+          data-sticky-section
+          className={currentDesign.stickySection}
+          onTouchStart={(e) => {
+            touchStartYRef.current = e.touches[0].clientY;
+          }}
+          onTouchEnd={(e) => {
+            if (touchStartYRef.current !== null) {
+              const deltaY = touchStartYRef.current - e.changedTouches[0].clientY;
+              if (deltaY > 30 && !stickyHidden) {
+                stickyToggleRef.current = true;
+                setStickyHidden(true);
+              } else if (deltaY < -30 && stickyHidden) {
+                stickyToggleRef.current = true;
+                setStickyHidden(false);
+              }
+              touchStartYRef.current = null;
+            }
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateRows: stickyHidden ? '0fr' : '1fr',
+              transition: 'grid-template-rows 200ms ease-out',
+            }}
+          >
+            <div style={{ overflow: 'hidden' }}>
           {/* Host Messages */}
           {stickyHostMessages.map((message) => (
             <MessageActionsModal
@@ -638,8 +675,8 @@ function MainChatView({
               </div>
             </MessageActionsModal>
           )}
-            </>
-          )}
+            </div>
+          </div>
           <button
             onClick={() => {
               stickyToggleRef.current = true;
@@ -647,7 +684,13 @@ function MainChatView({
             }}
             className={`w-full flex items-center justify-center -my-1 transition-opacity`}
           >
-            {stickyHidden ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            <ChevronUp
+              size={14}
+              style={{
+                transition: 'transform 200ms ease-out',
+                transform: stickyHidden ? 'rotate(180deg)' : 'rotate(0deg)',
+              }}
+            />
           </button>
         </div>
       )}
