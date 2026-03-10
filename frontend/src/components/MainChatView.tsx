@@ -566,12 +566,13 @@ function MainChatView({
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
-                  <div className="relative flex-shrink-0">
+                  <div className="relative flex-shrink-0 mt-1.5">
                     <img
                       src={message.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
                       alt={message.username}
                       className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${currentDesign.avatarBorder || ''}`}
                     />
+                    <Crown size={20} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
                     {message.username_is_reserved && (
                       <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
                     )}
@@ -667,12 +668,15 @@ function MainChatView({
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
-                  <div className="relative flex-shrink-0">
+                  <div className="relative flex-shrink-0 mt-1.5">
                     <img
                       src={stickyPinnedMessage.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', stickyPinnedMessage.username, 80)}
                       alt={stickyPinnedMessage.username}
                       className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${currentDesign.avatarBorder || ''}`}
                     />
+                    {stickyPinnedMessage.username.toLowerCase() === chatRoom?.host?.reserved_username?.toLowerCase() && (
+                      <Crown size={20} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
+                    )}
                     {stickyPinnedMessage.username_is_reserved && (
                       <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
                     )}
@@ -918,7 +922,7 @@ function MainChatView({
                         className={`${avatarSize} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${avatarBorder}`}
                       />
                       {isHostMessage && (
-                        <Crown size={20} className="absolute -top-3 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
+                        <Crown size={20} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
                       )}
                       {message.username_is_reserved && (
                         <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
