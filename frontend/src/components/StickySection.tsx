@@ -375,11 +375,11 @@ function StickySection({
               reactions={messageReactions[message.id] || message.reactions || []}
             >
               <div
-                className={`${currentDesign.stickyHostMessage} w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
+                className={`${currentDesign.stickyHostMessage} !py-1.5 w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
-                  <div className="relative flex-shrink-0 mt-1.5">
+                  <div className="relative flex-shrink-0 mt-1">
                     <img
                       src={message.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
                       alt={message.username}
@@ -477,11 +477,11 @@ function StickySection({
               reactions={messageReactions[stickyPinnedMessage.id] || stickyPinnedMessage.reactions || []}
             >
               <div
-                className={`${currentDesign.stickyPinnedMessage} w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
+                className={`${currentDesign.stickyPinnedMessage} !py-1.5 w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
-                  <div className="relative flex-shrink-0 mt-1.5">
+                  <div className="relative flex-shrink-0 mt-0.5">
                     <img
                       src={stickyPinnedMessage.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', stickyPinnedMessage.username, 80)}
                       alt={stickyPinnedMessage.username}
