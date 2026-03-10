@@ -1061,6 +1061,11 @@ function MainChatView({
                               🤗
                             </div>
                           )}
+                          {price && (
+                            <span className={`absolute top-1.5 right-2 text-[8px] font-medium px-1 py-0.5 rounded-full ${
+                              currentDesign.giftStyles?.priceBadge || 'bg-cyan-900/50 text-cyan-400'
+                            }`}>{price}</span>
+                          )}
                           <div className={`text-2xl flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center animate-gift-breath ${
                             currentDesign.giftStyles?.emojiContainer || 'bg-zinc-700/80'
                           }`}>
@@ -1069,11 +1074,6 @@ function MainChatView({
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className={`text-sm font-semibold ${currentDesign.giftStyles?.nameText || 'text-white'}`}>{giftName || message.content}</span>
-                              {price && (
-                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                                  currentDesign.giftStyles?.priceBadge || 'bg-cyan-900/50 text-cyan-400'
-                                }`}>{price}</span>
-                              )}
                             </div>
                             {recipient && (
                               <div className={`text-xs ${currentDesign.giftStyles?.toPrefix || 'text-zinc-400'}`}>
