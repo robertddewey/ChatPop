@@ -420,7 +420,7 @@
     "pk": 106,
     "fields": {
       "key": "USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES",
-      "value": "{\"__type__\": \"default\", \"__value__\": 1}"
+      "value": "{\"__type__\": \"default\", \"__value__\": 5}"
     }
   },
   {

@@ -331,8 +331,8 @@ CONSTANCE_CONFIG = {
         int
     ),
     'USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES': (
-        1,
-        'How long dice-generated usernames are held when an ANONYMOUS user joins a chat. Short TTL (1 min) since users typically click "Start Chatting" immediately after rolling.',
+        5,
+        'How long dice-generated usernames are held when an ANONYMOUS user joins a chat (minutes). Covers time spent browsing avatars and reading the join page.',
         int
     ),
 

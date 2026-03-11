@@ -52,7 +52,7 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None):
     if chat_code is None:
         cache_ttl = int(config.USERNAME_REGISTRATION_HOLD_TTL_MINUTES * 60)  # Registration: 5 min
     else:
-        cache_ttl = int(config.USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES * 60)  # Chat: 1 min
+        cache_ttl = int(config.USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES * 60)  # Chat: 5 min default
 
     # Check current attempt count
     current_attempts = cache.get(attempts_key, 0)

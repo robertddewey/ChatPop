@@ -127,7 +127,7 @@ export default function JoinChatModal({
 
   // Avatar seed browsing state (restore from persisted if available)
   const [avatarSeeds, setAvatarSeeds] = useState<string[]>(
-    persisted.current?.avatarSeeds || [username || currentUserDisplayName || 'anonymous']
+    persisted.current?.avatarSeeds || [`${username || currentUserDisplayName || 'anonymous'}-${chatRoom.code}`]
   );
   const [avatarIndex, setAvatarIndex] = useState(persisted.current?.avatarIndex || 0);
 
