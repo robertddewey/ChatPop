@@ -382,7 +382,7 @@ class Command(BaseCommand):
                 user=host,
                 username=username,
                 content=random.choice(HOST_MESSAGES),
-                message_type=Message.MESSAGE_HOST
+                is_from_host=True
             )
             msg_type = "👑 HOST"
         elif roll < 0.30:
@@ -501,7 +501,7 @@ class Command(BaseCommand):
                 chat_room=chat_room,
                 user=host,
                 username=host_display_name,
-                message_type=Message.MESSAGE_HOST,
+                is_from_host=True,
                 content=content
             )
             messages_created.append(msg)
@@ -596,30 +596,28 @@ class Command(BaseCommand):
         # 6. Mix of messages to simulate a real conversation
         self.stdout.write("\n🔄 Creating mixed conversation...")
         mixed_messages = [
-            (host, "Thanks for joining everyone!", Message.MESSAGE_HOST),
-            (test_users[0], "Happy to be here!", Message.MESSAGE_NORMAL),
+            (host, "Thanks for joining everyone!", True),
+            (test_users[0], "Happy to be here!", False),
             (None, "GuestUser99", "This is awesome!"),
-            (test_users[1], "When's the next event?", Message.MESSAGE_NORMAL),
+            (test_users[1], "When's the next event?", False),
             (None, "EventPlanner", "Next Monday at 5PM!"),
-            (host, "Don't forget to check the schedule!", Message.MESSAGE_HOST),
+            (host, "Don't forget to check the schedule!", True),
         ]
         for item in mixed_messages:
             if item[0] is None:
                 # Anonymous message: (None, username, content)
                 _, anon_username, content = item
-                msg_type = Message.MESSAGE_NORMAL
                 self._ensure_participation(chat_room, anon_username, user=None)
                 msg = Message.objects.create(
                     chat_room=chat_room,
                     user=None,
                     username=anon_username,
                     content=content,
-                    message_type=msg_type
                 )
                 self.stdout.write(self.style.SUCCESS(f"  ✅ {anon_username} (guest): {content}"))
             else:
-                # Logged-in user message: (user, content, msg_type)
-                user_val, content, msg_type = item
+                # Logged-in user message: (user, content, is_host)
+                user_val, content, is_host = item
                 display_username = user_val.get_display_name()
                 self._ensure_participation(chat_room, display_username, user=user_val)
                 msg = Message.objects.create(
@@ -627,9 +625,9 @@ class Command(BaseCommand):
                     user=user_val,
                     username=display_username,
                     content=content,
-                    message_type=msg_type
+                    is_from_host=is_host,
                 )
-                if msg_type == Message.MESSAGE_HOST:
+                if is_host:
                     self.stdout.write(self.style.SUCCESS(f"  ✅ HOST ({display_username}): {content}"))
                 else:
                     self.stdout.write(self.style.SUCCESS(f"  ✅ {display_username}: {content}"))

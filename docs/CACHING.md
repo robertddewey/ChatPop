@@ -274,7 +274,7 @@ Message arrives
   ├─→ msg_data hash     (always — stores full JSON)
   ├─→ timeline          (always — chronological order)
   │
-  ├─→ idx:host          (if message_type == 'host')
+  ├─→ idx:host          (if is_from_host == True)
   │
   ├─→ idx:focus:{sender}    (always — user sees own messages)
   ├─→ idx:focus:{parent}    (if reply — parent author sees replies to them)
@@ -316,7 +316,7 @@ When Redis cache is disabled or on cache miss, `MessageListView._fetch_from_db()
 ```python
 # Focus mode
 queryset.filter(
-    Q(message_type='host') |
+    Q(is_from_host=True) |
     Q(username__iexact=filter_username) |
     Q(reply_to__username__iexact=filter_username)
 )

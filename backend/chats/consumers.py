@@ -329,10 +329,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             except Message.DoesNotExist:
                 pass
 
-        # Determine message type (host messages should be highlighted)
-        message_type = Message.MESSAGE_NORMAL
-        if user and chat_room.host == user:
-            message_type = Message.MESSAGE_HOST
+        # Determine if message is from host
+        is_from_host = bool(user and chat_room.host == user)
 
         # Create message in PostgreSQL
         message = Message.objects.create(
@@ -340,7 +338,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             username=username,
             user=user,
             content=content,
-            message_type=message_type,
+            is_from_host=is_from_host,
             reply_to=reply_to,
             voice_url=voice_url,
             voice_duration=voice_duration,
@@ -398,7 +396,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'id': str(message.reply_to.id),
                 'username': message.reply_to.username,
                 'content': message.reply_to.content[:100],  # Truncate for preview
-                'is_from_host': message.reply_to.user == message.reply_to.chat_room.host if message.reply_to.user else False,
+                'is_from_host': message.reply_to.is_from_host,
                 'username_is_reserved': bool(reply_username_is_reserved),
                 'is_pinned': message.reply_to.is_pinned,
             }
@@ -426,7 +424,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'username_is_reserved': username_is_reserved,
             'user_id': str(message.user.id) if message.user else None,
             'message_type': message.message_type,
-            'is_from_host': message.message_type == 'host',  # Add explicit flag for frontend
+            'is_from_host': message.is_from_host,
             'content': message.content,
             'voice_url': message.voice_url,
             'voice_duration': float(message.voice_duration) if message.voice_duration else None,

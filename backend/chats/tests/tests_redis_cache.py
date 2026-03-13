@@ -478,7 +478,7 @@ class RedisMessageCacheTests(TransactionTestCase):
             username='TestUser',
             user=self.user,
             content='Reply message',
-            message_type=Message.MESSAGE_HOST,
+            is_from_host=True,
             reply_to=reply_to_msg,
             is_pinned=True,
             pinned_at=timezone.now(),
@@ -496,8 +496,8 @@ class RedisMessageCacheTests(TransactionTestCase):
         # Verify all fields
         self.assertEqual(msg_data['username'], 'TestUser')
         self.assertEqual(msg_data['user_id'], str(self.user.id))
-        self.assertEqual(msg_data['message_type'], Message.MESSAGE_HOST)
-        self.assertTrue(msg_data['is_from_host'])  # Computed from message_type
+        self.assertEqual(msg_data['message_type'], Message.MESSAGE_NORMAL)
+        self.assertTrue(msg_data['is_from_host'])
         self.assertEqual(msg_data['reply_to_id'], str(reply_to_msg.id))
         self.assertTrue(msg_data['is_pinned'])
         self.assertIsNotNone(msg_data['pinned_at'])

@@ -236,7 +236,7 @@ class WebSocketSerializationTests(TransactionTestCase):
             content='Test message',
             reply_to=parent_message,
             is_pinned=True,
-            message_type=Message.MESSAGE_HOST
+            is_from_host=True
         )
 
         # Create consumer instance

@@ -207,7 +207,7 @@ export interface Message {
   chat_room: string;
   username: string;
   user: User | null;
-  message_type: 'normal' | 'host' | 'system' | 'gift';
+  message_type: 'normal' | 'system' | 'gift';
   content: string;
   voice_url: string | null;
   voice_duration: number | null;
@@ -334,6 +334,12 @@ export const authApi = {
   },
 };
 
+export interface AnonymousParticipationInfo {
+  username: string;
+  avatar_url: string | null;
+  first_joined_at: string;
+}
+
 export interface ChatParticipation {
   has_joined: boolean;
   username?: string;
@@ -344,6 +350,8 @@ export interface ChatParticipation {
   theme?: ChatTheme | null;
   is_blocked?: boolean;
   seen_intros?: Record<string, boolean>;
+  is_anonymous_identity?: boolean;
+  anonymous_participation?: AnonymousParticipationInfo;
 }
 
 /**

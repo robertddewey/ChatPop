@@ -250,7 +250,8 @@ ChatPop supports a gift system where users can send virtual gifts to each other.
 
 **Message Model** (`models.py`):
 ```python
-message_type = CharField(choices=['normal', 'host', 'gift', ...])
+message_type = CharField(choices=['normal', 'gift', 'system'])
+is_from_host = BooleanField(default=False)  # Decoupled from message_type
 gift_recipient = CharField(max_length=100, null=True, blank=True)  # Denormalized for filter indexing
 is_gift_acknowledged = BooleanField(default=False)  # "Thank you" tracking
 ```

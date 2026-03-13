@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { api, chatApi, messageApi, authApi, backRoomApi, giftApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification } from '@/lib/api';
+import { api, chatApi, messageApi, authApi, backRoomApi, giftApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification, type AnonymousParticipationInfo } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
@@ -430,9 +430,18 @@ export default function ChatPage() {
   const [hasJoinedBefore, setHasJoinedBefore] = useState(false);
   const [joinModalKey, setJoinModalKey] = useState(0); // Force remount on back navigation
   const [isBlocked, setIsBlocked] = useState(false);
+  const [anonymousParticipation, setAnonymousParticipation] = useState<AnonymousParticipationInfo | null>(null);
+  const [registeredDisplayName, setRegisteredDisplayName] = useState(''); // Stable registered username for identity chooser
+  const [registeredAvatarUrl, setRegisteredAvatarUrl] = useState<string | null>(null); // Stable registered avatar for identity chooser
   const [username, setUsername] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [joinError, setJoinError] = useState('');
+
+  // Preview state for identity chooser — keeps source-of-truth untouched
+  const [previewUsername, setPreviewUsername] = useState<string | null>(null);
+  const [previewAvatarUrl, setPreviewAvatarUrl] = useState<string | null | undefined>(undefined);
+  const [previewHasReservedUsername, setPreviewHasReservedUsername] = useState<boolean | null>(null);
+  const [previewIsHost, setPreviewIsHost] = useState<boolean | null>(null);
 
   // Scroll-to-bottom indicator
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -909,22 +918,39 @@ export default function ChatPage() {
         if (currentUser) {
           // Logged-in user
           setCurrentUserId(currentUser.id);
+          setRegisteredDisplayName(currentUser.reserved_username || '');
+          setRegisteredAvatarUrl(`/api/chats/media/avatars/user/${currentUser.id}`);
 
-          if (participation.has_joined && participation.username) {
-            // Returning user - use their locked username
+          // Track anonymous participation for identity chooser
+          if (participation.anonymous_participation) {
+            setAnonymousParticipation(participation.anonymous_participation);
+          }
+
+          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && !participation.anonymous_participation) {
+            // Returning user with registered identity only (no anonymous alt) - use their locked username
             setUsername(participation.username);
             setHasJoinedBefore(true);
             setIsBlocked(participation.is_blocked || false);
             setHasReservedUsername(participation.username_is_reserved || false);
             // Use participation avatar (same source as message avatars)
             setUserAvatarUrl(participation.avatar_url || currentUser.avatar_url || null);
+          } else if (participation.anonymous_participation || participation.is_anonymous_identity) {
+            // Has anonymous participation (with or without registered) — show identity chooser
+            setAnonymousParticipation(participation.anonymous_participation || null);
+            setUsername(currentUser.reserved_username || '');
+            setHasJoinedBefore(false);
+            setIsBlocked(participation.is_blocked || false);
+            setHasReservedUsername(!!currentUser.reserved_username);
+            // Use proxy avatar URL for consistency with other pages
+            setUserAvatarUrl(`/api/chats/media/avatars/user/${currentUser.id}`);
           } else {
             // First-time user - pre-fill with reserved_username
             setUsername(currentUser.reserved_username || '');
             setHasJoinedBefore(false);
             setIsBlocked(false);
             setHasReservedUsername(!!currentUser.reserved_username);
-            setUserAvatarUrl(currentUser.avatar_url || null);
+            // Use proxy avatar URL for consistency with other pages
+            setUserAvatarUrl(`/api/chats/media/avatars/user/${currentUser.id}`);
           }
         } else {
           // Anonymous user
@@ -974,8 +1000,11 @@ export default function ChatPage() {
         try {
           const currentUser = await authApi.getCurrentUser();
           setCurrentUserId(currentUser.id);
+          setRegisteredDisplayName(currentUser.reserved_username || '');
+          setRegisteredAvatarUrl(`/api/chats/media/avatars/user/${currentUser.id}`);
           setHasReservedUsername(!!currentUser.reserved_username);
-          setUserAvatarUrl(currentUser.avatar_url || null);
+          // Use proxy avatar URL for consistency with other pages
+          setUserAvatarUrl(`/api/chats/media/avatars/user/${currentUser.id}`);
 
           // Get fingerprint
           let fpValue: string | undefined;
@@ -994,18 +1023,29 @@ export default function ChatPage() {
             setParticipationTheme(participation.theme);
           }
 
-          if (participation.has_joined && participation.username) {
-            // They already joined - update username and badge
+          // Track anonymous participation for identity chooser
+          if (participation.anonymous_participation) {
+            setAnonymousParticipation(participation.anonymous_participation);
+          }
+
+          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && !participation.anonymous_participation) {
+            // They already joined with registered identity only (no anonymous alt)
             setUsername(participation.username);
             setHasJoinedBefore(true);
             setIsBlocked(participation.is_blocked || false);
             setHasReservedUsername(participation.username_is_reserved || false);
+          } else if (participation.anonymous_participation || participation.is_anonymous_identity) {
+            // Has anonymous participation (with or without registered) — show identity chooser
+            setAnonymousParticipation(participation.anonymous_participation || null);
+            setUsername(currentUser.reserved_username || '');
+            setHasJoinedBefore(false);
+            setIsBlocked(participation.is_blocked || false);
+            setHasReservedUsername(!!currentUser.reserved_username);
           } else {
             // Not joined yet - pre-fill with reserved username
             setUsername(currentUser.reserved_username || '');
             setHasJoinedBefore(false);
             setIsBlocked(false);
-            // Badge shows if they have a reserved username
             setHasReservedUsername(!!currentUser.reserved_username);
           }
 
@@ -1060,9 +1100,15 @@ export default function ChatPage() {
 
       if (hasJoined) {
         setHasJoined(false);
-        setHasJoinedBefore(true);
+        // If user has both identities, show identity chooser again (not "Welcome back")
+        setHasJoinedBefore(anonymousParticipation ? false : true);
         setMessages([]);
         setJoinModalKey(prev => prev + 1);
+        // Reset preview state so source-of-truth values are used
+        setPreviewUsername(null);
+        setPreviewAvatarUrl(undefined);
+        setPreviewHasReservedUsername(null);
+        setPreviewIsHost(null);
         window.history.pushState({ modal: true }, '', window.location.href);
       } else {
         markChatVisited(code);
@@ -1072,7 +1118,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState]);
+  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipation]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -2370,14 +2416,22 @@ export default function ChatPage() {
                 <JoinChatModal
                   key={joinModalKey}
                   chatRoom={chatRoom}
-                  currentUserDisplayName={username}
+                  currentUserDisplayName={registeredDisplayName || username}
                   hasJoinedBefore={hasJoinedBefore}
                   isBlocked={isBlocked}
                   isLoggedIn={!!currentUserId}
                   hasReservedUsername={hasReservedUsername}
                   themeIsDarkMode={themeIsDarkMode}
                   userAvatarUrl={userAvatarUrl}
+                  anonymousParticipation={anonymousParticipation}
+                  registeredAvatarUrl={registeredAvatarUrl}
                   onAvatarChange={setUserAvatarUrl}
+                  onIdentityChange={(identity) => {
+                    setPreviewUsername(identity.username);
+                    setPreviewAvatarUrl(identity.avatarUrl);
+                    setPreviewHasReservedUsername(identity.hasReservedUsername);
+                    setPreviewIsHost(identity.hasReservedUsername ? isHost : false);
+                  }}
                   onJoin={handleJoinChat}
                   onLogin={() => openAuth('login')}
                   onSignup={() => openAuth('signup')}
@@ -2517,12 +2571,12 @@ export default function ChatPage() {
         <div className="relative">
           <MessageInput
             chatRoom={chatRoom}
-            isHost={isHost}
+            isHost={previewIsHost ?? isHost}
             hasJoined={hasJoined}
             sending={sending}
-            username={username}
-            avatarUrl={userAvatarUrl}
-            hasReservedUsername={hasReservedUsername}
+            username={previewUsername ?? username}
+            avatarUrl={previewAvatarUrl !== undefined ? previewAvatarUrl : userAvatarUrl}
+            hasReservedUsername={previewHasReservedUsername ?? hasReservedUsername}
             replyingTo={replyingTo}
             onCancelReply={handleCancelReply}
             onSubmitText={handleSubmitText}

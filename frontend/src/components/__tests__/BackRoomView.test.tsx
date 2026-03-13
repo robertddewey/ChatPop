@@ -89,7 +89,7 @@ describe('BackRoomView', () => {
       chat_room: 'chat-1',
       username: 'Host User',
       user: mockHost,
-      message_type: 'host',
+      message_type: 'normal',
       content: 'Test message 2',
       reply_to: null,
       reply_to_message: null,

@@ -236,7 +236,7 @@ class Command(BaseCommand):
 
                 # Add badges
                 badges = []
-                if msg['message_type'] == 'host':
+                if msg.get('is_from_host'):
                     badges.append('HOST 👑')
                 if msg.get('username_is_reserved'):
                     badges.append('VERIFIED ✓')

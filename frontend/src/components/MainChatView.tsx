@@ -491,9 +491,8 @@ function MainChatView({
           </div>
         )}
         {(hasJoined || filteredMessages.length > 0) && (() => {
-          // Helper: treat any message from the host user as a host message
-          const hostUsername = chatRoom?.host?.reserved_username?.toLowerCase();
-          const isMsgFromHost = (msg: Message) => msg.is_from_host || (!!hostUsername && msg.username.toLowerCase() === hostUsername);
+          // Helper: check if message is from host (trust backend flag as single source of truth)
+          const isMsgFromHost = (msg: Message) => msg.is_from_host;
           // Pre-compute thread groups for continuous thread lines
           const THREAD_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
           type ThreadGroup = { messages: { message: Message; index: number }[] };

@@ -121,7 +121,7 @@ class MessageCache:
                 "username": message.reply_to.username,
                 "content": message.reply_to.content[:100] if message.reply_to.content else "",
                 "message_type": message.reply_to.message_type,
-                "is_from_host": message.reply_to.message_type == "host",
+                "is_from_host": message.reply_to.is_from_host,
                 "username_is_reserved": reply_username_is_reserved,
                 "is_pinned": message.reply_to.is_pinned,
             }
@@ -137,7 +137,7 @@ class MessageCache:
             "username_is_reserved": username_is_reserved,
             "user_id": str(message.user.id) if message.user else None,
             "message_type": message.message_type,
-            "is_from_host": message.message_type == "host",
+            "is_from_host": message.is_from_host,
             "content": message.content,
             "voice_url": message.voice_url,
             "voice_duration": message.voice_duration,
@@ -225,7 +225,7 @@ class MessageCache:
             sender_username = message.username.lower()
 
             # Host index
-            if message.message_type == 'host':
+            if message.is_from_host:
                 host_key = cls.HOST_INDEX_KEY.format(room_id=room_id)
                 pipe.zadd(host_key, {message_id: score})
                 pipe.expire(host_key, ttl_seconds)
@@ -245,7 +245,7 @@ class MessageCache:
 
                     # If host replied to someone, also add the PARENT message to that user's focus
                     # so they see the context of what the host replied to
-                    if message.message_type == 'host':
+                    if message.is_from_host:
                         parent_msg_id = str(message.reply_to.id)
                         parent_score = message.reply_to.created_at.timestamp()
                         pipe.zadd(parent_focus_key, {parent_msg_id: parent_score})

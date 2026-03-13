@@ -274,12 +274,10 @@ class ChatRoom(models.Model):
 class Message(models.Model):
     """Chat message model"""
     MESSAGE_NORMAL = 'normal'
-    MESSAGE_HOST = 'host'
     MESSAGE_SYSTEM = 'system'
     MESSAGE_GIFT = 'gift'
     MESSAGE_TYPES = [
         (MESSAGE_NORMAL, 'Normal'),
-        (MESSAGE_HOST, 'Host Message'),
         (MESSAGE_SYSTEM, 'System Message'),
         (MESSAGE_GIFT, 'Gift Message'),
     ]
@@ -296,6 +294,7 @@ class Message(models.Model):
 
     # Message content
     message_type = models.CharField(max_length=10, choices=MESSAGE_TYPES, default=MESSAGE_NORMAL)
+    is_from_host = models.BooleanField(default=False, help_text="Whether this message was sent by the chat room host (using registered identity)")
     content = models.TextField()
     voice_url = models.URLField(max_length=500, blank=True, null=True, help_text="URL to voice message audio file")
     voice_duration = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True, help_text="Duration of voice message in seconds")

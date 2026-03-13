@@ -171,7 +171,7 @@ class Command(BaseCommand):
             user=user1,
             defaults={
                 'content': 'Welcome everyone! Today we\'re discussing the latest in web development.',
-                'message_type': Message.MESSAGE_HOST,
+                'is_from_host': True,
             }
         )
         if created:

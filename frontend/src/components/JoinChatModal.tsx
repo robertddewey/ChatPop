@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { BadgeCheck, ChevronDown, ChevronLeft, ChevronRight, Dices, RotateCcw } from 'lucide-react';
-import type { ChatRoom } from '@/lib/api';
+import type { ChatRoom, AnonymousParticipationInfo } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
 import { getFingerprint } from '@/lib/usernameStorage';
@@ -19,7 +19,10 @@ interface JoinChatModalProps {
   hasReservedUsername?: boolean;
   themeIsDarkMode?: boolean;
   userAvatarUrl?: string | null;
+  anonymousParticipation?: AnonymousParticipationInfo | null;
+  registeredAvatarUrl?: string | null;
   onAvatarChange?: (avatarUrl: string) => void;
+  onIdentityChange?: (identity: { username: string; avatarUrl: string | null; hasReservedUsername: boolean }) => void;
   onJoin: (username: string, accessCode?: string, avatarSeed?: string) => void;
   onLogin?: () => void;
   onSignup?: () => void;
@@ -34,6 +37,9 @@ export default function JoinChatModal({
   themeIsDarkMode = true,
   userAvatarUrl,
   onAvatarChange,
+  anonymousParticipation,
+  registeredAvatarUrl,
+  onIdentityChange,
   onJoin,
   onLogin,
   onSignup,
@@ -89,6 +95,36 @@ export default function JoinChatModal({
   const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>(persisted.current?.usernameSource || 'manual');
   const [diceUsername, setDiceUsername] = useState<string | null>(persisted.current?.diceUsername || null);
   const [isReturningUser, setIsReturningUser] = useState(false);
+  // Identity chooser state (when logged-in user has prior anonymous participation)
+  const showIdentityChooser = isLoggedIn && !!anonymousParticipation && !hasJoinedBefore;
+  const [selectedIdentity, setSelectedIdentity] = useState<'registered' | 'anonymous'>('registered');
+  // Notify parent when identity selection changes (updates MessageInput avatar/badge)
+  // Skip the initial render — only fire when user actively toggles identity
+  const identityInitialized = useRef(false);
+  useEffect(() => {
+    if (!showIdentityChooser || !onIdentityChange) {
+      identityInitialized.current = false;
+      return;
+    }
+    if (!identityInitialized.current) {
+      identityInitialized.current = true;
+      return;
+    }
+    if (selectedIdentity === 'anonymous') {
+      onIdentityChange({
+        username: anonymousParticipation!.username,
+        avatarUrl: anonymousParticipation!.avatar_url,
+        hasReservedUsername: false,
+      });
+    } else {
+      onIdentityChange({
+        username: currentUserDisplayName,
+        avatarUrl: registeredAvatarUrl || userAvatarUrl || null,
+        hasReservedUsername: hasReservedUsername,
+      });
+    }
+  }, [selectedIdentity, showIdentityChooser]);
+
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const drawerScrollRef = useRef<HTMLDivElement>(null);
   const [showScrollHint, setShowScrollHint] = useState(false);
@@ -131,8 +167,8 @@ export default function JoinChatModal({
   );
   const [avatarIndex, setAvatarIndex] = useState(persisted.current?.avatarIndex || 0);
 
-  // Whether to show avatar chevrons (only for first-time users)
-  const showAvatarChevrons = !hasJoinedBefore && !isReturningUser;
+  // Whether to show avatar chevrons (only for first-time users, not identity chooser)
+  const showAvatarChevrons = !hasJoinedBefore && !isReturningUser && !showIdentityChooser;
 
   // Get the current avatar URL
   const getCurrentAvatarUrl = (): string => {
@@ -256,8 +292,10 @@ export default function JoinChatModal({
     // Also initialize AudioContext for future sounds
     await initAudioContext();
 
-    // Use placeholder (reserved username) if no username entered
-    const finalUsername = username.trim() || currentUserDisplayName || '';
+    // Identity chooser: use the selected identity's username
+    const finalUsername = showIdentityChooser && selectedIdentity === 'anonymous'
+      ? anonymousParticipation!.username
+      : (username.trim() || currentUserDisplayName || '');
 
     // Validate username format
     const validation = validateUsername(finalUsername);
@@ -381,6 +419,8 @@ export default function JoinChatModal({
   // Determine the title text
   const titleContent = hasJoinedBefore || isReturningUser ? (
     'Welcome back!'
+  ) : showIdentityChooser ? (
+    'Welcome back!'
   ) : isLoggedIn ? (
     <>
       <span>Come join us,</span>
@@ -410,8 +450,8 @@ export default function JoinChatModal({
         )}
       </div>
 
-      {/* Avatar Preview */}
-      <div className="flex items-center justify-center gap-3 mb-6">
+      {/* Avatar Preview (hidden when identity chooser is shown — cards have their own avatars) */}
+      {!showIdentityChooser && <div className="flex items-center justify-center gap-3 mb-6">
         {showAvatarChevrons && (
           <button
             type="button"
@@ -439,12 +479,83 @@ export default function JoinChatModal({
             <ChevronRight size={24} />
           </button>
         )}
-      </div>
+      </div>}
 
       {/* Form */}
       <form onSubmit={handleJoin} className="space-y-4">
-        {/* Username Display or Input */}
-        {hasJoinedBefore ? (
+        {/* Identity Chooser — logged-in user with prior anonymous participation */}
+        {showIdentityChooser ? (
+          <div className="space-y-3">
+            <p className={`text-sm text-center ${modalStyles.subtitle} mb-1`}>
+              Choose how to join this chat:
+            </p>
+
+            {/* Anonymous identity card */}
+            <button
+              type="button"
+              onClick={() => setSelectedIdentity('anonymous')}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
+                selectedIdentity === 'anonymous'
+                  ? 'border-cyan-500 bg-cyan-500/10'
+                  : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-500'
+              }`}
+            >
+              <img
+                src={anonymousParticipation!.avatar_url || ''}
+                alt="Anonymous avatar"
+                className="w-12 h-12 rounded-full bg-zinc-700 flex-shrink-0"
+              />
+              <div className="text-left min-w-0">
+                <p className={`font-semibold ${modalStyles.title} truncate`}>
+                  {anonymousParticipation!.username}
+                </p>
+                <p className={`text-xs ${modalStyles.subtitle}`}>
+                  Continue as guest
+                </p>
+              </div>
+              {selectedIdentity === 'anonymous' && (
+                <div className="ml-auto flex-shrink-0 w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center">
+                  <div className="w-2 h-2 rounded-full bg-white" />
+                </div>
+              )}
+            </button>
+
+            {/* Registered identity card */}
+            <button
+              type="button"
+              onClick={() => setSelectedIdentity('registered')}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
+                selectedIdentity === 'registered'
+                  ? 'border-cyan-500 bg-cyan-500/10'
+                  : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-500'
+              }`}
+            >
+              <img
+                src={registeredAvatarUrl || userAvatarUrl || ''}
+                alt="Registered avatar"
+                className="w-12 h-12 rounded-full bg-zinc-700 flex-shrink-0"
+              />
+              <div className="text-left min-w-0">
+                <div className="flex items-center gap-1">
+                  <p className={`font-semibold ${modalStyles.title} truncate`}>
+                    {currentUserDisplayName}
+                  </p>
+                  {hasReservedUsername && (
+                    <BadgeCheck className="text-blue-500 flex-shrink-0" size={16} />
+                  )}
+                </div>
+                <p className={`text-xs ${modalStyles.subtitle}`}>
+                  Join with your account
+                </p>
+              </div>
+              {selectedIdentity === 'registered' && (
+                <div className="ml-auto flex-shrink-0 w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center">
+                  <div className="w-2 h-2 rounded-full bg-white" />
+                </div>
+              )}
+            </button>
+          </div>
+        ) : hasJoinedBefore ? (
           // Returning user (logged-in or anonymous) - show locked username
           <div className="text-center mb-8">
             <div className="flex items-center justify-center gap-1">

@@ -307,7 +307,6 @@ class ChatRoomJoinSerializer(serializers.Serializer):
 class MessageSerializer(serializers.ModelSerializer):
     """Serializer for Message model"""
     user = UserSerializer(read_only=True)
-    is_from_host = serializers.SerializerMethodField()
     username_is_reserved = serializers.SerializerMethodField()
     time_until_unpin = serializers.SerializerMethodField()
     reply_to_message = serializers.SerializerMethodField()
@@ -332,9 +331,6 @@ class MessageSerializer(serializers.ModelSerializer):
             'video_url', 'video_duration', 'video_thumbnail_url', 'video_width', 'video_height',
             'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount', 'created_at', 'is_deleted'
         ]
-
-    def get_is_from_host(self, obj):
-        return obj.user == obj.chat_room.host if obj.user else False
 
     def get_username_is_reserved(self, obj):
         """Check if username matches user's reserved_username"""
@@ -363,7 +359,7 @@ class MessageSerializer(serializers.ModelSerializer):
                 'username': obj.reply_to.username,
                 'content': obj.reply_to.content[:100],  # Truncate for preview
                 'message_type': obj.reply_to.message_type,
-                'is_from_host': obj.reply_to.user == obj.reply_to.chat_room.host if obj.reply_to.user else False,
+                'is_from_host': obj.reply_to.is_from_host,
                 'username_is_reserved': bool(reply_username_is_reserved),
                 'is_pinned': obj.reply_to.is_pinned,
             }
@@ -429,9 +425,9 @@ class MessageCreateSerializer(serializers.ModelSerializer):
         # Link to user if authenticated
         if request and request.user.is_authenticated:
             validated_data['user'] = request.user
-            # If user is host, mark as host message
+            # If user is host, mark message as from host
             if request.user == chat_room.host:
-                validated_data['message_type'] = Message.MESSAGE_HOST
+                validated_data['is_from_host'] = True
 
         return super().create(validated_data)
 

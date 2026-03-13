@@ -350,8 +350,18 @@ class ChatRoomJoinView(APIView):
                 )
 
                 if not is_own_reserved:
-                    # Not their reserved username - must be a generated username
+                    # Check if username belongs to their anonymous participation (same fingerprint)
+                    anonymous_self = None
                     if fingerprint:
+                        anonymous_self = ChatParticipation.objects.filter(
+                            chat_room=chat_room, fingerprint=fingerprint,
+                            user__isnull=True, username__iexact=username
+                        ).first()
+
+                    if anonymous_self:
+                        pass  # Allowed — reclaiming own anonymous identity
+                    elif fingerprint:
+                        # Not their reserved username and not reclaiming anonymous - must be generated
                         generated_key = f"username:generated_for_fingerprint:{fingerprint}"
                         generated_usernames = cache.get(generated_key, set())
                         generated_usernames_lower = {u.lower() for u in generated_usernames}
@@ -464,11 +474,17 @@ class ChatRoomJoinView(APIView):
             ).first()
             if existing_participation:
                 # User already joined - they must use the same username
+                # UNLESS they're switching to their own anonymous identity (same fingerprint)
                 if existing_participation.username != username:
-                    raise ValidationError(
-                        f"You have already joined this chat as '{existing_participation.username}'. "
-                        f"You cannot change your username in this chat."
-                    )
+                    is_own_anonymous = fingerprint and ChatParticipation.objects.filter(
+                        chat_room=chat_room, fingerprint=fingerprint,
+                        user__isnull=True, username__iexact=username
+                    ).exists()
+                    if not is_own_anonymous:
+                        raise ValidationError(
+                            f"You previously joined as \"{existing_participation.username}\". "
+                            f"Please use that username to rejoin."
+                        )
         elif fingerprint:
             # Check if this fingerprint already joined this chat
             existing_participation = ChatParticipation.objects.filter(
@@ -490,10 +506,14 @@ class ChatRoomJoinView(APIView):
         # Usernames must be unique per chat room regardless of authentication status
         if request.user.is_authenticated:
             # Registered user: check for ANY other participant (registered or anonymous)
-            username_taken = ChatParticipation.objects.filter(
+            # Also exclude their own anonymous participation (same fingerprint)
+            qs = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 username__iexact=username,
-            ).exclude(user=request.user).exists()
+            ).exclude(user=request.user)
+            if fingerprint:
+                qs = qs.exclude(fingerprint=fingerprint, user__isnull=True)
+            username_taken = qs.exists()
         else:
             # Anonymous user: check for ANY other participant (registered or anonymous)
             username_taken = ChatParticipation.objects.filter(
@@ -504,27 +524,46 @@ class ChatRoomJoinView(APIView):
         if username_taken:
             raise ValidationError(f"Username '{username}' is already in use in this chat")
 
+        # Track whether user is joining with their anonymous identity
+        is_anonymous_identity = False
+
         # Create or update ChatParticipation
         if request.user.is_authenticated:
-            # Logged-in user - find/create by user_id
-            participation, created = ChatParticipation.objects.get_or_create(
-                chat_room=chat_room,
-                user=request.user,
-                defaults={
-                    'username': username,
-                    'fingerprint': fingerprint,
-                    'ip_address': ip_address,
-                }
-            )
-            if not created:
-                # Update last_seen and fingerprint (in case they switched devices)
-                participation.fingerprint = fingerprint
+            # Check if reclaiming anonymous identity (same fingerprint, same username)
+            anonymous_self = None
+            if fingerprint:
+                anonymous_self = ChatParticipation.objects.filter(
+                    chat_room=chat_room, fingerprint=fingerprint,
+                    user__isnull=True, username__iexact=username
+                ).first()
+
+            if anonymous_self:
+                # Reuse anonymous participation (soft-linking: don't set .user to preserve anonymous identity)
+                is_anonymous_identity = True
+                participation = anonymous_self
                 participation.ip_address = ip_address
                 participation.save()
+                created = False
+            else:
+                # Logged-in user - find/create by user_id
+                participation, created = ChatParticipation.objects.get_or_create(
+                    chat_room=chat_room,
+                    user=request.user,
+                    defaults={
+                        'username': username,
+                        'fingerprint': fingerprint,
+                        'ip_address': ip_address,
+                    }
+                )
+                if not created:
+                    # Update last_seen and fingerprint (in case they switched devices)
+                    participation.fingerprint = fingerprint
+                    participation.ip_address = ip_address
+                    participation.save()
 
-            # Generate avatar at join time for logged-in users
-            if created:
-                self._generate_avatar_for_participation(participation, chat_room, request.user, avatar_seed=avatar_seed)
+                # Generate avatar at join time for logged-in users
+                if created:
+                    self._generate_avatar_for_participation(participation, chat_room, request.user, avatar_seed=avatar_seed)
         elif fingerprint:
             # Anonymous user - find/create by fingerprint
             participation, created = ChatParticipation.objects.get_or_create(
@@ -546,10 +585,13 @@ class ChatRoomJoinView(APIView):
                 self._generate_avatar_for_participation(participation, chat_room, avatar_seed=avatar_seed)
 
         # Create JWT session token
+        # If user is joining with anonymous identity, exclude user_id from token
+        # to prevent anonymous messages from being marked as host messages
+        token_user_id = None if is_anonymous_identity else user_id
         session_token = ChatSessionValidator.create_session_token(
             chat_code=code,
             username=username,
-            user_id=user_id,
+            user_id=token_user_id,
             fingerprint=fingerprint  # Include fingerprint for ban enforcement
         )
 
@@ -808,7 +850,7 @@ class MessageListView(APIView):
             from django.db.models import Q
             if filter_mode == 'focus':
                 queryset = queryset.filter(
-                    Q(message_type='host') |
+                    Q(is_from_host=True) |
                     Q(username__iexact=filter_username) |
                     Q(reply_to__username__iexact=filter_username)
                 )
@@ -892,7 +934,7 @@ class MessageListView(APIView):
                     'id': str(msg.reply_to.id),
                     'username': msg.reply_to.username,
                     'content': msg.reply_to.content[:100] if msg.reply_to.content else "",
-                    'is_from_host': msg.reply_to.message_type == "host",
+                    'is_from_host': msg.reply_to.is_from_host,
                 }
 
             # Get cached reactions (or fallback to database if cache miss)
@@ -939,7 +981,7 @@ class MessageListView(APIView):
                 'username_is_reserved': username_is_reserved,
                 'user_id': msg.user.id if msg.user else None,
                 'message_type': msg.message_type,
-                'is_from_host': msg.message_type == "host",
+                'is_from_host': msg.is_from_host,
                 'content': msg.content,
                 'voice_url': voice_url,
                 'voice_duration': float(msg.voice_duration) if msg.voice_duration else None,
@@ -1513,6 +1555,7 @@ class MyParticipationView(APIView):
         fingerprint = request.query_params.get('fingerprint')
 
         participation = None
+        anonymous_participation = None
 
         # Dual sessions: Priority 1 - logged-in user participation
         if request.user.is_authenticated:
@@ -1522,7 +1565,13 @@ class MyParticipationView(APIView):
                 chat_room=chat_room,
                 user=request.user
             ).first()
-            # Don't fallback to anonymous if logged in
+            # Also check for anonymous participation by fingerprint
+            if fingerprint:
+                anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
+                    chat_room=chat_room,
+                    fingerprint=fingerprint,
+                    user__isnull=True
+                ).first()
         # Priority 2 - Anonymous user (fingerprint-based)
         elif fingerprint:
             # Find participation REGARDLESS of is_active status
@@ -1568,7 +1617,7 @@ class MyParticipationView(APIView):
             else:
                 seen_intros = participation.seen_intros or {}
 
-            return Response({
+            response_data = {
                 'has_joined': True,
                 'username': participation.username,
                 'username_is_reserved': username_is_reserved,
@@ -1578,6 +1627,53 @@ class MyParticipationView(APIView):
                 'theme': theme_data,
                 'is_blocked': is_blocked,
                 'seen_intros': seen_intros
+            }
+
+            # Include anonymous participation info if both exist (for identity chooser)
+            if anonymous_participation and anonymous_participation != participation:
+                response_data['anonymous_participation'] = {
+                    'username': anonymous_participation.username,
+                    'avatar_url': anonymous_participation.avatar_url,
+                    'first_joined_at': anonymous_participation.first_joined_at,
+                }
+
+            return Response(response_data)
+
+        # Authenticated user with only anonymous participation (logged in after joining anonymously)
+        if anonymous_participation:
+            # Check if user is blocked
+            from .utils.security.blocking import check_if_blocked
+            is_blocked, _ = check_if_blocked(
+                chat_room=chat_room,
+                username=anonymous_participation.username,
+                fingerprint=fingerprint,
+                user=request.user
+            )
+
+            # Serialize theme if present
+            theme_data = None
+            if anonymous_participation.theme:
+                from .serializers import ChatThemeSerializer
+                theme_data = ChatThemeSerializer(anonymous_participation.theme).data
+
+            seen_intros = request.user.seen_intros or {}
+
+            return Response({
+                'has_joined': True,
+                'is_anonymous_identity': True,
+                'username': anonymous_participation.username,
+                'username_is_reserved': False,
+                'avatar_url': anonymous_participation.avatar_url,
+                'first_joined_at': anonymous_participation.first_joined_at,
+                'last_seen_at': anonymous_participation.last_seen_at,
+                'theme': theme_data,
+                'is_blocked': is_blocked,
+                'seen_intros': seen_intros,
+                'anonymous_participation': {
+                    'username': anonymous_participation.username,
+                    'avatar_url': anonymous_participation.avatar_url,
+                    'first_joined_at': anonymous_participation.first_joined_at,
+                }
             })
 
         # No participation found - check if first-time visitor is blocked
@@ -4413,6 +4509,7 @@ class SendGiftView(APIView):
             user=sender_user,
             content=message_content,
             message_type=Message.MESSAGE_GIFT,
+            is_from_host=bool(sender_user and chat_room.host == sender_user),
             gift_recipient=recipient_username,
         )
 
