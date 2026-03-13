@@ -385,7 +385,7 @@ function StickySection({
                       alt={message.username}
                       className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${currentDesign.avatarBorder || ''}`}
                     />
-                    <Crown size={20} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
+                    <Crown size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
                     {message.username_is_reserved && (
                       <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
                     )}
@@ -439,7 +439,19 @@ function StickySection({
                       Video{message.content ? `: ${message.content}` : message.video_duration ? ` (${Math.floor(message.video_duration / 60)}:${String(Math.floor(message.video_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
-                ) : (
+                ) : message.message_type === 'gift' ? (() => {
+                  const m = message.content.match(/sent\s+(\S+)\s+(.+?)\s+\(\$[\d,.]+\)\s+to\s+@(\S+)/);
+                  const emoji = m ? m[1] : '🎁';
+                  const recipient = m ? m[3] : '';
+                  return (
+                    <div className="flex items-center gap-1.5 text-sm">
+                      <span className={`${currentDesign.hostText} truncate`}>
+                        sent {emoji} to <span className="font-semibold">@{recipient}</span>
+                        {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
+                      </span>
+                    </div>
+                  );
+                })() : (
                   <p className={`text-sm ${currentDesign.hostText} truncate`}>
                     {message.content}
                   </p>
@@ -488,7 +500,7 @@ function StickySection({
                       className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${currentDesign.avatarBorder || ''}`}
                     />
                     {stickyPinnedMessage.username.toLowerCase() === chatRoom?.host?.reserved_username?.toLowerCase() && (
-                      <Crown size={20} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
+                      <Crown size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
                     )}
                     {stickyPinnedMessage.username_is_reserved && (
                       <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
@@ -552,17 +564,13 @@ function StickySection({
                 ) : stickyPinnedMessage.message_type === 'gift' ? (() => {
                   const m = stickyPinnedMessage.content.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
                   const emoji = m ? m[1] : '🎁';
-                  const name = m ? m[2] : '';
-                  const price = m ? m[3] : '';
                   const recipient = m ? m[4] : '';
                   return (
                     <div className="flex items-center gap-1.5 text-sm">
-                      <span className="flex-shrink-0">{emoji}</span>
                       <span className={`${currentDesign.pinnedText} truncate`}>
-                        sent <span className="font-semibold">{name}</span> to <span className="font-semibold">@{recipient}</span>
+                        sent {emoji} to <span className="font-semibold">@{recipient}</span>
                         {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
                       </span>
-                      <span className={`font-semibold flex-shrink-0 ${currentDesign.giftStyles?.priceText || 'text-cyan-400'}`}>{price}</span>
                     </div>
                   );
                 })() : (

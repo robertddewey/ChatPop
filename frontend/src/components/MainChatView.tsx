@@ -575,7 +575,7 @@ function MainChatView({
                         className={`${avatarSize} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${avatarBorder}`}
                       />
                       {isHostMessage && (
-                        <Crown size={20} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
+                        <Crown size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
                       )}
                       {message.username_is_reserved && (
                         <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
@@ -723,17 +723,17 @@ function MainChatView({
                               currentDesign.giftStyles?.priceBadge || 'bg-cyan-900/50 text-cyan-400'
                             }`}>{price}</span>
                           )}
-                          <div className={`text-2xl flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center animate-gift-breath ${
+                          <div className={`text-3xl flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center animate-gift-breath ${
                             currentDesign.giftStyles?.emojiContainer || 'bg-zinc-700/80'
                           }`}>
                             {emoji}
                           </div>
-                          <div className="min-w-0">
+                          <div className="min-w-0 -mt-0.5">
                             <div className="flex items-center gap-1.5">
-                              <span className={`text-sm font-semibold ${currentDesign.giftStyles?.nameText || 'text-white'}`}>{giftName || message.content}</span>
+                              <span className={`text-base font-semibold leading-tight ${currentDesign.giftStyles?.nameText || 'text-white'}`}>{giftName || message.content}</span>
                             </div>
                             {recipient && (
-                              <div className={`text-xs ${currentDesign.giftStyles?.toPrefix || 'text-zinc-400'}`}>
+                              <div className={`text-xs mt-0.5 ${currentDesign.giftStyles?.toPrefix || 'text-zinc-400'}`}>
                                 to <span className={`font-semibold ${
                                   isForMe
                                     ? (currentDesign.giftStyles?.recipientTextForMe || 'text-purple-400')
@@ -813,14 +813,11 @@ function MainChatView({
                           if (isGift) {
                             const m = c.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
                             const emoji = m ? m[1] : '🎁';
-                            const name = m ? m[2] : '';
-                            const price = m ? m[3] : '';
                             const recipient = m ? m[4] : '';
                             return (
                               <div className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 mt-1 text-xs ${currentDesign.uiStyles?.replyGiftBadge || 'bg-zinc-700/60 border border-zinc-600/50'}`}>
-                                <span className="text-sm flex-shrink-0">{emoji}</span>
                                 <span className={currentDesign.uiStyles?.replyGiftText || 'text-zinc-300'}>
-                                  sent to <span className="font-semibold">@{recipient}</span>
+                                  sent {emoji} to <span className="font-semibold">@{recipient}</span>
                                   {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
                                 </span>
                               </div>
