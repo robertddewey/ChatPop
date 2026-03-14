@@ -52,12 +52,12 @@ export default function VoiceMessagePlayer({
   captionClassName = '',
   className = '',
   isMyMessage = false,
-  voiceContainerBg = 'bg-white/20',
+  voiceContainerBg = 'bg-white/10',
   voicePlayButton = 'bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600',
   voicePlayIconColor = 'white',
   voiceWaveformActive = 'bg-gradient-to-t from-purple-500 to-blue-500',
-  voiceWaveformInactive = 'bg-gray-400 dark:bg-gray-500',
-  durationTextColor = 'text-gray-500 dark:text-gray-400'
+  voiceWaveformInactive = 'bg-purple-500/30',
+  durationTextColor = 'text-white/80'
 }: VoiceMessagePlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);

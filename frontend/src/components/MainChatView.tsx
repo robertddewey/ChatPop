@@ -1,5 +1,11 @@
 'use client';
 
+// Tailwind safelist: dynamic theme classes from database that must be generated
+// bg-[#1f1f23] border-[#1f1f23] bg-zinc-800/40 border-zinc-800/40 border-transparent
+// bg-purple-900 border-purple-500/40 bg-purple-500/30
+// bg-gradient-to-t from-purple-500 to-blue-500
+// bg-zinc-900/95 bg-zinc-900/90
+
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
 import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
@@ -401,7 +407,7 @@ function MainChatView({
   }, [filteredMessages]);
 
   return (
-    <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-white'}`}>
+    <div className={`h-full overflow-hidden relative ${currentDesign.messagesAreaContainer || 'bg-zinc-900'}`}>
       {/* Sticky Section: Host + Pinned Messages - Extracted component for Android perf */}
       <StickySection
         stickyHostMessages={stickyHostMessages}

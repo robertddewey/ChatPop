@@ -76,12 +76,8 @@ export default function ReactionBar({ reactions, onReactionClick, highlightTheme
           <button
             key={reaction.emoji}
             onClick={() => handleClick(reaction.emoji)}
-            className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 shadow-lg flex-shrink-0 ${
+            className={`flex items-center gap-0.5 px-0.5 flex-shrink-0 ${
               isAnimating ? 'scale-110' : 'scale-100'
-            } ${
-              hasReacted
-                ? `${highlightBg} ${highlightBorder}`
-                : pillBg
             }`}
             style={{
               transition: 'transform 0.15s ease-out, background-color 0.2s, border-color 0.2s',
