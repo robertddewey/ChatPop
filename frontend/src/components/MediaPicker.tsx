@@ -306,7 +306,7 @@ export default function MediaPicker({
         <button
           type="button"
           onClick={() => photoInputRef.current?.click()}
-          disabled={disabled}
+          disabled={disabled || mediaState !== 'idle'}
           className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           title="Take or select photo"
         >
@@ -317,7 +317,7 @@ export default function MediaPicker({
         <button
           type="button"
           onClick={() => videoInputRef.current?.click()}
-          disabled={disabled}
+          disabled={disabled || mediaState !== 'idle'}
           className="p-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           title="Record or select video"
         >

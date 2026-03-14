@@ -1,3 +1,8 @@
+System check identified some issues:
+
+WARNINGS:
+?: (staticfiles.W004) The directory '/Users/robertdewey/GitProjects/ChatPop/backend/static' in the STATICFILES_DIRS setting does not exist.
+[info] Loaded allowlists: 7142 tokens, 16 substrings
 [
 {
   "model": "chats.chattheme",
@@ -21,7 +26,7 @@
     "sticky_host_message": "w-full rounded-xl px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-zinc-800 font-medium transition-all duration-300",
     "host_text": "text-sm text-white",
     "host_message_fade": "bg-gradient-to-l from-teal-600 to-transparent",
-    "pinned_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded pb-1",
+    "pinned_message": "max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-3 py-2 pb-1 bg-purple-900 border border-purple-500/40",
     "sticky_pinned_message": "w-full rounded-xl px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-purple-900 border border-purple-500/40 shadow-md",
     "pinned_text": "text-sm text-white",
     "pinned_message_fade": "bg-gradient-to-l from-amber-700 to-transparent",
@@ -33,32 +38,32 @@
       "playButton": "bg-white hover:bg-white/90",
       "containerBg": "bg-white/10",
       "playIconColor": "text-zinc-800",
-      "waveformActive": "bg-white",
-      "waveformInactive": "bg-white/40",
+      "waveformActive": "bg-gradient-to-t from-purple-500 to-blue-500",
+      "waveformInactive": "bg-purple-500/30",
       "durationTextColor": "text-white/80"
     },
     "my_voice_message_styles": {
       "playButton": "bg-white hover:bg-white/90",
       "containerBg": "bg-white/10",
       "playIconColor": "text-zinc-800",
-      "waveformActive": "bg-white",
-      "waveformInactive": "bg-white/40",
+      "waveformActive": "bg-gradient-to-t from-purple-500 to-blue-500",
+      "waveformInactive": "bg-purple-500/30",
       "durationTextColor": "text-white/80"
     },
     "host_voice_message_styles": {
       "playButton": "bg-white hover:bg-white/90",
       "containerBg": "bg-white/10",
       "playIconColor": "text-zinc-800",
-      "waveformActive": "bg-white",
-      "waveformInactive": "bg-white/40",
+      "waveformActive": "bg-gradient-to-t from-purple-500 to-blue-500",
+      "waveformInactive": "bg-purple-500/30",
       "durationTextColor": "text-white/80"
     },
     "pinned_voice_message_styles": {
       "playButton": "bg-white hover:bg-white/90",
       "containerBg": "bg-white/10",
       "playIconColor": "text-zinc-800",
-      "waveformActive": "bg-white",
-      "waveformInactive": "bg-white/40",
+      "waveformActive": "bg-gradient-to-t from-purple-500 to-blue-500",
+      "waveformInactive": "bg-purple-500/30",
       "durationTextColor": "text-white/80"
     },
     "filter_button_active": "px-3 py-1.5 rounded text-xs tracking-wider bg-emerald-500 text-emerald-950 border border-emerald-400",

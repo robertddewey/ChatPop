@@ -5,9 +5,19 @@ import { flushSync } from 'react-dom';
 import { Mic, Square, Play, Trash2 } from 'lucide-react';
 import { WaveformAnalyzer, downsampleWaveform, type RecordingMetadata } from '@/lib/waveform';
 
+export interface VoicePreview {
+  duration: number;
+  isPlaying: boolean;
+  waveformData: number[];
+  playbackProgress: number;
+}
+
 interface VoiceRecorderProps {
   onRecordingComplete: (audioBlob: Blob, metadata: RecordingMetadata, caption: string) => void;
   onRecordingReady?: (hasRecording: boolean) => void;
+  onPreviewChange?: (preview: VoicePreview | null) => void;
+  playRef?: React.MutableRefObject<(() => void) | null>;
+  deleteRef?: React.MutableRefObject<(() => void) | null>;
   onSendComplete?: () => void;
   caption?: string;
   disabled?: boolean;
@@ -16,18 +26,20 @@ interface VoiceRecorderProps {
 
 type RecordingState = 'idle' | 'recording' | 'preview';
 
-export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, onSendComplete, caption = '', disabled, className }: VoiceRecorderProps) {
+export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, onPreviewChange, playRef, deleteRef, onSendComplete, caption = '', disabled, className }: VoiceRecorderProps) {
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
   const [recordingMetadata, setRecordingMetadata] = useState<RecordingMetadata | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackFrameRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const waveformAnalyzerRef = useRef<WaveformAnalyzer | null>(null);
   const recordingStartTimeRef = useRef<number>(0);
@@ -52,6 +64,39 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, o
       onRecordingReady(recordingState === 'preview' && !!audioBlob && !!recordingMetadata);
     }
   }, [recordingState, audioBlob, recordingMetadata, onRecordingReady]);
+
+  // Track playback progress with animation frames
+  useEffect(() => {
+    if (!isPlaying || !audioRef.current) {
+      if (playbackFrameRef.current) {
+        cancelAnimationFrame(playbackFrameRef.current);
+      }
+      return;
+    }
+    const updateProgress = () => {
+      if (audioRef.current && audioRef.current.duration > 0) {
+        setPlaybackProgress(audioRef.current.currentTime / audioRef.current.duration);
+      }
+      playbackFrameRef.current = requestAnimationFrame(updateProgress);
+    };
+    playbackFrameRef.current = requestAnimationFrame(updateProgress);
+    return () => {
+      if (playbackFrameRef.current) {
+        cancelAnimationFrame(playbackFrameRef.current);
+      }
+    };
+  }, [isPlaying]);
+
+  // Expose preview data to parent for external rendering
+  useEffect(() => {
+    if (onPreviewChange) {
+      onPreviewChange(
+        recordingState === 'preview' && recordingMetadata
+          ? { duration: recordingTime, isPlaying, waveformData: recordingMetadata.waveformData, playbackProgress }
+          : null
+      );
+    }
+  }, [recordingState, recordingTime, isPlaying, playbackProgress, recordingMetadata, onPreviewChange]);
 
   const startRecording = async () => {
     const startTime = performance.now();
@@ -301,11 +346,13 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, o
 
     audio.onended = () => {
       setIsPlaying(false);
+      setPlaybackProgress(0);
       audioRef.current = null;
     };
 
     audio.play();
     setIsPlaying(true);
+    setPlaybackProgress(0);
   };
 
   const deleteRecording = () => {
@@ -349,6 +396,12 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, o
       delete win.__voiceRecorderSendMethod;
     };
   }, [audioBlob, recordingMetadata, sendRecording]);
+
+  // Expose play/delete methods via refs for external preview rendering
+  useEffect(() => {
+    if (playRef) playRef.current = playRecording;
+    if (deleteRef) deleteRef.current = deleteRecording;
+  });
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -398,7 +451,7 @@ export default function VoiceRecorder({ onRecordingComplete, onRecordingReady, o
         </>
       )}
 
-      {recordingState === 'preview' && (
+      {recordingState === 'preview' && !onPreviewChange && (
         <>
           <button
             type="button"

@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useCallback, memo, useMemo, useRef, useEffect } from 'react';
-import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown } from 'lucide-react';
+import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown, Trash2 } from 'lucide-react';
 import type { Message, ChatRoom } from '@/lib/api';
-import VoiceRecorder from './VoiceRecorder';
+import VoiceRecorder, { type VoicePreview } from './VoiceRecorder';
 import MediaPicker from './MediaPicker';
 import type { MediaPreview } from './MediaPicker';
 
@@ -67,8 +67,11 @@ function MessageInputComponent({
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [voicePreview, setVoicePreview] = useState<VoicePreview | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const clearMediaRef = useRef<(() => void) | null>(null);
+  const voicePlayRef = useRef<(() => void) | null>(null);
+  const voiceDeleteRef = useRef<(() => void) | null>(null);
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
   // Auto-resize textarea when expanded and typing
@@ -278,9 +281,56 @@ function MessageInputComponent({
         );
       })()}
 
+      {/* Voice Recording Preview Card */}
+      {voicePreview && (
+        <div className={`${replyingTo ? 'mt-2' : ''} mb-2`}>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-700/80">
+            <button
+              type="button"
+              onClick={() => voicePlayRef.current?.()}
+              className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all flex items-center justify-center"
+              title={voicePreview.isPlaying ? 'Pause' : 'Play recording'}
+            >
+              {voicePreview.isPlaying
+                ? <Pause size={12} fill="white" strokeWidth={0} />
+                : <Play size={12} fill="white" strokeWidth={0} className="ml-0.5" />
+              }
+            </button>
+            {/* Waveform */}
+            <div className="h-7 flex-1 min-w-0 flex items-center gap-[1px] overflow-hidden">
+              {voicePreview.waveformData.map((amplitude, i) => {
+                const height = Math.max(3, Math.sqrt(amplitude) * 28);
+                const barProgress = i / voicePreview.waveformData.length;
+                const isActive = voicePreview.isPlaying && voicePreview.playbackProgress > 0 && barProgress <= voicePreview.playbackProgress;
+                return (
+                  <div
+                    key={i}
+                    className={`flex-1 min-w-[2px] rounded-full transition-colors ${
+                      isActive ? 'bg-purple-500/30' : 'bg-gradient-to-t from-purple-500 to-blue-500'
+                    }`}
+                    style={{ height: `${height}px` }}
+                  />
+                );
+              })}
+            </div>
+            <span className="flex-shrink-0 text-[11px] font-mono text-gray-300">
+              {`${Math.floor(voicePreview.duration / 60)}:${(voicePreview.duration % 60).toString().padStart(2, '0')}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => voiceDeleteRef.current?.()}
+              className="flex-shrink-0 p-1.5 rounded-full bg-red-500/80 text-white hover:bg-red-600 transition-colors"
+              title="Delete recording"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Username indicator */}
       {username && (
-        <div className={`flex items-center gap-1 ${replyingTo || mediaPreview ? 'mt-0.5' : '-mt-2'} mb-0.5 px-1`}>
+        <div className={`flex items-center gap-1 ${replyingTo || mediaPreview || voicePreview ? 'mt-0.5' : '-mt-2'} mb-0.5 px-1`}>
           <span className={`text-[10px] ${inputStyles?.chattingAsText || 'text-zinc-600'} flex items-center gap-0.5`}>
             You are <span className="font-medium">@{username}</span>
             {isHost && <Crown size={10} style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />}
@@ -354,9 +404,12 @@ function MessageInputComponent({
             <VoiceRecorder
               onRecordingComplete={onVoiceRecording}
               onRecordingReady={setHasVoiceRecording}
+              onPreviewChange={setVoicePreview}
+              playRef={voicePlayRef}
+              deleteRef={voiceDeleteRef}
               onSendComplete={() => setMessage('')}
               caption={message}
-              disabled={sending || !hasJoined}
+              disabled={sending || !hasJoined || hasMediaSelected}
             />
           )}
           {hasMediaButton && (
@@ -370,7 +423,7 @@ function MessageInputComponent({
               caption={message}
               photoEnabled={chatRoom?.photo_enabled}
               videoEnabled={chatRoom?.video_enabled}
-              disabled={sending || !hasJoined}
+              disabled={sending || !hasJoined || hasVoiceRecording}
               maxVideoDuration={30}
             />
           )}

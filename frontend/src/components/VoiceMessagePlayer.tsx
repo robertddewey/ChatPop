@@ -299,20 +299,20 @@ export default function VoiceMessagePlayer({
 
       {/* Waveform Visualization */}
       <div
-        className="h-7 flex-1 min-w-0 max-w-[150px] flex items-center gap-[1px] cursor-pointer overflow-hidden"
+        className="h-7 flex-1 min-w-0 flex items-center gap-[1px] cursor-pointer overflow-hidden"
         onClick={handleWaveformClick}
       >
         {displayWaveform.map((amplitude, index) => {
           const barProgress = index / displayWaveform.length;
-          const isActive = barProgress <= progress;
+          const isActive = isPlaying && progress > 0 && barProgress <= progress;
           const enhancedAmplitude = Math.sqrt(amplitude);
           const height = Math.max(3, enhancedAmplitude * 28);
 
           return (
             <div
               key={index}
-              className={`w-[2px] rounded-full transition-colors ${
-                isActive ? voiceWaveformActive : voiceWaveformInactive
+              className={`flex-1 min-w-[2px] rounded-full transition-colors ${
+                isActive ? voiceWaveformInactive : voiceWaveformActive
               }`}
               style={{ height: `${height}px` }}
             />
