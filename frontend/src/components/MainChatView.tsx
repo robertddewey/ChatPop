@@ -239,6 +239,7 @@ interface MainChatViewProps {
   loadingOlder?: boolean;
   filterLoading?: boolean;
   filterMode?: 'all' | 'focus' | 'gifts';
+  filterLoadingText?: string;
   onStickyHeightChange?: (height: number) => void;
   onStickyHiddenChange?: (hidden: boolean) => void;
   showScrollToBottom?: boolean;
@@ -280,6 +281,7 @@ function MainChatView({
   loadingOlder = false,
   filterLoading = false,
   filterMode = 'all',
+  filterLoadingText = 'Loading...',
   onStickyHeightChange,
   onStickyHiddenChange,
   showScrollToBottom = false,
@@ -458,7 +460,7 @@ function MainChatView({
           }`}>
             <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
             <span className="text-sm font-medium">
-              {filterMode === 'focus' ? 'Focusing...' : filterMode === 'gifts' ? 'Gifting...' : 'Loading...'}
+              {filterLoadingText}
             </span>
           </div>
         </div>

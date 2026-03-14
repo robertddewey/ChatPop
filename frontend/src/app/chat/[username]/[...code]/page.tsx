@@ -459,6 +459,7 @@ export default function ChatPage() {
   // Room navigation — unified state for all views
   type Room = 'main' | 'focus' | 'gifts' | 'backroom';
   const [currentRoom, setCurrentRoom] = useState<Room>('main');
+  const [previousRoom, setPreviousRoom] = useState<Room>('main');
   const [roomLoading, setRoomLoading] = useState(false);
 
   // Feature intro tracking
@@ -532,9 +533,13 @@ export default function ChatPage() {
   }, []);
 
   // Helper: loading text per room
-  const getRoomLoadingText = useCallback((room: Room): string => {
-    if (room === 'focus') return 'Focusing...';
-    if (room === 'gifts') return 'Gifting...';
+  const getRoomLoadingText = useCallback((target: Room, prev: Room): string => {
+    if (target === 'focus') return 'Focusing...';
+    if (target === 'gifts') return 'Gifting...';
+    if (target === 'backroom') return 'Gaming...';
+    if (prev === 'focus') return 'Unfocusing...';
+    if (prev === 'gifts') return 'Ungifting...';
+    if (prev === 'backroom') return 'Ungaming...';
     return 'Loading...';
   }, []);
 
@@ -557,16 +562,21 @@ export default function ChatPage() {
   const switchRoom = useCallback(async (target: Room) => {
     if (target === currentRoom) return;
 
-    // For separate-view rooms (backroom): just set room state, no message fetch
+    // For separate-view rooms (backroom): set room state with loading delay
     if (isSeparateViewRoom(target)) {
+      setPreviousRoom(currentRoom);
+      setRoomLoading(true);
       setCurrentRoom(target);
       setReplyingTo(null);
       window.history.replaceState({ room: target }, '', window.location.href);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setRoomLoading(false);
       return;
     }
 
     // For chat rooms (main/focus/gifts): clear messages, fetch fresh, use replaceState
-    setRoomLoading(target !== 'main');
+    setPreviousRoom(currentRoom);
+    setRoomLoading(true);
     setCurrentRoom(target);
     setMessages([]);
     setHasMoreMessages(true);
@@ -604,6 +614,8 @@ export default function ChatPage() {
         setMessageReactions(reactions);
       } catch (err) {
         console.error('Failed to load messages:', err);
+      } finally {
+        setRoomLoading(false);
       }
     } else {
       // Filter rooms (focus/gifts): fetch with filter + minimum loading delay
@@ -2369,6 +2381,21 @@ export default function ChatPage() {
 
       {/* Content Area Wrapper - View Router for Main Chat, Back Room, and future features */}
       <div className={`flex-1 relative overflow-hidden ${!hasJoined ? 'pointer-events-none' : ''}`}>
+        {/* Page-level loading overlay for room transitions */}
+        {roomLoading && isSeparateViewRoom(currentRoom) && (
+          <div className={`absolute inset-0 z-40 flex items-center justify-center ${
+            currentDesign.uiStyles?.loadingBg || 'bg-zinc-900'
+          }`}>
+            <div className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl ${
+              currentDesign.uiStyles?.loadingCard || 'bg-zinc-800 text-zinc-200'
+            }`}>
+              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm font-medium">
+                {getRoomLoadingText(currentRoom, previousRoom)}
+              </span>
+            </div>
+          </div>
+        )}
         {!isSeparateViewRoom(currentRoom) && (
               <MainChatView
                 chatRoom={chatRoom}
@@ -2391,6 +2418,7 @@ export default function ChatPage() {
                 disableReply={currentRoom === 'gifts'}
                 filterLoading={roomLoading}
                 filterMode={currentRoom === 'main' ? 'all' : currentRoom as 'focus' | 'gifts'}
+                filterLoadingText={getRoomLoadingText(currentRoom, previousRoom)}
                 handlePin={handlePin}
                 handleAddToPin={handleAddToPin}
                 getPinRequirements={getPinRequirements}
