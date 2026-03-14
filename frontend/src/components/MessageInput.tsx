@@ -395,6 +395,7 @@ function MessageInputComponent({
         <button
           type="submit"
           disabled={isSubmitDisabled}
+          onMouseDown={(e) => e.preventDefault()}
           className={`h-9 px-4 ${inputStyles?.sendButton || 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700'} text-sm font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0`}
         >
           Send
