@@ -283,7 +283,7 @@ export default function VoiceMessagePlayer({
   }
 
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg max-w-[280px] ${voiceContainerBg} ${className}`}>
+    <div className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg w-[280px] max-w-full overflow-hidden ${voiceContainerBg} ${className}`}>
       {/* Play/Pause Button */}
       <button
         onClick={togglePlayPause}
@@ -299,7 +299,7 @@ export default function VoiceMessagePlayer({
 
       {/* Waveform Visualization */}
       <div
-        className="h-7 flex-1 min-w-[100px] max-w-[150px] flex items-center gap-[1px] cursor-pointer"
+        className="h-7 flex-1 min-w-0 max-w-[150px] flex items-center gap-[1px] cursor-pointer overflow-hidden"
         onClick={handleWaveformClick}
       >
         {displayWaveform.map((amplitude, index) => {

@@ -53,6 +53,23 @@ body {
   transform-origin: center;
 }
 
+@keyframes wobbleA {
+  0%, 100% { transform: rotate(-15deg); }
+  50% { transform: rotate(-8deg); }
+}
+@keyframes wobbleB {
+  0%, 100% { transform: rotate(20deg); }
+  50% { transform: rotate(12deg); }
+}
+.animate-wobble-a {
+  animation: wobbleA 2.5s ease-in-out infinite;
+  display: inline-block;
+}
+.animate-wobble-b {
+  animation: wobbleB 3s ease-in-out infinite;
+  display: inline-block;
+}
+
 @keyframes gentleBounce {
   0%, 100% {
     transform: translateX(-50%) translateY(0);

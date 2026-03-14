@@ -200,7 +200,7 @@ const defaultTheme: ChatTheme = {
   sticky_host_message: "w-full rounded-xl px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-zinc-800 font-medium transition-all duration-300",
   host_text: "text-sm text-white",
   host_message_fade: "bg-gradient-to-l from-teal-600 to-transparent",
-  pinned_message: "max-w-[calc(100%-2.5%-5rem+5px)] rounded pb-1",
+  pinned_message: "max-w-[calc(100%-2.5%-5rem+5px)] rounded-lg px-3 py-2 pb-2 bg-purple-950/50 border border-purple-500/50",
   sticky_pinned_message: "w-full rounded-xl px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-purple-900 border border-purple-500/40 shadow-md",
   pinned_text: "text-sm text-white",
   pinned_message_fade: "bg-gradient-to-l from-amber-700 to-transparent",

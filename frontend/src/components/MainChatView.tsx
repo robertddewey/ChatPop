@@ -665,9 +665,6 @@ function MainChatView({
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                         <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
                         <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                        {message.is_pinned && (
-                          <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
-                        )}
                       </div>
                     </div>
                   )}
@@ -692,7 +689,6 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                        <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                       </div>
                     </div>
                   )}
@@ -711,11 +707,26 @@ function MainChatView({
                         <div className={`relative rounded-xl px-3 py-2.5 flex items-center gap-2.5 max-w-[calc(100%-2.5%-5rem+5px)] ${
                           isForMe
                             ? currentDesign.giftStyles?.cardBgForMe || 'bg-purple-950/50 border border-purple-500/50'
+                            : message.is_pinned
+                            ? 'bg-purple-950/50 border border-purple-500/50'
                             : currentDesign.giftStyles?.cardBg || 'bg-zinc-800/80 border border-zinc-700'
                         }`}>
-                          {message.is_gift_acknowledged && (
-                            <div className="absolute -top-1.5 -right-1.5 text-sm" title="Thanked">
-                              🤗
+                          {(message.is_pinned || message.is_gift_acknowledged) && (
+                            <div className="absolute -top-2.5 -right-2 z-10">
+                              {message.is_pinned && message.is_gift_acknowledged ? (
+                                <div className="flex items-center">
+                                  <span className="text-sm animate-wobble-a drop-shadow-md -mr-1" title="Thanked">🤗</span>
+                                  <span className="animate-wobble-b drop-shadow-md">
+                                    <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                                  </span>
+                                </div>
+                              ) : message.is_pinned ? (
+                                <span className="inline-block animate-wobble-b drop-shadow-md">
+                                  <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                                </span>
+                              ) : (
+                                <span className="inline-block text-sm animate-wobble-a drop-shadow-md" title="Thanked">🤗</span>
+                              )}
                             </div>
                           )}
                           {price && (
@@ -763,9 +774,16 @@ function MainChatView({
                       const hasMedia = message.voice_url || message.photo_url || message.video_url;
                       const hasCaption = message.content && message.content.trim().length > 0;
                       const isMediaOnly = hasMedia && !hasCaption;
-                      return isMediaOnly ? `${selectedStyle} mt-2` : selectedStyle;
+                      const base = isMediaOnly ? `${selectedStyle} mt-2` : selectedStyle;
+                      return message.is_pinned ? `${base} relative` : base;
                     })()}
                   >
+                    {/* Pin icon on corner of pinned messages */}
+                    {message.is_pinned && (
+                      <div className="absolute -top-2 -right-2 animate-wobble-b drop-shadow-md">
+                        <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                      </div>
+                    )}
 
                     {/* Reply context preview */}
                     {message.reply_to_message && (
