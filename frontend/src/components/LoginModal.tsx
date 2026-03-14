@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { authApi } from '@/lib/api';
+import { authApi, chatApi } from '@/lib/api';
 import { MARKETING } from '@/lib/marketing';
 import { X } from 'lucide-react';
 import { getModalTheme } from '@/lib/modal-theme';
@@ -46,6 +46,21 @@ export function LoginFormContent({ onClose, onSwitchToRegister, hideTitle }: Log
 
       const isChatRoute = window.location.pathname.startsWith('/chat/');
       if (!isChatRoute) {
+        // Check for pending chat creation (user was creating a chat before login)
+        const pendingFormData = localStorage.getItem('create_chat_form_data');
+        if (pendingFormData) {
+          try {
+            const restored = JSON.parse(pendingFormData);
+            if (restored.name && restored.name.trim()) {
+              const chatRoom = await chatApi.createChat(restored);
+              localStorage.removeItem('create_chat_form_data');
+              router.push(chatRoom.url);
+              return;
+            }
+          } catch {
+            // Creation failed — fall through to normal redirect (modal will handle retry)
+          }
+        }
         router.push(redirect);
       }
     } catch (err: unknown) {
