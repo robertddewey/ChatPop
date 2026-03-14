@@ -4,7 +4,7 @@
 // bg-[#1f1f23] border-[#1f1f23] bg-zinc-800/40 border-zinc-800/40 border-transparent
 // bg-purple-900 border-purple-500/40 bg-purple-500/30
 // bg-gradient-to-t from-purple-500 to-blue-500
-// bg-zinc-900/95 bg-zinc-900/90
+// bg-zinc-900/95 bg-zinc-900/90 border-purple-500/30
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
 import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown } from 'lucide-react';
@@ -797,7 +797,9 @@ function MainChatView({
                     {message.reply_to_message && (
                       <div
                         className={`mb-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                          message.username.toLowerCase() === username.toLowerCase()
+                          message.is_pinned
+                            ? currentDesign.uiStyles?.replyContextPinned || 'bg-white/10 border border-purple-500/30 hover:bg-white/15'
+                            : message.username.toLowerCase() === username.toLowerCase()
                             ? currentDesign.uiStyles?.replyContextOwn || 'bg-white/10 border border-white/10 hover:bg-white/15'
                             : currentDesign.uiStyles?.replyContextOther || 'bg-white/10 border border-zinc-600 hover:bg-white/15'
                         }`}

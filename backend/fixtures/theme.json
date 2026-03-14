@@ -184,6 +184,7 @@ WARNINGS:
       "emptyStateSubtext": "text-zinc-500",
       "replyContextOther": "bg-white/10 border border-zinc-600 hover:bg-white/15",
       "loadingIndicatorBg": "bg-black/50",
+      "replyContextPinned": "bg-white/10 border border-purple-500/30 hover:bg-white/15",
       "reactionHighlightBg": "bg-purple-500/20",
       "loadingIndicatorText": "text-gray-400",
       "reactionHighlightText": "text-zinc-200",
