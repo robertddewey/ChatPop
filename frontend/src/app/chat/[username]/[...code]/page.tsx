@@ -21,7 +21,7 @@ import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Star, Heart, Zap, Bell } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Bell } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
@@ -75,6 +75,7 @@ interface CamelCaseTheme {
   inputArea: string;
   inputField: string;
   pinIconColor: string;
+  broadcastIconColor: string;
   crownIconColor: string;
   badgeIconColor: string;
   replyIconColor: string;
@@ -143,6 +144,7 @@ function convertThemeToCamelCase(theme: ChatTheme): CamelCaseTheme {
     inputArea: theme.input_area,
     inputField: theme.input_field,
     pinIconColor: theme.pin_icon_color,
+    broadcastIconColor: theme.broadcast_icon_color,
     crownIconColor: theme.crown_icon_color,
     badgeIconColor: theme.badge_icon_color,
     replyIconColor: theme.reply_icon_color,
@@ -245,6 +247,7 @@ const defaultTheme: ChatTheme = {
     durationTextColor: "text-white/80",
   },
   pin_icon_color: "text-purple-400",
+  broadcast_icon_color: "text-blue-400",
   crown_icon_color: "text-amber-400",
   badge_icon_color: "text-blue-500",
   reply_icon_color: "text-emerald-300",
@@ -457,7 +460,7 @@ export default function ChatPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   // Room navigation — unified state for all views
-  type Room = 'main' | 'focus' | 'gifts' | 'backroom';
+  type Room = 'main' | 'focus' | 'gifts' | 'broadcast' | 'backroom';
   const [currentRoom, setCurrentRoom] = useState<Room>('main');
   const [previousRoom, setPreviousRoom] = useState<Room>('main');
   const [roomLoading, setRoomLoading] = useState(false);
@@ -523,7 +526,7 @@ export default function ChatPage() {
 
   // Helper: get filter param for API calls (only chat filter rooms have a filter)
   const getRoomFilter = useCallback((room: Room): string | undefined => {
-    if (room === 'focus' || room === 'gifts') return room;
+    if (room === 'focus' || room === 'gifts' || room === 'broadcast') return room;
     return undefined;
   }, []);
 
@@ -536,9 +539,11 @@ export default function ChatPage() {
   const getRoomLoadingText = useCallback((target: Room, prev: Room): string => {
     if (target === 'focus') return 'Focusing...';
     if (target === 'gifts') return 'Gifting...';
+    if (target === 'broadcast') return 'Broadcasting...';
     if (target === 'backroom') return 'Gaming...';
     if (prev === 'focus') return 'Unfocusing...';
     if (prev === 'gifts') return 'Ungifting...';
+    if (prev === 'broadcast') return 'Unbroadcasting...';
     if (prev === 'backroom') return 'Ungaming...';
     return 'Loading...';
   }, []);
@@ -584,7 +589,7 @@ export default function ChatPage() {
     window.history.replaceState({ room: target }, '', window.location.href);
 
     const filterParam = getRoomFilter(target);
-    const filterUser = filterParam ? username : undefined;
+    const filterUser = filterParam && filterParam !== 'broadcast' ? username : undefined;
 
     if (target === 'main') {
       // Main room: fetch fresh (no firehose caching)
@@ -756,6 +761,14 @@ export default function ChatPage() {
     ));
   }, []);
 
+  const handleMessageBroadcast = useCallback((message: Message, isBroadcast: boolean) => {
+    setMessages(prev => prev.map(msg =>
+      msg.id === message.id
+        ? { ...msg, is_broadcast: isBroadcast }
+        : msg
+    ));
+  }, []);
+
   // Handle visibility changes (mobile app switching)
   // Refetch messages to catch any missed while page was hidden
   const loadMessagesRef = useRef<() => void>(null);
@@ -775,6 +788,7 @@ export default function ChatPage() {
     onReaction: handleReactionEvent,
     onMessageDeleted: handleMessageDeleted,
     onMessagePinned: handleMessagePinned,
+    onMessageBroadcast: handleMessageBroadcast,
     onGiftReceived: useCallback((gift: GiftNotification) => {
       setGiftQueue(prev => [...prev, gift]);
     }, []),
@@ -1166,7 +1180,7 @@ export default function ChatPage() {
     try {
       // Pass filter params when in focus/gifts room
       const filterParam = getRoomFilter(currentRoom);
-      const filterUser = filterParam ? username : undefined;
+      const filterUser = filterParam && filterParam !== 'broadcast' ? username : undefined;
       const { messages: msgs, pinnedMessages } = await messageApi.getMessages(code, roomUsername, sessionToken || undefined, filterParam, filterUser);
 
       // Create a map of pinned messages for quick lookup
@@ -1246,7 +1260,7 @@ export default function ChatPage() {
 
       // Fetch older messages (async - user may scroll during this)
       const filterParam = getRoomFilter(currentRoom);
-      const filterUser = filterParam ? username : undefined;
+      const filterUser = filterParam && filterParam !== 'broadcast' ? username : undefined;
       const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(code, beforeTimestamp, 50, roomUsername, filterParam, filterUser);
 
       if (olderMessages.length > 0) {
@@ -1899,6 +1913,16 @@ export default function ChatPage() {
     }
   }, [code, roomUsername]);
 
+  const handleBroadcastMessage = useCallback(async (messageId: string): Promise<boolean> => {
+    try {
+      await messageApi.broadcastMessage(code, messageId, roomUsername);
+      return true;
+    } catch (error) {
+      console.error('[Broadcast] Toggle failed:', error);
+      return false;
+    }
+  }, [code, roomUsername]);
+
   const handleDeleteMessage = useCallback(async (messageId: string) => {
     // Only hosts can delete messages
     if (!chatRoom || !currentUserId || chatRoom.host.id !== currentUserId) {
@@ -1989,16 +2013,21 @@ export default function ChatPage() {
       });
     }
 
+    if (currentRoom === 'broadcast') {
+      return messages.filter(msg => msg.is_broadcast);
+    }
+
     return messages;
   }, [messages, currentRoom, roomLoading, username]);
 
-  // Filter messages for sticky section (useMemo to prevent infinite loops)
+  // Filter messages for sticky section — always use full messages list so sticky
+  // area is consistent across all rooms (main, focus, broadcast, gifts)
   const allStickyHostMessages = useMemo(() => {
-    return filteredMessages
+    return messages
       .filter(m => m.is_from_host)
       .slice(-1)  // Get 1 most recent
       .reverse(); // Show newest first
-  }, [filteredMessages]);
+  }, [messages]);
 
   // Use full messages list (not filtered) so sticky pin is always the true winner
   const topPinnedMessage = useMemo(() => {
@@ -2026,23 +2055,31 @@ export default function ChatPage() {
             return prevStickyHostRef.current;
     }
 
+    // When in a filtered room with no host messages, keep showing the last known sticky
+    if (allStickyHostMessages.length === 0 && prevStickyHostRef.current.length > 0 && currentRoom !== 'main') {
+      return prevStickyHostRef.current;
+    }
+
     // Save for future freeze
     prevStickyHostRef.current = allStickyHostMessages;
 
     return allStickyHostMessages;
-  }, [allStickyHostMessages]);
+  }, [allStickyHostMessages, currentRoom]);
 
   // Always show pinned message in sticky area (user paid for visibility)
   const computedStickyPinnedMessage = topPinnedMessage || null;
 
-  // Freeze pinned message during insert too
+  // Freeze pinned message during insert or when in filtered rooms with no pin data
   const stickyPinnedMessage = useMemo(() => {
     if (isInsertingRef.current) {
       return prevStickyPinnedRef.current;
     }
+    if (!computedStickyPinnedMessage && prevStickyPinnedRef.current && currentRoom !== 'main') {
+      return prevStickyPinnedRef.current;
+    }
     prevStickyPinnedRef.current = computedStickyPinnedMessage;
     return computedStickyPinnedMessage;
-  }, [computedStickyPinnedMessage]);
+  }, [computedStickyPinnedMessage, currentRoom]);
 
   // Auto-remove expired pins from sticky section
   useEffect(() => {
@@ -2415,9 +2452,9 @@ export default function ChatPage() {
                 cancelScrollAnimation={cancelScrollAnimation}
                 highlightMessage={highlightMessage}
                 handleReply={handleReply}
-                disableReply={currentRoom === 'gifts'}
+                disableReply={currentRoom === 'gifts' || currentRoom === 'broadcast'}
                 filterLoading={roomLoading}
-                filterMode={currentRoom === 'main' ? 'all' : currentRoom as 'focus' | 'gifts'}
+                filterMode={currentRoom === 'main' ? 'all' : currentRoom as 'focus' | 'gifts' | 'broadcast'}
                 filterLoadingText={getRoomLoadingText(currentRoom, previousRoom)}
                 handlePin={handlePin}
                 handleAddToPin={handleAddToPin}
@@ -2426,6 +2463,7 @@ export default function ChatPage() {
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
                 handleThankGift={handleThankGift}
+                handleBroadcastMessage={handleBroadcastMessage}
                 handleDeleteMessage={handleDeleteMessage}
                 handleReactionToggle={handleReactionToggle}
                 messageReactions={messageReactions}
@@ -2499,28 +2537,15 @@ export default function ChatPage() {
               onScroll={updateFabScrollFades}
               className="h-full flex flex-col items-center gap-2 overflow-y-auto no-scrollbar px-1 py-1"
             >
-              {/* Dummy 1 */}
+              {/* Broadcast Room */}
               <FloatingActionButton
                 inline
-                icon={Zap}
-                onClick={() => {}}
-                ariaLabel="Dummy Zap"
-                design={'dark-mode'}
-              />
-              {/* Dummy 2 */}
-              <FloatingActionButton
-                inline
-                icon={Star}
-                onClick={() => {}}
-                ariaLabel="Dummy Star"
-                design={'dark-mode'}
-              />
-              {/* Crown Button */}
-              <FloatingActionButton
-                inline
-                icon={Crown}
-                onClick={() => {}}
-                ariaLabel="Host Actions"
+                icon={Radio}
+                toggledIcon={MessageSquare}
+                onClick={() => switchRoom(currentRoom === 'broadcast' ? 'main' : 'broadcast')}
+                isToggled={currentRoom === 'broadcast'}
+                ariaLabel="Broadcasts"
+                toggledAriaLabel="Show All Messages"
                 design={'dark-mode'}
               />
               {/* Focus Filter */}
@@ -2557,22 +2582,6 @@ export default function ChatPage() {
                 toggledAriaLabel="Return to Main Chat"
                 design={'dark-mode'}
               />
-              {/* Dummy 3 */}
-              <FloatingActionButton
-                inline
-                icon={Heart}
-                onClick={() => {}}
-                ariaLabel="Dummy Heart"
-                design={'dark-mode'}
-              />
-              {/* Dummy 4 */}
-              <FloatingActionButton
-                inline
-                icon={Bell}
-                onClick={() => {}}
-                ariaLabel="Dummy Bell"
-                design={'dark-mode'}
-              />
               {/* Settings Button */}
               <FloatingActionButton
                 inline
@@ -2594,8 +2603,8 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Message Input - Only show in chat rooms (not separate views like backroom) */}
-      {!isSeparateViewRoom(currentRoom) && (
+      {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms) */}
+      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'broadcast' && (
         <div className="relative">
           <MessageInput
             chatRoom={chatRoom}

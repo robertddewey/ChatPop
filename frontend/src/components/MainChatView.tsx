@@ -7,7 +7,7 @@
 // bg-zinc-900/95 bg-zinc-900/90 border-purple-500/30
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Radio, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
@@ -233,12 +233,13 @@ interface MainChatViewProps {
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
+  handleBroadcastMessage: (messageId: string) => Promise<boolean>;
   handleDeleteMessage: (messageId: string) => void;
   handleReactionToggle: (messageId: string, emoji: string) => void;
   messageReactions: Record<string, ReactionSummary[]>;
   loadingOlder?: boolean;
   filterLoading?: boolean;
-  filterMode?: 'all' | 'focus' | 'gifts';
+  filterMode?: 'all' | 'focus' | 'gifts' | 'broadcast';
   filterLoadingText?: string;
   onStickyHeightChange?: (height: number) => void;
   onStickyHiddenChange?: (hidden: boolean) => void;
@@ -275,6 +276,7 @@ function MainChatView({
   handleTipUser,
   handleSendGift,
   handleThankGift,
+  handleBroadcastMessage,
   handleDeleteMessage,
   handleReactionToggle,
   messageReactions,
@@ -437,6 +439,7 @@ function MainChatView({
         handleTipUser={handleTipUser}
         handleSendGift={handleSendGift}
         handleThankGift={handleThankGift}
+        handleBroadcastMessage={handleBroadcastMessage}
         handleDeleteMessage={handleDeleteMessage}
         handleReactionToggle={handleReactionToggle}
         stickyToggleRef={stickyToggleRef}
@@ -490,11 +493,13 @@ function MainChatView({
             <div className={`flex items-center gap-1.5 ${currentDesign.uiStyles?.emptyStateText || 'text-zinc-600'}`}>
               {filterMode === 'gifts'
                 ? <><Gift size={96} /><Frown size={96} /></>
+                : filterMode === 'broadcast'
+                ? <><Radio size={96} /><Frown size={96} /></>
                 : <><Eye size={96} /><Frown size={96} /></>
               }
             </div>
             <span className={`text-sm ${currentDesign.uiStyles?.emptyStateSubtext || 'text-zinc-500'}`}>
-              {filterMode === 'gifts' ? 'No gifts yet' : 'Nothing in focus yet'}
+              {filterMode === 'gifts' ? 'No gifts yet' : filterMode === 'broadcast' ? 'No broadcasts yet' : 'Nothing in focus yet'}
             </span>
           </div>
         )}
@@ -622,6 +627,7 @@ function MainChatView({
                   onTip={handleTipUser}
                   onSendGift={handleSendGift}
                   onThankGift={handleThankGift}
+                  onBroadcast={handleBroadcastMessage}
                   onDelete={handleDeleteMessage}
                   onReact={handleReactionToggle}
                   onHighlight={highlightMessage}
@@ -719,21 +725,20 @@ function MainChatView({
                             ? 'bg-purple-950/50 border border-purple-500/50'
                             : currentDesign.giftStyles?.cardBg || 'bg-zinc-800/80 border border-zinc-700'
                         }`}>
-                          {(message.is_pinned || message.is_gift_acknowledged) && (
-                            <div className="absolute -top-2.5 -right-2 z-10">
-                              {message.is_pinned && message.is_gift_acknowledged ? (
-                                <div className="flex items-center">
-                                  <span className="text-sm animate-wobble-a drop-shadow-md -mr-1" title="Thanked">🤗</span>
-                                  <span className="animate-wobble-b drop-shadow-md">
-                                    <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
-                                  </span>
-                                </div>
-                              ) : message.is_pinned ? (
-                                <span className="inline-block animate-wobble-b drop-shadow-md">
+                          {(message.is_pinned || message.is_gift_acknowledged || message.is_broadcast) && (
+                            <div className="absolute -top-2.5 -right-2 z-10 flex items-center">
+                              {message.is_broadcast && (
+                                <span className="animate-wobble-a drop-shadow-md -mr-1">
+                                  <Radio size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.broadcastIconColor) || '#60a5fa' }} />
+                                </span>
+                              )}
+                              {message.is_gift_acknowledged && (
+                                <span className="text-sm animate-wobble-a drop-shadow-md -mr-1" title="Thanked">🤗</span>
+                              )}
+                              {message.is_pinned && (
+                                <span className="animate-wobble-b drop-shadow-md">
                                   <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                                 </span>
-                              ) : (
-                                <span className="inline-block text-sm animate-wobble-a drop-shadow-md" title="Thanked">🤗</span>
                               )}
                             </div>
                           )}
@@ -783,13 +788,22 @@ function MainChatView({
                       const hasCaption = message.content && message.content.trim().length > 0;
                       const isMediaOnly = hasMedia && !hasCaption;
                       const base = isMediaOnly ? `${selectedStyle} mt-2` : selectedStyle;
-                      return message.is_pinned ? `${base} relative` : base;
+                      return (message.is_pinned || message.is_broadcast) ? `${base} relative` : base;
                     })()}
                   >
                     {/* Pin icon on corner of pinned messages */}
-                    {message.is_pinned && (
-                      <div className="absolute -top-2 -right-2 animate-wobble-b drop-shadow-md">
-                        <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                    {(message.is_pinned || message.is_broadcast) && (
+                      <div className="absolute -top-2 -right-2 z-10 flex items-center">
+                        {message.is_broadcast && (
+                          <span className="animate-wobble-a drop-shadow-md -mr-1">
+                            <Radio size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.broadcastIconColor) || '#60a5fa' }} />
+                          </span>
+                        )}
+                        {message.is_pinned && (
+                          <span className="animate-wobble-b drop-shadow-md">
+                            <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                          </span>
+                        )}
                       </div>
                     )}
 

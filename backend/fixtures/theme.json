@@ -74,6 +74,7 @@ WARNINGS:
     "crown_icon_color": "text-amber-400",
     "badge_icon_color": "text-blue-500",
     "reply_icon_color": "text-emerald-300",
+    "broadcast_icon_color": "text-blue-400",
     "reaction_highlight_bg": "bg-purple-500/20",
     "reaction_highlight_border": "border border-purple-500/50",
     "reaction_highlight_text": "text-zinc-200",

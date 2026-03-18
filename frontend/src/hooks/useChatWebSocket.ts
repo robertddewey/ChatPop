@@ -17,6 +17,7 @@ interface UseChatWebSocketOptions {
   onReaction?: (data: ReactionEventData) => void;
   onMessageDeleted?: (messageId: string) => void;
   onMessagePinned?: (message: Message, isTopPin: boolean) => void;
+  onMessageBroadcast?: (message: Message, isBroadcast: boolean) => void;
   onGiftReceived?: (gift: GiftNotification) => void;
   onGiftQueue?: (gifts: GiftNotification[]) => void;
   onGiftAcknowledged?: (messageIds: string[]) => void;
@@ -34,6 +35,7 @@ export function useChatWebSocket({
   onReaction,
   onMessageDeleted,
   onMessagePinned,
+  onMessageBroadcast,
   onGiftReceived,
   onGiftQueue,
   onGiftAcknowledged,
@@ -56,6 +58,7 @@ export function useChatWebSocket({
   const onReactionRef = useRef(onReaction);
   const onMessageDeletedRef = useRef(onMessageDeleted);
   const onMessagePinnedRef = useRef(onMessagePinned);
+  const onMessageBroadcastRef = useRef(onMessageBroadcast);
   const onGiftReceivedRef = useRef(onGiftReceived);
   const onGiftQueueRef = useRef(onGiftQueue);
   const onGiftAcknowledgedRef = useRef(onGiftAcknowledged);
@@ -69,6 +72,7 @@ export function useChatWebSocket({
   useEffect(() => { onReactionRef.current = onReaction; }, [onReaction]);
   useEffect(() => { onMessageDeletedRef.current = onMessageDeleted; }, [onMessageDeleted]);
   useEffect(() => { onMessagePinnedRef.current = onMessagePinned; }, [onMessagePinned]);
+  useEffect(() => { onMessageBroadcastRef.current = onMessageBroadcast; }, [onMessageBroadcast]);
   useEffect(() => { onGiftReceivedRef.current = onGiftReceived; }, [onGiftReceived]);
   useEffect(() => { onGiftQueueRef.current = onGiftQueue; }, [onGiftQueue]);
   useEffect(() => { onGiftAcknowledgedRef.current = onGiftAcknowledged; }, [onGiftAcknowledged]);
@@ -152,6 +156,14 @@ export function useChatWebSocket({
           console.log('[WebSocket] Message pinned event received:', data.message);
           if (onMessagePinnedRef.current) {
             onMessagePinnedRef.current(data.message, data.is_top_pin);
+          }
+          return;
+        }
+
+        // Handle message broadcast events
+        if (data.type === 'message_broadcast') {
+          if (onMessageBroadcastRef.current) {
+            onMessageBroadcastRef.current(data.message, data.is_broadcast);
           }
           return;
         }

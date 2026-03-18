@@ -698,7 +698,12 @@ class MessageListView(APIView):
 
         if cache_enabled:
             # Route to filter-specific cache reads when filter is set
-            if filter_mode and filter_username:
+            if filter_mode == 'broadcast':
+                messages = MessageCache.get_broadcast_messages(
+                    chat_room.id, limit=limit,
+                    before_timestamp=float(before_timestamp) if before_timestamp else None
+                )
+            elif filter_mode and filter_username:
                 if filter_mode == 'focus':
                     messages = MessageCache.get_focus_messages(
                         chat_room.id, filter_username, limit=limit,
@@ -846,7 +851,9 @@ class MessageListView(APIView):
         ).select_related('user', 'reply_to').prefetch_related('reactions')
 
         # Apply filter mode
-        if filter_mode and filter_username:
+        if filter_mode == 'broadcast':
+            queryset = queryset.filter(is_broadcast=True)
+        elif filter_mode and filter_username:
             from django.db.models import Q
             if filter_mode == 'focus':
                 queryset = queryset.filter(
@@ -1469,6 +1476,66 @@ class AddToPinView(APIView):
             'new_session_cents': int(message.current_pin_amount * 100),
             'extension_minutes': extension_minutes,
             'new_time_remaining_seconds': new_time_remaining_seconds,
+        })
+
+
+class MessageBroadcastView(APIView):
+    """Toggle broadcast status on a message (host-only, free action)."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code, message_id, username=None):
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        from rest_framework.renderers import JSONRenderer
+        import json as json_module
+
+        chat_room = get_chat_room_by_url(code, username)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
+
+        # Validate session token
+        session_token = request.data.get('session_token')
+        if not session_token:
+            raise PermissionDenied("Session token is required")
+
+        session_data = ChatSessionValidator.validate_session_token(
+            token=session_token, chat_code=code
+        )
+
+        # Host-only: verify the session user is the room host
+        user_id = session_data.get('user_id')
+        if not user_id or str(chat_room.host_id) != str(user_id):
+            raise PermissionDenied("Only the host can broadcast messages")
+
+        # Toggle broadcast
+        message.is_broadcast = not message.is_broadcast
+        message.save(update_fields=['is_broadcast'])
+
+        # Update Redis cache
+        MessageCache.update_message(message)
+        if message.is_broadcast:
+            MessageCache.add_to_broadcast_index(message)
+        else:
+            MessageCache.remove_from_broadcast_index(chat_room.id, str(message.id))
+
+        # Broadcast via WebSocket
+        channel_layer = get_channel_layer()
+        room_group_name = f'chat_{chat_room.code}'
+
+        serialized_data = MessageSerializer(message).data
+        json_safe_data = json_module.loads(JSONRenderer().render(serialized_data))
+
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'message_broadcast',
+                'message': json_safe_data,
+                'is_broadcast': message.is_broadcast,
+            }
+        )
+
+        return Response({
+            'success': True,
+            'is_broadcast': message.is_broadcast,
         })
 
 

@@ -77,6 +77,7 @@ class ChatTheme(models.Model):
     crown_icon_color = models.CharField(max_length=100, default='text-yellow-400', help_text="Tailwind classes for crown (host) icon color")
     badge_icon_color = models.CharField(max_length=100, default='text-blue-400', help_text="Tailwind classes for verified badge icon color")
     reply_icon_color = models.CharField(max_length=100, default='text-cyan-400', help_text="Tailwind classes for reply icon color")
+    broadcast_icon_color = models.CharField(max_length=100, default='text-blue-400', help_text="Tailwind classes for broadcast icon color")
 
     # Reaction Highlight (when user has reacted)
     reaction_highlight_bg = models.CharField(max_length=100, default='bg-zinc-700', help_text="Background classes for highlighted reaction pill")
@@ -323,6 +324,9 @@ class Message(models.Model):
     # Gift tracking
     gift_recipient = models.CharField(max_length=100, blank=True, null=True, help_text="Recipient username for gift messages (denormalized for filter indexing)")
     is_gift_acknowledged = models.BooleanField(default=False)
+
+    # Broadcast (host-only, appears in all users' Focus view)
+    is_broadcast = models.BooleanField(default=False)
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

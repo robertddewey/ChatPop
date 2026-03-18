@@ -120,6 +120,7 @@ export interface ChatTheme {
   input_area: string;
   input_field: string;
   pin_icon_color: string;
+  broadcast_icon_color: string;
   crown_icon_color: string;
   badge_icon_color: string;
   reply_icon_color: string;
@@ -235,6 +236,7 @@ export interface Message {
   is_deleted: boolean;
   gift_recipient?: string | null;
   is_gift_acknowledged?: boolean;
+  is_broadcast?: boolean;
   reactions?: ReactionSummary[]; // Top 3 reactions for display
 }
 
@@ -493,9 +495,11 @@ export const messageApi = {
     if (sessionToken) {
       params.session_token = sessionToken;
     }
-    if (filter && filterUsername) {
+    if (filter) {
       params.filter = filter;
-      params.filter_username = filterUsername;
+      if (filterUsername) {
+        params.filter_username = filterUsername;
+      }
     }
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/`, { params });
     // Support new Redis cache response format: { messages: [...], pinned_messages: [...], source: "redis" }
@@ -511,9 +515,11 @@ export const messageApi = {
       before: beforeTimestamp,
       limit
     };
-    if (filter && filterUsername) {
+    if (filter) {
       params.filter = filter;
-      params.filter_username = filterUsername;
+      if (filterUsername) {
+        params.filter_username = filterUsername;
+      }
     }
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/`, { params });
 
@@ -580,6 +586,18 @@ export const messageApi = {
 
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/add-to-pin/`, {
       amount_cents: amountCents,
+      session_token: sessionToken,
+    });
+    return response.data;
+  },
+
+  // Toggle broadcast on a message (host-only)
+  broadcastMessage: async (code: string, messageId: string, roomUsername?: string): Promise<{
+    success: boolean;
+    is_broadcast: boolean;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/broadcast/`, {
       session_token: sessionToken,
     });
     return response.data;

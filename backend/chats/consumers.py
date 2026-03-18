@@ -211,6 +211,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'is_top_pin': event.get('is_top_pin', False),
         }))
 
+    async def message_broadcast(self, event):
+        # Send broadcast update notification to WebSocket
+        await self.send(text_data=json.dumps({
+            'type': 'message_broadcast',
+            'message': event['message'],
+            'is_broadcast': event.get('is_broadcast', False),
+        }))
+
     async def block_update(self, event):
         """Handle block/unblock updates from user_block_views.py"""
         action = event.get('action')  # 'add' or 'remove'

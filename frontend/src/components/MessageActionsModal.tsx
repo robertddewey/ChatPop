@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Message, ReactionSummary } from '@/lib/api';
-import { Pin, Gift, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart } from 'lucide-react';
+import { Pin, Gift, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Radio } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import ReactionBar from './ReactionBar';
 import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
@@ -73,6 +73,7 @@ interface MessageActionsModalProps {
   onTip?: (username: string) => void;
   onSendGift?: (giftId: string, recipientUsername: string) => Promise<boolean>;
   onThankGift?: (messageId: string) => Promise<boolean>;
+  onBroadcast?: (messageId: string) => Promise<boolean>;
   onReact?: (messageId: string, emoji: string) => void;
   reactions?: ReactionSummary[];
   onDelete?: (messageId: string) => void;
@@ -224,6 +225,7 @@ export default function MessageActionsModal({
   onTip,
   onSendGift,
   onThankGift,
+  onBroadcast,
   onReact,
   reactions = [],
   onDelete,
@@ -593,7 +595,19 @@ export default function MessageActionsModal({
     });
   }
 
-  // 4. Copy — always (copies "username: content" to clipboard, disabled for media-only)
+  // 4b. Broadcast — host-only toggle
+  if (isHost && onBroadcast) {
+    actions.push({
+      icon: Radio,
+      label: message.is_broadcast ? 'Unbroadcast' : 'Broadcast',
+      action: async () => {
+        await onBroadcast(message.id);
+        handleClose();
+      },
+    });
+  }
+
+  // 5. Copy — always (copies "username: content" to clipboard, disabled for media-only)
   const hasTextContent = !!message.content?.trim();
   actions.push({
     icon: Copy,

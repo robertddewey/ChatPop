@@ -143,6 +143,7 @@ interface StickySectionProps {
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
+  handleBroadcastMessage: (messageId: string) => Promise<boolean>;
   handleDeleteMessage: (messageId: string) => void;
   handleReactionToggle: (messageId: string, emoji: string) => void;
 }
@@ -173,6 +174,7 @@ function StickySection({
   handleTipUser,
   handleSendGift,
   handleThankGift,
+  handleBroadcastMessage,
   handleDeleteMessage,
   handleReactionToggle,
   stickyToggleRef,
@@ -369,6 +371,7 @@ function StickySection({
               onTip={handleTipUser}
               onSendGift={handleSendGift}
               onThankGift={handleThankGift}
+              onBroadcast={handleBroadcastMessage}
               onDelete={handleDeleteMessage}
               onReact={handleReactionToggle}
               onHighlight={highlightMessage}
@@ -483,6 +486,7 @@ function StickySection({
               onTip={handleTipUser}
               onSendGift={handleSendGift}
               onThankGift={handleThankGift}
+              onBroadcast={handleBroadcastMessage}
               onDelete={handleDeleteMessage}
               onReact={handleReactionToggle}
               onHighlight={highlightMessage}
