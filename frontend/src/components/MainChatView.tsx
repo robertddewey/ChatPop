@@ -726,18 +726,18 @@ function MainChatView({
                             : currentDesign.giftStyles?.cardBg || 'bg-zinc-800/80 border border-zinc-700'
                         }`}>
                           {(message.is_pinned || message.is_gift_acknowledged || message.is_broadcast) && (
-                            <div className="absolute -top-2.5 -right-2 z-10 flex items-center">
-                              {message.is_broadcast && (
-                                <span className="animate-wobble-a drop-shadow-md -mr-1">
-                                  <Radio size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.broadcastIconColor) || '#60a5fa' }} />
-                                </span>
-                              )}
-                              {message.is_gift_acknowledged && (
-                                <span className="text-sm animate-wobble-a drop-shadow-md -mr-1" title="Thanked">🤗</span>
-                              )}
+                            <div className="absolute -top-2.5 -right-2 z-10 flex flex-row-reverse items-center gap-0.5">
                               {message.is_pinned && (
                                 <span className="animate-wobble-b drop-shadow-md">
                                   <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                                </span>
+                              )}
+                              {message.is_gift_acknowledged && (
+                                <span className="text-sm animate-wobble-a drop-shadow-md" title="Thanked">🤗</span>
+                              )}
+                              {message.is_broadcast && (
+                                <span className="animate-wobble-a drop-shadow-md">
+                                  <Radio size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.broadcastIconColor) || '#60a5fa' }} />
                                 </span>
                               )}
                             </div>
@@ -793,15 +793,15 @@ function MainChatView({
                   >
                     {/* Pin icon on corner of pinned messages */}
                     {(message.is_pinned || message.is_broadcast) && (
-                      <div className="absolute -top-2 -right-2 z-10 flex items-center">
-                        {message.is_broadcast && (
-                          <span className="animate-wobble-a drop-shadow-md -mr-1">
-                            <Radio size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.broadcastIconColor) || '#60a5fa' }} />
-                          </span>
-                        )}
+                      <div className="absolute -top-2 -right-2 z-10 flex flex-row-reverse items-center gap-0.5">
                         {message.is_pinned && (
                           <span className="animate-wobble-b drop-shadow-md">
                             <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                          </span>
+                        )}
+                        {message.is_broadcast && (
+                          <span className="animate-wobble-a drop-shadow-md">
+                            <Radio size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.broadcastIconColor) || '#60a5fa' }} />
                           </span>
                         )}
                       </div>
