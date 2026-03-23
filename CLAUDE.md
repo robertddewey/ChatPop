@@ -577,7 +577,7 @@ Before merging a theme with SVG background:
 | File | Model | Count | Purpose |
 |------|-------|-------|---------|
 | `fixtures/theme.json` | `chats.ChatTheme` | 1 | Chat theme definitions (colors, styles) |
-| `fixtures/config.json` | `constance.Constance` | 60 | Runtime config settings (rate limits, cache TTLs, etc.) |
+| `fixtures/config.json` | `constance.Constance` | 63 | Runtime config settings (rate limits, cache TTLs, etc.) |
 | `fixtures/gifts.json` | `chats.GiftCatalogItem` | 50 | Gift catalog (emoji, prices, categories) |
 
 ### Adding New Reference Data
