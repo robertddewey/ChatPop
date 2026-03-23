@@ -551,8 +551,12 @@ export default function ChatPage() {
   // Emoji reactions state
   const [messageReactions, setMessageReactions] = useState<Record<string, ReactionSummary[]>>({});
 
-  // Pin expiry trigger - incrementing this forces re-computation of topPinnedMessage
-  const [pinExpiryTick, setPinExpiryTick] = useState(0);
+  // Independent sticky state — survives room switches, only updated from authoritative sources
+  const [stickyHostMessage, setStickyHostMessage] = useState<Message | null>(null);
+  const [stickyPinnedMsg, setStickyPinnedMsg] = useState<Message | null>(null);
+
+  // Stable array reference for StickySection memo — avoids re-render on every parent render
+  const stickyHostMessages = useMemo(() => stickyHostMessage ? [stickyHostMessage] : [], [stickyHostMessage]);
 
   // Settings sheet state
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
@@ -562,6 +566,18 @@ export default function ChatPage() {
 
   // WebSocket state
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+
+  // Extract sticky-worthy messages and update state (never clears — only updates)
+  const updateStickyFromMessages = useCallback((msgs: Message[]) => {
+    const latestHost = msgs.filter(m => m.is_from_host).slice(-1)[0];
+    if (latestHost) setStickyHostMessage(latestHost);
+
+    const now = new Date();
+    const topPinned = msgs
+      .filter(m => m.is_pinned && !m.is_from_host && (!m.sticky_until || new Date(m.sticky_until) > now))
+      .sort((a, b) => parseFloat(b.current_pin_amount) - parseFloat(a.current_pin_amount))[0];
+    if (topPinned) setStickyPinnedMsg(topPinned);
+  }, []);
 
   // Switch room — unified handler for all room transitions (lateral navigation)
   const switchRoom = useCallback(async (target: Room) => {
@@ -583,7 +599,6 @@ export default function ChatPage() {
     setPreviousRoom(currentRoom);
     setRoomLoading(true);
     setCurrentRoom(target);
-    setMessages([]);
     setHasMoreMessages(true);
     setReplyingTo(null);
     window.history.replaceState({ room: target }, '', window.location.href);
@@ -609,6 +624,7 @@ export default function ChatPage() {
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
         setMessages(allMessages);
+        updateStickyFromMessages(allMessages);
         // Extract reactions
         const reactions: Record<string, ReactionSummary[]> = {};
         allMessages.forEach((msg) => {
@@ -644,6 +660,7 @@ export default function ChatPage() {
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
         setMessages(allMessages);
+        updateStickyFromMessages(allMessages);
       } catch (err) {
         console.error('Failed to load filtered messages:', err);
       } finally {
@@ -664,7 +681,7 @@ export default function ChatPage() {
         if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
       });
     });
-  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
+  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros, updateStickyFromMessages]);
 
   // Dismiss a feature intro
   const handleDismissIntro = useCallback((key: string) => {
@@ -690,6 +707,10 @@ export default function ChatPage() {
       // Let handleScroll manage shouldAutoScrollRef based on user's position
       return [...prev, message];
     });
+    // Update sticky if this is a host message
+    if (message.is_from_host) {
+      setStickyHostMessage(message);
+    }
     // Play receive sound only when someone replies to YOUR message (not their own)
     if (message.reply_to_message?.username === username && message.username !== username) {
       playReceiveMessageSound();
@@ -703,6 +724,8 @@ export default function ChatPage() {
     setSessionToken(null);
     setHasJoined(false);
     setMessages([]);
+    setStickyHostMessage(null);
+    setStickyPinnedMsg(null);
 
     // Show alert and redirect to home page
     alert(message || 'You have been removed from this chat.');
@@ -716,6 +739,8 @@ export default function ChatPage() {
     setSessionToken(null);
     setHasJoined(false);
     setMessages([]);
+    setStickyHostMessage(null);
+    setStickyPinnedMsg(null);
 
     // Show alert and redirect to home page
     alert(message || 'You have been removed from this chat by the host.');
@@ -759,6 +784,10 @@ export default function ChatPage() {
         ? { ...msg, is_pinned: message.is_pinned, pin_amount_paid: message.pin_amount_paid, current_pin_amount: message.current_pin_amount, pinned_at: message.pinned_at, sticky_until: message.sticky_until }
         : msg
     ));
+    // Update sticky pinned if this is the top pin
+    if (isTopPin && !message.is_from_host) {
+      setStickyPinnedMsg(message);
+    }
   }, []);
 
   const handleMessageBroadcast = useCallback((message: Message, isBroadcast: boolean) => {
@@ -1129,6 +1158,8 @@ export default function ChatPage() {
         // If user has both identities, show identity chooser again (not "Welcome back")
         setHasJoinedBefore(anonymousParticipation ? false : true);
         setMessages([]);
+        setStickyHostMessage(null);
+        setStickyPinnedMsg(null);
         setJoinModalKey(prev => prev + 1);
         // Reset preview state so source-of-truth values are used
         setPreviewUsername(null);
@@ -1211,6 +1242,7 @@ export default function ChatPage() {
       );
 
       setMessages(allMessages);
+      updateStickyFromMessages(allMessages);
       setHasMoreMessages(true);
 
       // Extract reactions from messages
@@ -1264,9 +1296,6 @@ export default function ChatPage() {
       const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(code, beforeTimestamp, 50, roomUsername, filterParam, filterUser);
 
       if (olderMessages.length > 0) {
-        // Freeze sticky state during insert
-        isInsertingRef.current = true;
-
         // Capture scroll position RIGHT BEFORE the DOM update
         const previousScrollHeight = container.scrollHeight;
         const previousScrollTop = container.scrollTop;
@@ -1287,19 +1316,11 @@ export default function ChatPage() {
         const heightDifference = newScrollHeight - previousScrollHeight;
         const targetScrollTop = previousScrollTop + heightDifference;
         container.scrollTo({ top: targetScrollTop, behavior: 'instant' });
-
-        // Unfreeze sticky after scroll adjustment settles
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            isInsertingRef.current = false;
-          });
-        });
       }
 
       setHasMoreMessages(hasMore);
     } catch (err) {
       console.error('Failed to load older messages:', err);
-      isInsertingRef.current = false; // Ensure we unfreeze on error
     } finally {
       setLoadingOlder(false);
     }
@@ -1712,9 +1733,6 @@ export default function ChatPage() {
   const shouldAutoScrollRef = useRef(true);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Track if we're inserting older messages (to freeze sticky during insert)
-  const isInsertingRef = useRef(false);
-
   // Track last message ID to detect NEW messages vs prepended old ones
   const lastMessageIdRef = useRef<string | null>(null);
 
@@ -2020,88 +2038,32 @@ export default function ChatPage() {
     return messages;
   }, [messages, currentRoom, roomLoading, username]);
 
-  // Filter messages for sticky section — always use full messages list so sticky
-  // area is consistent across all rooms (main, focus, broadcast, gifts)
-  const allStickyHostMessages = useMemo(() => {
-    return messages
-      .filter(m => m.is_from_host)
-      .slice(-1)  // Get 1 most recent
-      .reverse(); // Show newest first
-  }, [messages]);
-
-  // Use full messages list (not filtered) so sticky pin is always the true winner
-  const topPinnedMessage = useMemo(() => {
-    const now = new Date();
-    return messages
-      .filter(m => m.is_pinned && !m.is_from_host && (!m.sticky_until || new Date(m.sticky_until) > now))
-      .sort((a, b) => parseFloat(b.current_pin_amount) - parseFloat(a.current_pin_amount))
-      [0]; // Get highest paid, non-expired
-  }, [messages, pinExpiryTick]);
-
   // Check if current user is the host
   const isHost = useMemo(() => {
     return !!(currentUserId && chatRoom && chatRoom.host.id === currentUserId);
   }, [currentUserId, chatRoom]);
 
-  // Refs to store previous sticky values (for freezing during insert)
-  const prevStickyHostRef = useRef<Message[]>([]);
-  const prevStickyPinnedRef = useRef<Message | null>(null);
-
-  // Always show the most recent host message in sticky area
-  // This is simpler than scroll-based tracking and eliminates flickering
-  const stickyHostMessages = useMemo(() => {
-    // If inserting older messages, return frozen value to prevent flash
-    if (isInsertingRef.current) {
-            return prevStickyHostRef.current;
-    }
-
-    // When in a filtered room with no host messages, keep showing the last known sticky
-    if (allStickyHostMessages.length === 0 && prevStickyHostRef.current.length > 0 && currentRoom !== 'main') {
-      return prevStickyHostRef.current;
-    }
-
-    // Save for future freeze
-    prevStickyHostRef.current = allStickyHostMessages;
-
-    return allStickyHostMessages;
-  }, [allStickyHostMessages, currentRoom]);
-
-  // Always show pinned message in sticky area (user paid for visibility)
-  const computedStickyPinnedMessage = topPinnedMessage || null;
-
-  // Freeze pinned message during insert or when in filtered rooms with no pin data
-  const stickyPinnedMessage = useMemo(() => {
-    if (isInsertingRef.current) {
-      return prevStickyPinnedRef.current;
-    }
-    if (!computedStickyPinnedMessage && prevStickyPinnedRef.current && currentRoom !== 'main') {
-      return prevStickyPinnedRef.current;
-    }
-    prevStickyPinnedRef.current = computedStickyPinnedMessage;
-    return computedStickyPinnedMessage;
-  }, [computedStickyPinnedMessage, currentRoom]);
-
   // Auto-remove expired pins from sticky section
   useEffect(() => {
-    if (!stickyPinnedMessage?.sticky_until) return;
+    if (!stickyPinnedMsg?.sticky_until) return;
 
-    const expiryTime = new Date(stickyPinnedMessage.sticky_until).getTime();
+    const expiryTime = new Date(stickyPinnedMsg.sticky_until).getTime();
     const now = Date.now();
     const timeRemaining = expiryTime - now;
 
-    // If already expired, trigger immediate re-computation
+    // If already expired, clear immediately
     if (timeRemaining <= 0) {
-      setPinExpiryTick(t => t + 1);
+      setStickyPinnedMsg(null);
       return;
     }
 
-    // Set timer to trigger re-computation when pin expires
+    // Set timer to clear sticky pinned when pin expires
     const timer = setTimeout(() => {
-            setPinExpiryTick(t => t + 1);
+      setStickyPinnedMsg(null);
     }, timeRemaining);
 
     return () => clearTimeout(timer);
-  }, [stickyPinnedMessage?.id, stickyPinnedMessage?.sticky_until]);
+  }, [stickyPinnedMsg?.id, stickyPinnedMsg?.sticky_until]);
 
   // Check if user is scrolled near the bottom
   const checkIfNearBottom = () => {
@@ -2433,8 +2395,8 @@ export default function ChatPage() {
             </div>
           </div>
         )}
-        {!isSeparateViewRoom(currentRoom) && (
               <MainChatView
+                hiddenMode={isSeparateViewRoom(currentRoom)}
                 chatRoom={chatRoom}
                 currentUserId={currentUserId ?? null}
                 username={username}
@@ -2442,7 +2404,7 @@ export default function ChatPage() {
                 sessionToken={sessionToken}
                 filteredMessages={filteredMessages}
                 stickyHostMessages={stickyHostMessages}
-                stickyPinnedMessage={stickyPinnedMessage}
+                stickyPinnedMessage={stickyPinnedMsg}
                 messagesContainerRef={messagesContainerRef}
                 messagesEndRef={messagesEndRef}
                 currentDesign={currentDesign}
@@ -2474,7 +2436,6 @@ export default function ChatPage() {
                 onScrollToBottom={handleScrollToBottom}
                 expandStickySignal={expandStickySignal}
               />
-            )}
 
             {/* Join Modal - inline overlay within messages area */}
             {!hasJoined && chatRoom && (

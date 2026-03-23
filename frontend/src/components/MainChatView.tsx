@@ -246,6 +246,7 @@ interface MainChatViewProps {
   showScrollToBottom?: boolean;
   onScrollToBottom?: () => void;
   expandStickySignal?: number;
+  hiddenMode?: boolean;
 }
 
 function MainChatView({
@@ -289,6 +290,7 @@ function MainChatView({
   showScrollToBottom = false,
   onScrollToBottom,
   expandStickySignal,
+  hiddenMode = false,
 }: MainChatViewProps) {
   // Local stickyHeight for paddingTop — updated via callback from StickySection
   const [stickyHeight, setStickyHeight] = useState(0);
@@ -447,15 +449,18 @@ function MainChatView({
         savedDistFromBottomRef={savedDistFromBottomRef}
       />
 
+      {/* Content below sticky — hidden when in separate view rooms (game room) */}
+      <div className={hiddenMode ? 'hidden' : 'contents'}>
+
       {/* Background Pattern Layer - Fixed behind everything */}
       <div
         className={`absolute inset-0 pointer-events-none ${backgroundStyles.classes}`}
         style={backgroundStyles.style}
       />
 
-      {/* Filter Loading Overlay */}
+      {/* Filter Loading Overlay — z-[15] sits above messages (z-10) but below sticky section (z-20) */}
       {filterLoading && (
-        <div className={`absolute inset-0 z-40 flex items-center justify-center ${
+        <div className={`absolute inset-0 z-[15] flex items-center justify-center ${
           currentDesign.uiStyles?.loadingBg || 'bg-zinc-900'
         }`}>
           <div className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl ${
@@ -1050,6 +1055,7 @@ function MainChatView({
           <ChevronDown size={20} />
         </button>
       )}
+      </div>
     </div>
   );
 }
