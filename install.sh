@@ -274,6 +274,28 @@ setup_backend() {
         print_info "Backend .env file already exists"
     fi
 
+    # Warn about required API keys
+    echo ""
+    echo -e "${RED}========================================${NC}"
+    echo -e "${RED}  IMPORTANT: Configure API Keys${NC}"
+    echo -e "${RED}========================================${NC}"
+    echo ""
+    echo -e "  You ${RED}MUST${NC} set the following API keys in ${YELLOW}backend/.env${NC}"
+    echo -e "  before location-based features will work:"
+    echo ""
+    echo -e "  ${YELLOW}TOMTOM_API_KEY${NC}        - Get from: https://developer.tomtom.com/"
+    echo -e "  ${YELLOW}GOOGLE_PLACES_API_KEY${NC} - Get from: https://console.cloud.google.com/"
+    echo ""
+    echo -e "  Other keys to configure for full functionality:"
+    echo -e "  ${YELLOW}OPENAI_API_KEY${NC}        - Photo analysis"
+    echo -e "  ${YELLOW}STRIPE_SECRET_KEY${NC}     - Payments"
+    echo -e "  ${YELLOW}SERPAPI_API_KEY${NC}        - Reverse image search"
+    echo -e "  ${YELLOW}ACRCLOUD_ACCESS_KEY${NC}   - Audio recognition"
+    echo ""
+    echo -e "  Edit the file: ${YELLOW}nano backend/.env${NC}"
+    echo -e "${RED}========================================${NC}"
+    echo ""
+
     # Configure ngrok domain
     echo ""
     print_info "ngrok enables mobile device testing via a public tunnel"
