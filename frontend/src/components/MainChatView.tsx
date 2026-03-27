@@ -997,9 +997,7 @@ function MainChatView({
                 <div className={`flex items-center gap-2 h-6 pr-14 ${
                   message.message_type === 'gift'
                     ? 'mt-1'
-                    : (message.voice_url || message.photo_url || message.video_url)
-                      ? 'mt-0.5'
-                      : '-mt-0.5'
+                    : 'mt-0.5'
                 }`}>
                   <span
                     className="text-[10px] opacity-60 whitespace-nowrap flex-shrink-0"

@@ -72,7 +72,7 @@
     "broadcast_icon_color": "text-blue-400",
     "reaction_highlight_bg": "bg-purple-500/20",
     "reaction_highlight_border": "border border-purple-500/50",
-    "reaction_highlight_text": "text-zinc-200",
+    "reaction_highlight_text": "!text-purple-300",
     "avatar_size": null,
     "avatar_border": null,
     "avatar_spacing": "mr-3",
@@ -175,7 +175,7 @@
       "replyContextOwn": "bg-white/10 border border-white/10 hover:bg-white/15",
       "avatarFallbackBg": "bg-zinc-700",
       "mediaLoadingText": "text-gray-500",
-      "reactionPillText": "text-zinc-400",
+      "reactionPillText": "text-zinc-500",
       "replyPreviewText": "text-gray-300",
       "emptyStateSubtext": "text-zinc-500",
       "replyContextOther": "bg-white/10 border border-zinc-600 hover:bg-white/15",
@@ -183,11 +183,11 @@
       "replyContextPinned": "bg-white/10 border border-purple-500/30 hover:bg-white/15",
       "reactionHighlightBg": "bg-purple-500/20",
       "loadingIndicatorText": "text-gray-400",
-      "reactionHighlightText": "text-zinc-200",
+      "reactionHighlightText": "!text-purple-300",
       "reactionHighlightBorder": "border border-purple-500/50"
     },
     "created_at": "2026-03-01T20:55:52.485Z",
-    "updated_at": "2026-03-08T12:38:18.742Z"
+    "updated_at": "2026-03-27T17:12:39.319Z"
   }
 }
 ]

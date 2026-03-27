@@ -1209,10 +1209,12 @@ export default function ChatPage() {
     isLoadingMessagesRef.current = true;
 
     try {
+      // Read sessionToken directly from localStorage to avoid stale closure
+      const currentSessionToken = localStorage.getItem(`chat_session_${code}`) || undefined;
       // Pass filter params when in focus/gifts room
       const filterParam = getRoomFilter(currentRoom);
       const filterUser = filterParam && filterParam !== 'broadcast' ? username : undefined;
-      const { messages: msgs, pinnedMessages } = await messageApi.getMessages(code, roomUsername, sessionToken || undefined, filterParam, filterUser);
+      const { messages: msgs, pinnedMessages } = await messageApi.getMessages(code, roomUsername, currentSessionToken, filterParam, filterUser);
 
       // Create a map of pinned messages for quick lookup
       const pinnedMap = new Map(pinnedMessages.map(pm => [pm.id, pm]));

@@ -856,9 +856,9 @@ export default function MessageActionsModal({
                       </span>
                     </div>
                   )}
-                  {/* Timestamp + Reactions */}
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-[10px] ${themeModalStyles?.timestampText || 'text-white opacity-60'}`}>
+                  {/* Timestamp + Reactions — min-h prevents layout shift when first reaction is added */}
+                  <div className="flex items-center gap-2 mt-1 min-h-[24px]">
+                    <span className={`text-[10px] flex-shrink-0 whitespace-nowrap ${themeModalStyles?.timestampText || 'text-white opacity-60'}`}>
                       {new Date(message.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
                     <ReactionBar

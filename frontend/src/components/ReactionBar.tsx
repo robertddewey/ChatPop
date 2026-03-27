@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { ReactionSummary } from '@/lib/api';
 
 interface ReactionHighlightTheme {
@@ -32,26 +32,14 @@ function formatCount(count: number): string {
 }
 
 export default function ReactionBar({ reactions, onReactionClick, highlightTheme, uiStyles, maxVisible = 4 }: ReactionBarProps) {
-  const [animatingEmoji, setAnimatingEmoji] = useState<string | null>(null);
-
   // Filter out reactions with no count (e.g., after removal via WebSocket re-fetch)
   const validReactions = reactions?.filter(r => r.count > 0) || [];
 
-  // Show top N by popularity + user's own reactions (deduped), sorted by count
+  // Show user's reactions first (by popularity), then top others, capped at maxVisible
   const sorted = [...validReactions].sort((a, b) => b.count - a.count);
-  const topN = sorted.slice(0, maxVisible);
-  const topNEmojis = new Set(topN.map(r => r.emoji));
-  const userExtras = sorted.filter(r => r.has_reacted && !topNEmojis.has(r.emoji));
-  const topReactions = [...topN, ...userExtras].sort((a, b) => b.count - a.count);
-
-  const handleClick = (emoji: string) => {
-    // Trigger animation
-    setAnimatingEmoji(emoji);
-    setTimeout(() => setAnimatingEmoji(null), 200);
-
-    // Call the click handler
-    onReactionClick?.(emoji);
-  };
+  const userReactions = sorted.filter(r => r.has_reacted);
+  const otherReactions = sorted.filter(r => !r.has_reacted);
+  const topReactions = [...userReactions, ...otherReactions].slice(0, Math.max(maxVisible, userReactions.length));
 
   // Highlight styles: theme JSON > highlightTheme prop > dark-mode fallback
   const highlightBg = uiStyles?.reactionHighlightBg || highlightTheme?.reaction_highlight_bg || 'bg-purple-500/20';
@@ -62,6 +50,28 @@ export default function ReactionBar({ reactions, onReactionClick, highlightTheme
   const pillBg = uiStyles?.reactionPillBg || 'bg-zinc-800 border border-zinc-700';
   const pillText = uiStyles?.reactionPillText || 'text-zinc-400';
 
+  // Resolve highlight text color to a hex value for inline style (Safari !important workaround)
+  const highlightTextColor = (() => {
+    const cls = highlightText.replace(/^!/, '');
+    const colorMap: Record<string, string> = {
+      'text-purple-300': '#d8b4fe',
+      'text-purple-400': '#c084fc',
+      'text-zinc-200': '#e4e4e7',
+      'text-white': '#ffffff',
+    };
+    return colorMap[cls] || undefined;
+  })();
+
+  const pillTextColor = (() => {
+    const cls = pillText.replace(/^!/, '');
+    const colorMap: Record<string, string> = {
+      'text-zinc-400': '#a1a1aa',
+      'text-zinc-500': '#71717a',
+      'text-zinc-600': '#52525b',
+    };
+    return colorMap[cls] || undefined;
+  })();
+
   // Always render the container to prevent browser paint artifacts
   // when reaction buttons with shadow-lg are removed from DOM
   return (
@@ -69,25 +79,20 @@ export default function ReactionBar({ reactions, onReactionClick, highlightTheme
       className="flex-1 flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0 touch-pan-x"
     >
       {topReactions.map((reaction) => {
-        const isAnimating = animatingEmoji === reaction.emoji;
         const hasReacted = reaction.has_reacted;
 
         return (
           <button
             key={reaction.emoji}
-            onClick={() => handleClick(reaction.emoji)}
-            className={`flex items-center gap-0.5 px-0.5 flex-shrink-0 ${
-              isAnimating ? 'scale-110' : 'scale-100'
+            onClick={() => onReactionClick?.(reaction.emoji)}
+            className={`flex items-center gap-0.5 px-1 py-0.5 rounded-full flex-shrink-0 ${
+              hasReacted ? `${highlightBg} ${highlightBorder}` : pillBg
             }`}
-            style={{
-              transition: 'transform 0.15s ease-out, background-color 0.2s, border-color 0.2s',
-            }}
           >
-            <span className="text-xs">{reaction.emoji}</span>
+            <span className="text-[10px] leading-none">{reaction.emoji}</span>
             <span
-              className={`text-[10px] font-medium ${
-                hasReacted ? highlightText : pillText
-              }`}
+              className="text-[10px] font-medium"
+              style={{ color: hasReacted ? highlightTextColor : pillTextColor }}
             >
               {formatCount(reaction.count)}
             </span>
