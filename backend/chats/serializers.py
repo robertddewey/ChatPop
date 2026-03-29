@@ -482,7 +482,7 @@ class ChatParticipationSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatParticipation
         fields = [
-            'id', 'chat_room', 'user', 'fingerprint', 'username', 'theme',
+            'id', 'chat_room', 'user', 'username', 'theme',
             'avatar_url', 'first_joined_at', 'last_seen_at', 'is_active'
         ]
         read_only_fields = ['id', 'chat_room', 'user', 'avatar_url', 'first_joined_at', 'last_seen_at']
@@ -492,8 +492,8 @@ class MessageReactionSerializer(serializers.ModelSerializer):
     """Serializer for MessageReaction"""
     class Meta:
         model = MessageReaction
-        fields = ['id', 'message', 'emoji', 'user', 'fingerprint', 'username', 'created_at']
-        read_only_fields = ['id', 'user', 'fingerprint', 'username', 'created_at']
+        fields = ['id', 'message', 'emoji', 'user', 'username', 'created_at']
+        read_only_fields = ['id', 'user', 'username', 'created_at']
 
 
 class MessageReactionCreateSerializer(serializers.Serializer):
