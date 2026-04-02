@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, MyChatsView,
+    ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, RefreshSessionView, MyChatsView,
     ChatConfigView, NearbyDiscoverableChatsView,
     MessageListView, MessageCreateView, MessagePinView, AddToPinView, MessageBroadcastView, MessageDeleteView, PinTiersView,
     FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
@@ -82,6 +82,7 @@ urlpatterns = [
     path('discover/<str:code>/gifts/send/', SendGiftView.as_view(), name='gift-send-ai'),
     path('discover/<str:code>/gifts/acknowledge/', AcknowledgeGiftView.as_view(), name='gift-acknowledge-ai'),
     path('discover/<str:code>/intros/<str:key>/dismiss/', DismissIntroView.as_view(), name='dismiss-intro-ai'),
+    path('discover/<str:code>/refresh-session/', RefreshSessionView.as_view(), name='refresh-session-ai'),
 
     # Manual Rooms (user-namespaced, /{username}/{code}/)
     path('<str:username>/<str:code>/', ChatRoomDetailView.as_view(), name='chat-detail'),
@@ -112,4 +113,5 @@ urlpatterns = [
     path('<str:username>/<str:code>/gifts/send/', SendGiftView.as_view(), name='gift-send'),
     path('<str:username>/<str:code>/gifts/acknowledge/', AcknowledgeGiftView.as_view(), name='gift-acknowledge'),
     path('<str:username>/<str:code>/intros/<str:key>/dismiss/', DismissIntroView.as_view(), name='dismiss-intro'),
+    path('<str:username>/<str:code>/refresh-session/', RefreshSessionView.as_view(), name='refresh-session'),
 ]

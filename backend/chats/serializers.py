@@ -259,6 +259,13 @@ class ChatRoomJoinSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=15, required=True)
     access_code = serializers.CharField(max_length=50, required=False, allow_blank=True)
     avatar_seed = serializers.CharField(max_length=36, required=False, allow_blank=True)
+    pin = serializers.CharField(max_length=4, required=False, allow_blank=True)
+
+    def validate_pin(self, value):
+        """Validate PIN is exactly 4 digits when provided."""
+        if value and (len(value) != 4 or not value.isdigit()):
+            raise serializers.ValidationError("PIN must be exactly 4 digits")
+        return value
 
     def validate_avatar_seed(self, value):
         """Validate avatar seed is alphanumeric/hyphens/underscores only (UUID format)."""

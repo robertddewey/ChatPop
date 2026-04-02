@@ -307,6 +307,18 @@ CONSTANCE_CONFIG = {
         bool
     ),
 
+    # Anonymous PIN Settings
+    'ANON_PIN_MAX_ATTEMPTS': (
+        5,
+        'Maximum PIN verification attempts before lockout (per fingerprint+IP)',
+        int
+    ),
+    'ANON_PIN_LOCKOUT_MINUTES': (
+        15,
+        'Lockout duration in minutes after exceeding max PIN attempts',
+        int
+    ),
+
     # Rate Limiting Settings
     'MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT': (
         3,

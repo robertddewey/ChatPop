@@ -444,12 +444,13 @@ export const chatApi = {
     return response.data;
   },
 
-  joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string, roomUsername?: string, avatarSeed?: string) => {
+  joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string, roomUsername?: string, avatarSeed?: string, pin?: string) => {
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/join/`, {
       username,
       access_code: accessCode,
       fingerprint,
       avatar_seed: avatarSeed,
+      pin: pin || undefined,
     });
 
     // Store session token if provided
@@ -457,6 +458,18 @@ export const chatApi = {
       localStorage.setItem(`chat_session_${code}`, response.data.session_token);
     }
 
+    return response.data;
+  },
+
+  refreshSession: async (code: string, sessionToken: string, fingerprint?: string, pin?: string, roomUsername?: string) => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/refresh-session/`, {
+      session_token: sessionToken,
+      fingerprint,
+      pin: pin || undefined,
+    });
+    if (response.data.session_token) {
+      localStorage.setItem(`chat_session_${code}`, response.data.session_token);
+    }
     return response.data;
   },
 
@@ -1200,6 +1213,22 @@ export interface DevRecentPhoto {
   id: string;
   image_url: string;
   created_at: string;
+}
+
+// JWT expiry utilities
+export function getTokenExpiry(code: string): number | null {
+  const token = localStorage.getItem(`chat_session_${code}`);
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp ? payload.exp * 1000 : null; // Convert to ms
+  } catch { return null; }
+}
+
+export function isTokenExpiringSoon(code: string, thresholdMs: number = 3600000): boolean {
+  const expiry = getTokenExpiry(code);
+  if (!expiry) return true; // No token = treat as expired
+  return (expiry - Date.now()) < thresholdMs;
 }
 
 export const devApi = {

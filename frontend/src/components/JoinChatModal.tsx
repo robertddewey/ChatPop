@@ -23,9 +23,11 @@ interface JoinChatModalProps {
   registeredAvatarUrl?: string | null;
   onAvatarChange?: (avatarUrl: string) => void;
   onIdentityChange?: (identity: { username: string; avatarUrl: string | null; hasReservedUsername: boolean }) => void;
-  onJoin: (username: string, accessCode?: string, avatarSeed?: string) => void;
+  onJoin: (username: string, accessCode?: string, avatarSeed?: string, pin?: string) => Promise<{ error?: string; pinError?: string } | void>;
   onLogin?: () => void;
   onSignup?: () => void;
+  showPinScreen?: boolean;
+  onPinScreenChange?: (show: boolean) => void;
 }
 
 export default function JoinChatModal({
@@ -43,6 +45,8 @@ export default function JoinChatModal({
   onJoin,
   onLogin,
   onSignup,
+  showPinScreen,
+  onPinScreenChange,
 }: JoinChatModalProps) {
   const router = useRouter();
 
@@ -84,6 +88,59 @@ export default function JoinChatModal({
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+
+  // PIN state for anonymous users
+  const [pinMode, setPinModeInternal] = useState<'none' | 'create' | 'confirm' | 'enter'>('none');
+  const [pin, setPin] = useState('');
+  const [firstPin, setFirstPin] = useState(''); // Stores first entry during create flow
+  const [pinError, setPinError] = useState('');
+  const pinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const pinScreenRef = useRef<HTMLDivElement>(null);
+  const pinOverlayRef = useRef<HTMLDivElement>(null);
+  const pinToSubmitRef = useRef<string>('');
+
+  // Wrap setPinMode to sync with parent + browser history
+  const setPinMode = useCallback((mode: 'none' | 'create' | 'confirm' | 'enter') => {
+    setPinModeInternal(mode);
+    if (mode !== 'none' && mode !== 'confirm') {
+      // Entering PIN screen — push history so back button works
+      onPinScreenChange?.(true);
+      window.history.pushState({ pin: true }, '', window.location.href);
+    } else if (mode === 'none') {
+      onPinScreenChange?.(false);
+    }
+  }, [onPinScreenChange]);
+
+  // Parent cleared showPinScreen (back button) — reset PIN state
+  useEffect(() => {
+    if (showPinScreen === false && pinMode !== 'none') {
+      setPinModeInternal('none');
+      setPin('');
+      setFirstPin('');
+      setPinError('');
+      setError('');
+    }
+  }, [showPinScreen, pinMode]);
+
+  // Transfer focus to first PIN box when PIN screen renders
+  useEffect(() => {
+    if (pinMode !== 'none' && pinMode !== 'confirm') {
+      setTimeout(() => {
+        pinInputRefs.current[0]?.focus();
+      }, 100);
+    }
+  }, [pinMode]);
+
+  // Block scroll passthrough on PIN overlay (non-passive for iOS Safari)
+  useEffect(() => {
+    if (pinMode === 'none') return;
+    const el = pinOverlayRef.current;
+    if (!el) return;
+    const block = (e: TouchEvent) => e.preventDefault();
+    el.addEventListener('touchmove', block, { passive: false });
+    return () => el.removeEventListener('touchmove', block);
+  }, [pinMode]);
+
   const [isSuggestingUsername, setIsSuggestingUsername] = useState(false);
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState('');
@@ -311,14 +368,86 @@ export default function JoinChatModal({
 
     setIsJoining(true);
 
-    try {
-      await onJoin(finalUsername.trim(), accessCode.trim() || undefined, showAvatarChevrons ? avatarSeeds[avatarIndex] : undefined);
-      // Clean up persisted state on successful join
+    const pinToSend = pinMode !== 'none' ? (pinToSubmitRef.current || pin) : undefined;
+    pinToSubmitRef.current = ''; // Clear after reading
+    const result = await onJoin(finalUsername.trim(), accessCode.trim() || undefined, showAvatarChevrons ? avatarSeeds[avatarIndex] : undefined, pinToSend);
+
+    if (!result) {
+      // Success — clean up persisted state
       try { sessionStorage.removeItem(storageKey); } catch { /* ignore */ }
-    } catch (err: unknown) {
-      const error = err as Error;
-      setError(error.message || 'Failed to join chat');
+      return;
+    }
+
+    // Handle PIN-specific responses
+    if (result.pinError === 'pin_create_required') {
+      setPinMode('create');
+      setPin('');
+      setFirstPin('');
+      setPinError('');
       setIsJoining(false);
+      setTimeout(() => pinInputRefs.current[0]?.focus(), 100);
+      return;
+    }
+    if (result.pinError === 'pin_required') {
+      setPinMode('enter');
+      setPin('');
+      setPinError('');
+      setIsJoining(false);
+      setTimeout(() => pinInputRefs.current[0]?.focus(), 100);
+      return;
+    }
+    if (result.pinError === 'pin_invalid') {
+      setPinError(result.error || 'Incorrect PIN');
+      setPin('');
+      setIsJoining(false);
+      setTimeout(() => pinInputRefs.current[0]?.focus(), 100);
+      return;
+    }
+    if (result.pinError === 'rate_limited') {
+      setPinError(result.error || 'Too many attempts. Please try again later.');
+      setPin('');
+      setIsJoining(false);
+      return;
+    }
+
+    // General error
+    setError(result.error || 'Failed to join chat');
+    setIsJoining(false);
+  };
+
+  // Handle 4th digit entered in PIN box
+  const handlePinComplete = (fullPin: string) => {
+    if (pinMode === 'create') {
+      // First entry done — save it and switch to confirm (same input, just relabel)
+      setFirstPin(fullPin);
+      setPin('');
+      setPinMode('confirm');
+      setPinError('');
+      // Focus first box after clearing
+      setTimeout(() => pinInputRefs.current[0]?.focus(), 50);
+    } else if (pinMode === 'confirm') {
+      // Second entry done — check match
+      if (fullPin !== firstPin) {
+        setPinError('PINs do not match. Try again.');
+        setPin('');
+        setFirstPin('');
+        setPinMode('create');
+        setTimeout(() => pinInputRefs.current[0]?.focus(), 50);
+        return;
+      }
+      // Match — submit the join with the PIN
+      pinToSubmitRef.current = fullPin;
+      setTimeout(() => {
+        const form = document.querySelector('[data-join-form]') as HTMLFormElement;
+        if (form) form.requestSubmit();
+      }, 50);
+    } else if (pinMode === 'enter') {
+      // Returning user — submit immediately
+      pinToSubmitRef.current = fullPin;
+      setTimeout(() => {
+        const form = document.querySelector('[data-join-form]') as HTMLFormElement;
+        if (form) form.requestSubmit();
+      }, 50);
     }
   };
 
@@ -482,7 +611,7 @@ export default function JoinChatModal({
       </div>}
 
       {/* Form */}
-      <form onSubmit={handleJoin} className="space-y-4">
+      <form data-join-form onSubmit={handleJoin} className="space-y-4">
         {/* Identity Chooser — logged-in user with prior anonymous participation */}
         {showIdentityChooser ? (
           <div className="space-y-3">
@@ -712,8 +841,84 @@ export default function JoinChatModal({
     </>
   );
 
+  // Full-screen PIN entry — shown instead of form when PIN is required
+  const pinScreen = pinMode !== 'none' && !isLoggedIn ? (
+    <div
+      ref={pinScreenRef}
+      className={`flex flex-col h-full px-6 pt-16 bg-zinc-950`}
+    >
+      {/* PIN content — pushed down from top (avoids keyboard push) */}
+      <div className="w-full max-w-xs mx-auto">
+        <h2 className={`text-xl font-bold ${modalStyles.title} text-center mb-2`}>
+          {pinMode === 'create' ? 'Create a PIN' : pinMode === 'confirm' ? 'Confirm your PIN' : 'Enter your PIN'}
+        </h2>
+        <p className={`text-sm ${modalStyles.subtitle} text-center mb-8 opacity-70`}>
+          {pinMode === 'create' || pinMode === 'confirm'
+            ? 'This 4-digit PIN secures your anonymous identity across all chats.'
+            : 'Enter the PIN you created when you first joined.'}
+        </p>
+
+        <form data-join-form onSubmit={handleJoin}>
+          {/* Single hidden input drives the visual boxes — iOS Safari handles
+              one input much better than 4 separate ones for keyboard/focus */}
+          <div
+            className="relative flex justify-center gap-3 mb-4 cursor-text"
+            onClick={() => pinInputRefs.current[0]?.focus()}
+          >
+            <input
+              ref={(el) => { pinInputRefs.current[0] = el; }}
+              type="tel"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={pin}
+              autoFocus
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                setPin(val);
+                setPinError('');
+                if (val.length === 4) {
+                  handlePinComplete(val);
+                }
+              }}
+              className="absolute inset-0 w-full h-full opacity-0 text-transparent"
+              style={{ caretColor: 'transparent' }}
+              disabled={isJoining}
+            />
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className={`w-14 h-14 flex items-center justify-center text-2xl font-bold rounded-xl ${modalStyles.input} transition-colors ${
+                  pin.length === i ? 'ring-2 ring-blue-500' : ''
+                }`}
+              >
+                {pin[i] ? '•' : ''}
+              </div>
+            ))}
+          </div>
+
+          {pinError && (
+            <p className={`text-xs ${modalStyles.error} text-center mb-2`}>{pinError}</p>
+          )}
+          {isJoining && (
+            <p className={`text-sm ${modalStyles.subtitle} text-center`}>Joining...</p>
+          )}
+        </form>
+      </div>
+    </div>
+  ) : null;
+
   // Mobile: Bottom-anchored panel within chat container (keeps header accessible)
   if (isMobile) {
+    // PIN screen: absolute within chat content area (below header)
+    if (pinScreen) {
+      return (
+        <div className="absolute inset-0 z-30 pointer-events-auto overflow-hidden" ref={pinOverlayRef}>
+          {pinScreen}
+        </div>
+      );
+    }
+
     return (
       <div className="absolute inset-0 z-30 flex flex-col pointer-events-none">
         {/* Backdrop - covers messages area but header stays above via z-index */}
@@ -744,6 +949,17 @@ export default function JoinChatModal({
   }
 
   // Desktop: Centered modal
+  if (pinScreen) {
+    return (
+      <div className="absolute inset-0 z-30 flex items-center justify-center">
+        <div className={`absolute inset-0 ${modalStyles.overlay}`} />
+        <div className={`relative w-full max-w-md ${modalStyles.container} ${mt.rounded} p-6 md:p-8 ${mt.shadow}`} style={{ minHeight: '320px' }}>
+          {pinScreen}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center p-4">
       {/* Backdrop */}

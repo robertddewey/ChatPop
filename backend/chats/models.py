@@ -488,6 +488,22 @@ class AnonymousUserFingerprint(models.Model):
         return f"{self.username} ({self.fingerprint[:8]}...) in {self.chat_room.code}"
 
 
+class AnonymousPIN(models.Model):
+    """PIN for anonymous users, keyed by fingerprint (shared across all chats).
+    Prevents fingerprint-only impersonation by requiring a second factor at join time."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    fingerprint = models.CharField(max_length=255, unique=True, db_index=True, help_text="Browser fingerprint hash")
+    pin_hash = models.CharField(max_length=256, help_text="Hashed PIN using Django's make_password")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Anonymous PIN'
+        verbose_name_plural = 'Anonymous PINs'
+
+    def __str__(self):
+        return f"PIN for {self.fingerprint[:8]}..."
+
+
 class MessageReaction(models.Model):
     """Track emoji reactions to messages"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
