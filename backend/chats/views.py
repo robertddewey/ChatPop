@@ -1753,8 +1753,7 @@ class MyParticipationView(APIView):
             if link:
                 anonymous_participation = link.participation
             else:
-                # Fallback: check current session (covers the case where anonymous user
-                # just logged in — same session, link not yet created)
+                # Fallback 1: check current session (anonymous user just logged in)
                 current_session = request.session.session_key
                 if current_session:
                     anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
@@ -1762,13 +1761,20 @@ class MyParticipationView(APIView):
                         session_key=current_session,
                         user__isnull=True
                     ).first()
-                    # Auto-create the permanent link so it survives logout
-                    if anonymous_participation:
-                        AnonymousIdentityLink.objects.get_or_create(
-                            user=request.user,
-                            chat_room=chat_room,
-                            defaults={'participation': anonymous_participation}
-                        )
+                # Fallback 2: check fingerprint (for pre-migration data where session_key is NULL)
+                if not anonymous_participation and fingerprint:
+                    anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
+                        chat_room=chat_room,
+                        fingerprint=fingerprint,
+                        user__isnull=True
+                    ).first()
+                # Auto-create the permanent link so future lookups don't need fallback
+                if anonymous_participation:
+                    AnonymousIdentityLink.objects.get_or_create(
+                        user=request.user,
+                        chat_room=chat_room,
+                        defaults={'participation': anonymous_participation}
+                    )
         # Priority 2 - Anonymous user (session_key only, no fingerprint fallback)
         else:
             if session_key:
