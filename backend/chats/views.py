@@ -699,13 +699,15 @@ class MessageListView(APIView):
         filter_mode = request.query_params.get('filter')  # 'focus' or 'gifts'
         filter_username = request.query_params.get('filter_username')  # username for filter
 
-        # Extract current user's fingerprint and user_id from session token (for has_reacted)
+        # Extract current user's identity from session token (for has_reacted)
         current_fingerprint = None
+        current_session_key = None
         current_user_id = None
         if session_token:
             try:
                 session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
                 current_fingerprint = session_data.get('fingerprint')
+                current_session_key = session_data.get('session_key')
                 current_user_id = session_data.get('user_id')
             except Exception:
                 pass  # Invalid token - just proceed without has_reacted
@@ -766,7 +768,8 @@ class MessageListView(APIView):
                         current_fingerprint=current_fingerprint,
                         current_user_id=current_user_id,
                         filter_mode=filter_mode,
-                        filter_username=filter_username
+                        filter_username=filter_username,
+                        current_session_key=current_session_key
                     )
 
                     # Backfill cache with the older messages we just fetched
@@ -791,10 +794,12 @@ class MessageListView(APIView):
 
                 # Get current user's reactions for has_reacted (single query)
                 user_reactions = {}  # message_id -> set of emojis
-                if current_fingerprint or current_user_id:
+                if current_session_key or current_fingerprint or current_user_id:
                     from django.db.models import Q
-                    # Build query to match either fingerprint or user_id
+                    # Build query to match session_key, fingerprint, or user_id
                     q_filter = Q()
+                    if current_session_key:
+                        q_filter |= Q(session_key=current_session_key)
                     if current_fingerprint:
                         q_filter |= Q(fingerprint=current_fingerprint)
                     if current_user_id:
@@ -821,7 +826,7 @@ class MessageListView(APIView):
             else:
                 # Cache miss - fall back to PostgreSQL and backfill cache
                 print(f"DEBUG: Cache miss! Calling _fetch_from_db, limit={limit}, before_timestamp={before_timestamp}")
-                messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id, filter_mode, filter_username)
+                messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id, filter_mode, filter_username, current_session_key)
                 source = 'postgresql_fallback'
                 print(f"DEBUG: _fetch_from_db returned {len(messages)} messages")
 
@@ -832,7 +837,7 @@ class MessageListView(APIView):
                 print(f"DEBUG: _backfill_cache completed")
         else:
             # Cache disabled - always use PostgreSQL
-            messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id, filter_mode, filter_username)
+            messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_fingerprint, current_user_id, filter_mode, filter_username, current_session_key)
 
         # Filter blocked users for authenticated users
         if request.user and request.user.is_authenticated:
@@ -863,7 +868,7 @@ class MessageListView(APIView):
             }
         })
 
-    def _fetch_from_db(self, chat_room, limit, before_timestamp=None, request=None, current_fingerprint=None, current_user_id=None, filter_mode=None, filter_username=None):
+    def _fetch_from_db(self, chat_room, limit, before_timestamp=None, request=None, current_fingerprint=None, current_user_id=None, filter_mode=None, filter_username=None, current_session_key=None):
         """
         Fallback: fetch messages from PostgreSQL.
 
@@ -913,10 +918,11 @@ class MessageListView(APIView):
 
         # Get current user's reactions for has_reacted (single query)
         user_reactions = {}  # message_id -> set of emojis
-        if current_fingerprint or current_user_id:
+        if current_session_key or current_fingerprint or current_user_id:
             from django.db.models import Q
-            # Build query to match either fingerprint or user_id
             q_filter = Q()
+            if current_session_key:
+                q_filter |= Q(session_key=current_session_key)
             if current_fingerprint:
                 q_filter |= Q(fingerprint=current_fingerprint)
             if current_user_id:
@@ -1715,34 +1721,44 @@ class MyParticipationView(APIView):
     def get(self, request, code, username=None):
         chat_room = get_chat_room_by_url(code, username)
         fingerprint = request.query_params.get('fingerprint')
+        session_key = request.session.session_key if not request.user.is_authenticated else None
 
         participation = None
         anonymous_participation = None
 
         # Dual sessions: Priority 1 - logged-in user participation
         if request.user.is_authenticated:
-            # Find participation REGARDLESS of is_active status
-            # We need to check for blocks even on inactive users
             participation = ChatParticipation.objects.select_related('theme').filter(
                 chat_room=chat_room,
                 user=request.user
             ).first()
-            # Also check for anonymous participation by fingerprint
-            if fingerprint:
+            # Also check for anonymous participation by session_key (fallback: fingerprint)
+            if session_key:
+                anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
+                    chat_room=chat_room,
+                    session_key=session_key,
+                    user__isnull=True
+                ).first()
+            if not anonymous_participation and fingerprint:
                 anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
                     chat_room=chat_room,
                     fingerprint=fingerprint,
                     user__isnull=True
                 ).first()
-        # Priority 2 - Anonymous user (fingerprint-based)
-        elif fingerprint:
-            # Find participation REGARDLESS of is_active status
-            # We need to check for blocks even on inactive users
-            participation = ChatParticipation.objects.select_related('theme').filter(
-                chat_room=chat_room,
-                fingerprint=fingerprint,
-                user__isnull=True
-            ).first()
+        # Priority 2 - Anonymous user (session_key-based, fallback: fingerprint)
+        else:
+            if session_key:
+                participation = ChatParticipation.objects.select_related('theme').filter(
+                    chat_room=chat_room,
+                    session_key=session_key,
+                    user__isnull=True
+                ).first()
+            if not participation and fingerprint:
+                participation = ChatParticipation.objects.select_related('theme').filter(
+                    chat_room=chat_room,
+                    fingerprint=fingerprint,
+                    user__isnull=True
+                ).first()
 
         if participation:
             # Check if this username is a reserved username
@@ -1761,6 +1777,7 @@ class MyParticipationView(APIView):
                 chat_room=chat_room,
                 username=participation.username,
                 fingerprint=fingerprint,
+                session_key=session_key,
                 user=request.user if request.user.is_authenticated else None
             )
 
@@ -1871,14 +1888,22 @@ class DismissIntroView(APIView):
             user.save(update_fields=['seen_intros'])
             return Response({'success': True})
 
-        # Anonymous user: store on ChatParticipation
-        if fingerprint:
+        # Anonymous user: store on ChatParticipation (session_key primary, fingerprint fallback)
+        session_key = request.session.session_key
+        participation = None
+        if session_key:
+            participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                session_key=session_key,
+                user__isnull=True
+            ).first()
+        if not participation and fingerprint:
             participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 fingerprint=fingerprint,
                 user__isnull=True
             ).first()
-            if participation:
+        if participation:
                 if not participation.seen_intros:
                     participation.seen_intros = {}
                 participation.seen_intros[key] = True
@@ -1916,7 +1941,7 @@ class UpdateMyThemeView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-        # Find the user's participation
+        # Find the user's participation (session_key primary, fingerprint fallback)
         participation = None
         if request.user.is_authenticated:
             participation = ChatParticipation.objects.select_related('theme').filter(
@@ -1924,13 +1949,22 @@ class UpdateMyThemeView(APIView):
                 user=request.user,
                 is_active=True
             ).first()
-        elif fingerprint:
-            participation = ChatParticipation.objects.select_related('theme').filter(
-                chat_room=chat_room,
-                fingerprint=fingerprint,
-                user__isnull=True,
-                is_active=True
-            ).first()
+        else:
+            session_key = request.session.session_key
+            if session_key:
+                participation = ChatParticipation.objects.select_related('theme').filter(
+                    chat_room=chat_room,
+                    session_key=session_key,
+                    user__isnull=True,
+                    is_active=True
+                ).first()
+            if not participation and fingerprint:
+                participation = ChatParticipation.objects.select_related('theme').filter(
+                    chat_room=chat_room,
+                    fingerprint=fingerprint,
+                    user__isnull=True,
+                    is_active=True
+                ).first()
 
         if not participation:
             return Response(
@@ -1979,10 +2013,18 @@ class CheckRateLimitView(APIView):
                 'is_rate_limited': False
             })
 
-        # Check if this fingerprint already has a participation (they're rejoining)
-        existing_fingerprint_participation = None
-        if fingerprint:
-            existing_fingerprint_participation = ChatParticipation.objects.filter(
+        # Check if this session already has a participation (they're rejoining)
+        session_key = request.session.session_key
+        existing_participation = None
+        if session_key:
+            existing_participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                session_key=session_key,
+                user__isnull=True,
+                is_active=True
+            ).first()
+        if not existing_participation and fingerprint:
+            existing_participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 fingerprint=fingerprint,
                 user__isnull=True,
@@ -1990,11 +2032,11 @@ class CheckRateLimitView(APIView):
             ).first()
 
         # If they already have a participation, they can rejoin
-        if existing_fingerprint_participation:
+        if existing_participation:
             return Response({
                 'can_join': True,
                 'is_rate_limited': False,
-                'existing_username': existing_fingerprint_participation.username
+                'existing_username': existing_participation.username
             })
 
         # Count active anonymous participations from this IP in this chat
@@ -2070,7 +2112,10 @@ class UsernameValidationView(APIView):
             # Check if it's their own participation
             if request.user.is_authenticated and existing_participation.user_id == request.user.id:
                 in_use_in_chat = False  # It's their own username
-            elif not request.user.is_authenticated and fingerprint and existing_participation.fingerprint == fingerprint:
+            elif not request.user.is_authenticated and (
+                (request.session.session_key and existing_participation.session_key == request.session.session_key) or
+                (fingerprint and existing_participation.fingerprint == fingerprint)
+            ):
                 in_use_in_chat = False  # It's their own username (anonymous)
             else:
                 in_use_in_chat = True  # Someone else has this username
@@ -2116,22 +2161,30 @@ class SuggestUsernameView(APIView):
         # Get chat room
         chat_room = get_chat_room_by_url(code, username)
 
-        # Get fingerprint or IP for rate limiting
+        # Get identity for rate limiting (session_key primary, fingerprint fallback)
         fingerprint = request.data.get('fingerprint')
-        if not fingerprint:
-            # Fallback to IP-based rate limiting
-            fingerprint = get_client_ip(request)
+        if not request.session.session_key:
+            request.session.create()
+        session_key = request.session.session_key
+        identity_key = session_key or fingerprint or get_client_ip(request)
 
-        # Check if this fingerprint already has a participation in this room
+        # Check if this session already has a participation in this room
         # If so, return their existing username immediately (they're a returning user)
-        # SECURITY: Only match anonymous participations (user__isnull=True) to prevent
-        # fingerprint hijacking of registered users' reserved usernames
-        existing_participation = ChatParticipation.objects.filter(
-            chat_room=chat_room,
-            fingerprint=fingerprint,
-            user__isnull=True,
-            is_active=True
-        ).first()
+        existing_participation = None
+        if session_key:
+            existing_participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                session_key=session_key,
+                user__isnull=True,
+                is_active=True
+            ).first()
+        if not existing_participation and fingerprint:
+            existing_participation = ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                fingerprint=fingerprint,
+                user__isnull=True,
+                is_active=True
+            ).first()
 
         if existing_participation:
             # Defense in depth: don't return reserved usernames to unauthenticated users
@@ -2149,11 +2202,11 @@ class SuggestUsernameView(APIView):
                     'generation_remaining': 0
                 })
 
-        # Rate limiting key (per chat, per fingerprint/IP)
-        rate_limit_key = f"username_suggest_limit:{code}:{fingerprint}"
+        # Rate limiting key (per chat, per session/fingerprint/IP)
+        rate_limit_key = f"username_suggest_limit:{code}:{identity_key}"
         current_count = cache.get(rate_limit_key, 0)
 
-        logger.info(f"[USERNAME_SUGGEST] Starting - fingerprint={fingerprint}, chat_code={code}, current_count={current_count}")
+        logger.info(f"[USERNAME_SUGGEST] Starting - identity_key={identity_key}, chat_code={code}, current_count={current_count}")
 
         # Check chat-specific generation rate limit FIRST (before generating!)
         # NOTE: Rotation does NOT count against this limit (handled below)
@@ -2163,7 +2216,7 @@ class SuggestUsernameView(APIView):
             logger.info(f"[USERNAME_PER_CHAT_LIMIT] Per-chat limit hit: current_count={current_count}, max={max_generations_per_chat}")
 
             # Get all usernames generated for this fingerprint IN THIS CHAT
-            generated_per_chat_key = f"username:generated_for_chat:{code}:{fingerprint}"
+            generated_per_chat_key = f"username:generated_for_chat:{code}:{identity_key}"
             generated_usernames = cache.get(generated_per_chat_key, set())
             logger.info(f"[USERNAME_PER_CHAT_LIMIT] Generated usernames from Redis (per-chat): {generated_usernames} (count: {len(generated_usernames)})")
 
@@ -2244,8 +2297,8 @@ class SuggestUsernameView(APIView):
         # Per-chat limit not hit - proceed with NEW username generation
         logger.info(f"[USERNAME_SUGGEST] Per-chat limit OK ({current_count}/{max_generations_per_chat}), generating new username...")
 
-        # Generate username with new signature (requires fingerprint)
-        username, generation_remaining = generate_username(fingerprint, code)
+        # Generate username with identity_key (session_key preferred)
+        username, generation_remaining = generate_username(fingerprint, code, identity_key=identity_key)
 
         logger.info(f"[USERNAME_SUGGEST] After generate_username - username={username}, generation_remaining={generation_remaining}")
 
@@ -2253,7 +2306,7 @@ class SuggestUsernameView(APIView):
             # If rate limited (0 attempts left), rotate through previous usernames they can reuse
             if generation_remaining == 0:
                 # Get all usernames generated for this fingerprint IN THIS CHAT
-                generated_per_chat_key = f"username:generated_for_chat:{code}:{fingerprint}"
+                generated_per_chat_key = f"username:generated_for_chat:{code}:{identity_key}"
                 generated_usernames = cache.get(generated_per_chat_key, set())
                 logger.info(f"[USERNAME_ROTATION] Fingerprint: {fingerprint}")
                 logger.info(f"[USERNAME_ROTATION] Generated usernames from Redis (per-chat): {generated_usernames} (count: {len(generated_usernames)})")
@@ -2370,12 +2423,19 @@ class MessageReactionToggleView(APIView):
         # Determine user identity
         user = request.user if request.user.is_authenticated else None
         fingerprint_value = fingerprint if not user else None
+        session_key_value = session_data.get('session_key') if not user else None
 
         # Check if user already has a reaction with THIS SPECIFIC emoji
         if user:
             existing_reaction = MessageReaction.objects.filter(
                 message=message,
                 user=user,
+                emoji=emoji
+            ).first()
+        elif session_key_value:
+            existing_reaction = MessageReaction.objects.filter(
+                message=message,
+                session_key=session_key_value,
                 emoji=emoji
             ).first()
         else:
@@ -2398,6 +2458,7 @@ class MessageReactionToggleView(APIView):
                 emoji=emoji,
                 user=user,
                 fingerprint=fingerprint_value,
+                session_key=session_key_value,
                 username=username
             )
             action = 'added'

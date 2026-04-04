@@ -13,20 +13,21 @@ from django.core.cache import cache
 from constance import config
 
 
-def generate_username(fingerprint, chat_code=None, max_attempts=None):
+def generate_username(fingerprint, chat_code=None, max_attempts=None, identity_key=None):
     """
-    Generate a random globally-unique username with fingerprint-based rate limiting.
+    Generate a random globally-unique username with rate limiting.
 
     IMPORTANT: This function implements the Global Username System with:
     - Globally unique usernames (checked across all chats and reserved usernames)
-    - Fingerprint-based rate limiting (10 attempts per hour by default)
-    - Redis tracking of generated usernames per fingerprint
-    - API bypass prevention (tracks which usernames were generated for this fingerprint)
+    - Identity-based rate limiting (10 attempts per hour by default)
+    - Redis tracking of generated usernames per identity
+    - API bypass prevention (tracks which usernames were generated for this identity)
 
     Args:
-        fingerprint: Browser fingerprint for rate limiting and tracking (required)
+        fingerprint: Browser fingerprint (legacy param, used as fallback identity_key)
         chat_code: The chat room code (optional - used for chat-specific suggestion caching)
         max_attempts: Maximum generation attempts (defaults to Constance config value)
+        identity_key: Primary identity for rate limiting (session_key preferred, falls back to fingerprint)
 
     Returns:
         tuple: (username, remaining_attempts) where:
@@ -44,10 +45,13 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None):
     if max_attempts is None:
         max_attempts = config.MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL
 
+    # Use identity_key for Redis keys (session_key preferred, fingerprint fallback)
+    ident = identity_key or fingerprint
+
     # Redis key patterns
-    attempts_key = f"username:generation_attempts:{fingerprint}"
-    generated_key = f"username:generated_for_fingerprint:{fingerprint}"  # Global tracking (for API bypass prevention)
-    generated_per_chat_key = f"username:generated_for_chat:{chat_code}:{fingerprint}" if chat_code else None  # Per-chat tracking (for rotation)
+    attempts_key = f"username:generation_attempts:{ident}"
+    generated_key = f"username:generated_for_session:{ident}"  # Global tracking (for API bypass prevention)
+    generated_per_chat_key = f"username:generated_for_chat:{chat_code}:{ident}" if chat_code else None  # Per-chat tracking (for rotation)
     # Use different TTL based on context: registration (longer) vs chat (shorter)
     if chat_code is None:
         cache_ttl = int(config.USERNAME_REGISTRATION_HOLD_TTL_MINUTES * 60)  # Registration: 5 min

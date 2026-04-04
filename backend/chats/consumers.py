@@ -62,7 +62,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.username,
             session_data.get('fingerprint'),
             self.user_id,
-            client_ip
+            client_ip,
+            session_data.get('session_key')
         )
         if is_banned:
             if ban_type == 'site':
@@ -474,26 +475,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return blocked_usernames
 
     @database_sync_to_async
-    def check_if_banned(self, chat_code, username, fingerprint=None, user_id=None, ip_address=None):
+    def check_if_banned(self, chat_code, username, fingerprint=None, user_id=None, ip_address=None, session_key=None):
         """
         Check if user is banned from this chat (ChatBlock) or site-wide (SiteBan).
-
-        Args:
-            chat_code: Chat room code
-            username: Username to check
-            fingerprint: Browser fingerprint (optional)
-            user_id: User ID for registered users (optional)
-            ip_address: IP address (optional, for site bans)
+        Uses the tiered ban system and host exemption.
 
         Returns:
             tuple: (is_banned: bool, ban_type: str|None)
-                   ban_type is 'chat' for ChatBlock, 'site' for SiteBan, None if not banned
         """
-        from .models import ChatBlock, SiteBan
+        from .models import SiteBan
+        from .utils.security.blocking import check_if_blocked
         from django.contrib.auth import get_user_model
         User = get_user_model()
 
-        # Check for site-wide ban first (applies to all chats)
+        # Resolve user object
         user = None
         if user_id:
             try:
@@ -501,39 +496,33 @@ class ChatConsumer(AsyncWebsocketConsumer):
             except User.DoesNotExist:
                 pass
 
-        site_ban = SiteBan.is_banned(
-            user=user,
-            ip_address=ip_address,
-            fingerprint=fingerprint
-        )
-        if site_ban:
-            return True, 'site'
-
-        # Get chat room for ChatBlock check
+        # Get chat room
         try:
             chat_room = ChatRoom.objects.get(code=chat_code)
         except ChatRoom.DoesNotExist:
             return False, None
 
-        # Check for ChatBlock by username (case-insensitive)
-        if ChatBlock.objects.filter(
-            chat_room=chat_room,
-            blocked_username__iexact=username
-        ).exists():
-            return True, 'chat'
+        # Check for site-wide ban (host exempt)
+        site_ban = SiteBan.is_banned(
+            user=user,
+            ip_address=ip_address,
+            fingerprint=fingerprint,
+            session_key=session_key,
+            chat_room=chat_room
+        )
+        if site_ban:
+            return True, 'site'
 
-        # Check for ChatBlock by fingerprint
-        if fingerprint and ChatBlock.objects.filter(
+        # Check for chat-specific block (uses tiered ban system with host exemption)
+        is_blocked, _ = check_if_blocked(
             chat_room=chat_room,
-            blocked_fingerprint=fingerprint
-        ).exists():
-            return True, 'chat'
-
-        # Check for ChatBlock by user ID
-        if user_id and ChatBlock.objects.filter(
-            chat_room=chat_room,
-            blocked_user_id=user_id
-        ).exists():
+            username=username,
+            fingerprint=fingerprint,
+            session_key=session_key,
+            user=user,
+            ip_address=ip_address
+        )
+        if is_blocked:
             return True, 'chat'
 
         return False, None
