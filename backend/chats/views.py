@@ -535,11 +535,19 @@ class ChatRoomJoinView(APIView):
         # Usernames must be unique per chat room regardless of authentication status
         if request.user.is_authenticated:
             # Registered user: check for ANY other participant (registered or anonymous)
-            # Also exclude their own anonymous participation (same session_key)
+            # Exclude their own registered participation and linked anonymous participation
+            from .models import AnonymousIdentityLink as AILink
             qs = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 username__iexact=username,
             ).exclude(user=request.user)
+            # Exclude their linked anonymous identity
+            linked_participation_ids = AILink.objects.filter(
+                user=request.user, chat_room=chat_room
+            ).values_list('participation_id', flat=True)
+            if linked_participation_ids:
+                qs = qs.exclude(id__in=linked_participation_ids)
+            # Also exclude by session_key
             if session_key:
                 qs = qs.exclude(session_key=session_key, user__isnull=True)
             username_taken = qs.exists()
