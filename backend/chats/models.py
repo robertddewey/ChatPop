@@ -469,51 +469,6 @@ class ChatParticipation(models.Model):
         return f"{self.username} ({identifier}) in {self.chat_room.code}"
 
 
-class AnonymousUserFingerprint(models.Model):
-    """Track anonymous user browser fingerprints for username persistence"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    chat_room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='fingerprints')
-
-    # Fingerprint from FingerprintJS
-    fingerprint = models.CharField(max_length=255, db_index=True, help_text="Browser fingerprint hash")
-    username = models.CharField(max_length=100, help_text="Username associated with this fingerprint")
-
-    # IP address tracking
-    ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Last known IP address")
-
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    last_seen = models.DateTimeField(auto_now=True, help_text="Last time this fingerprint was used")
-
-    class Meta:
-        ordering = ['-last_seen']
-        unique_together = ['chat_room', 'fingerprint']
-        indexes = [
-            models.Index(fields=['fingerprint', 'chat_room']),
-            models.Index(fields=['chat_room', '-last_seen']),
-        ]
-
-    def __str__(self):
-        return f"{self.username} ({self.fingerprint[:8]}...) in {self.chat_room.code}"
-
-
-class AnonymousPIN(models.Model):
-    """PIN for anonymous users, keyed by fingerprint (shared across all chats).
-    Prevents fingerprint-only impersonation by requiring a second factor at join time."""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    fingerprint = models.CharField(max_length=255, unique=True, db_index=True, help_text="Browser fingerprint hash")
-    pin_hash = models.CharField(max_length=256, help_text="Hashed PIN using Django's make_password")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = 'Anonymous PIN'
-        verbose_name_plural = 'Anonymous PINs'
-
-    def __str__(self):
-        return f"PIN for {self.fingerprint[:8]}..."
-
-
 class AnonymousIdentityLink(models.Model):
     """Permanent link between a registered user and their anonymous participation in a chat.
     Survives logout, login, cookie clearing, and device switching.

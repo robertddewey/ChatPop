@@ -10,7 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 from constance import config
 from accounts.models import User
-from .models import ChatRoom, Message, AnonymousUserFingerprint, ChatParticipation, ChatTheme, MessageReaction
+from .models import ChatRoom, Message, ChatParticipation, ChatTheme, MessageReaction
 from .serializers import (
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomUpdateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
@@ -1679,78 +1679,8 @@ class RefreshSessionView(APIView):
         return Response({"session_token": new_token, "username": token_username})
 
 
-class FingerprintUsernameView(APIView):
-    """Get or set username by fingerprint for anonymous users"""
-    permission_classes = [permissions.AllowAny]
 
-    def get(self, request, code, username=None):
-        """Get username for a fingerprint if it exists"""
-        # Check if fingerprinting is enabled
-        if not settings.ANONYMOUS_USER_FINGERPRINT:
-            return Response(
-                {'detail': 'Fingerprinting is disabled'},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-
-        chat_room = get_chat_room_by_url(code, username)
-        fingerprint = request.query_params.get('fingerprint')
-
-        if not fingerprint:
-            raise ValidationError("Fingerprint is required")
-
-        # Look up username by fingerprint
-        try:
-            fp_record = AnonymousUserFingerprint.objects.get(
-                chat_room=chat_room,
-                fingerprint=fingerprint
-            )
-            # Update last_seen timestamp and IP address
-            fp_record.ip_address = get_client_ip(request)
-            fp_record.save(update_fields=['last_seen', 'ip_address'])
-
-            return Response({
-                'username': fp_record.username,
-                'found': True
-            })
-        except AnonymousUserFingerprint.DoesNotExist:
-            return Response({
-                'username': None,
-                'found': False
-            })
-
-    def post(self, request, code, username=None):
-        """Set username for a fingerprint"""
-        # Check if fingerprinting is enabled
-        if not settings.ANONYMOUS_USER_FINGERPRINT:
-            return Response(
-                {'detail': 'Fingerprinting is disabled'},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
-
-        chat_room = get_chat_room_by_url(code, username)
-        fingerprint = request.data.get('fingerprint')
-        username = request.data.get('username')
-
-        if not fingerprint:
-            raise ValidationError("Fingerprint is required")
-        if not username:
-            raise ValidationError("Username is required")
-
-        # Get client IP address
-        ip_address = get_client_ip(request)
-
-        # Create or update fingerprint record
-        fp_record, created = AnonymousUserFingerprint.objects.update_or_create(
-            chat_room=chat_room,
-            fingerprint=fingerprint,
-            defaults={'username': username, 'ip_address': ip_address}
-        )
-
-        return Response({
-            'username': fp_record.username,
-            'created': created,
-            'message': 'Username saved successfully'
-        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+# FingerprintUsernameView removed — username persistence now uses Django sessions
 
 
 class MyParticipationView(APIView):

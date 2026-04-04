@@ -1483,7 +1483,7 @@ export default function ChatPage() {
         if (!messageUsername) {
           const token = localStorage.getItem('auth_token');
           const isLoggedIn = !!token;
-          messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+          messageUsername = (await UsernameStorage.getUsername(code)) || '';
         }
 
         if (!messageUsername && chatRoom) {
@@ -1521,7 +1521,7 @@ export default function ChatPage() {
       if (!messageUsername) {
         const token = localStorage.getItem('auth_token');
         const isLoggedIn = !!token;
-        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+        messageUsername = (await UsernameStorage.getUsername(code)) || '';
       }
 
       if (!messageUsername && chatRoom) {
@@ -1581,7 +1581,7 @@ export default function ChatPage() {
       if (!messageUsername) {
         const token = localStorage.getItem('auth_token');
         const isLoggedIn = !!token;
-        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+        messageUsername = (await UsernameStorage.getUsername(code)) || '';
       }
 
       if (!messageUsername && chatRoom) {
@@ -1636,7 +1636,7 @@ export default function ChatPage() {
       if (!messageUsername) {
         const token = localStorage.getItem('auth_token');
         const isLoggedIn = !!token;
-        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+        messageUsername = (await UsernameStorage.getUsername(code)) || '';
       }
 
       if (!messageUsername && chatRoom) {

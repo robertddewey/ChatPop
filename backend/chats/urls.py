@@ -3,7 +3,7 @@ from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, RefreshSessionView, MyChatsView,
     ChatConfigView, NearbyDiscoverableChatsView,
     MessageListView, MessageCreateView, MessagePinView, AddToPinView, MessageBroadcastView, MessageDeleteView, PinTiersView,
-    FingerprintUsernameView, UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
+    UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView, CheckRateLimitView,
     DismissIntroView,
     VoiceUploadView, VoiceStreamView, PhotoUploadView, VideoUploadView, UserAvatarView,
     MessageReactionToggleView, MessageReactionsListView,
@@ -66,7 +66,7 @@ urlpatterns = [
     path('discover/<str:code>/messages/<uuid:message_id>/delete/', MessageDeleteView.as_view(), name='message-delete-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/react/', MessageReactionToggleView.as_view(), name='message-react-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/reactions/', MessageReactionsListView.as_view(), name='message-reactions-list-ai'),
-    path('discover/<str:code>/fingerprint-username/', FingerprintUsernameView.as_view(), name='fingerprint-username-ai'),
+
     path('discover/<str:code>/validate-username/', UsernameValidationView.as_view(), name='validate-username-ai'),
     path('discover/<str:code>/suggest-username/', SuggestUsernameView.as_view(), name='suggest-username-ai'),
     path('discover/<str:code>/my-participation/', MyParticipationView.as_view(), name='my-participation-ai'),
@@ -97,7 +97,7 @@ urlpatterns = [
     path('<str:username>/<str:code>/messages/<uuid:message_id>/delete/', MessageDeleteView.as_view(), name='message-delete'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/react/', MessageReactionToggleView.as_view(), name='message-react'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/reactions/', MessageReactionsListView.as_view(), name='message-reactions-list'),
-    path('<str:username>/<str:code>/fingerprint-username/', FingerprintUsernameView.as_view(), name='fingerprint-username'),
+
     path('<str:username>/<str:code>/validate-username/', UsernameValidationView.as_view(), name='validate-username'),
     path('<str:username>/<str:code>/suggest-username/', SuggestUsernameView.as_view(), name='suggest-username'),
     path('<str:username>/<str:code>/my-participation/', MyParticipationView.as_view(), name='my-participation'),
