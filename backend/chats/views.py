@@ -494,12 +494,21 @@ class ChatRoomJoinView(APIView):
             ).first()
             if existing_participation:
                 # User already joined - they must use the same username
-                # UNLESS they're switching to their own anonymous identity (same session)
+                # UNLESS they're switching to their own anonymous identity
                 if existing_participation.username != username:
-                    is_own_anonymous = session_key and ChatParticipation.objects.filter(
-                        chat_room=chat_room, session_key=session_key,
-                        user__isnull=True, username__iexact=username
+                    from .models import AnonymousIdentityLink
+                    # Check via permanent link
+                    is_own_anonymous = AnonymousIdentityLink.objects.filter(
+                        user=request.user,
+                        chat_room=chat_room,
+                        participation__username__iexact=username
                     ).exists()
+                    # Fallback: check via session_key
+                    if not is_own_anonymous and session_key:
+                        is_own_anonymous = ChatParticipation.objects.filter(
+                            chat_room=chat_room, session_key=session_key,
+                            user__isnull=True, username__iexact=username
+                        ).exists()
                     if not is_own_anonymous:
                         raise ValidationError(
                             f"You previously joined as \"{existing_participation.username}\". "
@@ -552,9 +561,19 @@ class ChatRoomJoinView(APIView):
 
         # Create or update ChatParticipation
         if request.user.is_authenticated:
-            # Check if reclaiming anonymous identity (same session, same username)
+            # Check if reclaiming anonymous identity (via permanent link or session)
             anonymous_self = None
-            if session_key:
+            # Check via permanent link first
+            from .models import AnonymousIdentityLink
+            link = AnonymousIdentityLink.objects.filter(
+                user=request.user,
+                chat_room=chat_room,
+                participation__username__iexact=username
+            ).select_related('participation').first()
+            if link:
+                anonymous_self = link.participation
+            # Fallback: check via session_key
+            elif session_key:
                 anonymous_self = ChatParticipation.objects.filter(
                     chat_room=chat_room, session_key=session_key,
                     user__isnull=True, username__iexact=username
