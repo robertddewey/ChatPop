@@ -432,7 +432,6 @@ export default function ChatPage() {
   const [hasJoined, setHasJoined] = useState(false);
   const [hasJoinedBefore, setHasJoinedBefore] = useState(false);
   const [joinModalKey, setJoinModalKey] = useState(0); // Force remount on back navigation
-  const [showPinScreen, setShowPinScreen] = useState(false); // PIN screen visible (for back button handling)
   const [isBlocked, setIsBlocked] = useState(false);
   const [anonymousParticipation, setAnonymousParticipation] = useState<AnonymousParticipationInfo | null>(null);
   const [registeredDisplayName, setRegisteredDisplayName] = useState(''); // Stable registered username for identity chooser
@@ -929,8 +928,7 @@ export default function ChatPage() {
       if (authToken) {
         // Logged-in user: silent refresh
         try {
-          const fp = await getFingerprint().catch(() => undefined);
-          await chatApi.refreshSession(code, currentToken, fp, undefined, roomUsername);
+          await chatApi.refreshSession(code, currentToken, roomUsername);
           setSessionToken(localStorage.getItem(`chat_session_${code}`));
         } catch {
           // Refresh failed — will fall through to join modal on next API error
@@ -1167,16 +1165,6 @@ export default function ChatPage() {
         return;
       }
 
-      // PIN history entry — either closing PIN (back) or navigating to it (forward)
-      if (showPinScreen) {
-        setShowPinScreen(false);
-        return;
-      }
-      if (event.state?.pin) {
-        // Forward navigation to PIN entry — just stay on join modal, don't navigate away
-        return;
-      }
-
       // If settings sheet is open, close it (settings uses pushState)
       if (showSettingsSheet) {
         setShowSettingsSheet(false);
@@ -1211,7 +1199,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, showSettingsSheet, showPinScreen, currentRoom, router, code, authModeState, anonymousParticipation]);
+  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipation]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -1365,7 +1353,7 @@ export default function ChatPage() {
   };
 
   // Join handler for modal
-  const handleJoinChat = async (username: string, accessCode?: string, avatarSeed?: string, pin?: string): Promise<{ error?: string; pinError?: string } | void> => {
+  const handleJoinChat = async (username: string, accessCode?: string, avatarSeed?: string): Promise<{ error?: string } | void> => {
     try {
       // Get fingerprint
       let fingerprint: string | undefined;
@@ -1378,23 +1366,13 @@ export default function ChatPage() {
       // Wrap in inner try/catch to prevent AxiosError from triggering Next.js error overlay
       let joinError: ApiError | null = null;
       try {
-        await chatApi.joinChat(code, username, accessCode, fingerprint, roomUsername, avatarSeed, pin);
+        await chatApi.joinChat(code, username, accessCode, fingerprint, roomUsername, avatarSeed);
       } catch (e) {
         joinError = e as ApiError;
       }
 
       if (joinError) {
-        const data = joinError.response?.data;
-
-        // PIN-specific errors — return structured result for JoinChatModal
-        if (typeof data === 'object' && data !== null && 'error' in data) {
-          const errorCode = String((data as Record<string, unknown>).error);
-          if (['pin_create_required', 'pin_required', 'pin_invalid', 'rate_limited'].includes(errorCode)) {
-            return { pinError: errorCode, error: String((data as Record<string, unknown>).detail || errorCode) };
-          }
-        }
-
-        // Not a PIN error — throw to outer catch for standard error handling
+        // Throw to outer catch for standard error handling
         throw joinError;
       }
 
@@ -1416,18 +1394,6 @@ export default function ChatPage() {
     } catch (err: unknown) {
       const apiErr = err as ApiError;
       console.error('[Join Error] Full error:', err);
-
-      if (apiErr.response?.data) {
-        const data = apiErr.response.data;
-
-        // PIN-specific errors — return structured result for JoinChatModal
-        if (typeof data === 'object' && data !== null && 'error' in data) {
-          const errorCode = String((data as Record<string, unknown>).error);
-          if (['pin_create_required', 'pin_required', 'pin_invalid', 'rate_limited'].includes(errorCode)) {
-            return { pinError: errorCode, error: String((data as Record<string, unknown>).detail || errorCode) };
-          }
-        }
-      }
 
       // Extract error message from various DRF error formats
       let errorMessage = 'Failed to join chat';
@@ -2406,9 +2372,7 @@ export default function ChatPage() {
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <button
                     onClick={() => {
-                      if (showPinScreen) {
-                        window.history.back(); // Pops PIN history entry → triggers popstate → clears PIN screen
-                      } else if (currentRoom !== 'main') {
+                      if (currentRoom !== 'main') {
                         switchRoom('main');  // Return to main chat
                       } else if (hasJoined) {
                         router.back();
@@ -2520,8 +2484,6 @@ export default function ChatPage() {
                   onJoin={handleJoinChat}
                   onLogin={() => openAuth('login')}
                   onSignup={() => openAuth('signup')}
-                  showPinScreen={showPinScreen}
-                  onPinScreenChange={setShowPinScreen}
                 />
               </div>
             )}

@@ -400,7 +400,7 @@ export const chatApi = {
 
   getMyParticipation: async (code: string, fingerprint?: string, roomUsername?: string): Promise<ChatParticipation> => {
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/my-participation/`, {
-      params: { fingerprint },
+      params: { fingerprint },  // Fingerprint still sent as fallback for transition period
     });
     return response.data;
   },
@@ -444,13 +444,12 @@ export const chatApi = {
     return response.data;
   },
 
-  joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string, roomUsername?: string, avatarSeed?: string, pin?: string) => {
+  joinChat: async (code: string, username: string, accessCode?: string, fingerprint?: string, roomUsername?: string, avatarSeed?: string) => {
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/join/`, {
       username,
       access_code: accessCode,
-      fingerprint,
+      fingerprint,  // Sent for ban enforcement data collection only
       avatar_seed: avatarSeed,
-      pin: pin || undefined,
     });
 
     // Store session token if provided
@@ -461,11 +460,9 @@ export const chatApi = {
     return response.data;
   },
 
-  refreshSession: async (code: string, sessionToken: string, fingerprint?: string, pin?: string, roomUsername?: string) => {
+  refreshSession: async (code: string, sessionToken: string, roomUsername?: string) => {
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/refresh-session/`, {
       session_token: sessionToken,
-      fingerprint,
-      pin: pin || undefined,
     });
     if (response.data.session_token) {
       localStorage.setItem(`chat_session_${code}`, response.data.session_token);
