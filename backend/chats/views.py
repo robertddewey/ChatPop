@@ -1739,24 +1739,12 @@ class MyParticipationView(APIView):
                     session_key=session_key,
                     user__isnull=True
                 ).first()
-            if not anonymous_participation and fingerprint:
-                anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
-                    chat_room=chat_room,
-                    fingerprint=fingerprint,
-                    user__isnull=True
-                ).first()
-        # Priority 2 - Anonymous user (session_key-based, fallback: fingerprint)
+        # Priority 2 - Anonymous user (session_key only, no fingerprint fallback)
         else:
             if session_key:
                 participation = ChatParticipation.objects.select_related('theme').filter(
                     chat_room=chat_room,
                     session_key=session_key,
-                    user__isnull=True
-                ).first()
-            if not participation and fingerprint:
-                participation = ChatParticipation.objects.select_related('theme').filter(
-                    chat_room=chat_room,
-                    fingerprint=fingerprint,
                     user__isnull=True
                 ).first()
 
@@ -1897,12 +1885,6 @@ class DismissIntroView(APIView):
                 session_key=session_key,
                 user__isnull=True
             ).first()
-        if not participation and fingerprint:
-            participation = ChatParticipation.objects.filter(
-                chat_room=chat_room,
-                fingerprint=fingerprint,
-                user__isnull=True
-            ).first()
         if participation:
                 if not participation.seen_intros:
                     participation.seen_intros = {}
@@ -1955,13 +1937,6 @@ class UpdateMyThemeView(APIView):
                 participation = ChatParticipation.objects.select_related('theme').filter(
                     chat_room=chat_room,
                     session_key=session_key,
-                    user__isnull=True,
-                    is_active=True
-                ).first()
-            if not participation and fingerprint:
-                participation = ChatParticipation.objects.select_related('theme').filter(
-                    chat_room=chat_room,
-                    fingerprint=fingerprint,
                     user__isnull=True,
                     is_active=True
                 ).first()
@@ -2020,13 +1995,6 @@ class CheckRateLimitView(APIView):
             existing_participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 session_key=session_key,
-                user__isnull=True,
-                is_active=True
-            ).first()
-        if not existing_participation and fingerprint:
-            existing_participation = ChatParticipation.objects.filter(
-                chat_room=chat_room,
-                fingerprint=fingerprint,
                 user__isnull=True,
                 is_active=True
             ).first()
@@ -2175,13 +2143,6 @@ class SuggestUsernameView(APIView):
             existing_participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 session_key=session_key,
-                user__isnull=True,
-                is_active=True
-            ).first()
-        if not existing_participation and fingerprint:
-            existing_participation = ChatParticipation.objects.filter(
-                chat_room=chat_room,
-                fingerprint=fingerprint,
                 user__isnull=True,
                 is_active=True
             ).first()
