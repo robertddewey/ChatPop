@@ -186,6 +186,13 @@ if not CORS_ALLOW_ALL_ORIGINS:
 
 CORS_ALLOW_CREDENTIALS = True
 
+# Django Session Configuration (primary anonymous user identification)
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_COOKIE_AGE = 14 * 24 * 60 * 60  # 14 days
+SESSION_SAVE_EVERY_REQUEST = True  # Extend session on each request
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = True  # HTTPS only (matches our SSL setup)
+
 # CSRF Trusted Origins (required for POST requests from external domains)
 CSRF_TRUSTED_ORIGINS = os.getenv(
     "CSRF_TRUSTED_ORIGINS",

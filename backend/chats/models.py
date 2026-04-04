@@ -398,7 +398,14 @@ class ChatParticipation(models.Model):
         null=True,
         blank=True,
         db_index=True,
-        help_text="Browser fingerprint - primary for anonymous, stored for logged-in"
+        help_text="Browser fingerprint - stored for ban enforcement only"
+    )
+    session_key = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Django session key - primary identifier for anonymous users"
     )
 
     # Username locked for this chat
@@ -446,16 +453,22 @@ class ChatParticipation(models.Model):
                 condition=models.Q(user__isnull=True),
                 name='unique_chat_fingerprint'
             ),
+            models.UniqueConstraint(
+                fields=['chat_room', 'session_key'],
+                condition=models.Q(session_key__isnull=False, user__isnull=True),
+                name='unique_chat_session_key'
+            ),
         ]
         indexes = [
             models.Index(fields=['chat_room', 'user']),
             models.Index(fields=['chat_room', 'fingerprint']),
+            models.Index(fields=['chat_room', 'session_key']),
             models.Index(fields=['chat_room', 'username']),
             models.Index(fields=['-last_seen_at']),
         ]
 
     def __str__(self):
-        identifier = f"User {self.user_id}" if self.user else f"Fingerprint {self.fingerprint[:8]}..."
+        identifier = f"User {self.user_id}" if self.user else f"Session {self.session_key[:8]}..." if self.session_key else f"Fingerprint {self.fingerprint[:8]}..."
         return f"{self.username} ({identifier}) in {self.chat_room.code}"
 
 
@@ -526,7 +539,14 @@ class MessageReaction(models.Model):
         null=True,
         blank=True,
         db_index=True,
-        help_text="Anonymous user fingerprint"
+        help_text="Anonymous user fingerprint (legacy, ban enforcement)"
+    )
+    session_key = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Django session key - primary identifier for anonymous reactions"
     )
 
     # Username at time of reaction (for display)
@@ -541,6 +561,7 @@ class MessageReaction(models.Model):
             models.Index(fields=['message', 'emoji']),
             models.Index(fields=['message', 'user', 'emoji']),
             models.Index(fields=['message', 'fingerprint', 'emoji']),
+            models.Index(fields=['message', 'session_key', 'emoji']),
         ]
         constraints = [
             # One reaction per emoji per logged-in user per message
@@ -549,7 +570,13 @@ class MessageReaction(models.Model):
                 condition=models.Q(user__isnull=False),
                 name='unique_message_user_emoji_reaction'
             ),
-            # One reaction per emoji per anonymous user per message
+            # One reaction per emoji per anonymous user per message (session-based)
+            models.UniqueConstraint(
+                fields=['message', 'session_key', 'emoji'],
+                condition=models.Q(session_key__isnull=False, user__isnull=True),
+                name='unique_message_session_emoji_reaction'
+            ),
+            # Legacy: fingerprint-based constraint (kept during transition)
             models.UniqueConstraint(
                 fields=['message', 'fingerprint', 'emoji'],
                 condition=models.Q(user__isnull=True),
@@ -558,7 +585,7 @@ class MessageReaction(models.Model):
         ]
 
     def __str__(self):
-        identifier = f"User {self.user_id}" if self.user else f"Fingerprint {self.fingerprint[:8]}..."
+        identifier = f"User {self.user_id}" if self.user else f"Session {self.session_key[:8]}..." if self.session_key else f"Fingerprint {self.fingerprint[:8]}..."
         return f"{self.emoji} on message {self.message_id} by {identifier}"
 
 
@@ -600,7 +627,29 @@ class ChatBlock(models.Model):
     blocked_ip_address = models.GenericIPAddressField(
         null=True,
         blank=True,
-        help_text="IP address for tracking (future: may be used for blocking)"
+        help_text="IP address block"
+    )
+    blocked_session_key = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        help_text="Django session key block"
+    )
+
+    # Ban tier determines how the block is enforced
+    BAN_TIER_SESSION = 'session'
+    BAN_TIER_FINGERPRINT_IP = 'fingerprint_ip'
+    BAN_TIER_IP = 'ip'
+    BAN_TIER_CHOICES = [
+        (BAN_TIER_SESSION, 'Session Ban'),
+        (BAN_TIER_FINGERPRINT_IP, 'Device + IP Ban'),
+        (BAN_TIER_IP, 'Total IP Ban'),
+    ]
+    ban_tier = models.CharField(
+        max_length=20,
+        choices=BAN_TIER_CHOICES,
+        default=BAN_TIER_SESSION,
+        help_text="Ban enforcement level: session (clearable), fingerprint+IP (device), or IP (network)"
     )
 
     # Who created the block
@@ -633,6 +682,8 @@ class ChatBlock(models.Model):
             models.Index(fields=['chat_room', 'blocked_username']),
             models.Index(fields=['chat_room', 'blocked_fingerprint']),
             models.Index(fields=['chat_room', 'blocked_user']),
+            models.Index(fields=['chat_room', 'blocked_session_key']),
+            models.Index(fields=['chat_room', 'ban_tier']),
             models.Index(fields=['expires_at']),
         ]
         constraints = [
@@ -729,6 +780,13 @@ class SiteBan(models.Model):
         db_index=True,
         help_text="Browser fingerprint ban"
     )
+    banned_session_key = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Django session key ban"
+    )
 
     # Who created the ban (must be staff)
     banned_by = models.ForeignKey(
@@ -757,6 +815,7 @@ class SiteBan(models.Model):
             models.Index(fields=['banned_user']),
             models.Index(fields=['banned_ip_address']),
             models.Index(fields=['banned_fingerprint']),
+            models.Index(fields=['banned_session_key']),
             models.Index(fields=['is_active', 'expires_at']),
         ]
 
@@ -778,15 +837,20 @@ class SiteBan(models.Model):
         return timezone.now() > self.expires_at
 
     @classmethod
-    def is_banned(cls, user=None, ip_address=None, fingerprint=None):
+    def is_banned(cls, user=None, ip_address=None, fingerprint=None, session_key=None, chat_room=None):
         """
         Check if any of the provided identifiers are banned.
+        Host of the chat_room (if provided) is always exempt.
 
         Returns the active SiteBan if found, None otherwise.
         """
         from django.db.models import Q
 
-        if not any([user, ip_address, fingerprint]):
+        # Host exemption: if user is the host of the chat, they're never banned
+        if chat_room and user and hasattr(chat_room, 'host') and chat_room.host == user:
+            return None
+
+        if not any([user, ip_address, fingerprint, session_key]):
             return None
 
         # Build query for active, non-expired bans
@@ -800,6 +864,8 @@ class SiteBan(models.Model):
             identifier_query |= Q(banned_ip_address=ip_address)
         if fingerprint:
             identifier_query |= Q(banned_fingerprint=fingerprint)
+        if session_key:
+            identifier_query |= Q(banned_session_key=session_key)
 
         return cls.objects.filter(query & identifier_query).first()
 

@@ -6,9 +6,8 @@ import jwt
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.core.cache import cache
-from django.contrib.auth.hashers import check_password
 from rest_framework.exceptions import PermissionDenied
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict
 
 
 class ChatSessionValidator:
@@ -23,7 +22,8 @@ class ChatSessionValidator:
         chat_code: str,
         username: str,
         user_id: Optional[str] = None,
-        fingerprint: Optional[str] = None
+        fingerprint: Optional[str] = None,
+        session_key: Optional[str] = None
     ) -> str:
         """
         Create a JWT session token for chat access
@@ -32,7 +32,8 @@ class ChatSessionValidator:
             chat_code: Chat room code
             username: User's display name in chat
             user_id: Optional authenticated user ID
-            fingerprint: Optional browser fingerprint (for anonymous users)
+            fingerprint: Optional browser fingerprint (for ban enforcement)
+            session_key: Optional Django session key (primary anonymous identifier)
 
         Returns:
             JWT token string
@@ -41,7 +42,8 @@ class ChatSessionValidator:
             'chat_code': chat_code,
             'username': username,
             'user_id': str(user_id) if user_id else None,
-            'fingerprint': fingerprint,  # Include fingerprint for ban enforcement
+            'fingerprint': fingerprint,  # For ban enforcement
+            'session_key': session_key,  # Primary anonymous identifier
             'iat': datetime.utcnow(),
             'exp': datetime.utcnow() + timedelta(hours=cls.TOKEN_EXPIRATION_HOURS)
         }
@@ -160,39 +162,3 @@ class ChatSessionValidator:
         except jwt.InvalidTokenError:
             return None
 
-    @classmethod
-    def verify_anonymous_pin(cls, fingerprint: str, pin: str, ip_address: str) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Verify an anonymous user's PIN with rate limiting.
-
-        Returns:
-            (success, error_code, detail) where error_code is one of:
-            'rate_limited', 'pin_invalid', 'no_pin', None (on success)
-        """
-        from constance import config
-        from chats.models import AnonymousPIN
-
-        # Check rate limit
-        attempts_key = f"pin_attempts:{fingerprint}:{ip_address}"
-        attempts = cache.get(attempts_key, 0)
-        max_attempts = config.ANON_PIN_MAX_ATTEMPTS
-        lockout_seconds = config.ANON_PIN_LOCKOUT_MINUTES * 60
-
-        if attempts >= max_attempts:
-            ttl = cache.ttl(attempts_key) if hasattr(cache, 'ttl') else lockout_seconds
-            return False, 'rate_limited', f"Too many attempts. Try again in {ttl // 60 + 1} minutes."
-
-        # Look up PIN record
-        anon_pin = AnonymousPIN.objects.filter(fingerprint=fingerprint).first()
-        if not anon_pin:
-            return False, 'no_pin', 'No PIN found for this fingerprint.'
-
-        # Verify PIN
-        if not check_password(pin, anon_pin.pin_hash):
-            attempts += 1
-            cache.set(attempts_key, attempts, timeout=lockout_seconds)
-            remaining = max_attempts - attempts
-            return False, 'pin_invalid', f"Incorrect PIN. {remaining} attempt{'s' if remaining != 1 else ''} remaining."
-
-        # Success — clear attempts
-        cache.delete(attempts_key)
-        return True, None, None
