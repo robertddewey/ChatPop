@@ -357,11 +357,11 @@ class ChatRoomJoinView(APIView):
                 )
 
                 if not is_own_reserved:
-                    # Check if username belongs to their anonymous participation (same fingerprint)
+                    # Check if username belongs to their anonymous participation (same session)
                     anonymous_self = None
-                    if fingerprint:
+                    if session_key:
                         anonymous_self = ChatParticipation.objects.filter(
-                            chat_room=chat_room, fingerprint=fingerprint,
+                            chat_room=chat_room, session_key=session_key,
                             user__isnull=True, username__iexact=username
                         ).first()
 
@@ -494,10 +494,10 @@ class ChatRoomJoinView(APIView):
             ).first()
             if existing_participation:
                 # User already joined - they must use the same username
-                # UNLESS they're switching to their own anonymous identity (same fingerprint)
+                # UNLESS they're switching to their own anonymous identity (same session)
                 if existing_participation.username != username:
-                    is_own_anonymous = fingerprint and ChatParticipation.objects.filter(
-                        chat_room=chat_room, fingerprint=fingerprint,
+                    is_own_anonymous = session_key and ChatParticipation.objects.filter(
+                        chat_room=chat_room, session_key=session_key,
                         user__isnull=True, username__iexact=username
                     ).exists()
                     if not is_own_anonymous:
@@ -505,16 +505,16 @@ class ChatRoomJoinView(APIView):
                             f"You previously joined as \"{existing_participation.username}\". "
                             f"Please use that username to rejoin."
                         )
-        elif fingerprint:
-            # Check if this fingerprint already joined this chat
+        elif session_key:
+            # Check if this session already joined this chat
             existing_participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
-                fingerprint=fingerprint,
+                session_key=session_key,
                 user__isnull=True,
                 is_active=True
             ).first()
             if existing_participation:
-                # Fingerprint already joined - they must use the same username
+                # Session already joined - they must use the same username
                 if existing_participation.username != username:
                     raise ValidationError(
                         f"You have already joined this chat as '{existing_participation.username}'. "
@@ -522,24 +522,27 @@ class ChatRoomJoinView(APIView):
                     )
 
         # SECURITY CHECK 3: Check if username is already taken by another participant
-        # (excluding the current user/fingerprint who may be rejoining)
+        # (excluding the current user/session who may be rejoining)
         # Usernames must be unique per chat room regardless of authentication status
         if request.user.is_authenticated:
             # Registered user: check for ANY other participant (registered or anonymous)
-            # Also exclude their own anonymous participation (same fingerprint)
+            # Also exclude their own anonymous participation (same session_key)
             qs = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 username__iexact=username,
             ).exclude(user=request.user)
-            if fingerprint:
-                qs = qs.exclude(fingerprint=fingerprint, user__isnull=True)
+            if session_key:
+                qs = qs.exclude(session_key=session_key, user__isnull=True)
             username_taken = qs.exists()
         else:
             # Anonymous user: check for ANY other participant (registered or anonymous)
-            username_taken = ChatParticipation.objects.filter(
+            qs = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 username__iexact=username,
-            ).exclude(fingerprint=fingerprint).exists()
+            )
+            if session_key:
+                qs = qs.exclude(session_key=session_key)
+            username_taken = qs.exists()
 
         if username_taken:
             raise ValidationError(f"Username '{username}' is already in use in this chat")
@@ -549,11 +552,11 @@ class ChatRoomJoinView(APIView):
 
         # Create or update ChatParticipation
         if request.user.is_authenticated:
-            # Check if reclaiming anonymous identity (same fingerprint, same username)
+            # Check if reclaiming anonymous identity (same session, same username)
             anonymous_self = None
-            if fingerprint:
+            if session_key:
                 anonymous_self = ChatParticipation.objects.filter(
-                    chat_room=chat_room, fingerprint=fingerprint,
+                    chat_room=chat_room, session_key=session_key,
                     user__isnull=True, username__iexact=username
                 ).first()
 
