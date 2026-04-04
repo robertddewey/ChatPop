@@ -612,6 +612,15 @@ class ChatRoomJoinView(APIView):
             if created and not participation.avatar_url:
                 self._generate_avatar_for_participation(participation, chat_room, avatar_seed=avatar_seed)
 
+        # Create or update AnonymousIdentityLink for logged-in users with anonymous identity
+        if request.user.is_authenticated and is_anonymous_identity and participation:
+            from .models import AnonymousIdentityLink
+            AnonymousIdentityLink.objects.update_or_create(
+                user=request.user,
+                chat_room=chat_room,
+                defaults={'participation': participation}
+            )
+
         # Create JWT session token
         # If user is joining with anonymous identity, exclude user_id from token
         # to prevent anonymous messages from being marked as host messages
@@ -1735,13 +1744,31 @@ class MyParticipationView(APIView):
                 chat_room=chat_room,
                 user=request.user
             ).first()
-            # Also check for anonymous participation by session_key (fallback: fingerprint)
-            if session_key:
-                anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
-                    chat_room=chat_room,
-                    session_key=session_key,
-                    user__isnull=True
-                ).first()
+            # Find anonymous identity via permanent link (survives logout/login/cookie clearing)
+            from .models import AnonymousIdentityLink
+            link = AnonymousIdentityLink.objects.select_related('participation', 'participation__theme').filter(
+                user=request.user,
+                chat_room=chat_room
+            ).first()
+            if link:
+                anonymous_participation = link.participation
+            else:
+                # Fallback: check current session (covers the case where anonymous user
+                # just logged in — same session, link not yet created)
+                current_session = request.session.session_key
+                if current_session:
+                    anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
+                        chat_room=chat_room,
+                        session_key=current_session,
+                        user__isnull=True
+                    ).first()
+                    # Auto-create the permanent link so it survives logout
+                    if anonymous_participation:
+                        AnonymousIdentityLink.objects.get_or_create(
+                            user=request.user,
+                            chat_room=chat_room,
+                            defaults={'participation': anonymous_participation}
+                        )
         # Priority 2 - Anonymous user (session_key only, no fingerprint fallback)
         else:
             if session_key:

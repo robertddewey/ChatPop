@@ -514,6 +514,43 @@ class AnonymousPIN(models.Model):
         return f"PIN for {self.fingerprint[:8]}..."
 
 
+class AnonymousIdentityLink(models.Model):
+    """Permanent link between a registered user and their anonymous participation in a chat.
+    Survives logout, login, cookie clearing, and device switching.
+    One anonymous identity per user per chat room."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='anonymous_identity_links',
+        help_text="The registered user who owns this anonymous identity"
+    )
+    chat_room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='anonymous_identity_links')
+    participation = models.ForeignKey(
+        'ChatParticipation',
+        on_delete=models.CASCADE,
+        related_name='identity_link',
+        help_text="The anonymous ChatParticipation this user owns"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Anonymous Identity Link'
+        verbose_name_plural = 'Anonymous Identity Links'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'chat_room'],
+                name='unique_user_chat_anonymous_link'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'chat_room']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} → {self.participation.username} in {self.chat_room.code}"
+
+
 class MessageReaction(models.Model):
     """Track emoji reactions to messages"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
