@@ -448,11 +448,8 @@ class ChatParticipation(models.Model):
                 condition=models.Q(user__isnull=False),
                 name='unique_chat_user'
             ),
-            models.UniqueConstraint(
-                fields=['chat_room', 'fingerprint'],
-                condition=models.Q(user__isnull=True),
-                name='unique_chat_fingerprint'
-            ),
+            # Note: unique_chat_fingerprint removed — fingerprints can collide across
+            # different sessions, and session_key is now the primary anonymous identifier
             models.UniqueConstraint(
                 fields=['chat_room', 'session_key'],
                 condition=models.Q(session_key__isnull=False, user__isnull=True),
