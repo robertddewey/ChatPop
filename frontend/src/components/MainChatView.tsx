@@ -599,7 +599,7 @@ function MainChatView({
                 {/* Avatar column - for all messages */}
                 <div className={`${avatarSize} flex-shrink-0 ${avatarSpacing}`}>
                   {showAvatar ? (
-                    <div className="relative">
+                    <div className="relative" style={{ willChange: 'transform' }}>
                       <img
                         src={message.avatar_url || getDiceBearUrl(avatarStyle, message.username, 80)}
                         alt={message.username}
