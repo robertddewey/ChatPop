@@ -233,6 +233,7 @@ export interface Message {
   avatar_url: string;
   created_at: string;
   is_deleted: boolean;
+  is_banned?: boolean;
   gift_recipient?: string | null;
   is_gift_acknowledged?: boolean;
   is_broadcast?: boolean;
@@ -706,6 +707,17 @@ export const messageApi = {
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/block-user/`, {
       ...data,
       session_token: sessionToken,
+    });
+    return response.data;
+  },
+
+  unblockUser: async (code: string, username: string, roomUsername?: string): Promise<{
+    success: boolean;
+    message: string;
+    blocks_removed: number;
+  }> => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/unblock/`, {
+      username,
     });
     return response.data;
   },

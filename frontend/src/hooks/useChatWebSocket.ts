@@ -14,6 +14,7 @@ interface UseChatWebSocketOptions {
   onMessage?: (message: Message) => void;
   onUserBlocked?: (message: string) => void;
   onUserKicked?: (message: string) => void;
+  onBanStatusChanged?: (username: string, isBanned: boolean) => void;
   onReaction?: (data: ReactionEventData) => void;
   onMessageDeleted?: (messageId: string) => void;
   onMessagePinned?: (message: Message, isTopPin: boolean) => void;
@@ -32,6 +33,7 @@ export function useChatWebSocket({
   onMessage,
   onUserBlocked,
   onUserKicked,
+  onBanStatusChanged,
   onReaction,
   onMessageDeleted,
   onMessagePinned,
@@ -55,6 +57,7 @@ export function useChatWebSocket({
   const onMessageRef = useRef(onMessage);
   const onUserBlockedRef = useRef(onUserBlocked);
   const onUserKickedRef = useRef(onUserKicked);
+  const onBanStatusChangedRef = useRef(onBanStatusChanged);
   const onReactionRef = useRef(onReaction);
   const onMessageDeletedRef = useRef(onMessageDeleted);
   const onMessagePinnedRef = useRef(onMessagePinned);
@@ -69,6 +72,7 @@ export function useChatWebSocket({
   useEffect(() => { onMessageRef.current = onMessage; }, [onMessage]);
   useEffect(() => { onUserBlockedRef.current = onUserBlocked; }, [onUserBlocked]);
   useEffect(() => { onUserKickedRef.current = onUserKicked; }, [onUserKicked]);
+  useEffect(() => { onBanStatusChangedRef.current = onBanStatusChanged; }, [onBanStatusChanged]);
   useEffect(() => { onReactionRef.current = onReaction; }, [onReaction]);
   useEffect(() => { onMessageDeletedRef.current = onMessageDeleted; }, [onMessageDeleted]);
   useEffect(() => { onMessagePinnedRef.current = onMessagePinned; }, [onMessagePinned]);
@@ -129,6 +133,14 @@ export function useChatWebSocket({
           console.log('[WebSocket] User kicked event received:', data.message);
           if (onUserKickedRef.current) {
             onUserKickedRef.current(data.message);
+          }
+          return;
+        }
+
+        // Handle ban status change (update badges for all clients)
+        if (data.type === 'ban_status_changed') {
+          if (onBanStatusChangedRef.current) {
+            onBanStatusChangedRef.current(data.username, data.is_banned);
           }
           return;
         }

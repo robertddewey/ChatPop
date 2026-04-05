@@ -3,7 +3,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from .utils.security.auth import ChatSessionValidator
 from .utils.performance.cache import MessageCache, UnacknowledgedGiftCache
-from .models import ChatRoom, Message, ChatParticipation
+from .models import ChatRoom, Message, ChatParticipation, ChatBlock
 from urllib.parse import parse_qs
 
 
@@ -253,6 +253,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Close the WebSocket connection
             await self.close(code=4403)
 
+    async def user_ban_status(self, event):
+        """Broadcast ban/unban status change to all connected clients."""
+        await self.send(text_data=json.dumps({
+            'type': 'ban_status_changed',
+            'username': event.get('username'),
+            'is_banned': event.get('is_banned', True),
+        }))
+
     async def site_banned(self, event):
         """Handle user being site-wide banned by staff (SiteBan)"""
         await self.send(text_data=json.dumps({
@@ -426,6 +434,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not avatar_url:
             avatar_url = get_fallback_dicebear_url(message.username, style=None)
 
+        # Check if sender is banned (single indexed query)
+        from django.utils import timezone as tz
+        from django.db.models import Q
+        is_banned = ChatBlock.objects.filter(
+            chat_room=message.chat_room,
+            blocked_username__iexact=message.username
+        ).filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
+        ).exists()
+
         return {
             'id': str(message.id),
             'chat_code': message.chat_room.code,
@@ -452,6 +470,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'avatar_url': avatar_url,
             'created_at': message.created_at.isoformat(),
             'is_deleted': message.is_deleted,
+            'is_banned': is_banned,
         }
 
     @database_sync_to_async

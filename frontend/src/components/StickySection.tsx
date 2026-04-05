@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Crown, Pin, Mic, ImageIcon, Video, ChevronUp, CornerDownRight } from 'lucide-react';
+import { BadgeCheck, Crown, Pin, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import { ChatRoom, Message, ReactionSummary } from '@/lib/api';
 
@@ -102,6 +102,15 @@ function HostPill({ color }: { color?: string }) {
   );
 }
 
+function BannedPill() {
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none inline-flex items-center gap-0.5"
+      style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
+    ><Ban size={9} />banned</span>
+  );
+}
+
 interface StickySectionProps {
   stickyHostMessages: Message[];
   stickyPinnedMessage: Message | null;
@@ -140,6 +149,7 @@ interface StickySectionProps {
     time_remaining_seconds?: number;
   }>;
   handleBlockUser: (username: string) => void;
+  handleUnblockUser: (username: string) => void;
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
@@ -171,6 +181,7 @@ function StickySection({
   handleAddToPin,
   getPinRequirements,
   handleBlockUser,
+  handleUnblockUser,
   handleTipUser,
   handleSendGift,
   handleThankGift,
@@ -368,6 +379,7 @@ function StickySection({
               onAddToPin={handleAddToPin}
               getPinRequirements={getPinRequirements}
               onBlock={handleBlockUser}
+              onUnblock={handleUnblockUser}
               onTip={handleTipUser}
               onSendGift={handleSendGift}
               onThankGift={handleThankGift}
@@ -405,6 +417,7 @@ function StickySection({
                       {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                       <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
                       <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                      {message.is_banned && <BannedPill />}
                     </div>
                 <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
                   <span
@@ -483,6 +496,7 @@ function StickySection({
               onAddToPin={handleAddToPin}
               getPinRequirements={getPinRequirements}
               onBlock={handleBlockUser}
+              onUnblock={handleUnblockUser}
               onTip={handleTipUser}
               onSendGift={handleSendGift}
               onThankGift={handleThankGift}
@@ -520,6 +534,7 @@ function StickySection({
                         {stickyPinnedMessage.username}
                       </span>
                   {stickyPinnedMessage.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
+                  {stickyPinnedMessage.is_banned && <BannedPill />}
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
                     currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'
                   }`}>

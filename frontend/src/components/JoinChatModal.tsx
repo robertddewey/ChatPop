@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, ChevronDown, ChevronLeft, ChevronRight, Dices, RotateCcw } from 'lucide-react';
+import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Dices, RotateCcw } from 'lucide-react';
 import type { ChatRoom, AnonymousParticipationInfo } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
@@ -32,6 +32,7 @@ export default function JoinChatModal({
   chatRoom,
   currentUserDisplayName,
   hasJoinedBefore,
+  isBlocked = false,
   isLoggedIn,
   hasReservedUsername = false,
   themeIsDarkMode = true,
@@ -164,7 +165,7 @@ export default function JoinChatModal({
 
   // Avatar seed browsing state (restore from persisted if available)
   const [avatarSeeds, setAvatarSeeds] = useState<string[]>(
-    persisted.current?.avatarSeeds || [`${username || currentUserDisplayName || 'anonymous'}-${chatRoom.code}`]
+    persisted.current?.avatarSeeds || [username || currentUserDisplayName || crypto.randomUUID()]
   );
   const [avatarIndex, setAvatarIndex] = useState(persisted.current?.avatarIndex || 0);
 
@@ -661,14 +662,26 @@ export default function JoinChatModal({
           </p>
         )}
 
-        {/* Join Button */}
-        <button
-          type="submit"
-          disabled={isJoining || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
-          className={`w-full px-6 py-3 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
-        >
-          {isJoining ? 'Joining...' : 'Join Chat'}
-        </button>
+        {/* Banned message OR Join Button */}
+        {isBlocked ? (
+          <div className="text-center py-4 space-y-2">
+            <div className="flex items-center justify-center gap-2 text-red-400">
+              <Ban size={20} />
+              <span className="font-semibold">You have been banned from this chat</span>
+            </div>
+            <p className="text-xs text-zinc-500">
+              You can no longer join or send messages in this chat.
+            </p>
+          </div>
+        ) : (
+          <button
+            type="submit"
+            disabled={isJoining || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
+            className={`w-full px-6 py-3 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+          >
+            {isJoining ? 'Joining...' : 'Join Chat'}
+          </button>
+        )}
 
         {/* Auth links (only for non-logged-in users) */}
         {!isLoggedIn && (

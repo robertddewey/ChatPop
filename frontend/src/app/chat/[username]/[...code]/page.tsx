@@ -738,18 +738,23 @@ export default function ChatPage() {
 
   // Handle user kicked event (host removed user from chat)
   const handleUserKicked = useCallback((message: string) => {
-    // Clear local state
-    localStorage.removeItem(`chat_session_${code}`);
-    setSessionToken(null);
+    // Keep session token so getMyParticipation returns is_blocked=true with original username
+    // Don't redirect — stay on the chat page and show blocked state
     setHasJoined(false);
+    setIsBlocked(true);
     setMessages([]);
     setStickyHostMessage(null);
     setStickyPinnedMsg(null);
+  }, []);
 
-    // Show alert and redirect to home page
-    alert(message || 'You have been removed from this chat by the host.');
-    window.location.href = '/';
-  }, [code]);
+  // Handle ban status change (update is_banned on all messages from that user)
+  const handleBanStatusChanged = useCallback((bannedUsername: string, isBanned: boolean) => {
+    setMessages(prev => prev.map(msg =>
+      msg.username.toLowerCase() === bannedUsername.toLowerCase()
+        ? { ...msg, is_banned: isBanned }
+        : msg
+    ));
+  }, []);
 
   // Handle reaction WebSocket events
   const handleReactionEvent = useCallback(async (data: { message_id: string; action: string; emoji: string }) => {
@@ -818,6 +823,7 @@ export default function ChatPage() {
     onMessage: handleWebSocketMessage,
     onUserBlocked: handleUserBlocked,
     onUserKicked: handleUserKicked,
+    onBanStatusChanged: handleBanStatusChanged,
     onReaction: handleReactionEvent,
     onMessageDeleted: handleMessageDeleted,
     onMessagePinned: handleMessagePinned,
@@ -1155,12 +1161,7 @@ export default function ChatPage() {
     return () => window.removeEventListener('auth-change', handleAuthChange);
   }, [code]);
 
-  // Redirect blocked users to home page immediately
-  useEffect(() => {
-    if (isBlocked) {
-            router.replace('/'); // Use replace to avoid adding to browser history
-    }
-  }, [isBlocked, router]);
+  // Blocked users stay on the page — JoinChatModal shows a "banned" message
 
   // Listen for back button to handle auth, settings overlay, and chat exit
   useEffect(() => {
@@ -1887,11 +1888,11 @@ export default function ChatPage() {
       if (userIsHost) {
         // Host can ban users from the chat (ChatBlock)
         await messageApi.blockUser(code, { blocked_username: username }, roomUsername);
-                alert(`Banned ${username} from this chat. They will no longer be able to join or send messages.`);
+        alert(`Banned ${username} from this chat.`);
       } else {
         // Non-hosts can only mute users site-wide (UserBlock)
         await messageApi.blockUserSiteWide(username);
-                alert(`Blocked ${username}. You will no longer see their messages anywhere on ChatPop.`);
+        alert(`Muted ${username}. You will no longer see their messages.`);
       }
       // TODO: Update local state to filter out blocked user's messages
     } catch (err: unknown) {
@@ -1901,7 +1902,18 @@ export default function ChatPage() {
       const errorMsg = errorData?.username?.[0] || errorData?.message || 'Failed to block user. Please try again.';
       alert(errorMsg);
     }
-  }, [currentUserId, chatRoom, code]);
+  }, [currentUserId, chatRoom, code, roomUsername]);
+
+  const handleUnblockUser = useCallback(async (username: string) => {
+    try {
+      await messageApi.unblockUser(code, username, roomUsername);
+      alert(`Unbanned ${username}. They can rejoin this chat.`);
+    } catch (err: unknown) {
+      const error = err as ApiError;
+      console.error('Failed to unban user:', error);
+      alert('Failed to unban user. Please try again.');
+    }
+  }, [code, roomUsername]);
 
   const handleTipUser = useCallback((username: string) => {
         // TODO: Implement tip user logic with payment
@@ -2458,6 +2470,7 @@ export default function ChatPage() {
                 handleAddToPin={handleAddToPin}
                 getPinRequirements={getPinRequirements}
                 handleBlockUser={handleBlockUser}
+                handleUnblockUser={handleUnblockUser}
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
                 handleThankGift={handleThankGift}

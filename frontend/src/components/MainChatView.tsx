@@ -7,7 +7,7 @@
 // bg-zinc-900/95 bg-zinc-900/90 border-purple-500/30
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin, Radio, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Radio, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown, Ban } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
@@ -188,6 +188,16 @@ function HostPill({ color }: { color?: string }) {
   );
 }
 
+// "banned" pill shown next to banned users' usernames
+function BannedPill() {
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none inline-flex items-center gap-0.5"
+      style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
+    ><Ban size={9} />banned</span>
+  );
+}
+
 // Generate DiceBear avatar URL
 function getDiceBearUrl(style: string, seed: string, size: number = 80): string {
   return `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
@@ -230,6 +240,7 @@ interface MainChatViewProps {
   handlePinSelf?: (messageId: string) => void;
   handlePinOther?: (messageId: string) => void;
   handleBlockUser: (username: string) => void;
+  handleUnblockUser: (username: string) => void;
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
@@ -274,6 +285,7 @@ function MainChatView({
   handlePinSelf,
   handlePinOther,
   handleBlockUser,
+  handleUnblockUser,
   handleTipUser,
   handleSendGift,
   handleThankGift,
@@ -438,6 +450,7 @@ function MainChatView({
         handleAddToPin={handleAddToPin}
         getPinRequirements={getPinRequirements}
         handleBlockUser={handleBlockUser}
+        handleUnblockUser={handleUnblockUser}
         handleTipUser={handleTipUser}
         handleSendGift={handleSendGift}
         handleThankGift={handleThankGift}
@@ -629,6 +642,7 @@ function MainChatView({
                   onAddToPin={handleAddToPin}
                   getPinRequirements={getPinRequirements}
                   onBlock={handleBlockUser}
+                  onUnblock={handleUnblockUser}
                   onTip={handleTipUser}
                   onSendGift={handleSendGift}
                   onThankGift={handleThankGift}
@@ -659,6 +673,7 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
+                        {message.is_banned && <BannedPill />}
                       </div>
                     </div>
                   )}
@@ -684,6 +699,7 @@ function MainChatView({
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                         <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
                         <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                        {message.is_banned && <BannedPill />}
                       </div>
                     </div>
                   )}
@@ -708,6 +724,7 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
+                        {message.is_banned && <BannedPill />}
                       </div>
                     </div>
                   )}

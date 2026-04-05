@@ -675,11 +675,7 @@ class ChatBlock(models.Model):
                 condition=models.Q(blocked_username__isnull=False),
                 name='unique_chat_username_block'
             ),
-            models.UniqueConstraint(
-                fields=['chat_room', 'blocked_fingerprint'],
-                condition=models.Q(blocked_fingerprint__isnull=False),
-                name='unique_chat_fingerprint_block'
-            ),
+            # No fingerprint constraint — multiple banned users can share the same fingerprint
             models.UniqueConstraint(
                 fields=['chat_room', 'blocked_user'],
                 condition=models.Q(blocked_user__isnull=False),

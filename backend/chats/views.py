@@ -10,7 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 from constance import config
 from accounts.models import User
-from .models import ChatRoom, Message, ChatParticipation, ChatTheme, MessageReaction
+from .models import ChatRoom, Message, ChatParticipation, ChatTheme, MessageReaction, ChatBlock
 from .serializers import (
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomUpdateSerializer, ChatRoomJoinSerializer,
     MessageSerializer, MessageCreateSerializer, MessagePinSerializer,
@@ -808,7 +808,6 @@ class MessageListView(APIView):
                 # Get current user's reactions for has_reacted (single query)
                 user_reactions = {}  # message_id -> set of emojis
                 if current_session_key or current_user_id:
-                    from django.db.models import Q
                     q_filter = Q()
                     if current_session_key:
                         q_filter |= Q(session_key=current_session_key)
@@ -833,6 +832,20 @@ class MessageListView(APIView):
                     for reaction in reactions:
                         reaction['has_reacted'] = reaction['emoji'] in user_emojis
                     msg['reactions'] = reactions
+
+                # Batch fetch banned usernames (ONE query for all messages)
+                unique_usernames_cached = set(msg.get('username', '') for msg in messages)
+                from django.utils import timezone as tz
+                banned_usernames_cached = set(
+                    ChatBlock.objects.filter(
+                        chat_room=chat_room,
+                        blocked_username__in=[u.lower() for u in unique_usernames_cached if u]
+                    ).filter(
+                        Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
+                    ).values_list('blocked_username', flat=True)
+                )
+                for msg in messages:
+                    msg['is_banned'] = msg.get('username', '').lower() in banned_usernames_cached
             else:
                 # Cache miss - fall back to PostgreSQL and backfill cache
                 print(f"DEBUG: Cache miss! Calling _fetch_from_db, limit={limit}, before_timestamp={before_timestamp}")
@@ -895,7 +908,6 @@ class MessageListView(APIView):
         if filter_mode == 'broadcast':
             queryset = queryset.filter(is_broadcast=True)
         elif filter_mode and filter_username:
-            from django.db.models import Q
             if filter_mode == 'focus':
                 queryset = queryset.filter(
                     Q(is_from_host=True) |
@@ -929,7 +941,6 @@ class MessageListView(APIView):
         # Get current user's reactions for has_reacted (single query)
         user_reactions = {}  # message_id -> set of emojis
         if current_session_key or current_user_id:
-            from django.db.models import Q
             q_filter = Q()
             if current_session_key:
                 q_filter |= Q(session_key=current_session_key)
@@ -962,7 +973,18 @@ class MessageListView(APIView):
                 avatar_map[p.username.lower()] = p.avatar_url
             # else: not in map, will fallback to DiceBear (orphaned data)
 
-        # Serialize (with username_is_reserved and avatar_url)
+        # Batch fetch banned usernames (ONE query)
+        from django.utils import timezone as tz
+        banned_usernames_db = set(
+            ChatBlock.objects.filter(
+                chat_room=chat_room,
+                blocked_username__in=[u.lower() for u in unique_usernames if u]
+            ).filter(
+                Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
+            ).values_list('blocked_username', flat=True)
+        )
+
+        # Serialize (with username_is_reserved, avatar_url, and is_banned)
         serialized = []
         for msg in messages:
             username_is_reserved = MessageCache._compute_username_is_reserved(msg)
@@ -1043,6 +1065,7 @@ class MessageListView(APIView):
                 'avatar_url': avatar_url,
                 'created_at': msg.created_at.isoformat(),
                 'is_deleted': msg.is_deleted,
+                'is_banned': msg.username.lower() in banned_usernames_db,
                 'reactions': top_reactions,
             })
 
@@ -3225,13 +3248,23 @@ class BlockUserView(APIView):
             channel_layer = get_channel_layer()
             room_group_name = f'chat_{chat_room.code}'
 
-            # Send eviction event to the chat room
+            # Send eviction event to the kicked user
             async_to_sync(channel_layer.group_send)(
                 room_group_name,
                 {
                     'type': 'user_kicked',
                     'username': participation.username,
                     'message': 'You have been removed from this chat by the host.',
+                }
+            )
+
+            # Notify all clients that this user is now banned (for badge updates)
+            async_to_sync(channel_layer.group_send)(
+                room_group_name,
+                {
+                    'type': 'user_ban_status',
+                    'username': participation.username,
+                    'is_banned': True,
                 }
             )
 
@@ -3293,6 +3326,21 @@ class UnblockUserView(APIView):
         if not participation.is_active:
             participation.is_active = True
             participation.save()
+
+        # Notify all clients that this user is unbanned (for badge updates)
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        channel_layer = get_channel_layer()
+        room_group_name = f'chat_{chat_room.code}'
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'user_ban_status',
+                'username': participation.username,
+                'is_banned': False,
+            }
+        )
 
         return Response({
             'success': True,

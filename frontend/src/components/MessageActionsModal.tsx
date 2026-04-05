@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Message, ReactionSummary } from '@/lib/api';
-import { Pin, Gift, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Radio } from 'lucide-react';
+import { Pin, Gift, Ban, ShieldCheck, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Radio } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import ReactionBar from './ReactionBar';
 import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
@@ -70,6 +70,7 @@ interface MessageActionsModalProps {
   onAddToPin?: (messageId: string, amountCents: number) => Promise<boolean>;
   getPinRequirements?: (messageId: string) => Promise<PinRequirements>;
   onBlock?: (username: string) => void;
+  onUnblock?: (username: string) => void;
   onTip?: (username: string) => void;
   onSendGift?: (giftId: string, recipientUsername: string) => Promise<boolean>;
   onThankGift?: (messageId: string) => Promise<boolean>;
@@ -222,6 +223,7 @@ export default function MessageActionsModal({
   onAddToPin,
   getPinRequirements,
   onBlock,
+  onUnblock,
   onTip,
   onSendGift,
   onThankGift,
@@ -646,19 +648,33 @@ export default function MessageActionsModal({
     });
   }
 
-  // 6. Mute/Ban — registered users, others only (destructive)
-  if (!isOwnMessage && !isHostMessage && onBlock) {
+  // 6. Mute/Ban/Unban — registered users, others only
+  if (!isOwnMessage && !isHostMessage) {
     const authToken = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     if (authToken) {
-      actions.push({
-        icon: Ban,
-        label: isHost ? 'Ban' : 'Mute',
-        destructive: true,
-        action: () => {
-          onBlock(message.username);
-          handleClose();
-        },
-      });
+      if (isHost && message.is_banned && onUnblock) {
+        // Host sees "Unban" for already-banned users
+        actions.push({
+          icon: ShieldCheck,
+          label: 'Unban',
+          destructive: false,
+          action: () => {
+            onUnblock(message.username);
+            handleClose();
+          },
+        });
+      } else if (onBlock) {
+        // Host sees "Ban", non-hosts see "Mute"
+        actions.push({
+          icon: Ban,
+          label: isHost ? 'Ban' : 'Mute',
+          destructive: true,
+          action: () => {
+            onBlock(message.username);
+            handleClose();
+          },
+        });
+      }
     }
   }
 

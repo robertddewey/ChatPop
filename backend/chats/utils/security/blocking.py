@@ -39,8 +39,9 @@ def block_participation(chat_room, participation, blocked_by, ip_address=None, b
     if chat_room.host != blocked_by.user:
         raise ValueError("Only the host can block users")
 
-    # Check if this user is already blocked (by any identifier)
+    # Check if this user is already blocked (by username or user account)
     # If they are, update the existing block to include all identifiers
+    # NOTE: Do NOT match by fingerprint — fingerprints can collide across users
     existing_block = None
 
     # Check for existing block by username
@@ -50,14 +51,7 @@ def block_participation(chat_room, participation, blocked_by, ip_address=None, b
             blocked_username__iexact=participation.username
         ).first()
 
-    # Check for existing block by fingerprint (if not found by username)
-    if not existing_block and participation.fingerprint:
-        existing_block = ChatBlock.objects.filter(
-            chat_room=chat_room,
-            blocked_fingerprint=participation.fingerprint
-        ).first()
-
-    # Check for existing block by user account (if not found yet)
+    # Check for existing block by user account (if not found by username)
     if not existing_block and participation.user:
         existing_block = ChatBlock.objects.filter(
             chat_room=chat_room,
@@ -168,14 +162,11 @@ def unblock_participation(chat_room, participation):
     """
     blocks_to_delete = ChatBlock.objects.filter(chat_room=chat_room)
 
-    # Build a query to match blocks by any identifier (OR logic)
+    # Match by username or user account only (NOT fingerprint — fingerprints can collide)
     query = Q()
 
     if participation.username:
         query |= Q(blocked_username__iexact=participation.username)
-
-    if participation.fingerprint:
-        query |= Q(blocked_fingerprint=participation.fingerprint)
 
     if participation.user:
         query |= Q(blocked_user=participation.user)
