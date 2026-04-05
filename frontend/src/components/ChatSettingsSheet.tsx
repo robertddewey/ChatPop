@@ -10,8 +10,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { chatApi, type ChatRoom } from '@/lib/api';
-import { Copy, Check, BadgeCheck, Moon, ArrowLeft, Image, Mic, Video } from 'lucide-react';
+import { chatApi, messageApi, type ChatRoom } from '@/lib/api';
+import { Copy, Check, BadgeCheck, Moon, ArrowLeft, Image, Mic, Video, Ban, ShieldCheck, ChevronRight, Settings } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 // Theme color constants for optimistic updates
@@ -122,6 +122,47 @@ export default function ChatSettingsSheet({
   const [success, setSuccess] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [subPage, setSubPage] = useState<'main' | 'banned' | 'edit'>('main');
+
+  // Banned users state (host only)
+  const [bannedUsers, setBannedUsers] = useState<Array<{ username: string; blocked_at: string; banned_by: string | null }>>([]);
+  const [bannedUsersLoading, setBannedUsersLoading] = useState(false);
+  const [unbanningUser, setUnbanningUser] = useState<string | null>(null);
+  const [banSortBy, setBanSortBy] = useState<'recent' | 'name'>('recent');
+
+  // Reset to main page when sheet closes
+  useEffect(() => {
+    if (!isOpen) setSubPage('main');
+  }, [isOpen]);
+
+  // Load banned users when sheet opens (host only)
+  useEffect(() => {
+    if (isOpen && isHost) {
+      setBannedUsersLoading(true);
+      messageApi.getBannedUsers(chatRoom.code, chatRoom.host.reserved_username)
+        .then((data) => {
+          setBannedUsers(data.blocked_users);
+        })
+        .catch(() => {
+          setBannedUsers([]);
+        })
+        .finally(() => {
+          setBannedUsersLoading(false);
+        });
+    }
+  }, [isOpen, isHost, chatRoom.code, chatRoom.host.reserved_username]);
+
+  const handleUnbanUser = async (username: string) => {
+    setUnbanningUser(username);
+    try {
+      await messageApi.unblockUser(chatRoom.code, username, chatRoom.host.reserved_username);
+      setBannedUsers(prev => prev.filter(u => u.username.toLowerCase() !== username.toLowerCase()));
+    } catch {
+      // Failed silently — user stays in list
+    } finally {
+      setUnbanningUser(null);
+    }
+  };
 
   // Form state (only for host)
   const [formData, setFormData] = useState({
@@ -199,6 +240,90 @@ export default function ChatSettingsSheet({
           </SheetHeader>
 
           <div className="mt-6 space-y-6">
+
+          {/* Sub-page: Banned Users */}
+          {subPage === 'banned' && (
+            <div className="space-y-4">
+              <button
+                onClick={() => setSubPage('main')}
+                className={`flex items-center gap-1 text-sm font-medium cursor-pointer ${themeIsDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-purple-600 hover:text-purple-500'}`}
+              >
+                <ArrowLeft size={16} />
+                Back to Settings
+              </button>
+
+              <h3 className={`text-sm font-semibold ${styles.title} flex items-center gap-1.5`}>
+                <Ban size={14} className="text-red-400" />
+                Banned Users
+                {bannedUsers.length > 0 && (
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                    {bannedUsers.length}
+                  </span>
+                )}
+              </h3>
+
+              {bannedUsersLoading ? (
+                <p className={`text-sm ${styles.subtext}`}>Loading...</p>
+              ) : bannedUsers.length === 0 ? (
+                <p className={`text-sm ${styles.subtext}`}>No banned users</p>
+              ) : (
+                <div className="space-y-2">
+                  {/* Sort toggle */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setBanSortBy('recent')}
+                      className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        banSortBy === 'recent'
+                          ? (themeIsDarkMode ? 'bg-zinc-600 text-white' : 'bg-gray-300 text-gray-900')
+                          : (themeIsDarkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')
+                      }`}
+                    >
+                      Most recent
+                    </button>
+                    <button
+                      onClick={() => setBanSortBy('name')}
+                      className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        banSortBy === 'name'
+                          ? (themeIsDarkMode ? 'bg-zinc-600 text-white' : 'bg-gray-300 text-gray-900')
+                          : (themeIsDarkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')
+                      }`}
+                    >
+                      A–Z
+                    </button>
+                  </div>
+                  {[...bannedUsers].sort((a, b) =>
+                    banSortBy === 'name'
+                      ? a.username.localeCompare(b.username)
+                      : new Date(b.blocked_at).getTime() - new Date(a.blocked_at).getTime()
+                  ).map((user) => (
+                    <div key={user.username} className={`flex items-center justify-between p-3 rounded-lg ${styles.card}`}>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium ${styles.text} truncate`}>{user.username}</p>
+                        <p className={`text-xs ${styles.subtext}`}>
+                          Banned {new Date(user.blocked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{user.banned_by ? ` by ${user.banned_by}` : ''}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleUnbanUser(user.username)}
+                        disabled={unbanningUser === user.username}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 cursor-pointer disabled:opacity-50 ${
+                          themeIsDarkMode
+                            ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                            : 'bg-red-50 text-red-600 hover:bg-red-100'
+                        }`}
+                      >
+                        <ShieldCheck size={12} />
+                        {unbanningUser === user.username ? 'Unbanning...' : 'Unban'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Main settings page */}
+          {subPage === 'main' && <>
           {/* Theme Selection */}
           <div className="space-y-4 relative">
             <h3 className={`text-sm font-semibold ${styles.title}`}>
@@ -360,145 +485,193 @@ export default function ChatSettingsSheet({
             </div>
           </div>
 
-          {/* Host-Only Settings */}
+          {/* Banned Users navigation (Host Only) */}
           {isHost && (
-            <form onSubmit={handleSubmit} className={`space-y-4 pt-4 border-t ${styles.border}`}>
-              <h3 className={`text-sm font-semibold ${styles.title}`}>
-                Edit Settings (Host Only)
-              </h3>
-
-              {error && (
-                <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-red-900/20 border border-red-800 text-red-400' : 'bg-red-50 border border-red-200 text-red-600'}`}>
-                  {error}
+            <div className={`pt-4 border-t ${styles.border}`}>
+              <button
+                onClick={() => setSubPage('banned')}
+                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Ban size={16} className="text-red-400" />
+                  <span className={`text-sm font-medium ${styles.text}`}>Banned Users</span>
+                  {bannedUsers.length > 0 && (
+                    <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                      {bannedUsers.length}
+                    </span>
+                  )}
                 </div>
-              )}
+                <ChevronRight size={16} className={styles.subtext} />
+              </button>
+            </div>
+          )}
 
-              {success && (
-                <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-green-900/20 border border-green-800 text-green-400' : 'bg-green-50 border border-green-200 text-green-600'}`}>
-                  {success}
+          {/* Edit Settings navigation (Host Only) */}
+          {isHost && (
+            <div className={`pt-4 border-t ${styles.border}`}>
+              <button
+                onClick={() => setSubPage('edit')}
+                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Settings size={16} className={themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'} />
+                  <span className={`text-sm font-medium ${styles.text}`}>Edit Settings</span>
                 </div>
-              )}
+                <ChevronRight size={16} className={styles.subtext} />
+              </button>
+            </div>
+          )}
+          </>}
 
-              {/* Chat Name */}
-              <div>
-                <label className={`block text-sm font-medium mb-1 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
-                  Chat Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
-                  required
-                />
-              </div>
+          {/* Sub-page: Edit Settings */}
+          {subPage === 'edit' && (
+            <div className="space-y-4">
+              <button
+                onClick={() => setSubPage('main')}
+                className={`flex items-center gap-1 text-sm font-medium cursor-pointer ${themeIsDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-purple-600 hover:text-purple-500'}`}
+              >
+                <ArrowLeft size={16} />
+                Back to Settings
+              </button>
 
-              {/* Access Mode */}
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
-                  Access Mode
-                </label>
-                <div className="flex gap-4">
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="radio"
-                      value="public"
-                      checked={formData.access_mode === 'public'}
-                      onChange={(e) =>
-                        setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
-                      }
-                      className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
-                    />
-                    <span className={`text-sm ${styles.text}`}>Public</span>
-                  </label>
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="radio"
-                      value="private"
-                      checked={formData.access_mode === 'private'}
-                      onChange={(e) =>
-                        setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
-                      }
-                      className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
-                    />
-                    <span className={`text-sm ${styles.text}`}>Private</span>
-                  </label>
-                </div>
-              </div>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <h3 className={`text-sm font-semibold ${styles.title}`}>
+                  Edit Settings
+                </h3>
 
-              {/* Access Code (if private) */}
-              {formData.access_mode === 'private' && (
+                {error && (
+                  <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-red-900/20 border border-red-800 text-red-400' : 'bg-red-50 border border-red-200 text-red-600'}`}>
+                    {error}
+                  </div>
+                )}
+
+                {success && (
+                  <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-green-900/20 border border-green-800 text-green-400' : 'bg-green-50 border border-green-200 text-green-600'}`}>
+                    {success}
+                  </div>
+                )}
+
+                {/* Chat Name */}
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
-                    Access Code
+                    Chat Name
                   </label>
                   <input
                     type="text"
-                    value={formData.access_code}
-                    onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
-                    placeholder="Enter access code"
                     required
                   />
                 </div>
-              )}
 
-              {/* Sharing Settings */}
-              <div className="space-y-2">
-                <label className={`block text-sm font-medium ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
-                  Sharing Settings
-                </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
-                  <div className="flex items-center gap-2">
-                    <Image className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
-                    <span className={`text-sm ${styles.text}`}>Photo Sharing</span>
+                {/* Access Mode */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
+                    Access Mode
+                  </label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        value="public"
+                        checked={formData.access_mode === 'public'}
+                        onChange={(e) =>
+                          setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
+                        }
+                        className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
+                      />
+                      <span className={`text-sm ${styles.text}`}>Public</span>
+                    </label>
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        value="private"
+                        checked={formData.access_mode === 'private'}
+                        onChange={(e) =>
+                          setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
+                        }
+                        className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
+                      />
+                      <span className={`text-sm ${styles.text}`}>Private</span>
+                    </label>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={formData.photo_enabled}
-                    onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
-                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
-                  />
-                </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
-                  <div className="flex items-center gap-2">
-                    <Mic className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
-                    <span className={`text-sm ${styles.text}`}>Voice Messages</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={formData.voice_enabled}
-                    onChange={(e) => setFormData({ ...formData, voice_enabled: e.target.checked })}
-                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
-                  />
-                </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
-                  <div className="flex items-center gap-2">
-                    <Video className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
-                    <span className={`text-sm ${styles.text}`}>Video Messages</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={formData.video_enabled}
-                    onChange={(e) => setFormData({ ...formData, video_enabled: e.target.checked })}
-                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
-                  />
-                </label>
-              </div>
+                </div>
 
-              {/* Save Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
-                  loading
-                    ? (themeIsDarkMode ? 'bg-gray-600 cursor-not-allowed text-white' : 'bg-gray-400 cursor-not-allowed text-white')
-                    : styles.button
-                }`}
-              >
-                {loading ? 'Saving...' : 'Save Changes'}
-              </button>
-            </form>
+                {/* Access Code (if private) */}
+                {formData.access_mode === 'private' && (
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
+                      Access Code
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.access_code}
+                      onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
+                      placeholder="Enter access code"
+                      required
+                    />
+                  </div>
+                )}
+
+                {/* Sharing Settings */}
+                <div className="space-y-2">
+                  <label className={`block text-sm font-medium ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
+                    Sharing Settings
+                  </label>
+                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
+                    <div className="flex items-center gap-2">
+                      <Image className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
+                      <span className={`text-sm ${styles.text}`}>Photo Sharing</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.photo_enabled}
+                      onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
+                      className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
+                    />
+                  </label>
+                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
+                    <div className="flex items-center gap-2">
+                      <Mic className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
+                      <span className={`text-sm ${styles.text}`}>Voice Messages</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.voice_enabled}
+                      onChange={(e) => setFormData({ ...formData, voice_enabled: e.target.checked })}
+                      className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
+                    />
+                  </label>
+                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
+                    <div className="flex items-center gap-2">
+                      <Video className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
+                      <span className={`text-sm ${styles.text}`}>Video Messages</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.video_enabled}
+                      onChange={(e) => setFormData({ ...formData, video_enabled: e.target.checked })}
+                      className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
+                    />
+                  </label>
+                </div>
+
+                {/* Save Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
+                    loading
+                      ? (themeIsDarkMode ? 'bg-gray-600 cursor-not-allowed text-white' : 'bg-gray-400 cursor-not-allowed text-white')
+                      : styles.button
+                  }`}
+                >
+                  {loading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </form>
+            </div>
           )}
           </div>
       </SheetContent>

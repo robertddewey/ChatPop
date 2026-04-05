@@ -245,6 +245,8 @@ export default function MessageActionsModal({
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [confirmingBan, setConfirmingBan] = useState(false);
+  const [confirmingUnban, setConfirmingUnban] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [slideIn, setSlideIn] = useState(false);
@@ -366,6 +368,8 @@ export default function MessageActionsModal({
     setIsClosing(true);
     setSlideIn(false);
     setIsDragging(false);
+    setConfirmingBan(false);
+    setConfirmingUnban(false);
 
     // Wait for transition to complete before removing from DOM
     setTimeout(() => {
@@ -657,21 +661,23 @@ export default function MessageActionsModal({
         actions.push({
           icon: ShieldCheck,
           label: 'Unban',
-          destructive: false,
+          destructive: true,
           action: () => {
-            onUnblock(message.username);
-            handleClose();
+            setConfirmingUnban(true);
           },
         });
       } else if (onBlock) {
-        // Host sees "Ban", non-hosts see "Mute"
         actions.push({
           icon: Ban,
           label: isHost ? 'Ban' : 'Mute',
           destructive: true,
           action: () => {
-            onBlock(message.username);
-            handleClose();
+            if (isHost) {
+              setConfirmingBan(true);
+            } else {
+              onBlock(message.username);
+              handleClose();
+            }
           },
         });
       }
@@ -952,7 +958,46 @@ export default function MessageActionsModal({
                   {/* Divider */}
                   <div className={`mx-5 border-t ${modalStyles.divider}`} />
 
-                  {/* Horizontal Scrollable Action Row */}
+                  {/* Horizontal Scrollable Action Row OR Ban Confirmation */}
+                  {confirmingBan || confirmingUnban ? (
+                    <div className="px-5 py-4 space-y-3">
+                      <p className={`text-sm font-medium text-center ${themeModalStyles?.actionLabel || 'text-zinc-50'}`}>
+                        {confirmingBan ? (
+                          <>Ban <span className="font-bold">{message.username}</span> from this chat?</>
+                        ) : (
+                          <>Unban <span className="font-bold">{message.username}</span>?</>
+                        )}
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmingBan(false);
+                            setConfirmingUnban(false);
+                          }}
+                          className={`flex-1 px-4 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-95 cursor-pointer ${themeModalStyles?.secondaryButton || 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'}`}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirmingBan && onBlock) {
+                              onBlock(message.username);
+                            } else if (confirmingUnban && onUnblock) {
+                              onUnblock(message.username);
+                            }
+                            setConfirmingBan(false);
+                            setConfirmingUnban(false);
+                            handleClose();
+                          }}
+                          className="flex-1 px-4 py-2.5 rounded-xl font-medium text-sm bg-red-500 text-white hover:bg-red-600 transition-all active:scale-95 cursor-pointer"
+                        >
+                          {confirmingBan ? 'Ban' : 'Unban'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                   <div className="pt-3">
                     <div
                       className="overflow-x-scroll actions-scrollbar-hide actions-scroll-container px-5"
@@ -980,6 +1025,7 @@ export default function MessageActionsModal({
                       </div>
                     </div>
                   </div>
+                  )}
                   </div>
 
                   {/* Panel 2: Pin Input */}

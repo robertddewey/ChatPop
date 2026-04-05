@@ -199,11 +199,14 @@ def get_blocked_users(chat_room):
 
     # Convert each block to a dict
     result = []
-    for block in blocks.select_related('blocked_user'):
+    for block in blocks.select_related('blocked_user', 'blocked_by'):
         # Determine username to display
         username = block.blocked_username or (
             block.blocked_user.reserved_username if block.blocked_user else None
         )
+
+        # Who banned this user
+        banned_by = block.blocked_by.username if block.blocked_by else None
 
         # List which identifiers are blocked
         blocked_identifiers = []
@@ -219,6 +222,7 @@ def get_blocked_users(chat_room):
         result.append({
             'username': username,
             'blocked_at': block.blocked_at,
+            'banned_by': banned_by,
             'reason': block.reason,
             'blocked_identifiers': blocked_identifiers,
             'expires_at': block.expires_at,

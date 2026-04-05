@@ -722,6 +722,21 @@ export const messageApi = {
     return response.data;
   },
 
+  getBannedUsers: async (code: string, roomUsername?: string): Promise<{
+    blocked_users: Array<{
+      username: string;
+      blocked_at: string;
+      banned_by: string | null;
+      reason: string | null;
+      blocked_identifiers: string[];
+      expires_at: string | null;
+    }>;
+    count: number;
+  }> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/blocked-users/`);
+    return response.data;
+  },
+
   deleteMessage: async (code: string, messageId: string, roomUsername?: string): Promise<{
     success: boolean;
     message: string;

@@ -1888,30 +1888,20 @@ export default function ChatPage() {
       if (userIsHost) {
         // Host can ban users from the chat (ChatBlock)
         await messageApi.blockUser(code, { blocked_username: username }, roomUsername);
-        alert(`Banned ${username} from this chat.`);
       } else {
         // Non-hosts can only mute users site-wide (UserBlock)
         await messageApi.blockUserSiteWide(username);
-        alert(`Muted ${username}. You will no longer see their messages.`);
       }
-      // TODO: Update local state to filter out blocked user's messages
     } catch (err: unknown) {
-      const error = err as ApiError & { response?: { data?: { username?: string[]; message?: string } } };
-      console.error('Failed to block user:', error);
-      const errorData = error.response?.data;
-      const errorMsg = errorData?.username?.[0] || errorData?.message || 'Failed to block user. Please try again.';
-      alert(errorMsg);
+      console.error('Failed to block user:', err);
     }
   }, [currentUserId, chatRoom, code, roomUsername]);
 
   const handleUnblockUser = useCallback(async (username: string) => {
     try {
       await messageApi.unblockUser(code, username, roomUsername);
-      alert(`Unbanned ${username}. They can rejoin this chat.`);
     } catch (err: unknown) {
-      const error = err as ApiError;
-      console.error('Failed to unban user:', error);
-      alert('Failed to unban user. Please try again.');
+      console.error('Failed to unban user:', err);
     }
   }, [code, roomUsername]);
 
