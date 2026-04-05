@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Dices, RotateCcw } from 'lucide-react';
+import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Crown, Dices, RotateCcw } from 'lucide-react';
 import type { ChatRoom, AnonymousParticipationInfo } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
@@ -506,11 +506,16 @@ export default function JoinChatModal({
                   : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-500'
               }`}
             >
-              <img
-                src={registeredAvatarUrl || userAvatarUrl || ''}
-                alt="Registered avatar"
-                className="w-12 h-12 rounded-full bg-zinc-700 flex-shrink-0"
-              />
+              <div className="relative flex-shrink-0">
+                <img
+                  src={registeredAvatarUrl || userAvatarUrl || ''}
+                  alt="Registered avatar"
+                  className="w-12 h-12 rounded-full bg-zinc-700"
+                />
+                {chatRoom.host.reserved_username?.toLowerCase() === currentUserDisplayName.toLowerCase() && (
+                  <Crown size={14} fill="currentColor" className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.crown_icon_color || 'text-amber-400'}`} style={{ transform: 'rotate(-30deg)' }} />
+                )}
+              </div>
               <div className="text-left min-w-0">
                 <div className="flex items-center gap-1">
                   <p className={`font-semibold ${modalStyles.title} truncate`}>
