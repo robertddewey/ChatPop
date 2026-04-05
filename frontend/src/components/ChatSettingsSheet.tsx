@@ -68,7 +68,6 @@ const updateThemeColorMetaTags = (themeColors: { light: string; dark: string }) 
 interface ChatSettingsSheetProps {
   chatRoom: ChatRoom;
   currentUserId?: string;
-  fingerprint?: string;
   activeThemeId?: string;
   onUpdate?: (chatRoom: ChatRoom) => void;
   onThemeChange?: (theme: ThemeId) => void;
@@ -81,7 +80,6 @@ interface ChatSettingsSheetProps {
 export default function ChatSettingsSheet({
   chatRoom,
   currentUserId,
-  fingerprint,
   activeThemeId,
   onUpdate,
   onThemeChange,
@@ -236,7 +234,7 @@ export default function ChatSettingsSheet({
                     updateThemeColorMetaTags(THEME_COLORS['dark-mode']);
 
                     // Wait for API to complete (no race condition)
-                    await chatApi.updateMyTheme(chatRoom.code, 'dark-mode', fingerprint, chatRoom.host.reserved_username);
+                    await chatApi.updateMyTheme(chatRoom.code, 'dark-mode', chatRoom.host.reserved_username);
 
                     // Reload to apply theme
                     window.location.reload();

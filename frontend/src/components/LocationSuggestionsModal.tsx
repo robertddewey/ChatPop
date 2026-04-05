@@ -259,7 +259,7 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
       setUserCoords({ latitude, longitude });
 
       // Fetch suggestions from API
-      const response = await locationApi.getSuggestions(latitude, longitude);
+      const response = await locationApi.getSuggestions(latitude, longitude, undefined);
       setResult(response);
 
       // Also fetch nearby discoverable chats
@@ -301,7 +301,7 @@ export default function LocationSuggestionsModal({ onClose, initialState }: Loca
       setUserCoords(coords);
 
       // Fetch suggestions from API with the selected coordinates
-      const response = await locationApi.getSuggestions(coords.latitude, coords.longitude);
+      const response = await locationApi.getSuggestions(coords.latitude, coords.longitude, undefined);
       setResult(response);
 
       // Also fetch nearby discoverable chats

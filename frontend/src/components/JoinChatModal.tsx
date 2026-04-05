@@ -6,8 +6,8 @@ import { BadgeCheck, ChevronDown, ChevronLeft, ChevronRight, Dices, RotateCcw } 
 import type { ChatRoom, AnonymousParticipationInfo } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
-import { getFingerprint } from '@/lib/usernameStorage';
 import { getModalTheme } from '@/lib/modal-theme';
+import { verifyHuman } from '@/lib/turnstile';
 
 
 interface JoinChatModalProps {
@@ -91,8 +91,6 @@ export default function JoinChatModal({
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [usernameAvailable, setUsernameAvailable] = useState(false);
-  const [isRateLimited, setIsRateLimited] = useState(false);
-  const [rateLimitChecked, setRateLimitChecked] = useState(false);
   const [generationRemaining, setGenerationRemaining] = useState<number | null>(null);
   const [suggestionRemaining, setSuggestionRemaining] = useState<number | null>(null);
   const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>(persisted.current?.usernameSource || 'manual');
@@ -218,36 +216,6 @@ export default function JoinChatModal({
     }
   };
 
-  // Check rate limit on mount (for anonymous users only)
-  useEffect(() => {
-    const checkRateLimit = async () => {
-      if (isLoggedIn || hasJoinedBefore) {
-        // Logged-in users and returning users are exempt
-        setIsRateLimited(false);
-        setError('');
-        setRateLimitChecked(true);
-        return;
-      }
-
-      try {
-        const fingerprint = await getFingerprint();
-        const result = await chatApi.checkRateLimit(chatRoom.code, fingerprint, chatRoom.host.reserved_username || undefined);
-
-        if (result.is_rate_limited) {
-          setIsRateLimited(true);
-          setError('Max anonymous usernames. Log in to continue.');
-        }
-      } catch (err) {
-        console.error('Failed to check rate limit:', err);
-        // Don't block if check fails
-      } finally {
-        setRateLimitChecked(true);
-      }
-    };
-
-    checkRateLimit();
-  }, [isLoggedIn, hasJoinedBefore, chatRoom.code]);
-
   // Real-time username validation with debouncing
   useEffect(() => {
     // Clear any existing timeout
@@ -358,8 +326,7 @@ export default function JoinChatModal({
     setIsSuggestingUsername(true);
 
     try {
-      const fingerprint = await getFingerprint();
-      const result = await chatApi.suggestUsername(chatRoom.code, fingerprint, chatRoom.host.reserved_username || undefined);
+      const result = await chatApi.suggestUsername(chatRoom.code, chatRoom.host.reserved_username || undefined);
 
       // Backend returns username for both new generation and rotation through previous ones
       if (result.username) {
@@ -394,12 +361,15 @@ export default function JoinChatModal({
   };
 
   // Auto-fetch username for anonymous users on mount to detect returning users
+  // Waits for Turnstile verification first (suggest-username is a protected endpoint)
   // Skip if we already have a persisted username (returning from auth modal)
   useEffect(() => {
-    if (!isLoggedIn && !hasJoinedBefore && rateLimitChecked && !isRateLimited && !persisted.current?.username) {
-      handleSuggestUsername();
+    if (!isLoggedIn && !hasJoinedBefore && !persisted.current?.username) {
+      verifyHuman().then((verified) => {
+        if (verified) handleSuggestUsername();
+      });
     }
-  }, [isLoggedIn, hasJoinedBefore, rateLimitChecked, isRateLimited]);
+  }, [isLoggedIn, hasJoinedBefore]);
 
   // Persist join modal state to sessionStorage so it survives auth modal navigation
   useEffect(() => {
@@ -650,7 +620,7 @@ export default function JoinChatModal({
               <button
                 type="button"
                 onClick={handleSuggestUsername}
-                disabled={isJoining || isSuggestingUsername || isRateLimited}
+                disabled={isJoining || isSuggestingUsername}
                 className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
                 title="Generate random username"
               >
@@ -694,7 +664,7 @@ export default function JoinChatModal({
         {/* Join Button */}
         <button
           type="submit"
-          disabled={isJoining || isRateLimited || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
+          disabled={isJoining || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
           className={`w-full px-6 py-3 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
         >
           {isJoining ? 'Joining...' : 'Join Chat'}

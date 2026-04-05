@@ -86,12 +86,10 @@ But generated_usernames contained "HappyTiger42", so checking for
         But generated_usernames contained "HappyTiger42", so checking for
         "happytiger42" would fail.
         """
-        fingerprint = 'test_fp_case_join'
-
         # STEP 1: Suggest a username
         suggest_response = self.client.post(
             f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-            {'fingerprint': fingerprint},
+            {},
             format='json'
         )
 
@@ -107,7 +105,6 @@ But generated_usernames contained "HappyTiger42", so checking for
             f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': suggested_username,  # Original case: "HappyTiger42"
-                'fingerprint': fingerprint
             },
             format='json'
         )
@@ -122,40 +119,41 @@ But generated_usernames contained "HappyTiger42", so checking for
         )
 
         # Verify participation was created with original capitalization
+        session_key = self.client.session.session_key
         participation = ChatParticipation.objects.get(
             chat_room=self.chat,
-            fingerprint=fingerprint
+            session_key=session_key
         )
         self.assertEqual(participation.username, suggested_username)
         self.assertNotEqual(participation.username, suggested_username.lower())
 
-    @allure.title("Join rejects username not generated for fingerprint")
-    @allure.description("Test that the security check rejects usernames that weren't generated for this specific fingerprint")
+    @allure.title("Join rejects username not generated for session")
+    @allure.description("Test that the security check rejects usernames that weren't generated for this specific session")
     @allure.severity(allure.severity_level.CRITICAL)
     @override_config(MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL=10)
-    def test_join_rejects_username_not_generated_for_fingerprint(self):
+    def test_join_rejects_username_not_generated_for_session(self):
         """
         Test that the security check rejects usernames that weren't generated
-        for this specific fingerprint.
+        for this specific session.
         """
-        fingerprint1 = 'fp_user1'
-        fingerprint2 = 'fp_user2'
+        # Use two separate clients (different sessions)
+        client1 = APIClient()
+        client2 = APIClient()
 
         # User 1 generates a username
-        suggest_response = self.client.post(
+        suggest_response = client1.post(
             f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-            {'fingerprint': fingerprint1},
+            {},
             format='json'
         )
         self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
         username1 = suggest_response.data['username']
 
         # User 2 tries to join with User 1's username (should fail)
-        join_response = self.client.post(
+        join_response = client2.post(
             f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': username1,  # User 1's username
-                'fingerprint': fingerprint2  # User 2's fingerprint
             },
             format='json'
         )
@@ -173,12 +171,10 @@ But generated_usernames contained "HappyTiger42", so checking for
         Test that attempting to join with a different case of a generated username
         still works (case-insensitive matching).
         """
-        fingerprint = 'case_insensitive_fp'
-
         # Generate username
         suggest_response = self.client.post(
             f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-            {'fingerprint': fingerprint},
+            {},
             format='json'
         )
         username = suggest_response.data['username']  # e.g., "HappyTiger42"
@@ -188,7 +184,6 @@ But generated_usernames contained "HappyTiger42", so checking for
             f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': username.lower(),  # e.g., "happytiger42"
-                'fingerprint': fingerprint
             },
             format='json'
         )
@@ -260,14 +255,12 @@ Expected GOOD behavior:
         Expected GOOD behavior:
             Alice, Bob, Carol, Alice, Bob, Carol, ...
         """
-        fingerprint = 'rotation_no_dupes_fp'
-
         # STEP 1: Generate 3 usernames (hit global limit)
         generated_usernames = []
         for i in range(3):
             response = self.client.post(
                 f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-                {'fingerprint': fingerprint},
+                {},
                 format='json'
             )
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -278,7 +271,7 @@ Expected GOOD behavior:
         for i in range(15):
             response = self.client.post(
                 f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-                {'fingerprint': fingerprint},
+                {},
                 format='json'
             )
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -321,14 +314,12 @@ Expected GOOD behavior:
         Test that rotation returns usernames with their EXACT original capitalization,
         not lowercased or title-cased versions.
         """
-        fingerprint = 'rotation_case_fp'
-
         # Generate 5 usernames and track exact capitalization
         original_usernames = []
         for i in range(5):
             response = self.client.post(
                 f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-                {'fingerprint': fingerprint},
+                {},
                 format='json'
             )
             original_usernames.append(response.data['username'])
@@ -337,7 +328,7 @@ Expected GOOD behavior:
         for i in range(20):
             response = self.client.post(
                 f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-                {'fingerprint': fingerprint},
+                {},
                 format='json'
             )
             rotated_username = response.data['username']
@@ -361,14 +352,12 @@ Expected GOOD behavior:
         Test that rotation skips usernames that become unavailable
         (e.g., taken by another user).
         """
-        fingerprint = 'rotation_availability_fp'
-
         # Generate 3 usernames
         generated_usernames = []
         for i in range(3):
             response = self.client.post(
                 f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-                {'fingerprint': fingerprint},
+                {},
                 format='json'
             )
             generated_usernames.append(response.data['username'])
@@ -379,7 +368,7 @@ Expected GOOD behavior:
         ChatParticipation.objects.create(
             chat_room=self.chat,
             username=taken_username,
-            fingerprint='another_user_fp',
+            session_key='another_user_session',
             user=None
         )
 
@@ -388,7 +377,7 @@ Expected GOOD behavior:
         for i in range(10):
             response = self.client.post(
                 f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-                {'fingerprint': fingerprint},
+                {},
                 format='json'
             )
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -412,20 +401,18 @@ Expected GOOD behavior:
 
         This ensures rotated usernames can successfully be used to join chats.
         """
-        fingerprint = 'rotation_join_fp'
-
         # Generate 2 usernames
         for i in range(2):
             self.client.post(
                 f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-                {'fingerprint': fingerprint},
+                {},
                 format='json'
             )
 
         # Rotate to get a username
         rotate_response = self.client.post(
             f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-            {'fingerprint': fingerprint},
+            {},
             format='json'
         )
         rotated_username = rotate_response.data['username']
@@ -435,7 +422,6 @@ Expected GOOD behavior:
             f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': rotated_username,
-                'fingerprint': fingerprint
             },
             format='json'
         )
@@ -448,9 +434,10 @@ Expected GOOD behavior:
         )
 
         # Verify participation
+        session_key = self.client.session.session_key
         participation = ChatParticipation.objects.get(
             chat_room=self.chat,
-            fingerprint=fingerprint
+            session_key=session_key
         )
         self.assertEqual(participation.username, rotated_username)
 
@@ -460,7 +447,7 @@ Expected GOOD behavior:
 class UsernameSecurityChecksIntegrationTestCase(TestCase):
     """
     Test security checks in the join flow that protect against:
-    1. API bypass attempts (using usernames not generated for this fingerprint)
+    1. API bypass attempts (using usernames not generated for this session)
     2. Username hijacking (using another user's generated username)
     3. Case manipulation attacks
     """
@@ -503,14 +490,11 @@ class UsernameSecurityChecksIntegrationTestCase(TestCase):
         Test that anonymous users cannot manually craft usernames to bypass
         the generation system.
         """
-        fingerprint = 'manual_username_fp'
-
         # Try to join with a manually crafted username (no prior generation)
         join_response = self.client.post(
             f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': 'HackerName123',  # Not generated via API
-                'fingerprint': fingerprint
             },
             format='json'
         )
@@ -539,18 +523,17 @@ But generated_usernames contained "HappyTiger42", causing false rejections.""")
 
         But generated_usernames contained "HappyTiger42", causing false rejections.
         """
-        fingerprint = 'security_case_fp'
-
         # Generate a username
         suggest_response = self.client.post(
             f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-            {'fingerprint': fingerprint},
+            {},
             format='json'
         )
         username = suggest_response.data['username']
 
         # Verify it's in Redis with original capitalization
-        generated_key = f"username:generated_for_fingerprint:{fingerprint}"
+        session_key = self.client.session.session_key
+        generated_key = f"username:generated_for_session:{session_key}"
         generated_set = cache.get(generated_key, set())
         self.assertIn(username, generated_set)  # Original case
         self.assertNotIn(username.lower(), generated_set)  # NOT lowercase
@@ -560,7 +543,6 @@ But generated_usernames contained "HappyTiger42", causing false rejections.""")
             f'/api/chats/HostUser/{self.chat.code}/join/',
             {
                 'username': username,  # e.g., "HappyTiger42"
-                'fingerprint': fingerprint
             },
             format='json'
         )
@@ -583,19 +565,17 @@ But generated_usernames contained "HappyTiger42", causing false rejections.""")
         Test that users who already joined can rejoin without the
         "username must be generated" security check.
         """
-        fingerprint = 'rejoin_fp'
-
         # First, generate and join
         suggest_response = self.client.post(
             f'/api/chats/HostUser/{self.chat.code}/suggest-username/',
-            {'fingerprint': fingerprint},
+            {},
             format='json'
         )
         username = suggest_response.data['username']
 
         join_response = self.client.post(
             f'/api/chats/HostUser/{self.chat.code}/join/',
-            {'username': username, 'fingerprint': fingerprint},
+            {'username': username},
             format='json'
         )
         self.assertEqual(join_response.status_code, status.HTTP_200_OK)
@@ -606,7 +586,7 @@ But generated_usernames contained "HappyTiger42", causing false rejections.""")
         # Try to rejoin with the same username
         rejoin_response = self.client.post(
             f'/api/chats/HostUser/{self.chat.code}/join/',
-            {'username': username, 'fingerprint': fingerprint},
+            {'username': username},
             format='json'
         )
 

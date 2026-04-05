@@ -14,6 +14,7 @@ import { MARKETING } from "@/lib/marketing";
 import { messageApi, type PhotoAnalysisResponse, type LocationAnalysisResponse, type NearbyDiscoverableChat } from "@/lib/api";
 import { getFingerprint } from "@/lib/usernameStorage";
 import { getModalState, clearModalState, type ModalState } from "@/lib/modalState";
+import { verifyHuman } from "@/lib/turnstile";
 
 // Only load DevPhotoPicker in development mode
 const DevPhotoPicker = process.env.NODE_ENV === 'development'
@@ -96,7 +97,7 @@ function HomeContent() {
       const fingerprint = await getFingerprint();
 
       // Analyze photo
-      const result = await messageApi.analyzePhoto(file, fingerprint);
+      const result = await messageApi.analyzePhoto(file, fingerprint, undefined);
       console.log('✅ Analysis complete:', result);
 
       // Update modal with result
@@ -184,6 +185,9 @@ function HomeContent() {
       }
     };
   }, [processPhoto]);
+
+  // Verify human on page load (session-based, runs once)
+  useEffect(() => { verifyHuman(); }, []);
 
   useEffect(() => {
     // Detect if device is mobile

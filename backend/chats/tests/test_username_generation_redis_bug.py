@@ -1,9 +1,7 @@
 """
-Tests to demonstrate the username generation Redis storage bug.
+Tests to verify the username generation Redis storage for session-to-usernames mapping.
 
-Bug: Generated usernames are NOT being saved to the fingerprint-to-usernames mapping.
-Expected: username:generated_for_fingerprint:{fingerprint} should contain all generated usernames.
-Actual: This key is NEVER written to Redis (only read from).
+Verifies: username:generated_for_session:{identity_key} contains all generated usernames.
 """
 from django.test import TestCase
 from django.core.cache import cache
@@ -12,36 +10,31 @@ from constance import config
 
 
 class UsernameGenerationRedisBugTest(TestCase):
-    """Tests that expose the missing Redis storage for fingerprint-to-usernames mapping"""
+    """Tests that verify Redis storage for session-to-usernames mapping"""
 
     def setUp(self):
         """Clear Redis before each test"""
         cache.clear()
 
-    def test_generated_username_saved_to_fingerprint_set(self):
+    def test_generated_username_saved_to_session_set(self):
         """
-        BUG TEST: Generated username should be saved to Redis under fingerprint key.
+        Generated username should be saved to Redis under session/identity key.
 
         Expected behavior:
-        - After generating a username for fingerprint "test123"
-        - Redis key "username:generated_for_fingerprint:test123" should contain the username
-
-        Current behavior:
-        - The key is never written to Redis
-        - This breaks username rotation and reuse
+        - After generating a username for identity_key "test123"
+        - Redis key "username:generated_for_session:test123" should contain the username
         """
-        fingerprint = "test_fingerprint_123"
+        identity_key = "test_identity_key_123"
         chat_code = "TESTCHAT"
 
         # Generate a username
-        username, remaining = generate_username(fingerprint, chat_code)
+        username, remaining = generate_username(identity_key, chat_code)
 
         # Verify username was generated successfully
         self.assertIsNotNone(username)
         self.assertGreater(len(username), 0)
 
-        # BUG: This test FAILS because the key is never set
-        generated_key = f"username:generated_for_fingerprint:{fingerprint}"
+        generated_key = f"username:generated_for_session:{identity_key}"
         generated_usernames = cache.get(generated_key, set())
 
         self.assertIn(
@@ -50,28 +43,24 @@ class UsernameGenerationRedisBugTest(TestCase):
             f"Generated username '{username}' should be saved to Redis key '{generated_key}'"
         )
 
-    def test_multiple_generations_accumulate_in_fingerprint_set(self):
+    def test_multiple_generations_accumulate_in_session_set(self):
         """
-        BUG TEST: Multiple username generations should accumulate in the fingerprint set.
+        Multiple username generations should accumulate in the session set.
 
         Expected behavior:
-        - Generate 3 usernames for the same fingerprint
+        - Generate 3 usernames for the same identity key
         - All 3 should be stored in the set
-
-        Current behavior:
-        - None are stored (key is never written)
         """
-        fingerprint = "test_fingerprint_456"
+        identity_key = "test_identity_key_456"
         chat_code = "TESTCHAT"
 
         generated_usernames = []
         for i in range(3):
-            username, remaining = generate_username(fingerprint, chat_code)
+            username, remaining = generate_username(identity_key, chat_code)
             self.assertIsNotNone(username)
             generated_usernames.append(username)
 
-        # BUG: This test FAILS because the key is never set
-        generated_key = f"username:generated_for_fingerprint:{fingerprint}"
+        generated_key = f"username:generated_for_session:{identity_key}"
         cached_usernames = cache.get(generated_key, set())
 
         # Convert to lowercase for comparison
@@ -85,25 +74,21 @@ class UsernameGenerationRedisBugTest(TestCase):
                 f"Found: {cached_usernames}"
             )
 
-    def test_fingerprint_set_has_correct_ttl(self):
+    def test_session_set_has_correct_ttl(self):
         """
-        BUG TEST: The fingerprint set should have a TTL matching USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES.
+        The session set should have a TTL matching USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES.
 
         Expected behavior:
         - The set should be created with TTL = 1 minute (60 seconds) for chat dice generation
-
-        Current behavior:
-        - Key doesn't exist, so TTL is irrelevant
         """
-        fingerprint = "test_fingerprint_789"
+        identity_key = "test_identity_key_789"
         chat_code = "TESTCHAT"
 
         # Generate a username
-        username, remaining = generate_username(fingerprint, chat_code)
+        username, remaining = generate_username(identity_key, chat_code)
         self.assertIsNotNone(username)
 
-        # BUG: This test FAILS because the key is never created
-        generated_key = f"username:generated_for_fingerprint:{fingerprint}"
+        generated_key = f"username:generated_for_session:{identity_key}"
 
         # Check if key exists
         self.assertTrue(
@@ -117,16 +102,13 @@ class UsernameGenerationRedisBugTest(TestCase):
 
     def test_global_reservation_key_exists(self):
         """
-        This test should PASS - verifying the global reservation IS working.
-
-        This demonstrates that the bug is ONLY with the fingerprint-to-usernames mapping,
-        not with the global username reservation.
+        Verify the global reservation IS working.
         """
-        fingerprint = "test_fingerprint_global"
+        identity_key = "test_identity_key_global"
         chat_code = "TESTCHAT"
 
         # Generate a username
-        username, remaining = generate_username(fingerprint, chat_code)
+        username, remaining = generate_username(identity_key, chat_code)
         self.assertIsNotNone(username)
 
         # Global reservation key SHOULD exist (this part works correctly)
@@ -138,16 +120,13 @@ class UsernameGenerationRedisBugTest(TestCase):
 
     def test_chat_specific_suggestions_exists(self):
         """
-        This test should PASS - verifying chat-specific suggestions ARE working.
-
-        This demonstrates that the bug is ONLY with the fingerprint-to-usernames mapping,
-        not with the chat-specific recent suggestions cache.
+        Verify chat-specific suggestions ARE working.
         """
-        fingerprint = "test_fingerprint_chat"
+        identity_key = "test_identity_key_chat"
         chat_code = "TESTCHAT"
 
         # Generate a username
-        username, remaining = generate_username(fingerprint, chat_code)
+        username, remaining = generate_username(identity_key, chat_code)
         self.assertIsNotNone(username)
 
         # Chat-specific suggestions SHOULD exist (this part works correctly)
@@ -162,25 +141,22 @@ class UsernameGenerationRedisBugTest(TestCase):
 
     def test_generation_attempts_counter_increments(self):
         """
-        This test should PASS - verifying generation attempts counter IS working.
-
-        This demonstrates that the bug is ONLY with the fingerprint-to-usernames mapping,
-        not with the attempt tracking.
+        Verify generation attempts counter IS working.
         """
-        fingerprint = "test_fingerprint_attempts"
+        identity_key = "test_identity_key_attempts"
         chat_code = "TESTCHAT"
 
         # Generate first username
-        username1, remaining1 = generate_username(fingerprint, chat_code)
+        username1, remaining1 = generate_username(identity_key, chat_code)
         self.assertIsNotNone(username1)
         self.assertEqual(remaining1, config.MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL - 1)
 
         # Generate second username
-        username2, remaining2 = generate_username(fingerprint, chat_code)
+        username2, remaining2 = generate_username(identity_key, chat_code)
         self.assertIsNotNone(username2)
         self.assertEqual(remaining2, config.MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL - 2)
 
         # Attempts counter SHOULD be working (this part works correctly)
-        attempts_key = f"username:generation_attempts:{fingerprint}"
+        attempts_key = f"username:generation_attempts:{identity_key}"
         attempts = cache.get(attempts_key, 0)
         self.assertEqual(attempts, 2, "Generation attempts should be tracked correctly")

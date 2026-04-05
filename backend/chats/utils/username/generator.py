@@ -13,7 +13,7 @@ from django.core.cache import cache
 from constance import config
 
 
-def generate_username(fingerprint, chat_code=None, max_attempts=None, identity_key=None):
+def generate_username(identity_key, chat_code=None, max_attempts=None):
     """
     Generate a random globally-unique username with rate limiting.
 
@@ -24,29 +24,30 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None, identity_k
     - API bypass prevention (tracks which usernames were generated for this identity)
 
     Args:
-        fingerprint: Browser fingerprint (legacy param, used as fallback identity_key)
+        identity_key: Identity for rate limiting (session_key or IP address)
         chat_code: The chat room code (optional - used for chat-specific suggestion caching)
         max_attempts: Maximum generation attempts (defaults to Constance config value)
-        identity_key: Primary identity for rate limiting (session_key preferred, falls back to fingerprint)
 
     Returns:
         tuple: (username, remaining_attempts) where:
             - username: str or None (valid username if successful, None if rate limit hit or generation failed)
-            - remaining_attempts: int (number of attempts left for this fingerprint in current hour)
+            - remaining_attempts: int (number of attempts left in current hour)
 
     Examples:
-        >>> generate_username("abc123", "CHATCODE")
+        >>> generate_username("session_abc123", "CHATCODE")
         ("HappyTiger42", 9)  # Success, 9 attempts remaining
 
-        >>> generate_username("abc123")  # Rate limit exceeded
+        >>> generate_username("session_abc123")  # Rate limit exceeded
         (None, 0)  # Failed, no attempts remaining
     """
+    if not identity_key:
+        raise ValueError("identity_key is required for rate limiting")
+
     # Get max attempts from Constance config (default: 10)
     if max_attempts is None:
         max_attempts = config.MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL
 
-    # Use identity_key for Redis keys (session_key preferred, fingerprint fallback)
-    ident = identity_key or fingerprint
+    ident = identity_key
 
     # Redis key patterns
     attempts_key = f"username:generation_attempts:{ident}"
@@ -70,7 +71,7 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None, identity_k
     cache.set(attempts_key, current_attempts + 1, cache_ttl)
     remaining_attempts = max(0, max_attempts - (current_attempts + 1))
 
-    # Get set of usernames already generated for this fingerprint (for API bypass prevention)
+    # Get set of usernames already generated for this identity (for API bypass prevention)
     generated_usernames = cache.get(generated_key, set())
 
     # Chat-specific suggestion cache (prevents immediate re-suggestions within same chat)
@@ -116,9 +117,9 @@ def generate_username(fingerprint, chat_code=None, max_attempts=None, identity_k
         # Valid username found! Track it and update caches
         # STEP 4: Reserve username globally to prevent race conditions
         # This prevents two users from getting the same username simultaneously
-        # Store fingerprint (not True) so same user can re-check via manual typing
+        # Store identity_key so same user can re-check via manual typing
         reservation_key = f"username:reserved:{username.lower()}"
-        cache.set(reservation_key, fingerprint, cache_ttl)
+        cache.set(reservation_key, ident, cache_ttl)
 
         # Add to fingerprint's generated usernames set (for API bypass prevention)
         generated_usernames.add(username)

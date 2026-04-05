@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { api, chatApi, messageApi, authApi, backRoomApi, giftApi, isTokenExpiringSoon, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification, type AnonymousParticipationInfo } from '@/lib/api';
+import { api, chatApi, messageApi, authApi, backRoomApi, giftApi, isTokenExpiringSoon, isTokenMissingSessionKey, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification, type AnonymousParticipationInfo } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
@@ -25,6 +25,7 @@ import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply,
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
+import { verifyHuman } from '@/lib/turnstile';
 
 // Type for Axios-style errors
 interface ApiError {
@@ -406,6 +407,9 @@ export default function ChatPage() {
   };
 
   // No theme switching - always use dark-mode
+
+  // Verify human on page load (session-based, runs once)
+  useEffect(() => { verifyHuman(); }, []);
 
   // Detect mobile viewport for inline auth rendering
   const [isMobile, setIsMobile] = useState(false);
@@ -913,6 +917,17 @@ export default function ChatPage() {
       loadMessages();
     }
   }, [hasJoined, sessionToken]);
+
+  // One-time upgrade for old JWTs missing session_key — force rejoin to get a proper token
+  useEffect(() => {
+    if (!hasJoined || !sessionToken) return;
+    if (!isTokenMissingSessionKey(code)) return;
+
+    // Old token without session_key can't be safely refreshed — clear it to trigger rejoin
+    localStorage.removeItem(`chat_session_${code}`);
+    setSessionToken(null);
+    setHasJoined(false);
+  }, [hasJoined, sessionToken, code]);
 
   // Proactive JWT refresh — check every 5 minutes, refresh if within 1 hour of expiry
   useEffect(() => {
@@ -1991,7 +2006,6 @@ export default function ChatPage() {
         messageId,
         emoji,
         username,
-        fingerprint,
         roomUsername
       );
 
@@ -2026,7 +2040,7 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Failed to toggle reaction:', error);
     }
-  }, [code, username, fingerprint]);
+  }, [code, username]);
 
   // Filter messages based on room (memoized to prevent recalculation on unrelated state changes)
   const filteredMessages = useMemo(() => {
@@ -2636,7 +2650,6 @@ export default function ChatPage() {
           key={hasJoined ? 'joined' : 'not-joined'}
           chatRoom={chatRoom}
           currentUserId={currentUserId}
-          fingerprint={fingerprint}
           activeThemeId={(participationTheme || chatRoom.theme)?.theme_id}
           onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
           themeIsDarkMode={themeIsDarkMode}

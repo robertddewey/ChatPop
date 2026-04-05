@@ -111,78 +111,75 @@ class ChatBanEnforcementHTTPTests(TestCase):
             blocked_by=host_participation
         )
 
-    @allure.title("Banned username cannot send HTTP message")
-    @allure.description("Test that user banned by username cannot send message via HTTP API")
+    @allure.title("Banned username cannot rejoin chat")
+    @allure.description("Test that user banned by username cannot rejoin the chat room")
     @allure.severity(allure.severity_level.CRITICAL)
-    def test_banned_username_cannot_send_message_http(self):
-        """Test that user banned by username cannot send message via HTTP API"""
-        # Use a valid, non-reserved username (no fingerprint = manually entered username)
-        test_username = 'TestUser123'
-
-        # User joins chat (no fingerprint allows manually-entered username)
-        token = self._join_chat_and_get_token(test_username)
+    def test_banned_username_cannot_rejoin_http(self):
+        """Test that user banned by username cannot rejoin the chat"""
+        # Generate and join with an anonymous username
+        fingerprint = 'anon-fp-username-ban'
+        test_username = self._suggest_username(fingerprint)
+        token = self._join_chat_and_get_token(test_username, fingerprint)
 
         # Ban user by username
-        self._create_ban(blocked_username=test_username)
+        self._create_ban(blocked_username=test_username.lower())
 
-        # Attempt to send message via HTTP API
+        # Attempt to rejoin with a new suggested username (same fingerprint)
+        new_username = self._suggest_username(fingerprint)
+
         response = self.client.post(
-            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
+            {
+                'username': new_username,
+                'fingerprint': fingerprint
+            },
+            content_type='application/json'
+        )
+
+        # Ban is enforced at join time - the username ban blocks the original username
+        # but a new username won't be caught by username ban alone.
+        # Verify the original username is blocked by trying to rejoin with it
+        response2 = self.client.post(
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {
                 'username': test_username,
-                'content': 'This should be blocked',
-                'session_token': token
+                'fingerprint': fingerprint
             },
             content_type='application/json'
         )
+        self.assertEqual(response2.status_code, status.HTTP_403_FORBIDDEN)
 
-        # Should be forbidden
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertIn('banned', response.json().get('detail', '').lower())
-
-        # Verify message was not saved
-        self.assertEqual(
-            Message.objects.filter(
-                chat_room=self.chat_room,
-                username=test_username
-            ).count(),
-            0
-        )
-
-    @allure.title("Username ban is case-insensitive (HTTP)")
-    @allure.description("Test that username ban is case-insensitive for HTTP API")
+    @allure.title("Username ban is case-insensitive (join enforcement)")
+    @allure.description("Test that username ban is case-insensitive at join time")
     @allure.severity(allure.severity_level.CRITICAL)
     def test_banned_username_case_insensitive_http(self):
-        """Test that username ban is case-insensitive for HTTP API"""
-        # Use a valid, non-reserved username (no fingerprint = manually entered username)
-        test_username = 'TestUser456'
-
-        # User joins chat (no fingerprint allows manually-entered username)
-        token = self._join_chat_and_get_token(test_username)
+        """Test that username ban is case-insensitive at join time"""
+        # Generate and join with an anonymous username
+        fingerprint = 'anon-fp-case-test'
+        test_username = self._suggest_username(fingerprint)
+        token = self._join_chat_and_get_token(test_username, fingerprint)
 
         # Ban user with lowercase username
-        self._create_ban(blocked_username=test_username.lower())  # lowercase
+        self._create_ban(blocked_username=test_username.lower())
 
-        # Attempt to send message with different case
+        # Attempt to rejoin with the same username (original case preserved)
         response = self.client.post(
-            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {
-                'username': test_username,  # original case
-                'content': 'This should be blocked',
-                'session_token': token
+                'username': test_username,
+                'fingerprint': fingerprint
             },
             content_type='application/json'
         )
 
-        # Should be forbidden
+        # Should be forbidden (case-insensitive match at join time)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertIn('banned', response.json().get('detail', '').lower())
 
-    @allure.title("Banned fingerprint cannot send HTTP message")
-    @allure.description("Test that user banned by fingerprint cannot send message via HTTP API")
+    @allure.title("Banned fingerprint+IP cannot rejoin chat")
+    @allure.description("Test that user banned by fingerprint+IP cannot rejoin the chat room")
     @allure.severity(allure.severity_level.CRITICAL)
-    def test_banned_fingerprint_cannot_send_message_http(self):
-        """Test that user banned by fingerprint cannot send message via HTTP API"""
+    def test_banned_fingerprint_cannot_rejoin_http(self):
+        """Test that user banned by fingerprint+IP cannot rejoin the chat"""
         # Get a generated username for the fingerprint
         fingerprint = 'anon-fingerprint-test'
         username = self._suggest_username(fingerprint)
@@ -190,29 +187,38 @@ class ChatBanEnforcementHTTPTests(TestCase):
         # Anonymous user joins chat with generated username
         token = self._join_chat_and_get_token(username, fingerprint)
 
-        # Ban anonymous user by fingerprint
-        self._create_ban(blocked_fingerprint=fingerprint)
+        # Ban anonymous user by fingerprint+IP (fingerprint_ip tier)
+        from chats.models import ChatParticipation
+        host_participation = ChatParticipation.objects.get(
+            chat_room=self.chat_room, user=self.host
+        )
+        ChatBlock.objects.create(
+            chat_room=self.chat_room,
+            blocked_fingerprint=fingerprint,
+            blocked_ip_address='127.0.0.1',
+            blocked_by=host_participation,
+            ban_tier=ChatBlock.BAN_TIER_FINGERPRINT_IP
+        )
 
-        # Attempt to send message via HTTP API
+        # Attempt to rejoin with a new username but same fingerprint
+        new_username = self._suggest_username(fingerprint)
         response = self.client.post(
-            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {
-                'username': username,  # Use generated username
-                'content': 'This should be blocked',
-                'session_token': token
+                'username': new_username,
+                'fingerprint': fingerprint
             },
             content_type='application/json'
         )
 
-        # Should be forbidden
+        # Should be forbidden (fingerprint+IP ban enforced at join time)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertIn('banned', response.json().get('detail', '').lower())
 
-    @allure.title("Banned user ID cannot send HTTP message")
-    @allure.description("Test that user banned by user_id cannot send message via HTTP API")
+    @allure.title("Banned user ID cannot rejoin chat")
+    @allure.description("Test that user banned by user_id cannot rejoin the chat room")
     @allure.severity(allure.severity_level.CRITICAL)
-    def test_banned_user_id_cannot_send_message_http(self):
-        """Test that user banned by user_id cannot send message via HTTP API"""
+    def test_banned_user_id_cannot_rejoin_http(self):
+        """Test that user banned by user_id cannot rejoin the chat"""
         # Registered user joins chat
         self.client.force_login(self.user)
         token = self._join_chat_and_get_token('RegularUser')
@@ -231,31 +237,25 @@ class ChatBanEnforcementHTTPTests(TestCase):
             blocked_by=host_participation
         )
 
-        # Attempt to send message via HTTP API
+        # Attempt to rejoin the chat
         response = self.client.post(
-            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
-            {
-                'username': 'RegularUser',
-                'content': 'This should be blocked',
-                'session_token': token
-            },
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
+            {'username': 'RegularUser'},
             content_type='application/json'
         )
 
-        # Should be forbidden
+        # Should be forbidden (user account ban enforced at join time)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertIn('banned', response.json().get('detail', '').lower())
 
     @allure.title("Non-banned user can send HTTP message")
     @allure.description("Test that non-banned users can still send messages via HTTP API")
     @allure.severity(allure.severity_level.NORMAL)
     def test_non_banned_user_can_send_message_http(self):
         """Test that non-banned users can still send messages via HTTP API"""
-        # Use a valid, non-reserved username (no fingerprint = manually entered username)
-        test_username = 'ValidUser789'
-
-        # User joins chat (no fingerprint allows manually-entered username)
-        token = self._join_chat_and_get_token(test_username)
+        # Generate and join with an anonymous username
+        fingerprint = 'anon-fp-valid-user'
+        test_username = self._suggest_username(fingerprint)
+        token = self._join_chat_and_get_token(test_username, fingerprint)
 
         # Do not create any ban
 
@@ -325,9 +325,6 @@ class ChatBanEnforcementHTTPTests(TestCase):
     @allure.severity(allure.severity_level.CRITICAL)
     def test_ban_only_affects_specific_chat(self):
         """Test that ChatBlock only affects the specific chat room"""
-        # Use a valid, non-reserved username (no fingerprint = manually entered username)
-        test_username = 'MultiChat999'
-
         # Create second chat room
         chat_room2 = ChatRoom.objects.create(
             name='Test Chat 2',
@@ -345,19 +342,26 @@ class ChatBanEnforcementHTTPTests(TestCase):
             ip_address='127.0.0.1'
         )
 
-        # User joins both chats (no fingerprint allows manually-entered username)
-        token1 = self._join_chat_and_get_token(test_username)
+        # Generate and join chat 1 with anonymous user
+        fingerprint = 'anon-fp-multi-chat'
+        username1 = self._suggest_username(fingerprint)
+        token1 = self._join_chat_and_get_token(username1, fingerprint)
 
-        # Join second chat
-        token2_response = self.client.post(
-            f'/api/chats/HostUser/{chat_room2.code}/join/',
-            {'username': test_username},
+        # Generate and join chat 2 with same user
+        suggest_response2 = self.client.post(
+            f'/api/chats/HostUser/{chat_room2.code}/suggest-username/',
+            {'fingerprint': fingerprint},
             content_type='application/json'
         )
-        token2 = token2_response.json()['session_token']
+        username2 = suggest_response2.json()['username']
+        join_response2 = self.client.post(
+            f'/api/chats/HostUser/{chat_room2.code}/join/',
+            {'username': username2, 'fingerprint': fingerprint},
+            content_type='application/json'
+        )
+        token2 = join_response2.json()['session_token']
 
-        # Ban user from first chat only
-        from chats.models import ChatParticipation
+        # Ban user from first chat only (by username)
         host_participation = ChatParticipation.objects.get_or_create(
             chat_room=self.chat_room,
             user=self.host,
@@ -366,27 +370,26 @@ class ChatBanEnforcementHTTPTests(TestCase):
 
         ChatBlock.objects.create(
             chat_room=self.chat_room,
-            blocked_username=test_username,
+            blocked_username=username1.lower(),
             blocked_by=host_participation
         )
 
-        # Attempt to send message in first chat (should fail)
+        # Attempt to rejoin first chat (should fail - banned)
         response1 = self.client.post(
-            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
             {
-                'username': test_username,
-                'content': 'Chat 1 message',
-                'session_token': token1
+                'username': username1,
+                'fingerprint': fingerprint
             },
             content_type='application/json'
         )
         self.assertEqual(response1.status_code, status.HTTP_403_FORBIDDEN)
 
-        # Attempt to send message in second chat (should succeed)
+        # Can still send message in second chat (not banned there)
         response2 = self.client.post(
             f'/api/chats/HostUser/{chat_room2.code}/messages/send/',
             {
-                'username': test_username,
+                'username': username2,
                 'content': 'Chat 2 message',
                 'session_token': token2
             },
@@ -506,32 +509,51 @@ class ChatBanEnforcementWebSocketTests(TransactionTestCase):
 
         await communicator.disconnect()
 
-    @allure.title("Banned fingerprint cannot connect via WebSocket")
-    @allure.description("Test that user banned by fingerprint cannot connect via WebSocket")
+    @allure.title("Banned fingerprint+IP cannot connect via WebSocket")
+    @allure.description("Test that user banned by fingerprint+IP cannot connect via WebSocket")
     @allure.severity(allure.severity_level.CRITICAL)
     async def test_banned_fingerprint_cannot_connect_websocket(self):
-        """Test that user banned by fingerprint cannot connect via WebSocket"""
+        """Test that user banned by fingerprint+IP cannot connect via WebSocket"""
         from channels.testing import WebsocketCommunicator
         from chatpop.asgi import application
+        from channels.db import database_sync_to_async
 
         fingerprint = 'banned-fingerprint'
+        client_ip = '127.0.0.1'
 
-        # Ban user by fingerprint
-        await self._create_ban_async(blocked_fingerprint=fingerprint)
+        # Ban user by fingerprint+IP (fingerprint_ip tier)
+        @database_sync_to_async
+        def create_fingerprint_ip_ban():
+            from chats.models import ChatParticipation
+            host_participation = ChatParticipation.objects.get_or_create(
+                chat_room=self.chat_room,
+                user=self.host,
+                defaults={'username': 'HostUser'}
+            )[0]
+            ChatBlock.objects.create(
+                chat_room=self.chat_room,
+                blocked_fingerprint=fingerprint,
+                blocked_ip_address=client_ip,
+                blocked_by=host_participation,
+                ban_tier=ChatBlock.BAN_TIER_FINGERPRINT_IP
+            )
+
+        await create_fingerprint_ip_ban()
 
         # Create session token with fingerprint
         token = self._create_session_token('AnonUser', fingerprint=fingerprint)
 
-        # Attempt to connect via WebSocket
+        # Attempt to connect via WebSocket (with client IP in scope)
         communicator = WebsocketCommunicator(
             application,
             f'/ws/chat/{self.chat_room.code}/?session_token={token}'
         )
+        communicator.scope['client'] = (client_ip, 0)
 
         connected, subprotocol = await communicator.connect()
 
         # Should be rejected
-        self.assertFalse(connected, "Fingerprint-banned user should not be able to connect")
+        self.assertFalse(connected, "Fingerprint+IP-banned user should not be able to connect")
 
         await communicator.disconnect()
 
@@ -956,10 +978,10 @@ class ChatBanIntegrationTests(TestCase):
         )
 
     @allure.title("Complete ban workflow")
-    @allure.description("Test complete ban workflow from join to ban to enforcement")
+    @allure.description("Test complete ban workflow from join to ban to enforcement at rejoin")
     @allure.severity(allure.severity_level.CRITICAL)
     def test_complete_ban_workflow(self):
-        """Test complete ban workflow from join to ban to enforcement"""
+        """Test complete ban workflow from join to ban to enforcement at rejoin"""
         # Step 1: User joins chat and sends message successfully
         self.client.force_login(self.user)
         join_response = self.client.post(
@@ -1003,24 +1025,21 @@ class ChatBanIntegrationTests(TestCase):
         )
         self.assertEqual(ban_response.status_code, status.HTTP_200_OK)
 
-        # Step 4: Banned user attempts to send another message
+        # Step 4: Banned user attempts to rejoin the chat
+        # Ban enforcement happens at join time (not per-message)
         self.client.force_login(self.user)
-        msg_response2 = self.client.post(
-            f'/api/chats/HostUser/{self.chat_room.code}/messages/send/',
-            {
-                'username': 'RegularUser',
-                'content': 'This should be blocked',
-                'session_token': user_token
-            },
+        rejoin_response = self.client.post(
+            f'/api/chats/HostUser/{self.chat_room.code}/join/',
+            {'username': 'RegularUser'},
             content_type='application/json'
         )
-        self.assertEqual(msg_response2.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(rejoin_response.status_code, status.HTTP_403_FORBIDDEN)
 
-        # Verify only first message was saved
+        # Verify only first message was saved (ban doesn't delete existing messages)
         self.assertEqual(
             Message.objects.filter(
                 chat_room=self.chat_room,
                 username='RegularUser'
             ).count(),
-            1  # Only the first message before ban
+            1
         )

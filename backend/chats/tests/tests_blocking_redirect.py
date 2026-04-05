@@ -63,12 +63,14 @@ class BlockingRedirectTests(TestCase):
     @allure.description("Anonymous user with blocked fingerprint should see is_blocked=True")
     @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_blocked_by_fingerprint(self):
-        """Anonymous user with blocked fingerprint should see is_blocked=True"""
-        # Block the fingerprint
+        """Anonymous user with blocked fingerprint+IP should see is_blocked=True"""
+        # Block the fingerprint+IP (fingerprint_ip tier)
         ChatBlock.objects.create(
             chat_room=self.chat_room,
             blocked_fingerprint='blocked_fingerprint',
-            blocked_by=self.host_participation
+            blocked_ip_address='127.0.0.1',
+            blocked_by=self.host_participation,
+            ban_tier=ChatBlock.BAN_TIER_FINGERPRINT_IP
         )
 
         response = self.client.get(
@@ -178,18 +180,24 @@ class BlockingRedirectTests(TestCase):
         Returning anonymous user (has participation) who is blocked
         should see is_blocked=True
         """
-        # Create anonymous participation
+        # Make a request first to establish a session for the test client
+        self.client.get(f'/api/chats/HostUser/{self.chat_room.code}/my-participation/')
+        session_key = self.client.session.session_key
+
+        # Create anonymous participation with session_key (how the new system works)
         participation = ChatParticipation.objects.create(
             chat_room=self.chat_room,
             user=None,
             username='BlockedAnon',
+            session_key=session_key,
             fingerprint='anon_fingerprint',
             ip_address='192.168.1.100'
         )
 
-        # Block the participation (creates block by username and fingerprint)
+        # Block the participation by session (session tier) and username
         ChatBlock.objects.create(
             chat_room=self.chat_room,
+            blocked_username='blockedanon',
             blocked_fingerprint='anon_fingerprint',
             blocked_by=self.host_participation
         )

@@ -26,6 +26,7 @@ from .utils.rate_limit import (
     music_analysis_rate_limit,
     location_rate_limit_check,
     get_client_identifier,
+    increment_global_rate_limit,
 )
 from .utils.location import get_or_fetch_location_suggestions, encode_location
 from .utils.fingerprinting.image_hash import calculate_phash
@@ -37,6 +38,7 @@ from .utils.suggestion_matching import match_suggestions_to_existing, discover_r
 from .utils.performance import PerformanceTracker
 from .utils.room_activity import get_active_users_for_rooms
 from chatpop.utils.media import MediaStorage
+from chats.utils.turnstile import require_turnstile
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +90,7 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
         parser_classes=[MultiPartParser, FormParser],
         serializer_class=PhotoUploadResponseSerializer  # Response schema for API docs
     )
+    @require_turnstile
     @media_analysis_rate_limit
     def upload(self, request):
         """
@@ -137,7 +140,7 @@ class PhotoAnalysisViewSet(viewsets.ReadOnlyModelViewSet):
         fingerprint = upload_serializer.validated_data.get('fingerprint')
 
         # Get client identifiers
-        user_id, fingerprint, ip_address = get_client_identifier(request)
+        user_id, session_key, ip_address = get_client_identifier(request)
 
         # Initialize performance tracker
         tracker = PerformanceTracker()
@@ -674,6 +677,7 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
         methods=['post'],
         url_path='recognize'
     )
+    @require_turnstile
     @music_analysis_rate_limit
     def recognize(self, request):
         """
@@ -761,7 +765,7 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
                     genres = metadata.get("genres", [])
 
             # Get client identifiers for tracking
-            user_id, fingerprint, ip_address = get_client_identifier(request)
+            user_id, session_key, ip_address = get_client_identifier(request)
 
             # Extract external IDs
             external_ids = result.get("external_ids", {})
@@ -908,14 +912,12 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
         """
         Get recent music analyses for the current user/session.
         """
-        user_id, fingerprint, ip_address = get_client_identifier(request)
+        user_id, session_key, ip_address = get_client_identifier(request)
 
         # Build query based on available identifiers
         queryset = MusicAnalysis.objects.all()
         if user_id:
             queryset = queryset.filter(user_id=user_id)
-        elif fingerprint:
-            queryset = queryset.filter(fingerprint=fingerprint)
         else:
             queryset = queryset.filter(ip_address=ip_address)
 
@@ -1130,6 +1132,7 @@ class LocationAnalysisViewSet(viewsets.GenericViewSet):
         methods=['post'],
         url_path='suggest'
     )
+    @require_turnstile
     @location_rate_limit_check
     def suggest(self, request):
         """
@@ -1202,13 +1205,14 @@ class LocationAnalysisViewSet(viewsets.GenericViewSet):
                 )
 
             # Get client identifiers for tracking
-            user_id, fingerprint, ip_address = get_client_identifier(request)
+            user_id, session_key, ip_address = get_client_identifier(request)
 
             # Get location suggestions (checks cache first, then API)
             # Pass client identifiers for rate limiting (only counts API calls, not cache hits)
             result = get_or_fetch_location_suggestions(
                 latitude, longitude,
                 user_id=user_id,
+                session_key=session_key,
                 fingerprint=fingerprint,
                 ip_address=ip_address,
             )
@@ -1333,14 +1337,12 @@ class LocationAnalysisViewSet(viewsets.GenericViewSet):
         """
         Get recent location analyses for the current user/session.
         """
-        user_id, fingerprint, ip_address = get_client_identifier(request)
+        user_id, session_key, ip_address = get_client_identifier(request)
 
         # Build query based on available identifiers
         queryset = LocationAnalysis.objects.all()
         if user_id:
             queryset = queryset.filter(user_id=user_id)
-        elif fingerprint:
-            queryset = queryset.filter(fingerprint=fingerprint)
         else:
             queryset = queryset.filter(ip_address=ip_address)
 

@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -314,20 +315,15 @@ CONSTANCE_CONFIG = {
         bool
     ),
 
-    # Rate Limiting Settings
-    'MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT': (
-        3,
-        'Maximum number of anonymous usernames allowed per IP address per chat room',
-        int
-    ),
+    # --- Username Generation Limits ---
     'MAX_USERNAME_GENERATION_ATTEMPTS_GLOBAL': (
         100,
-        'Maximum number of NEW username generations per fingerprint per hour (global, across all chats). After limit is reached, users can still rotate through previously generated usernames.',
+        'Max NEW username generations per session per hour (global, across all chats). After limit, users rotate through previously generated usernames.',
         int
     ),
     'MAX_USERNAME_GENERATION_ATTEMPTS_PER_CHAT': (
         100,
-        'Maximum number of NEW username generations per fingerprint per chat per hour. Rotation through previously generated usernames does not count against this limit.',
+        'Max NEW username generations per session per chat per hour. Rotation through previously generated usernames does not count.',
         int
     ),
 
@@ -410,50 +406,69 @@ Response JSON:
         'OpenAI model to use for photo analysis (gpt-4o, gpt-4o-mini)',
         str
     ),
-    'PHOTO_ANALYSIS_RATE_LIMIT_AUTHENTICATED': (
+
+    # --- Per-User/Session Rate Limits (individual ceiling) ---
+    'PHOTO_ANALYSIS_USER_LIMIT_PER_HOUR': (
         20,
-        'Maximum photo uploads per hour for authenticated users',
+        'Max photo analyses per authenticated user per hour (tracked by user ID)',
         int
     ),
-    'PHOTO_ANALYSIS_RATE_LIMIT_ANONYMOUS': (
+    'PHOTO_ANALYSIS_SESSION_LIMIT_PER_HOUR': (
         10,
-        'Maximum photo uploads per hour for anonymous users (tracked by fingerprint + IP)',
+        'Max photo analyses per anonymous browser session per hour (tracked by Django session)',
         int
     ),
-    'PHOTO_ANALYSIS_ENABLE_RATE_LIMITING': (
-        True,
-        'Enable rate limiting for photo analysis uploads',
-        bool
-    ),
-    'MUSIC_ANALYSIS_RATE_LIMIT_AUTHENTICATED': (
+    'MUSIC_ANALYSIS_USER_LIMIT_PER_HOUR': (
         20,
-        'Maximum music recognition requests per hour for authenticated users',
+        'Max music recognition requests per authenticated user per hour (tracked by user ID)',
         int
     ),
-    'MUSIC_ANALYSIS_RATE_LIMIT_ANONYMOUS': (
+    'MUSIC_ANALYSIS_SESSION_LIMIT_PER_HOUR': (
         10,
-        'Maximum music recognition requests per hour for anonymous users',
+        'Max music recognition requests per anonymous browser session per hour (tracked by Django session)',
         int
     ),
-    'MUSIC_ANALYSIS_ENABLE_RATE_LIMITING': (
-        True,
-        'Enable rate limiting for music recognition',
-        bool
-    ),
-    'LOCATION_ANALYSIS_RATE_LIMIT_AUTHENTICATED': (
+    'LOCATION_ANALYSIS_USER_LIMIT_PER_HOUR': (
         20,
-        'Maximum location analysis requests per hour for authenticated users',
+        'Max location analysis requests per authenticated user per hour (tracked by user ID)',
         int
     ),
-    'LOCATION_ANALYSIS_RATE_LIMIT_ANONYMOUS': (
+    'LOCATION_ANALYSIS_SESSION_LIMIT_PER_HOUR': (
         10,
-        'Maximum location analysis requests per hour for anonymous users',
+        'Max location analysis requests per anonymous browser session per hour (tracked by Django session)',
         int
     ),
-    'LOCATION_ANALYSIS_ENABLE_RATE_LIMITING': (
-        True,
-        'Enable rate limiting for location analysis',
-        bool
+
+    # --- Global Rate Limits (API budget protection) ---
+    'PHOTO_ANALYSIS_GLOBAL_LIMIT_PER_HOUR': (
+        500,
+        'Max photo analyses across ALL users per hour. Protects OpenAI API budget from burst usage.',
+        int
+    ),
+    'PHOTO_ANALYSIS_GLOBAL_LIMIT_PER_DAY': (
+        5000,
+        'Max photo analyses across ALL users per day. Hard ceiling for daily OpenAI API spend.',
+        int
+    ),
+    'MUSIC_ANALYSIS_GLOBAL_LIMIT_PER_HOUR': (
+        500,
+        'Max music recognition requests across ALL users per hour. Protects ACRCloud API budget from burst usage.',
+        int
+    ),
+    'MUSIC_ANALYSIS_GLOBAL_LIMIT_PER_DAY': (
+        5000,
+        'Max music recognition requests across ALL users per day. Hard ceiling for daily ACRCloud API spend.',
+        int
+    ),
+    'LOCATION_ANALYSIS_GLOBAL_LIMIT_PER_HOUR': (
+        500,
+        'Max location analysis requests across ALL users per hour. Protects Google Places API budget from burst usage.',
+        int
+    ),
+    'LOCATION_ANALYSIS_GLOBAL_LIMIT_PER_DAY': (
+        5000,
+        'Max location analysis requests across ALL users per day. Hard ceiling for daily Google Places API spend.',
+        int
     ),
     'PHOTO_ANALYSIS_MAX_FILE_SIZE_MB': (
         10,
@@ -486,42 +501,6 @@ Response JSON:
         float
     ),
 
-    # Photo Analysis Security Settings
-    'PHOTO_ANALYSIS_MAX_UPLOADS_PER_IP_PER_HOUR': (
-        20,
-        'Maximum photo uploads per hour per IP address (prevents fingerprint rotation attacks). Enforced even if user rotates fingerprints.',
-        int
-    ),
-    'PHOTO_ANALYSIS_ANOMALY_DETECTION_ENABLED': (
-        True,
-        'Enable anomaly detection for photo uploads (suspicious patterns, rapid uploads, fingerprint rotation)',
-        bool
-    ),
-    'PHOTO_ANALYSIS_MAX_UPLOADS_PER_MINUTE_PER_IP': (
-        5,
-        'Maximum photo uploads per minute per IP (anomaly detection). IPs exceeding this are temporarily blocked.',
-        int
-    ),
-    'PHOTO_ANALYSIS_MAX_FINGERPRINTS_PER_IP_PER_HOUR': (
-        5,
-        'Maximum unique fingerprints per IP per hour (anomaly detection). IPs exceeding this are flagged as suspicious and temporarily blocked.',
-        int
-    ),
-    'PHOTO_ANALYSIS_SUSPICIOUS_IP_BLOCK_MINUTES': (
-        240,
-        'How long to block IPs flagged for suspicious activity (minutes). Default: 4 hours.',
-        int
-    ),
-    'PHOTO_ANALYSIS_MAX_COST_PER_HOUR': (
-        10.0,
-        'Maximum OpenAI API spending per hour (USD). When exceeded, photo analysis returns 503 until next hour. Circuit breaker protection against cost exploitation.',
-        float
-    ),
-    'PHOTO_ANALYSIS_MAX_COST_PER_DAY': (
-        100.0,
-        'Maximum OpenAI API spending per day (USD). When exceeded, photo analysis returns 503 until next day. Circuit breaker protection against cost exploitation.',
-        float
-    ),
 
     # Music Recognition Settings
     'MUSIC_RECOGNITION_DURATION_SECONDS': (
@@ -573,16 +552,6 @@ Response JSON:
     'LOCATION_CACHE_TTL_HOURS': (
         24,
         'Redis cache TTL for location suggestions in hours (0 = no expiration)',
-        int
-    ),
-    'LOCATION_RATE_LIMIT_ANONYMOUS': (
-        10,
-        'Maximum location suggestion requests per hour for anonymous users',
-        int
-    ),
-    'LOCATION_RATE_LIMIT_AUTHENTICATED': (
-        50,
-        'Maximum location suggestion requests per hour for authenticated users',
         int
     ),
     'LOCATION_GEOHASH_PRECISION': (
@@ -695,6 +664,10 @@ GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 
 # TomTom API Settings (Alternative Location Provider)
 TOMTOM_API_KEY = os.getenv("TOMTOM_API_KEY", "")
+
+# Cloudflare Turnstile (bot detection)
+# Disable in test mode so non-Turnstile tests don't need session verification
+CLOUDFLARE_TURNSTILE_SECRET_KEY = "" if "test" in sys.argv else os.getenv("CLOUDFLARE_TURNSTILE_SECRET_KEY", "")
 
 # Media Analysis Performance Tracking
 # Enable performance tracking for photo analysis pipeline (disabled by default)

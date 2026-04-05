@@ -1,3 +1,8 @@
+System check identified some issues:
+
+WARNINGS:
+?: (staticfiles.W004) The directory '/Users/robertdewey/GitProjects/ChatPop/backend/static' in the STATICFILES_DIRS setting does not exist.
+[info] Loaded allowlists: 7142 tokens, 16 substrings
 [
 {
   "model": "constance.constance",
@@ -37,14 +42,6 @@
   "fields": {
     "key": "MESSAGE_HISTORY_MAX_DAYS",
     "value": "{\"__type__\": \"default\", \"__value__\": 7}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 34,
-  "fields": {
-    "key": "MAX_ANONYMOUS_USERNAMES_PER_IP_PER_CHAT",
-    "value": "{\"__type__\": \"default\", \"__value__\": 3}"
   }
 },
 {
@@ -93,30 +90,6 @@
   "fields": {
     "key": "PHOTO_ANALYSIS_OPENAI_MODEL",
     "value": "{\"__type__\": \"default\", \"__value__\": \"gpt-4o-mini\"}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 43,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_RATE_LIMIT_AUTHENTICATED",
-    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 44,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_RATE_LIMIT_ANONYMOUS",
-    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 45,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_ENABLE_RATE_LIMITING",
-    "value": "{\"__type__\": \"default\", \"__value__\": true}"
   }
 },
 {
@@ -193,62 +166,6 @@
 },
 {
   "model": "constance.constance",
-  "pk": 76,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_MAX_UPLOADS_PER_IP_PER_HOUR",
-    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 77,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_ANOMALY_DETECTION_ENABLED",
-    "value": "{\"__type__\": \"default\", \"__value__\": true}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 78,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_MAX_UPLOADS_PER_MINUTE_PER_IP",
-    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 79,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_MAX_FINGERPRINTS_PER_IP_PER_HOUR",
-    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 80,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_SUSPICIOUS_IP_BLOCK_MINUTES",
-    "value": "{\"__type__\": \"default\", \"__value__\": 240}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 81,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_MAX_COST_PER_HOUR",
-    "value": "{\"__type__\": \"default\", \"__value__\": 10.0}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 82,
-  "fields": {
-    "key": "PHOTO_ANALYSIS_MAX_COST_PER_DAY",
-    "value": "{\"__type__\": \"default\", \"__value__\": 100.0}"
-  }
-},
-{
-  "model": "constance.constance",
   "pk": 83,
   "fields": {
     "key": "SUGGESTION_DISCOVERY_EXTRA_COUNT",
@@ -293,22 +210,6 @@
   "fields": {
     "key": "LOCATION_CACHE_TTL_HOURS",
     "value": "{\"__type__\": \"default\", \"__value__\": 24}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 89,
-  "fields": {
-    "key": "LOCATION_RATE_LIMIT_ANONYMOUS",
-    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 90,
-  "fields": {
-    "key": "LOCATION_RATE_LIMIT_AUTHENTICATED",
-    "value": "{\"__type__\": \"default\", \"__value__\": 50}"
   }
 },
 {
@@ -425,38 +326,6 @@
 },
 {
   "model": "constance.constance",
-  "pk": 107,
-  "fields": {
-    "key": "LOCATION_ANALYSIS_ENABLE_RATE_LIMITING",
-    "value": "{\"__type__\": \"default\", \"__value__\": true}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 108,
-  "fields": {
-    "key": "LOCATION_ANALYSIS_RATE_LIMIT_ANONYMOUS",
-    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 109,
-  "fields": {
-    "key": "MUSIC_ANALYSIS_ENABLE_RATE_LIMITING",
-    "value": "{\"__type__\": \"default\", \"__value__\": true}"
-  }
-},
-{
-  "model": "constance.constance",
-  "pk": 110,
-  "fields": {
-    "key": "MUSIC_ANALYSIS_RATE_LIMIT_ANONYMOUS",
-    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
-  }
-},
-{
-  "model": "constance.constance",
   "pk": 111,
   "fields": {
     "key": "CHAT_ACTIVITY_POLL_INTERVAL_SECONDS",
@@ -481,14 +350,6 @@
 },
 {
   "model": "constance.constance",
-  "pk": 114,
-  "fields": {
-    "key": "LOCATION_ANALYSIS_RATE_LIMIT_AUTHENTICATED",
-    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
-  }
-},
-{
-  "model": "constance.constance",
   "pk": 115,
   "fields": {
     "key": "PHOTO_MAX_FILE_SIZE_MB",
@@ -501,6 +362,118 @@
   "fields": {
     "key": "PHOTO_MAX_DIMENSION",
     "value": "{\"__type__\": \"default\", \"__value__\": 1920}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 117,
+  "fields": {
+    "key": "ANON_PIN_MAX_ATTEMPTS",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 118,
+  "fields": {
+    "key": "ANON_PIN_LOCKOUT_MINUTES",
+    "value": "{\"__type__\": \"default\", \"__value__\": 15}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 119,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_GLOBAL_LIMIT_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 120,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_GLOBAL_LIMIT_PER_DAY",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5000}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 121,
+  "fields": {
+    "key": "MUSIC_ANALYSIS_GLOBAL_LIMIT_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 122,
+  "fields": {
+    "key": "MUSIC_ANALYSIS_GLOBAL_LIMIT_PER_DAY",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5000}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 123,
+  "fields": {
+    "key": "LOCATION_ANALYSIS_GLOBAL_LIMIT_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 124,
+  "fields": {
+    "key": "LOCATION_ANALYSIS_GLOBAL_LIMIT_PER_DAY",
+    "value": "{\"__type__\": \"default\", \"__value__\": 5000}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 125,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_USER_LIMIT_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 126,
+  "fields": {
+    "key": "PHOTO_ANALYSIS_SESSION_LIMIT_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 127,
+  "fields": {
+    "key": "MUSIC_ANALYSIS_USER_LIMIT_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 128,
+  "fields": {
+    "key": "MUSIC_ANALYSIS_SESSION_LIMIT_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 129,
+  "fields": {
+    "key": "LOCATION_ANALYSIS_USER_LIMIT_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 20}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 130,
+  "fields": {
+    "key": "LOCATION_ANALYSIS_SESSION_LIMIT_PER_HOUR",
+    "value": "{\"__type__\": \"default\", \"__value__\": 10}"
   }
 }
 ]

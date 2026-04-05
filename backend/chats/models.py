@@ -565,12 +565,6 @@ class MessageReaction(models.Model):
                 condition=models.Q(session_key__isnull=False, user__isnull=True),
                 name='unique_message_session_emoji_reaction'
             ),
-            # Legacy: fingerprint-based constraint (kept during transition)
-            models.UniqueConstraint(
-                fields=['message', 'fingerprint', 'emoji'],
-                condition=models.Q(user__isnull=True),
-                name='unique_message_fingerprint_emoji_reaction'
-            ),
         ]
 
     def __str__(self):
