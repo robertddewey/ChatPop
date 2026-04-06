@@ -23,6 +23,7 @@ class ChatThemeSerializer(serializers.ModelSerializer):
             'host_message', 'sticky_host_message', 'host_text', 'host_message_fade',
             'pinned_message', 'sticky_pinned_message', 'pinned_text', 'pinned_message_fade',
             'regular_message', 'regular_text',
+            'spotlight_message', 'spotlight_text', 'spotlight_icon_color',
             'my_message', 'my_text',
             'voice_message_styles', 'my_voice_message_styles', 'host_voice_message_styles', 'pinned_voice_message_styles',
             'filter_button_active', 'filter_button_inactive',

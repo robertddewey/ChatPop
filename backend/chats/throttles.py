@@ -37,3 +37,29 @@ class MyParticipationRateThrottle(SimpleRateThrottle):
             else:
                 ident = self.get_ident(request)
         return self.cache_format % {'scope': self.scope, 'ident': ident}
+
+
+class ParticipantSearchRateThrottle(SimpleRateThrottle):
+    """
+    Throttle the host's participant autocomplete search endpoint.
+
+    Reuses MyParticipationView's rate limit (60/min default) since both
+    are interactive lookups by an authenticated host.
+    """
+    scope = 'participant_search'
+
+    def get_rate(self):
+        try:
+            from constance import config
+            limit = int(getattr(config, 'MY_PARTICIPATION_RATE_LIMIT_PER_MINUTE', 60) or 60)
+        except Exception:
+            limit = 60
+        return f"{limit}/min"
+
+    def get_cache_key(self, request, view):
+        if request.user and request.user.is_authenticated:
+            ident = f"user:{request.user.id}"
+        else:
+            session_key = getattr(getattr(request, 'session', None), 'session_key', None)
+            ident = f"sess:{session_key}" if session_key else self.get_ident(request)
+        return self.cache_format % {'scope': self.scope, 'ident': ident}

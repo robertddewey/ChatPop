@@ -11,7 +11,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { chatApi, messageApi, type ChatRoom } from '@/lib/api';
-import { Copy, Check, BadgeCheck, Moon, ArrowLeft, Image, Mic, Video, Ban, ShieldCheck, ChevronRight, Settings } from 'lucide-react';
+import { Copy, Check, BadgeCheck, Moon, ArrowLeft, Image, Mic, Video, Ban, ShieldCheck, ChevronRight, Settings, Star } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 // Theme color constants for optimistic updates
@@ -75,6 +75,9 @@ interface ChatSettingsSheetProps {
   children: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  spotlightUsernames?: Set<string>;
+  onSpotlightAdd?: (username: string) => Promise<void> | void;
+  onSpotlightRemove?: (username: string) => Promise<void> | void;
 }
 
 export default function ChatSettingsSheet({
@@ -87,6 +90,9 @@ export default function ChatSettingsSheet({
   children,
   open,
   onOpenChange,
+  spotlightUsernames,
+  onSpotlightAdd,
+  onSpotlightRemove,
 }: ChatSettingsSheetProps) {
   const router = useRouter();
   const isHost = chatRoom.host.id === currentUserId;
@@ -122,7 +128,17 @@ export default function ChatSettingsSheet({
   const [success, setSuccess] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [subPage, setSubPage] = useState<'main' | 'banned' | 'muted' | 'edit'>('main');
+  const [subPage, setSubPage] = useState<'main' | 'banned' | 'muted' | 'edit' | 'spotlight'>('main');
+
+  // Spotlight sub-page state (host only)
+  const [spotlightList, setSpotlightList] = useState<Array<{ username: string; avatar_url: string | null; last_seen_at: string | null }>>([]);
+  const [spotlightLoading, setSpotlightLoading] = useState(false);
+  const [removingSpotlight, setRemovingSpotlight] = useState<string | null>(null);
+  const [spotlightQuery, setSpotlightQuery] = useState('');
+  const [spotlightSuggestions, setSpotlightSuggestions] = useState<Array<{ username: string; avatar_url: string | null; last_seen_at: string | null }>>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<string | null>(null);
+  const [addingSpotlight, setAddingSpotlight] = useState(false);
 
   // Banned users state (host only)
   const [bannedUsers, setBannedUsers] = useState<Array<{ username: string; blocked_at: string; banned_by: string | null }>>([]);
@@ -185,6 +201,81 @@ export default function ChatSettingsSheet({
       // Silent fail
     } finally {
       setUnmutingUser(null);
+    }
+  };
+
+  // Load spotlight list when sheet opens or sub-page switches to spotlight (host only)
+  useEffect(() => {
+    if (!isHost || !isOpen) return;
+    if (subPage !== 'spotlight' && !isOpen) return;
+    let cancelled = false;
+    setSpotlightLoading(true);
+    messageApi.getSpotlightUsers(chatRoom.code, chatRoom.host.reserved_username)
+      .then((data) => {
+        if (!cancelled) setSpotlightList(data.spotlight_users);
+      })
+      .catch((err) => {
+        console.error('Failed to load spotlight list', err);
+        if (!cancelled) setSpotlightList([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSpotlightLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isHost, isOpen, subPage, chatRoom.code, chatRoom.host.reserved_username]);
+
+  // Sync local spotlight list with parent's spotlightUsernames set
+  useEffect(() => {
+    if (!spotlightUsernames) return;
+    setSpotlightList((prev) => prev.filter((u) => spotlightUsernames.has(u.username)));
+  }, [spotlightUsernames]);
+
+  // Debounced participant search
+  useEffect(() => {
+    if (spotlightQuery.trim().length < 2) {
+      setSpotlightSuggestions([]);
+      return;
+    }
+    setSearchLoading(true);
+    const timer = setTimeout(() => {
+      messageApi.searchParticipants(chatRoom.code, spotlightQuery.trim(), chatRoom.host.reserved_username)
+        .then((data) => setSpotlightSuggestions(data.results))
+        .catch((err) => {
+          console.error('Participant search failed', err);
+          setSpotlightSuggestions([]);
+        })
+        .finally(() => setSearchLoading(false));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [spotlightQuery, chatRoom.code, chatRoom.host.reserved_username]);
+
+  const handleAddSpotlight = async () => {
+    if (!selectedSuggestion) return;
+    setAddingSpotlight(true);
+    try {
+      await onSpotlightAdd?.(selectedSuggestion);
+      // Refetch list to include the newly added user with metadata
+      const data = await messageApi.getSpotlightUsers(chatRoom.code, chatRoom.host.reserved_username);
+      setSpotlightList(data.spotlight_users);
+      setSpotlightQuery('');
+      setSpotlightSuggestions([]);
+      setSelectedSuggestion(null);
+    } catch (err) {
+      console.error('Failed to add spotlight', err);
+    } finally {
+      setAddingSpotlight(false);
+    }
+  };
+
+  const handleRemoveSpotlight = async (username: string) => {
+    setRemovingSpotlight(username);
+    try {
+      await onSpotlightRemove?.(username);
+      setSpotlightList((prev) => prev.filter((u) => u.username !== username));
+    } catch (err) {
+      console.error('Failed to remove spotlight', err);
+    } finally {
+      setRemovingSpotlight(null);
     }
   };
 
@@ -622,6 +713,43 @@ export default function ChatSettingsSheet({
             </div>
           )}
 
+          {/* Edit Settings navigation (Host Only) */}
+          {isHost && (
+            <div className={`pt-4 border-t ${styles.border}`}>
+              <button
+                onClick={() => setSubPage('edit')}
+                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Settings size={16} className={themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'} />
+                  <span className={`text-sm font-medium ${styles.text}`}>Edit Settings</span>
+                </div>
+                <ChevronRight size={16} className={styles.subtext} />
+              </button>
+            </div>
+          )}
+
+          {/* Spotlight Users navigation (Host Only) */}
+          {isHost && (
+            <div className={`pt-4 border-t ${styles.border}`}>
+              <button
+                onClick={() => setSubPage('spotlight')}
+                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Star size={16} className="text-yellow-400" fill="currentColor" />
+                  <span className={`text-sm font-medium ${styles.text}`}>Spotlight Users</span>
+                  {spotlightList.length > 0 && (
+                    <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400">
+                      {spotlightList.length}
+                    </span>
+                  )}
+                </div>
+                <ChevronRight size={16} className={styles.subtext} />
+              </button>
+            </div>
+          )}
+
           {/* Banned Users navigation (Host Only) */}
           {isHost && (
             <div className={`pt-4 border-t ${styles.border}`}>
@@ -642,23 +770,112 @@ export default function ChatSettingsSheet({
               </button>
             </div>
           )}
+          </>}
 
-          {/* Edit Settings navigation (Host Only) */}
-          {isHost && (
-            <div className={`pt-4 border-t ${styles.border}`}>
+          {/* Sub-page: Spotlight Users */}
+          {subPage === 'spotlight' && (
+            <div className="space-y-4">
               <button
-                onClick={() => setSubPage('edit')}
-                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+                onClick={() => setSubPage('main')}
+                className={`flex items-center gap-1 text-sm font-medium cursor-pointer ${themeIsDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-purple-600 hover:text-purple-500'}`}
               >
-                <div className="flex items-center gap-2">
-                  <Settings size={16} className={themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'} />
-                  <span className={`text-sm font-medium ${styles.text}`}>Edit Settings</span>
-                </div>
-                <ChevronRight size={16} className={styles.subtext} />
+                <ArrowLeft size={16} />
+                Back to Settings
               </button>
+
+              <h3 className={`text-sm font-semibold ${styles.title} flex items-center gap-1.5`}>
+                <Star size={14} className="text-yellow-400" fill="currentColor" />
+                Spotlight Users
+                {spotlightList.length > 0 && (
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400">
+                    {spotlightList.length}
+                  </span>
+                )}
+              </h3>
+
+              {/* Add user input */}
+              <div className="space-y-2">
+                <label className={`text-xs font-medium uppercase tracking-wide ${styles.subtext}`}>
+                  Add user to spotlight
+                </label>
+                <input
+                  type="text"
+                  value={spotlightQuery}
+                  onChange={(e) => { setSpotlightQuery(e.target.value); setSelectedSuggestion(null); }}
+                  placeholder="Type a username..."
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
+                />
+
+                {spotlightQuery.trim().length >= 2 && (
+                  <div className={`rounded-lg border ${styles.border} overflow-hidden`}>
+                    {searchLoading && (
+                      <div className={`p-3 text-sm ${styles.subtext} text-center`}>Searching...</div>
+                    )}
+                    {!searchLoading && spotlightSuggestions.length === 0 && (
+                      <div className={`p-3 text-sm ${styles.subtext} text-center`}>No matching users.</div>
+                    )}
+                    {!searchLoading && spotlightSuggestions.map((u) => (
+                      <button
+                        key={u.username}
+                        onClick={() => setSelectedSuggestion(u.username)}
+                        className={`w-full flex items-center gap-3 p-3 text-left transition-colors ${
+                          selectedSuggestion === u.username
+                            ? 'bg-yellow-500/20'
+                            : `${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`
+                        }`}
+                      >
+                        {u.avatar_url && (
+                          <img src={u.avatar_url} alt="" className="w-8 h-8 rounded-full" />
+                        )}
+                        <span className={`text-sm ${styles.text}`}>{u.username}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedSuggestion && (
+                  <button
+                    onClick={handleAddSpotlight}
+                    disabled={addingSpotlight}
+                    className="w-full px-4 py-2 rounded-lg bg-yellow-500 text-black font-medium text-sm hover:bg-yellow-600 transition-colors disabled:opacity-50"
+                  >
+                    {addingSpotlight ? 'Adding...' : `Spotlight ${selectedSuggestion}`}
+                  </button>
+                )}
+              </div>
+
+              {/* Current spotlight list */}
+              <div className={`pt-2 border-t ${styles.border} space-y-2`}>
+                {spotlightLoading ? (
+                  <p className={`text-sm ${styles.subtext}`}>Loading...</p>
+                ) : spotlightList.length === 0 ? (
+                  <p className={`text-sm ${styles.subtext}`}>
+                    Nobody in the spotlight yet. Add a user above or long-press any message to spotlight its author.
+                  </p>
+                ) : (
+                  spotlightList.map((u) => (
+                    <div key={u.username} className={`flex items-center justify-between p-3 rounded-lg ${styles.card}`}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        {u.avatar_url && <img src={u.avatar_url} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />}
+                        <span className={`text-sm font-medium ${styles.text} truncate`}>{u.username}</span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveSpotlight(u.username)}
+                        disabled={removingSpotlight === u.username}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 cursor-pointer disabled:opacity-50 ${
+                          themeIsDarkMode
+                            ? 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        {removingSpotlight === u.username ? 'Removing...' : 'Remove'}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
-          </>}
 
           {/* Sub-page: Edit Settings */}
           {subPage === 'edit' && (

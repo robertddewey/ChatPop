@@ -274,6 +274,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'is_banned': event.get('is_banned', True),
         }))
 
+    async def spotlight_update(self, event):
+        """Broadcast spotlight add/remove to all clients in the room."""
+        await self.send(text_data=json.dumps({
+            'type': 'spotlight_update',
+            'action': event.get('action'),
+            'username': event.get('username'),
+        }))
+
     async def site_banned(self, event):
         """Handle user being site-wide banned by staff (SiteBan)"""
         await self.send(text_data=json.dumps({
@@ -466,6 +474,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
         ).exists()
 
+        # Check if sender is currently spotlighted (per-participation)
+        is_spotlight = ChatParticipation.objects.filter(
+            chat_room=message.chat_room,
+            username__iexact=message.username,
+            is_spotlight=True,
+        ).exists()
+
         return {
             'id': str(message.id),
             'chat_code': message.chat_room.code,
@@ -493,6 +508,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'created_at': message.created_at.isoformat(),
             'is_deleted': message.is_deleted,
             'is_banned': is_banned,
+            'is_spotlight': is_spotlight,
         }
 
     @database_sync_to_async

@@ -23,6 +23,7 @@ interface UseChatWebSocketOptions {
   onGiftQueue?: (gifts: GiftNotification[]) => void;
   onGiftAcknowledged?: (messageIds: string[]) => void;
   onBlockUpdate?: (action: 'add' | 'remove', blockedUsername: string) => void;
+  onSpotlightUpdate?: (action: 'add' | 'remove', username: string) => void;
   onError?: (error: Event) => void;
   onVisibilityChange?: (isVisible: boolean) => void;
   enabled?: boolean;
@@ -43,6 +44,7 @@ export function useChatWebSocket({
   onGiftQueue,
   onGiftAcknowledged,
   onBlockUpdate,
+  onSpotlightUpdate,
   onError,
   onVisibilityChange,
   enabled = true,
@@ -68,6 +70,7 @@ export function useChatWebSocket({
   const onGiftQueueRef = useRef(onGiftQueue);
   const onGiftAcknowledgedRef = useRef(onGiftAcknowledged);
   const onBlockUpdateRef = useRef(onBlockUpdate);
+  const onSpotlightUpdateRef = useRef(onSpotlightUpdate);
   const onErrorRef = useRef(onError);
   const onVisibilityChangeRef = useRef(onVisibilityChange);
 
@@ -84,6 +87,7 @@ export function useChatWebSocket({
   useEffect(() => { onGiftQueueRef.current = onGiftQueue; }, [onGiftQueue]);
   useEffect(() => { onGiftAcknowledgedRef.current = onGiftAcknowledged; }, [onGiftAcknowledged]);
   useEffect(() => { onBlockUpdateRef.current = onBlockUpdate; }, [onBlockUpdate]);
+  useEffect(() => { onSpotlightUpdateRef.current = onSpotlightUpdate; }, [onSpotlightUpdate]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
   useEffect(() => { onVisibilityChangeRef.current = onVisibilityChange; }, [onVisibilityChange]);
 
@@ -204,6 +208,14 @@ export function useChatWebSocket({
         if (data.type === 'block_update') {
           if (onBlockUpdateRef.current) {
             onBlockUpdateRef.current(data.action, data.blocked_username);
+          }
+          return;
+        }
+
+        // Handle spotlight_update events (host added/removed someone from spotlight)
+        if (data.type === 'spotlight_update') {
+          if (onSpotlightUpdateRef.current) {
+            onSpotlightUpdateRef.current(data.action, data.username);
           }
           return;
         }

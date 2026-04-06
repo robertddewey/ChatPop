@@ -225,6 +225,7 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_THROTTLE_RATES": {
         "my_participation": "60/min",
+        "participant_search": "60/min",
     },
 }
 

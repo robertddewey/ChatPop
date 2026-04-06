@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Crown, Pin, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban } from 'lucide-react';
+import { BadgeCheck, Crown, Pin, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban, Star } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import { ChatRoom, Message, ReactionSummary } from '@/lib/api';
 
@@ -102,6 +102,16 @@ function HostPill({ color }: { color?: string }) {
   );
 }
 
+function SpotlightPill({ color }: { color?: string }) {
+  const c = color || '#facc15';
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      style={{ backgroundColor: `${c}20`, color: c }}
+    >spotlight</span>
+  );
+}
+
 function BannedPill() {
   return (
     <span
@@ -152,6 +162,9 @@ interface StickySectionProps {
   handleUnblockUser: (username: string) => void;
   handleUnmuteUser?: (username: string) => void;
   mutedUsernames?: Set<string>;
+  spotlightUsernames?: Set<string>;
+  onSpotlightAdd?: (username: string) => void;
+  onSpotlightRemove?: (username: string) => void;
   onRequestSignup?: () => void;
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
@@ -187,6 +200,9 @@ function StickySection({
   handleUnblockUser,
   handleUnmuteUser,
   mutedUsernames,
+  spotlightUsernames,
+  onSpotlightAdd,
+  onSpotlightRemove,
   onRequestSignup,
   handleTipUser,
   handleSendGift,
@@ -388,6 +404,9 @@ function StickySection({
               onUnblock={handleUnblockUser}
               onUnmute={handleUnmuteUser}
               mutedUsernames={mutedUsernames}
+              spotlightUsernames={spotlightUsernames}
+              onSpotlightAdd={onSpotlightAdd}
+              onSpotlightRemove={onSpotlightRemove}
               onRequestSignup={onRequestSignup}
               onTip={handleTipUser}
               onSendGift={handleSendGift}
@@ -508,6 +527,9 @@ function StickySection({
               onUnblock={handleUnblockUser}
               onUnmute={handleUnmuteUser}
               mutedUsernames={mutedUsernames}
+              spotlightUsernames={spotlightUsernames}
+              onSpotlightAdd={onSpotlightAdd}
+              onSpotlightRemove={onSpotlightRemove}
               onRequestSignup={onRequestSignup}
               onTip={handleTipUser}
               onSendGift={handleSendGift}
@@ -546,6 +568,12 @@ function StickySection({
                         {stickyPinnedMessage.username}
                       </span>
                   {stickyPinnedMessage.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
+                  {spotlightUsernames?.has(stickyPinnedMessage.username) && (
+                    <>
+                      <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
+                      <Star size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
+                    </>
+                  )}
                   {stickyPinnedMessage.is_banned && <BannedPill />}
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
                     currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'

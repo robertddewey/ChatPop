@@ -21,7 +21,7 @@ import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Bell } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Bell, Star } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
@@ -65,6 +65,9 @@ interface CamelCaseTheme {
   pinnedMessageFade: string;
   regularMessage: string;
   regularText: string;
+  spotlightMessage: string;
+  spotlightText: string;
+  spotlightIconColor: string;
   myMessage: string;
   myText: string;
   voiceMessageStyles: Record<string, unknown>;
@@ -134,6 +137,9 @@ function convertThemeToCamelCase(theme: ChatTheme): CamelCaseTheme {
     pinnedMessageFade: theme.pinned_message_fade,
     regularMessage: theme.regular_message,
     regularText: theme.regular_text,
+    spotlightMessage: theme.spotlight_message,
+    spotlightText: theme.spotlight_text,
+    spotlightIconColor: theme.spotlight_icon_color,
     myMessage: theme.my_message,
     myText: theme.my_text,
     voiceMessageStyles: theme.voice_message_styles || {},
@@ -562,6 +568,9 @@ export default function ChatPage() {
   // Mute state — declared here because the sticky/filtered memos below depend on it.
   const [mutedUsernames, setMutedUsernames] = useState<Set<string>>(new Set());
 
+  // Spotlight state — host-curated featured users (visible to all)
+  const [spotlightUsernames, setSpotlightUsernames] = useState<Set<string>>(new Set());
+
   // Shared mute-filter helper matching the rules in filteredMessages.applyMute.
   // Returns the message if it should render, or null if it should be hidden.
   const applyMuteToSticky = useCallback((msg: Message | null): Message | null => {
@@ -887,6 +896,14 @@ export default function ChatPage() {
         return next;
       });
     }, []),
+    onSpotlightUpdate: useCallback((action: 'add' | 'remove', spotlightUsername: string) => {
+      setSpotlightUsernames(prev => {
+        const next = new Set(prev);
+        if (action === 'add') next.add(spotlightUsername);
+        else next.delete(spotlightUsername);
+        return next;
+      });
+    }, []),
     onVisibilityChange: handleVisibilityChange,
     enabled: hasJoined || (!!chatRoom && chatRoom.access_mode === 'public'),
   });
@@ -906,6 +923,55 @@ export default function ChatPage() {
         // Silent fail
       });
   }, [chatRoom, code, roomUsername]);
+
+  // Fetch spotlight users (public — anyone who can view the chat can see)
+  useEffect(() => {
+    if (!chatRoom) return;
+    messageApi
+      .getSpotlightUsers(code, roomUsername)
+      .then((data) => {
+        setSpotlightUsernames(new Set(data.spotlight_users.map((u) => u.username)));
+      })
+      .catch((err) => {
+        console.error('Failed to load spotlight users', err);
+      });
+  }, [chatRoom, code, roomUsername]);
+
+  // Spotlight handlers (host only)
+  const handleSpotlightAdd = useCallback(async (targetUsername: string) => {
+    try {
+      await messageApi.spotlightAdd(code, targetUsername, roomUsername);
+      setSpotlightUsernames((prev) => {
+        const next = new Set(prev);
+        next.add(targetUsername);
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to spotlight user', err);
+    }
+  }, [code, roomUsername]);
+
+  // Show intro overlay when current user gets spotlighted (first time only)
+  useEffect(() => {
+    if (!username) return;
+    if (!hasJoined) return;
+    if (!spotlightUsernames.has(username)) return;
+    if (seenIntros.spotlight_first_time) return;
+    setShowFeatureIntro('spotlight_first_time');
+  }, [spotlightUsernames, username, hasJoined, seenIntros]);
+
+  const handleSpotlightRemove = useCallback(async (targetUsername: string) => {
+    try {
+      await messageApi.spotlightRemove(code, targetUsername, roomUsername);
+      setSpotlightUsernames((prev) => {
+        const next = new Set(prev);
+        next.delete(targetUsername);
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to unspotlight user', err);
+    }
+  }, [code, roomUsername]);
 
   // Detect forward navigation and redirect back to home
   // This prevents users from using browser forward to return to chat join modal
@@ -2218,6 +2284,7 @@ export default function ChatPage() {
         if (msg.is_from_host) return true;
         if (msg.username === username) return true;
         if (msg.reply_to_message?.username?.toLowerCase() === username?.toLowerCase()) return true;
+        if (spotlightUsernames.has(msg.username)) return true;
         return false;
       }).filter(applyMute);
     }
@@ -2227,7 +2294,7 @@ export default function ChatPage() {
     }
 
     return messages.filter(applyMute);
-  }, [messages, currentRoom, roomLoading, username, mutedUsernames]);
+  }, [messages, currentRoom, roomLoading, username, mutedUsernames, spotlightUsernames]);
 
   // Check if current user is the host
   const isHost = useMemo(() => {
@@ -2616,6 +2683,9 @@ export default function ChatPage() {
                 handleUnblockUser={handleUnblockUser}
                 handleUnmuteUser={handleUnmuteUser}
                 mutedUsernames={mutedUsernames}
+                spotlightUsernames={spotlightUsernames}
+                onSpotlightAdd={handleSpotlightAdd}
+                onSpotlightRemove={handleSpotlightRemove}
                 onRequestSignup={() => openAuth('signup')}
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
@@ -2812,6 +2882,9 @@ export default function ChatPage() {
           activeThemeId={(participationTheme || chatRoom.theme)?.theme_id}
           onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
           themeIsDarkMode={themeIsDarkMode}
+          spotlightUsernames={spotlightUsernames}
+          onSpotlightAdd={handleSpotlightAdd}
+          onSpotlightRemove={handleSpotlightRemove}
           open={showSettingsSheet}
           onOpenChange={(open) => {
             if (!open && showSettingsSheet) {
@@ -2846,6 +2919,15 @@ export default function ChatPage() {
           icon={Eye}
           themeIsDarkMode={themeIsDarkMode}
           onDismiss={() => handleDismissIntro('focus')}
+        />
+      )}
+      {showFeatureIntro === 'spotlight_first_time' && (
+        <FeatureIntroModal
+          title="You're in the spotlight!"
+          description="The host has featured you in this chat. Your messages will appear in the Focus room and carry a star for all members to see."
+          icon={Star}
+          themeIsDarkMode={themeIsDarkMode}
+          onDismiss={() => handleDismissIntro('spotlight_first_time')}
         />
       )}
     </>

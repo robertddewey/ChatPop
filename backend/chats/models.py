@@ -54,6 +54,21 @@ class ChatTheme(models.Model):
     regular_message = models.TextField(help_text="Regular user message bubble classes")
     regular_text = models.TextField(help_text="Regular message text color classes")
 
+    # Spotlight Messages (host-assigned featured users)
+    spotlight_message = models.TextField(
+        default='max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl p-3 bg-[#2a1f05] border border-[#3d2e0a]',
+        help_text="Spotlighted user message bubble classes"
+    )
+    spotlight_text = models.TextField(
+        default='text-white',
+        help_text="Spotlighted user message text color classes"
+    )
+    spotlight_icon_color = models.CharField(
+        max_length=100,
+        default='text-yellow-400',
+        help_text="Tailwind classes for spotlight star icon and pill colors"
+    )
+
     # My Messages (current user)
     my_message = models.TextField(default='max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-2.5 bg-blue-500 shadow-md', help_text="Message bubble classes for current user's own messages")
     my_text = models.TextField(default='text-white', help_text="Text color classes for current user's own messages")
@@ -431,6 +446,15 @@ class ChatParticipation(models.Model):
 
     # Feature intro tracking (for anonymous users — per-chat since no global user record)
     seen_intros = models.JSONField(default=dict, blank=True, help_text="Feature intros dismissed by anonymous user in this chat")
+
+    # Host-assigned spotlight status (per-participation, not per-account)
+    is_spotlight = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Host-assigned spotlight status. Spotlighted users get a star icon, "
+                  "'Spotlight' pill, and appear in the Focus room filter. Per-participation — "
+                  "different identities of the same user are independently spotlighted."
+    )
 
     # IP address tracking
     ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Last known IP address")
