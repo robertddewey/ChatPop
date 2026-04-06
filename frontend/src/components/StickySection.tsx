@@ -223,13 +223,24 @@ function StickySection({
   const [stickyHidden, setStickyHidden] = useState(false);
   const stickyHiddenRef = useRef(false);
   const [stickyHeight, setStickyHeight] = useState(0);
+  // Measured height of the animated content area (used as the transform distance).
+  // Kept in sync with the inner content wrapper's natural offsetHeight so the transform
+  // moves the content exactly off-screen when hiding.
+  const [animatedContentHeight, setAnimatedContentHeight] = useState(0);
 
   const initialRenderDoneRef = useRef(false);
   const [allowAnimations, setAllowAnimations] = useState(false);
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
 
-  // Mark a toggle in progress — blocks ResizeObserver and scroll compensation for 220ms
-  const markStickyToggle = () => {
+  // Mark a toggle in progress — blocks ResizeObserver and scroll compensation for 220ms.
+  //
+  // Note: `nextHidden` is the target state. We update the effective stickyHeight at
+  // different times depending on the direction:
+  //   - Expanding (nextHidden=false): set stickyHeight to the full outer height
+  //     IMMEDIATELY so the messages area reserves space before the sticky slides down.
+  //   - Collapsing (nextHidden=true): wait for the 200ms transform animation to finish,
+  //     then snap stickyHeight to the chevron-only height so messages shift up.
+  const markStickyToggle = (nextHidden: boolean) => {
     stickyToggleRef.current = true;
     cancelScrollAnimation?.();
     const container = messagesContainerRef.current;
@@ -239,12 +250,25 @@ function StickySection({
       );
     }
     pendingToggleRef.current = true;
+
+    const el = stickySectionRef.current;
+    const contentEl = stickyContentWrapperRef.current;
+    const fullOuter = el?.offsetHeight ?? 0;
+    const innerH = contentEl?.offsetHeight ?? 0;
+    // Chevron strip height = outer minus the content area (plus padding).
+    const collapsedH = Math.max(0, fullOuter - innerH);
+
+    if (!nextHidden) {
+      // Expanding: reserve full space immediately.
+      setStickyHeight(fullOuter);
+    }
+
     if (stickyToggleTimerRef.current) clearTimeout(stickyToggleTimerRef.current);
     stickyToggleTimerRef.current = setTimeout(() => {
       stickyToggleRef.current = false;
-      const el = stickySectionRef.current;
-      if (el) {
-        setStickyHeight(el.offsetHeight);
+      if (nextHidden) {
+        // Collapsing: messages reclaim space after the transform animation finishes.
+        setStickyHeight(collapsedH);
       }
     }, 220);
   };
@@ -252,7 +276,7 @@ function StickySection({
   // Expand sticky section when signaled from parent
   useEffect(() => {
     if (expandStickySignal && stickyHidden) {
-      markStickyToggle();
+      markStickyToggle(false);
       setStickyHidden(false);
     }
   }, [expandStickySignal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -278,28 +302,56 @@ function StickySection({
     regularUsername: getTextColor(currentDesign.regularUsername) || '#ffffff',
   }), [currentDesign]);
 
-  // Measure sticky section height dynamically
+  // Measure sticky section height dynamically.
+  //
+  // Android perf fix: the previous implementation used grid-template-rows 0fr→1fr
+  // animation, which triggers layout on every frame. On Android Chrome this was
+  // O(N) with the number of messages because Blink can't composite semi-transparent
+  // overlays without repainting the underlying region. iOS Safari (WebKit) composites
+  // this correctly and was always smooth.
+  //
+  // New approach: the outer sticky container is transformed via translateY(-contentHeight)
+  // when hidden. The chevron (which is at the bottom of the container in the normal flow)
+  // ends up at visual y=0 when the content translates off-screen above the viewport.
+  // Transform is a GPU-composited property — constant cost regardless of DOM complexity
+  // below the sticky.
+  //
+  // We track two heights:
+  //   - `animatedContentHeight`: the natural height of the content area (without chevron).
+  //     Used as the transform distance so content slides exactly off-screen.
+  //   - `stickyHeight`: the effective height reported to the parent for messages area
+  //     padding-top. When expanded, this equals the full outer height. When collapsed,
+  //     it's updated after the 200ms animation to reflect just the chevron strip.
   useLayoutEffect(() => {
     const stickyEl = stickySectionRef.current;
+    const contentEl = stickyContentWrapperRef.current;
     const hasSticky = stickyHostMessages.length > 0 || stickyPinnedMessage;
 
-    if (!stickyEl || !hasSticky) {
+    if (!stickyEl || !contentEl || !hasSticky) {
       setStickyHeight(0);
+      setAnimatedContentHeight(0);
       return;
     }
 
-    const height = stickyEl.offsetHeight;
-    setStickyHeight(height);
+    const outerH = stickyEl.offsetHeight;
+    const innerH = contentEl.offsetHeight;
+    setAnimatedContentHeight(innerH);
+    if (!stickyHiddenRef.current) {
+      setStickyHeight(outerH);
+    }
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const height = entry.borderBoxSize?.[0]?.blockSize ?? (entry.target as HTMLElement).offsetHeight;
-        if (stickyToggleRef.current) return;
-        setStickyHeight(height);
+    const resizeObserver = new ResizeObserver(() => {
+      if (stickyToggleRef.current) return;
+      const nextOuter = stickyEl.offsetHeight;
+      const nextInner = contentEl.offsetHeight;
+      setAnimatedContentHeight(nextInner);
+      if (!stickyHiddenRef.current) {
+        setStickyHeight(nextOuter);
       }
     });
 
     resizeObserver.observe(stickyEl);
+    resizeObserver.observe(contentEl);
     return () => resizeObserver.disconnect();
   }, [stickyHostMessages.length, stickyPinnedMessage]);
 
@@ -324,7 +376,7 @@ function StickySection({
     if (stickyContentKey !== stickyContentKeyRef.current) {
       stickyContentKeyRef.current = stickyContentKey;
       if (stickyHidden) {
-        markStickyToggle();
+        markStickyToggle(false);
       }
       setStickyHidden(false);
     }
@@ -355,7 +407,20 @@ function StickySection({
       ref={stickySectionRef}
       data-sticky-section
       className={`${currentDesign.stickySection} ${stickyHidden ? '!pt-0' : ''}`}
-      style={stickyHidden ? { backgroundColor: currentDesign.stickyCollapsedBg || '#18181b' } : undefined}
+      style={{
+        // Transform-based collapse: slide the ENTIRE sticky bar up by the content's
+        // height when hidden. Because the sticky is position:absolute, transform has
+        // zero layout cost. The chevron, which is a child of this element, slides
+        // up with it and naturally ends up at the top edge — visually matching the
+        // previous grid-rows behavior while being GPU-composited.
+        // iOS Safari was fine with grid-rows; Android Chrome was slow because the
+        // semi-transparent bar over the messages forced per-frame re-composite.
+        // Transform-only animations are the only reliable fast path on Blink.
+        transform: stickyHidden ? `translateY(-${animatedContentHeight}px)` : 'translateY(0)',
+        transition: 'transform 200ms ease-out',
+        willChange: 'transform',
+        ...(stickyHidden ? { backgroundColor: currentDesign.stickyCollapsedBg || '#18181b' } : {}),
+      }}
       onTouchStart={(e) => {
         touchStartYRef.current = e.touches[0].clientY;
       }}
@@ -363,10 +428,10 @@ function StickySection({
         if (touchStartYRef.current !== null) {
           const deltaY = touchStartYRef.current - e.changedTouches[0].clientY;
           if (deltaY > 30 && !stickyHidden) {
-            markStickyToggle();
+            markStickyToggle(true);
             setStickyHidden(true);
           } else if (deltaY < -30 && stickyHidden) {
-            markStickyToggle();
+            markStickyToggle(false);
             setStickyHidden(false);
           }
           touchStartYRef.current = null;
@@ -375,11 +440,6 @@ function StickySection({
     >
       <div
         ref={stickyContentWrapperRef}
-        style={{
-          display: 'grid',
-          gridTemplateRows: stickyHidden ? '0fr' : '1fr',
-          transition: 'grid-template-rows 200ms ease-out',
-        }}
       >
         <div className="space-y-2" style={{ overflow: 'hidden' }}>
           {/* Host Messages */}
@@ -646,7 +706,7 @@ function StickySection({
       </div>
       <button
         onClick={() => {
-          markStickyToggle();
+          markStickyToggle(!stickyHidden);
           setStickyHidden(h => !h);
         }}
         className={`w-full flex items-center justify-center -my-1 transition-opacity`}
