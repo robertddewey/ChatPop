@@ -29,6 +29,16 @@ let scriptPromise: Promise<void> | null = null;
 let verified = false;
 let verifyPromise: Promise<boolean> | null = null;
 
+/**
+ * Reset the in-memory verification cache. Call this on logout — Django's
+ * logout() flushes the server session (wiping turnstile_verified), so the
+ * frontend must re-verify on the next protected request.
+ */
+export function resetTurnstileVerification(): void {
+  verified = false;
+  verifyPromise = null;
+}
+
 function loadTurnstileScript(): Promise<void> {
   if (scriptPromise) return scriptPromise;
   if (typeof window === 'undefined') return Promise.resolve();

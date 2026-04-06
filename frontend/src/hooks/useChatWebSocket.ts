@@ -22,6 +22,7 @@ interface UseChatWebSocketOptions {
   onGiftReceived?: (gift: GiftNotification) => void;
   onGiftQueue?: (gifts: GiftNotification[]) => void;
   onGiftAcknowledged?: (messageIds: string[]) => void;
+  onBlockUpdate?: (action: 'add' | 'remove', blockedUsername: string) => void;
   onError?: (error: Event) => void;
   onVisibilityChange?: (isVisible: boolean) => void;
   enabled?: boolean;
@@ -41,6 +42,7 @@ export function useChatWebSocket({
   onGiftReceived,
   onGiftQueue,
   onGiftAcknowledged,
+  onBlockUpdate,
   onError,
   onVisibilityChange,
   enabled = true,
@@ -65,6 +67,7 @@ export function useChatWebSocket({
   const onGiftReceivedRef = useRef(onGiftReceived);
   const onGiftQueueRef = useRef(onGiftQueue);
   const onGiftAcknowledgedRef = useRef(onGiftAcknowledged);
+  const onBlockUpdateRef = useRef(onBlockUpdate);
   const onErrorRef = useRef(onError);
   const onVisibilityChangeRef = useRef(onVisibilityChange);
 
@@ -80,6 +83,7 @@ export function useChatWebSocket({
   useEffect(() => { onGiftReceivedRef.current = onGiftReceived; }, [onGiftReceived]);
   useEffect(() => { onGiftQueueRef.current = onGiftQueue; }, [onGiftQueue]);
   useEffect(() => { onGiftAcknowledgedRef.current = onGiftAcknowledged; }, [onGiftAcknowledged]);
+  useEffect(() => { onBlockUpdateRef.current = onBlockUpdate; }, [onBlockUpdate]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
   useEffect(() => { onVisibilityChangeRef.current = onVisibilityChange; }, [onVisibilityChange]);
 
@@ -192,6 +196,14 @@ export function useChatWebSocket({
         if (data.type === 'gift_queue') {
           if (onGiftQueueRef.current) {
             onGiftQueueRef.current(data.gifts);
+          }
+          return;
+        }
+
+        // Handle block_update events (mute/unmute sync)
+        if (data.type === 'block_update') {
+          if (onBlockUpdateRef.current) {
+            onBlockUpdateRef.current(data.action, data.blocked_username);
           }
           return;
         }

@@ -122,13 +122,20 @@ export default function ChatSettingsSheet({
   const [success, setSuccess] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [subPage, setSubPage] = useState<'main' | 'banned' | 'edit'>('main');
+  const [subPage, setSubPage] = useState<'main' | 'banned' | 'muted' | 'edit'>('main');
 
   // Banned users state (host only)
   const [bannedUsers, setBannedUsers] = useState<Array<{ username: string; blocked_at: string; banned_by: string | null }>>([]);
   const [bannedUsersLoading, setBannedUsersLoading] = useState(false);
   const [unbanningUser, setUnbanningUser] = useState<string | null>(null);
   const [banSortBy, setBanSortBy] = useState<'recent' | 'name'>('recent');
+
+  // Muted users state (any logged-in user)
+  const [mutedUsers, setMutedUsers] = useState<Array<{ username: string; muted_at: string }>>([]);
+  const [mutedUsersLoading, setMutedUsersLoading] = useState(false);
+  const [unmutingUser, setUnmutingUser] = useState<string | null>(null);
+  const [muteSortBy, setMuteSortBy] = useState<'recent' | 'name'>('recent');
+  const isLoggedIn = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
 
   // Reset to main page when sheet closes
   useEffect(() => {
@@ -151,6 +158,35 @@ export default function ChatSettingsSheet({
         });
     }
   }, [isOpen, isHost, chatRoom.code, chatRoom.host.reserved_username]);
+
+  // Load muted users when sheet opens (logged-in users)
+  useEffect(() => {
+    if (isOpen && isLoggedIn) {
+      setMutedUsersLoading(true);
+      messageApi.getMutedUsersInChat(chatRoom.code, chatRoom.host.reserved_username)
+        .then((data) => {
+          setMutedUsers(data.muted_users);
+        })
+        .catch(() => {
+          setMutedUsers([]);
+        })
+        .finally(() => {
+          setMutedUsersLoading(false);
+        });
+    }
+  }, [isOpen, isLoggedIn, chatRoom.code, chatRoom.host.reserved_username]);
+
+  const handleUnmuteUser = async (username: string) => {
+    setUnmutingUser(username);
+    try {
+      await messageApi.unblockUserSiteWide(username);
+      setMutedUsers(prev => prev.filter(u => u.username.toLowerCase() !== username.toLowerCase()));
+    } catch {
+      // Silent fail
+    } finally {
+      setUnmutingUser(null);
+    }
+  };
 
   const handleUnbanUser = async (username: string) => {
     setUnbanningUser(username);
@@ -322,6 +358,86 @@ export default function ChatSettingsSheet({
             </div>
           )}
 
+          {/* Sub-page: Muted Users */}
+          {subPage === 'muted' && (
+            <div className="space-y-4">
+              <button
+                onClick={() => setSubPage('main')}
+                className={`flex items-center gap-1 text-sm font-medium cursor-pointer ${themeIsDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-purple-600 hover:text-purple-500'}`}
+              >
+                <ArrowLeft size={16} />
+                Back to Settings
+              </button>
+
+              <h3 className={`text-sm font-semibold ${styles.title} flex items-center gap-1.5`}>
+                <Ban size={14} className="text-orange-400" />
+                Muted Users
+                {mutedUsers.length > 0 && (
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
+                    {mutedUsers.length}
+                  </span>
+                )}
+              </h3>
+
+              {mutedUsersLoading ? (
+                <p className={`text-sm ${styles.subtext}`}>Loading...</p>
+              ) : mutedUsers.length === 0 ? (
+                <p className={`text-sm ${styles.subtext}`}>No muted users in this chat</p>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setMuteSortBy('recent')}
+                      className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        muteSortBy === 'recent'
+                          ? (themeIsDarkMode ? 'bg-zinc-600 text-white' : 'bg-gray-300 text-gray-900')
+                          : (themeIsDarkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')
+                      }`}
+                    >
+                      Most recent
+                    </button>
+                    <button
+                      onClick={() => setMuteSortBy('name')}
+                      className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        muteSortBy === 'name'
+                          ? (themeIsDarkMode ? 'bg-zinc-600 text-white' : 'bg-gray-300 text-gray-900')
+                          : (themeIsDarkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')
+                      }`}
+                    >
+                      A–Z
+                    </button>
+                  </div>
+                  {[...mutedUsers].sort((a, b) =>
+                    muteSortBy === 'name'
+                      ? a.username.localeCompare(b.username)
+                      : new Date(b.muted_at).getTime() - new Date(a.muted_at).getTime()
+                  ).map((user) => (
+                    <div key={user.username} className={`flex items-center justify-between p-3 rounded-lg ${styles.card}`}>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium ${styles.text} truncate`}>{user.username}</p>
+                        <p className={`text-xs ${styles.subtext}`}>
+                          Muted {new Date(user.muted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleUnmuteUser(user.username)}
+                        disabled={unmutingUser === user.username}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 cursor-pointer disabled:opacity-50 ${
+                          themeIsDarkMode
+                            ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
+                            : 'bg-orange-50 text-orange-600 hover:bg-orange-100'
+                        }`}
+                      >
+                        <ShieldCheck size={12} />
+                        {unmutingUser === user.username ? 'Unmuting...' : 'Unmute'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Main settings page */}
           {subPage === 'main' && <>
           {/* Theme Selection */}
@@ -484,6 +600,27 @@ export default function ChatSettingsSheet({
               </p>
             </div>
           </div>
+
+          {/* Muted Users navigation (any logged-in user) */}
+          {isLoggedIn && (
+            <div className={`pt-4 border-t ${styles.border}`}>
+              <button
+                onClick={() => setSubPage('muted')}
+                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Ban size={16} className="text-orange-400" />
+                  <span className={`text-sm font-medium ${styles.text}`}>Muted Users</span>
+                  {mutedUsers.length > 0 && (
+                    <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
+                      {mutedUsers.length}
+                    </span>
+                  )}
+                </div>
+                <ChevronRight size={16} className={styles.subtext} />
+              </button>
+            </div>
+          )}
 
           {/* Banned Users navigation (Host Only) */}
           {isHost && (

@@ -17,6 +17,44 @@ from django.conf import settings
 from constance import config
 
 
+def _claim_anonymous_identities_on_auth(old_session_key, user):
+    """
+    Claim any orphan anonymous ChatParticipation rows tied to the user's
+    pre-auth Django session_key. Called from LoginView and RegisterView BEFORE
+    Django's ``login(request, user)`` rotates the session key — otherwise the
+    pre-auth key is lost and the anon rows stay orphaned forever.
+
+    For each claimed row, also runs ``check_if_blocked`` to refuse the claim
+    if the authenticating user is account-banned from that chat — prevents
+    ban laundering via login.
+    """
+    if not old_session_key:
+        return
+    from chats.models import ChatParticipation
+    from chats.utils.security.blocking import check_if_blocked
+
+    orphans = ChatParticipation.objects.filter(
+        session_key=old_session_key,
+        user__isnull=True,
+    ).select_related('chat_room')
+
+    for p in orphans:
+        # If this user is banned from this chat, do not claim the orphan —
+        # leave it detached so a banned user cannot launder identities.
+        is_blocked, _ = check_if_blocked(
+            chat_room=p.chat_room,
+            username=p.username,
+            user=user,
+        )
+        if is_blocked:
+            continue
+        # Also skip if another link already claims this participation (shouldn't
+        # happen given user__isnull=True, but defense in depth).
+        p.user = user
+        p.is_anonymous_identity = True
+        p.save(update_fields=['user', 'is_anonymous_identity'])
+
+
 class RegisterView(generics.CreateAPIView):
     """Register a new user"""
     serializer_class = UserRegistrationSerializer
@@ -27,6 +65,14 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+
+        # Capture the pre-register session_key and claim any orphan anon
+        # ChatParticipation rows tied to it before anything rotates the session.
+        # Note: RegisterView doesn't itself call login() here — the client
+        # typically follows up with a LoginView call — but claiming at register
+        # time is still valuable because subsequent login will rotate the key.
+        pre_register_session_key = request.session.session_key
+        _claim_anonymous_identities_on_auth(pre_register_session_key, user)
 
         # Create token for the user
         token, created = Token.objects.get_or_create(user=user)
@@ -46,6 +92,10 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data['user']
+        # Capture the pre-login session_key BEFORE Django's login() rotates it,
+        # then claim any orphan anon ChatParticipation rows that were tied to it.
+        pre_login_session_key = request.session.session_key
+        _claim_anonymous_identities_on_auth(pre_login_session_key, user)
         login(request, user)
 
         # Get or create token

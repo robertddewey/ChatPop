@@ -186,9 +186,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message_data = event['message_data']
         sender_username = message_data.get('username')
 
-        # Skip message if sender is blocked by this user
+        # Skip message if sender is blocked by this user, with exceptions
         if sender_username and sender_username in self.blocked_usernames:
-            return  # Don't send message to this WebSocket
+            # Exception: host broadcasts always shown
+            if message_data.get('is_broadcast'):
+                pass
+            # Exception: gifts TO this user from a muted sender
+            elif message_data.get('message_type') == 'gift' and message_data.get('gift_recipient') == self.username:
+                pass
+            else:
+                return  # Don't send message to this WebSocket
+
+        # Also hide gifts TO muted users (unless sent by me)
+        if message_data.get('message_type') == 'gift':
+            recipient = message_data.get('gift_recipient')
+            if recipient and recipient in self.blocked_usernames and sender_username != self.username:
+                return
 
         # Send message to WebSocket
         await self.send(text_data=json.dumps(message_data))
@@ -276,8 +289,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def gift_sent(self, event):
         """Gift chat message - broadcast to all (respects block list)."""
         message_data = event['message_data']
-        if message_data.get('username') in self.blocked_usernames:
+        sender_username = message_data.get('username')
+        recipient = message_data.get('gift_recipient')
+
+        # Hide gift if sender is muted, unless I'm the recipient
+        if sender_username in self.blocked_usernames:
+            if recipient != self.username:
+                return
+        # Hide gift to muted recipients (unless I'm the sender)
+        if recipient and recipient in self.blocked_usernames and sender_username != self.username:
             return
+
         await self.send(text_data=json.dumps(message_data))
 
     async def gift_received(self, event):

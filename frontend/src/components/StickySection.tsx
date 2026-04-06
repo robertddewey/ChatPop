@@ -150,6 +150,9 @@ interface StickySectionProps {
   }>;
   handleBlockUser: (username: string) => void;
   handleUnblockUser: (username: string) => void;
+  handleUnmuteUser?: (username: string) => void;
+  mutedUsernames?: Set<string>;
+  onRequestSignup?: () => void;
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
@@ -182,6 +185,9 @@ function StickySection({
   getPinRequirements,
   handleBlockUser,
   handleUnblockUser,
+  handleUnmuteUser,
+  mutedUsernames,
+  onRequestSignup,
   handleTipUser,
   handleSendGift,
   handleThankGift,
@@ -380,6 +386,9 @@ function StickySection({
               getPinRequirements={getPinRequirements}
               onBlock={handleBlockUser}
               onUnblock={handleUnblockUser}
+              onUnmute={handleUnmuteUser}
+              mutedUsernames={mutedUsernames}
+              onRequestSignup={onRequestSignup}
               onTip={handleTipUser}
               onSendGift={handleSendGift}
               onThankGift={handleThankGift}
@@ -497,6 +506,9 @@ function StickySection({
               getPinRequirements={getPinRequirements}
               onBlock={handleBlockUser}
               onUnblock={handleUnblockUser}
+              onUnmute={handleUnmuteUser}
+              mutedUsernames={mutedUsernames}
+              onRequestSignup={onRequestSignup}
               onTip={handleTipUser}
               onSendGift={handleSendGift}
               onThankGift={handleThankGift}

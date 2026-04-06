@@ -437,7 +437,7 @@ export default function ChatPage() {
   const [hasJoinedBefore, setHasJoinedBefore] = useState(false);
   const [joinModalKey, setJoinModalKey] = useState(0); // Force remount on back navigation
   const [isBlocked, setIsBlocked] = useState(false);
-  const [anonymousParticipation, setAnonymousParticipation] = useState<AnonymousParticipationInfo | null>(null);
+  const [anonymousParticipations, setAnonymousParticipations] = useState<AnonymousParticipationInfo[]>([]);
   const [registeredDisplayName, setRegisteredDisplayName] = useState(''); // Stable registered username for identity chooser
   const [registeredAvatarUrl, setRegisteredAvatarUrl] = useState<string | null>(null); // Stable registered avatar for identity chooser
   const [username, setUsername] = useState('');
@@ -559,8 +559,48 @@ export default function ChatPage() {
   const [stickyHostMessage, setStickyHostMessage] = useState<Message | null>(null);
   const [stickyPinnedMsg, setStickyPinnedMsg] = useState<Message | null>(null);
 
-  // Stable array reference for StickySection memo — avoids re-render on every parent render
-  const stickyHostMessages = useMemo(() => stickyHostMessage ? [stickyHostMessage] : [], [stickyHostMessage]);
+  // Mute state — declared here because the sticky/filtered memos below depend on it.
+  const [mutedUsernames, setMutedUsernames] = useState<Set<string>>(new Set());
+
+  // Shared mute-filter helper matching the rules in filteredMessages.applyMute.
+  // Returns the message if it should render, or null if it should be hidden.
+  const applyMuteToSticky = useCallback((msg: Message | null): Message | null => {
+    if (!msg) return null;
+    const author = msg.username || '';
+    if (mutedUsernames.has(author)) {
+      if (msg.is_broadcast) return msg;
+      if (
+        msg.message_type === 'gift' &&
+        msg.gift_recipient &&
+        msg.gift_recipient.toLowerCase() === (username || '').toLowerCase()
+      ) {
+        return msg;
+      }
+      return null;
+    }
+    if (msg.message_type === 'gift' && msg.gift_recipient) {
+      if (
+        mutedUsernames.has(msg.gift_recipient) &&
+        author.toLowerCase() !== (username || '').toLowerCase()
+      ) {
+        return null;
+      }
+    }
+    return msg;
+  }, [mutedUsernames, username]);
+
+  // Stable array reference for StickySection memo — avoids re-render on every parent render.
+  // Applies mute rules: muted users don't appear in host sticky even if they're the host.
+  const stickyHostMessages = useMemo(() => {
+    const filtered = applyMuteToSticky(stickyHostMessage);
+    return filtered ? [filtered] : [];
+  }, [stickyHostMessage, applyMuteToSticky]);
+
+  // Apply mute rules to the sticky pinned message.
+  const stickyPinnedMsgFiltered = useMemo(
+    () => applyMuteToSticky(stickyPinnedMsg),
+    [stickyPinnedMsg, applyMuteToSticky]
+  );
 
   // Settings sheet state
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
@@ -839,9 +879,33 @@ export default function ChatPage() {
         messageIds.includes(msg.id) ? { ...msg, is_gift_acknowledged: true } : msg
       ));
     }, []),
+    onBlockUpdate: useCallback((action: 'add' | 'remove', blockedUsername: string) => {
+      setMutedUsernames(prev => {
+        const next = new Set(prev);
+        if (action === 'add') next.add(blockedUsername);
+        else next.delete(blockedUsername);
+        return next;
+      });
+    }, []),
     onVisibilityChange: handleVisibilityChange,
     enabled: hasJoined || (!!chatRoom && chatRoom.access_mode === 'public'),
   });
+
+  // Fetch muted users in this chat for authenticated users
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!chatRoom) return;
+    const authToken = localStorage.getItem('auth_token');
+    if (!authToken) return;
+    messageApi
+      .getMutedUsersInChat(code, roomUsername)
+      .then((data) => {
+        setMutedUsernames(new Set(data.muted_users.map((u) => u.username)));
+      })
+      .catch(() => {
+        // Silent fail
+      });
+  }, [chatRoom, code, roomUsername]);
 
   // Detect forward navigation and redirect back to home
   // This prevents users from using browser forward to return to chat join modal
@@ -868,6 +932,24 @@ export default function ChatPage() {
   // Add chat-layout class to body (position:fixed, overflow:hidden, etc.)
   // Remove during mobile inline auth so the page scrolls naturally with the keyboard
   const inlineAuthActive = !!(authMode && isMobile);
+
+  // When closing inline auth, the chat JSX remounts with a fresh DOM — scrollTop is lost.
+  // Restore by snapping to bottom (messages/state are preserved in React).
+  const prevInlineAuthActiveRef = useRef(inlineAuthActive);
+  useEffect(() => {
+    if (prevInlineAuthActiveRef.current && !inlineAuthActive) {
+      // Transitioned from auth → chat; scroll to bottom after remount
+      requestAnimationFrame(() => {
+        const container = messagesContainerRef.current;
+        if (container) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
+          shouldAutoScrollRef.current = true;
+        }
+      });
+    }
+    prevInlineAuthActiveRef.current = inlineAuthActive;
+  }, [inlineAuthActive]);
+
   useEffect(() => {
     document.body.classList.add('chat-layout');
     return () => {
@@ -1021,12 +1103,11 @@ export default function ChatPage() {
           setRegisteredDisplayName(currentUser.reserved_username || '');
           setRegisteredAvatarUrl(`/api/chats/media/avatars/user/${currentUser.id}`);
 
-          // Track anonymous participation for identity chooser
-          if (participation.anonymous_participation) {
-            setAnonymousParticipation(participation.anonymous_participation);
-          }
+          // Track anonymous participations for identity chooser
+          const anonsList = participation.anonymous_participations || (participation.anonymous_participation ? [participation.anonymous_participation] : []);
+          setAnonymousParticipations(anonsList);
 
-          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && !participation.anonymous_participation) {
+          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && anonsList.length === 0) {
             // Returning user with registered identity only (no anonymous alt) - use their locked username
             setUsername(participation.username);
             setHasJoinedBefore(true);
@@ -1034,9 +1115,9 @@ export default function ChatPage() {
             setHasReservedUsername(participation.username_is_reserved || false);
             // Use participation avatar (same source as message avatars)
             setUserAvatarUrl(participation.avatar_url || currentUser.avatar_url || null);
-          } else if (participation.anonymous_participation || participation.is_anonymous_identity) {
-            // Has anonymous participation (with or without registered) — show identity chooser
-            setAnonymousParticipation(participation.anonymous_participation || null);
+          } else if (anonsList.length > 0 || participation.is_anonymous_identity) {
+            // Has anonymous participation(s) (with or without registered) — show identity chooser
+            setAnonymousParticipations(anonsList);
             setUsername(currentUser.reserved_username || '');
             setHasJoinedBefore(false);
             setIsBlocked(participation.is_blocked || false);
@@ -1091,11 +1172,31 @@ export default function ChatPage() {
     loadChatRoom();
   }, [code, router]);
 
-  // Listen for auth changes (login/register)
+  // Listen for auth changes (login/register/logout)
   useEffect(() => {
     const handleAuthChange = async () => {
-      // User just logged in or registered - refresh user state
       const token = localStorage.getItem('auth_token');
+      if (!token) {
+        // User just logged out — clear any identity state tied to the previous user
+        // so the JoinChatModal doesn't render with their reserved_username pre-filled.
+        setCurrentUserId(undefined);
+        setRegisteredDisplayName('');
+        setRegisteredAvatarUrl(null);
+        setHasReservedUsername(false);
+        setUserAvatarUrl(null);
+        setUsername('');
+        setHasJoined(false);
+        setHasJoinedBefore(false);
+        setAnonymousParticipations([]);
+        setIsBlocked(false);
+        setJoinModalKey((prev) => prev + 1);
+        // Django's logout() flushed the session, wiping turnstile_verified server-side.
+        // Re-run the human verification flow so the fresh session gets re-flagged
+        // before the user touches any @require_turnstile endpoint (suggest-username, join, etc.).
+        verifyHuman().catch(() => { /* fail-open handled inside */ });
+        return;
+      }
+      // User just logged in or registered - refresh user state
       if (token) {
         try {
           const currentUser = await authApi.getCurrentUser();
@@ -1123,20 +1224,24 @@ export default function ChatPage() {
             setParticipationTheme(participation.theme);
           }
 
-          // Track anonymous participation for identity chooser
-          if (participation.anonymous_participation) {
-            setAnonymousParticipation(participation.anonymous_participation);
-          }
+          // Phase 1 fix: clear stale identity state so chat re-runs join flow with fresh user
+          setHasJoined(false);
+          setUsername('');
+          setAnonymousParticipations([]);
+          setJoinModalKey(prev => prev + 1);
 
-          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && !participation.anonymous_participation) {
+          // Track anonymous participations for identity chooser
+          const anonsList = participation.anonymous_participations || (participation.anonymous_participation ? [participation.anonymous_participation] : []);
+          setAnonymousParticipations(anonsList);
+
+          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && anonsList.length === 0) {
             // They already joined with registered identity only (no anonymous alt)
             setUsername(participation.username);
             setHasJoinedBefore(true);
             setIsBlocked(participation.is_blocked || false);
             setHasReservedUsername(participation.username_is_reserved || false);
-          } else if (participation.anonymous_participation || participation.is_anonymous_identity) {
-            // Has anonymous participation (with or without registered) — show identity chooser
-            setAnonymousParticipation(participation.anonymous_participation || null);
+          } else if (anonsList.length > 0 || participation.is_anonymous_identity) {
+            // Has anonymous participation(s) (with or without registered) — show identity chooser
             setUsername(currentUser.reserved_username || '');
             setHasJoinedBefore(false);
             setIsBlocked(participation.is_blocked || false);
@@ -1196,7 +1301,7 @@ export default function ChatPage() {
       if (hasJoined) {
         setHasJoined(false);
         // If user has both identities, show identity chooser again (not "Welcome back")
-        setHasJoinedBefore(anonymousParticipation ? false : true);
+        setHasJoinedBefore(anonymousParticipations.length > 0 ? false : true);
         setMessages([]);
         setStickyHostMessage(null);
         setStickyPinnedMsg(null);
@@ -1215,7 +1320,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipation]);
+  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -1891,11 +1996,29 @@ export default function ChatPage() {
       } else {
         // Non-hosts can only mute users site-wide (UserBlock)
         await messageApi.blockUserSiteWide(username);
+        setMutedUsernames(prev => {
+          const next = new Set(prev);
+          next.add(username);
+          return next;
+        });
       }
     } catch (err: unknown) {
       console.error('Failed to block user:', err);
     }
   }, [currentUserId, chatRoom, code, roomUsername]);
+
+  const handleUnmuteUser = useCallback(async (username: string) => {
+    try {
+      await messageApi.unblockUserSiteWide(username);
+      setMutedUsernames(prev => {
+        const next = new Set(prev);
+        next.delete(username);
+        return next;
+      });
+    } catch (err: unknown) {
+      console.error('Failed to unmute user:', err);
+    }
+  }, []);
 
   const handleUnblockUser = useCallback(async (username: string) => {
     try {
@@ -2049,6 +2172,36 @@ export default function ChatPage() {
     // While room is loading, return empty to prevent stale content flash
     if (roomLoading) return [];
 
+    // Client-side mute filter (mirrors backend rules):
+    // - Hide messages from muted users
+    // - Exception: host broadcasts always shown
+    // - Exception: gifts TO me from muted user still shown
+    // - Also hide gifts TO muted users (unless I'm the sender)
+    const applyMute = (msg: Message): boolean => {
+      const author = msg.username || '';
+      const authorMuted = mutedUsernames.has(author);
+      if (authorMuted) {
+        if (msg.is_broadcast) return true;
+        if (
+          msg.message_type === 'gift' &&
+          msg.gift_recipient &&
+          msg.gift_recipient.toLowerCase() === (username || '').toLowerCase()
+        ) {
+          return true;
+        }
+        return false;
+      }
+      if (msg.message_type === 'gift' && msg.gift_recipient) {
+        if (
+          mutedUsernames.has(msg.gift_recipient) &&
+          author.toLowerCase() !== (username || '').toLowerCase()
+        ) {
+          return false;
+        }
+      }
+      return true;
+    };
+
     // Server already returns filtered results, but real-time WS messages
     // arrive unfiltered — apply client-side filter for those
     if (currentRoom === 'gifts') {
@@ -2057,7 +2210,7 @@ export default function ChatPage() {
         if (msg.username === username) return true;
         if (msg.gift_recipient && msg.gift_recipient.toLowerCase() === username?.toLowerCase()) return true;
         return false;
-      });
+      }).filter(applyMute);
     }
 
     if (currentRoom === 'focus') {
@@ -2066,15 +2219,15 @@ export default function ChatPage() {
         if (msg.username === username) return true;
         if (msg.reply_to_message?.username?.toLowerCase() === username?.toLowerCase()) return true;
         return false;
-      });
+      }).filter(applyMute);
     }
 
     if (currentRoom === 'broadcast') {
-      return messages.filter(msg => msg.is_broadcast);
+      return messages.filter(msg => msg.is_broadcast).filter(applyMute);
     }
 
-    return messages;
-  }, [messages, currentRoom, roomLoading, username]);
+    return messages.filter(applyMute);
+  }, [messages, currentRoom, roomLoading, username, mutedUsernames]);
 
   // Check if current user is the host
   const isHost = useMemo(() => {
@@ -2442,7 +2595,7 @@ export default function ChatPage() {
                 sessionToken={sessionToken}
                 filteredMessages={filteredMessages}
                 stickyHostMessages={stickyHostMessages}
-                stickyPinnedMessage={stickyPinnedMsg}
+                stickyPinnedMessage={stickyPinnedMsgFiltered}
                 messagesContainerRef={messagesContainerRef}
                 messagesEndRef={messagesEndRef}
                 currentDesign={currentDesign}
@@ -2461,6 +2614,9 @@ export default function ChatPage() {
                 getPinRequirements={getPinRequirements}
                 handleBlockUser={handleBlockUser}
                 handleUnblockUser={handleUnblockUser}
+                handleUnmuteUser={handleUnmuteUser}
+                mutedUsernames={mutedUsernames}
+                onRequestSignup={() => openAuth('signup')}
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
                 handleThankGift={handleThankGift}
@@ -2489,7 +2645,7 @@ export default function ChatPage() {
                   hasReservedUsername={hasReservedUsername}
                   themeIsDarkMode={themeIsDarkMode}
                   userAvatarUrl={userAvatarUrl}
-                  anonymousParticipation={anonymousParticipation}
+                  anonymousParticipations={anonymousParticipations}
                   registeredAvatarUrl={registeredAvatarUrl}
                   onAvatarChange={setUserAvatarUrl}
                   onIdentityChange={(identity) => {

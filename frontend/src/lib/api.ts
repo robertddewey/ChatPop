@@ -38,6 +38,44 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor: self-healing for "Human verification required".
+// The server's Django session can lose its turnstile_verified flag for several
+// reasons (logout, server restart, session eviction, flush). When that happens,
+// any @require_turnstile endpoint returns 403 with this specific error. Rather
+// than bubbling it to the user and requiring a manual refresh, we catch it,
+// re-run verifyHuman() to re-flag the session, and retry the original request
+// once. If the retry also fails, we bubble the error normally.
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const status = error?.response?.status;
+    const errMsg = error?.response?.data?.error || '';
+    const config = error?.config;
+    // Only retry 403s that came from the turnstile decorator.
+    // Guard against infinite loops with a per-request _turnstileRetried flag.
+    if (status === 403 && errMsg === 'Human verification required' && config && !config._turnstileRetried) {
+      config._turnstileRetried = true;
+      try {
+        // Clear the in-memory + sessionStorage flags so verifyHuman() actually re-runs
+        // instead of short-circuiting on a stale "already verified".
+        if (typeof window !== 'undefined') {
+          try { sessionStorage.removeItem('turnstile_verified'); } catch { /* ignore */ }
+        }
+        const { resetTurnstileVerification, verifyHuman } = await import('./turnstile');
+        resetTurnstileVerification();
+        const ok = await verifyHuman();
+        if (ok) {
+          // Retry the original request with the freshly-verified session.
+          return api.request(config);
+        }
+      } catch {
+        // Fall through to reject with the original error
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Types
 export interface User {
   id: string;
@@ -313,6 +351,32 @@ export const authApi = {
     } finally {
       // Always clear local storage
       localStorage.removeItem('auth_token');
+      // Clear the per-tab turnstile verification flag. Django's logout() flushes the
+      // session on the server (wiping turnstile_verified), so the frontend cached flag
+      // in sessionStorage becomes out of sync — clear it so verifyHuman() re-runs on
+      // the next protected request.
+      try {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('turnstile_verified');
+          // Clear any cached join-modal state — the previous user's reserved_username
+          // may be persisted in sessionStorage under `joinModal_<code>`. If we don't
+          // purge them, the Join Chat page shows the old user's name in the username
+          // input for the next visitor.
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const k = sessionStorage.key(i);
+            if (k && k.startsWith('joinModal_')) keysToRemove.push(k);
+          }
+          keysToRemove.forEach((k) => sessionStorage.removeItem(k));
+        }
+        // Also reset the in-memory cached flag so verifyHuman() actually re-runs.
+        const { resetTurnstileVerification } = await import('./turnstile');
+        resetTurnstileVerification();
+      } catch { /* ignore */ }
+      // Notify listeners (chat page, header, etc.) that auth state changed.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('auth-change'));
+      }
     }
   },
 
@@ -338,6 +402,7 @@ export interface AnonymousParticipationInfo {
   username: string;
   avatar_url: string | null;
   first_joined_at: string;
+  participation_id?: string;
 }
 
 export interface ChatParticipation {
@@ -351,7 +416,9 @@ export interface ChatParticipation {
   is_blocked?: boolean;
   seen_intros?: Record<string, boolean>;
   is_anonymous_identity?: boolean;
+  /** @deprecated Use anonymous_participations instead */
   anonymous_participation?: AnonymousParticipationInfo;
+  anonymous_participations?: AnonymousParticipationInfo[];
 }
 
 /**
@@ -734,6 +801,14 @@ export const messageApi = {
     count: number;
   }> => {
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/blocked-users/`);
+    return response.data;
+  },
+
+  getMutedUsersInChat: async (code: string, roomUsername?: string): Promise<{
+    muted_users: Array<{ username: string; muted_at: string }>;
+    count: number;
+  }> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/muted-users/`);
     return response.data;
   },
 

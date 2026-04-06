@@ -200,22 +200,28 @@ def get_blocked_users(chat_room):
     # Convert each block to a dict
     result = []
     for block in blocks.select_related('blocked_user', 'blocked_by'):
-        # Determine username to display
-        username = block.blocked_username or (
-            block.blocked_user.reserved_username if block.blocked_user else None
-        )
+        # Determine username to display.
+        # SECURITY/PRIVACY: Only show the blocked_username that the host explicitly
+        # clicked on. Do NOT fall back to block.blocked_user.reserved_username —
+        # that would leak the underlying account identity. Rows without a
+        # blocked_username are skipped (they represent tier-only bans).
+        username = block.blocked_username
+        if not username:
+            continue
 
         # Who banned this user
         banned_by = block.blocked_by.username if block.blocked_by else None
 
-        # List which identifiers are blocked
+        # List which identifiers are blocked.
+        # SECURITY/PRIVACY: Do NOT expose 'user_account' here. Account-level bans
+        # must not leak to the host UI that multiple identities are linked to the
+        # same registered account. The host only sees the specific username they
+        # banned; account-level enforcement happens silently on the backend.
         blocked_identifiers = []
         if block.blocked_username:
             blocked_identifiers.append('username')
         if block.blocked_fingerprint:
             blocked_identifiers.append('fingerprint')
-        if block.blocked_user:
-            blocked_identifiers.append('user_account')
         if block.blocked_ip_address:
             blocked_identifiers.append('ip_address')
 
