@@ -71,6 +71,9 @@ interface MessageActionsModalProps {
   getPinRequirements?: (messageId: string) => Promise<PinRequirements>;
   onBlock?: (username: string) => void;
   onUnblock?: (username: string) => void;
+  onUnmute?: (username: string) => void;
+  mutedUsernames?: Set<string>;
+  onRequestSignup?: () => void;
   onTip?: (username: string) => void;
   onSendGift?: (giftId: string, recipientUsername: string) => Promise<boolean>;
   onThankGift?: (messageId: string) => Promise<boolean>;
@@ -224,6 +227,9 @@ export default function MessageActionsModal({
   getPinRequirements,
   onBlock,
   onUnblock,
+  onUnmute,
+  mutedUsernames,
+  onRequestSignup,
   onTip,
   onSendGift,
   onThankGift,
@@ -247,6 +253,8 @@ export default function MessageActionsModal({
   const [isClosing, setIsClosing] = useState(false);
   const [confirmingBan, setConfirmingBan] = useState(false);
   const [confirmingUnban, setConfirmingUnban] = useState(false);
+  const [confirmingMute, setConfirmingMute] = useState(false);
+  const [muteLockedHint, setMuteLockedHint] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [slideIn, setSlideIn] = useState(false);
@@ -370,6 +378,8 @@ export default function MessageActionsModal({
     setIsDragging(false);
     setConfirmingBan(false);
     setConfirmingUnban(false);
+    setConfirmingMute(false);
+    setMuteLockedHint(false);
 
     // Wait for transition to complete before removing from DOM
     setTimeout(() => {
@@ -655,7 +665,17 @@ export default function MessageActionsModal({
   // 6. Mute/Ban/Unban — registered users, others only
   if (!isOwnMessage && !isHostMessage) {
     const authToken = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-    if (authToken) {
+    if (!authToken && !isHost) {
+      // Anonymous users see a locked Mute action
+      actions.push({
+        icon: Ban,
+        label: 'Mute',
+        destructive: true,
+        action: () => {
+          setMuteLockedHint(true);
+        },
+      });
+    } else if (authToken) {
       if (isHost && message.is_banned && onUnblock) {
         // Host sees "Unban" for already-banned users
         actions.push({
@@ -664,6 +684,16 @@ export default function MessageActionsModal({
           destructive: true,
           action: () => {
             setConfirmingUnban(true);
+          },
+        });
+      } else if (!isHost && mutedUsernames && mutedUsernames.has(message.username) && onUnmute) {
+        actions.push({
+          icon: ShieldCheck,
+          label: 'Unmute',
+          destructive: true,
+          action: () => {
+            onUnmute(message.username);
+            handleClose();
           },
         });
       } else if (onBlock) {
@@ -675,8 +705,7 @@ export default function MessageActionsModal({
             if (isHost) {
               setConfirmingBan(true);
             } else {
-              onBlock(message.username);
-              handleClose();
+              setConfirmingMute(true);
             }
           },
         });
@@ -959,11 +988,41 @@ export default function MessageActionsModal({
                   <div className={`mx-5 border-t ${modalStyles.divider}`} />
 
                   {/* Horizontal Scrollable Action Row OR Ban Confirmation */}
-                  {confirmingBan || confirmingUnban ? (
+                  {muteLockedHint ? (
+                    <div className="px-5 py-4 space-y-3">
+                      <p className={`text-sm font-medium text-center ${themeModalStyles?.actionLabel || 'text-zinc-50'}`}>
+                        🤫 Muting is a members-only superpower.
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMuteLockedHint(false);
+                          }}
+                          className={`flex-1 px-4 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-95 cursor-pointer ${themeModalStyles?.secondaryButton || 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'}`}
+                        >
+                          Not now
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMuteLockedHint(false);
+                            handleClose();
+                            onRequestSignup?.();
+                          }}
+                          className="flex-1 px-4 py-2.5 rounded-xl font-medium text-sm bg-blue-500 text-white hover:bg-blue-600 transition-all active:scale-95 cursor-pointer text-center"
+                        >
+                          Sign up
+                        </button>
+                      </div>
+                    </div>
+                  ) : confirmingBan || confirmingUnban || confirmingMute ? (
                     <div className="px-5 py-4 space-y-3">
                       <p className={`text-sm font-medium text-center ${themeModalStyles?.actionLabel || 'text-zinc-50'}`}>
                         {confirmingBan ? (
                           <>Ban <span className="font-bold">{message.username}</span> from this chat?</>
+                        ) : confirmingMute ? (
+                          <>Mute <span className="font-bold">{message.username}</span>?</>
                         ) : (
                           <>Unban <span className="font-bold">{message.username}</span>?</>
                         )}
@@ -974,6 +1033,8 @@ export default function MessageActionsModal({
                             e.stopPropagation();
                             setConfirmingBan(false);
                             setConfirmingUnban(false);
+                            setConfirmingMute(false);
+    setMuteLockedHint(false);
                           }}
                           className={`flex-1 px-4 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-95 cursor-pointer ${themeModalStyles?.secondaryButton || 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'}`}
                         >
@@ -984,16 +1045,20 @@ export default function MessageActionsModal({
                             e.stopPropagation();
                             if (confirmingBan && onBlock) {
                               onBlock(message.username);
+                            } else if (confirmingMute && onBlock) {
+                              onBlock(message.username);
                             } else if (confirmingUnban && onUnblock) {
                               onUnblock(message.username);
                             }
                             setConfirmingBan(false);
                             setConfirmingUnban(false);
+                            setConfirmingMute(false);
+    setMuteLockedHint(false);
                             handleClose();
                           }}
                           className="flex-1 px-4 py-2.5 rounded-xl font-medium text-sm bg-red-500 text-white hover:bg-red-600 transition-all active:scale-95 cursor-pointer"
                         >
-                          {confirmingBan ? 'Ban' : 'Unban'}
+                          {confirmingBan ? 'Ban' : confirmingMute ? 'Mute' : 'Unban'}
                         </button>
                       </div>
                     </div>

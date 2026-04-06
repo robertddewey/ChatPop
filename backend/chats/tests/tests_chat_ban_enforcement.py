@@ -1043,3 +1043,360 @@ class ChatBanIntegrationTests(TestCase):
             ).count(),
             1
         )
+
+
+@allure.feature('User Blocking')
+@allure.story('Account-Level Ban Enforcement (Privacy-Preserving)')
+class ChatAccountLevelBanTests(TestCase):
+    """
+    Verify that banning a registered user with multiple linked identities
+    (reserved username + claimed anon identities) enforces the ban across
+    ALL of their identities, while the host UI only ever sees the specific
+    username that was clicked.
+    """
+
+    def setUp(self):
+        from chats.models import ChatParticipation
+        self.client = Client()
+
+        self.host = User.objects.create_user(
+            email='acct-host@test.com',
+            password='testpass123',
+            reserved_username='AcctHost',
+        )
+        self.user = User.objects.create_user(
+            email='acct-user@test.com',
+            password='testpass123',
+            reserved_username='AcctUser',
+        )
+
+        self.chat_room = ChatRoom.objects.create(
+            name='Account Ban Chat',
+            host=self.host,
+            access_mode='public',
+        )
+        # Second chat to prove cross-chat isolation
+        self.other_chat = ChatRoom.objects.create(
+            name='Other Chat',
+            host=self.host,
+            access_mode='public',
+        )
+
+        # Host participation (for both chats)
+        self.host_participation = ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.host,
+            username='AcctHost',
+            fingerprint='host-fp',
+            ip_address='127.0.0.1',
+        )
+        ChatParticipation.objects.create(
+            chat_room=self.other_chat,
+            user=self.host,
+            username='AcctHost',
+            fingerprint='host-fp',
+            ip_address='127.0.0.1',
+        )
+
+        # User's three linked identities in self.chat_room:
+        # 1) reserved username  2) claimed anon "FoxPanda"  3) claimed anon "OwlRaven"
+        self.reserved_p = ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.user,
+            username='AcctUser',
+            fingerprint='user-fp-1',
+            ip_address='127.0.0.1',
+            is_anonymous_identity=False,
+        )
+        self.anon1_p = ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.user,
+            username='FoxPanda',
+            fingerprint='user-fp-2',
+            ip_address='127.0.0.1',
+            is_anonymous_identity=True,
+        )
+        self.anon2_p = ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.user,
+            username='OwlRaven',
+            fingerprint='user-fp-3',
+            ip_address='127.0.0.1',
+            is_anonymous_identity=True,
+        )
+
+        # User's participation in the other chat (should NOT be affected)
+        self.other_chat_p = ChatParticipation.objects.create(
+            chat_room=self.other_chat,
+            user=self.user,
+            username='AcctUser',
+            fingerprint='user-fp-1',
+            ip_address='127.0.0.1',
+            is_anonymous_identity=False,
+        )
+
+    def _host_session_token(self):
+        self.client.force_login(self.host)
+        resp = self.client.post(
+            f'/api/chats/AcctHost/{self.chat_room.code}/join/',
+            {'username': 'AcctHost'},
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        return resp.json()['session_token']
+
+    def _host_bans_username(self, username):
+        token = self._host_session_token()
+        resp = self.client.post(
+            f'/api/chats/AcctHost/{self.chat_room.code}/block-user/',
+            {'blocked_username': username, 'session_token': token},
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
+        return resp
+
+    @allure.title("Account ban cascades to all linked identities")
+    def test_account_ban_blocks_all_linked_identities(self):
+        from chats.utils.security.blocking import check_if_blocked
+
+        # Host bans one of the anon identities
+        self._host_bans_username('FoxPanda')
+
+        # A ChatBlock row should exist with blocked_user set to self.user
+        block = ChatBlock.objects.get(
+            chat_room=self.chat_room,
+            blocked_username='foxpanda',
+        )
+        self.assertEqual(block.blocked_user_id, self.user.id)
+
+        # All three identities should be blocked when checked with user=self.user
+        for uname in ('AcctUser', 'FoxPanda', 'OwlRaven'):
+            is_blocked, _ = check_if_blocked(
+                chat_room=self.chat_room,
+                username=uname,
+                user=self.user,
+            )
+            self.assertTrue(
+                is_blocked,
+                f"Expected identity '{uname}' to be blocked by account-level ban",
+            )
+
+        # Re-joining under any identity should fail
+        self.client.force_login(self.user)
+        for uname in ('AcctUser', 'FoxPanda', 'OwlRaven'):
+            resp = self.client.post(
+                f'/api/chats/AcctHost/{self.chat_room.code}/join/',
+                {'username': uname},
+                content_type='application/json',
+            )
+            self.assertEqual(
+                resp.status_code, status.HTTP_403_FORBIDDEN,
+                f"Expected 403 for '{uname}', got {resp.status_code}",
+            )
+
+    @allure.title("Banned badge only shows on specific banned username")
+    def test_is_banned_badge_scoped_to_blocked_username(self):
+        from chats.models import Message
+
+        # Create messages from each of the three identities
+        Message.objects.create(
+            chat_room=self.chat_room, username='AcctUser', user=self.user, content='hi from reserved',
+        )
+        Message.objects.create(
+            chat_room=self.chat_room, username='FoxPanda', user=self.user, content='hi from fox',
+        )
+        Message.objects.create(
+            chat_room=self.chat_room, username='OwlRaven', user=self.user, content='hi from owl',
+        )
+
+        # Ban the 'FoxPanda' identity
+        self._host_bans_username('FoxPanda')
+
+        # Disable Redis cache for this test to force the DB serialization path
+        with self.settings(REDIS_CACHE_ENABLED=False):
+            self.client.force_login(self.host)
+            resp = self.client.get(
+                f'/api/chats/AcctHost/{self.chat_room.code}/messages/'
+            )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.json()
+        by_username = {m['username']: m['is_banned'] for m in data['messages']}
+        self.assertTrue(by_username.get('FoxPanda'), "FoxPanda should be flagged banned")
+        self.assertFalse(by_username.get('AcctUser', True), "AcctUser must NOT be flagged banned")
+        self.assertFalse(by_username.get('OwlRaven', True), "OwlRaven must NOT be flagged banned")
+
+    @allure.title("Unban lifts enforcement across all identities")
+    def test_unban_lifts_account_level_enforcement(self):
+        from chats.utils.security.blocking import check_if_blocked
+
+        self._host_bans_username('FoxPanda')
+
+        # Host unbans via UnblockUserView
+        self.client.force_login(self.host)
+        resp = self.client.post(
+            f'/api/chats/AcctHost/{self.chat_room.code}/unblock/',
+            {'username': 'FoxPanda'},
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
+
+        # All identities should clear
+        for uname in ('AcctUser', 'FoxPanda', 'OwlRaven'):
+            is_blocked, _ = check_if_blocked(
+                chat_room=self.chat_room,
+                username=uname,
+                user=self.user,
+            )
+            self.assertFalse(is_blocked, f"{uname} should no longer be blocked")
+
+        # Re-join works
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            f'/api/chats/AcctHost/{self.chat_room.code}/join/',
+            {'username': 'AcctUser'},
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    @allure.title("Pure anonymous ban still works without blocked_user")
+    def test_pure_anonymous_ban_has_no_blocked_user(self):
+        from chats.models import ChatParticipation
+        from chats.utils.security.blocking import check_if_blocked
+
+        # Unlinked anon participation
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=None,
+            username='GhostWolf',
+            fingerprint='ghost-fp',
+            ip_address='127.0.0.1',
+            is_anonymous_identity=False,
+        )
+        self._host_bans_username('GhostWolf')
+
+        block = ChatBlock.objects.get(
+            chat_room=self.chat_room, blocked_username='ghostwolf'
+        )
+        self.assertIsNone(block.blocked_user_id, "Pure anon ban must not set blocked_user")
+
+        # The ghost user is blocked by username only
+        is_blocked, _ = check_if_blocked(
+            chat_room=self.chat_room, username='GhostWolf'
+        )
+        self.assertTrue(is_blocked)
+        # Other accounts unaffected
+        is_blocked, _ = check_if_blocked(
+            chat_room=self.chat_room, username='AcctUser', user=self.user,
+        )
+        self.assertFalse(is_blocked)
+
+    @allure.title("Ban in chat C does not affect chat D")
+    def test_cross_chat_isolation(self):
+        from chats.utils.security.blocking import check_if_blocked
+
+        self._host_bans_username('FoxPanda')
+
+        # In other_chat the user is not blocked
+        is_blocked, _ = check_if_blocked(
+            chat_room=self.other_chat, username='AcctUser', user=self.user,
+        )
+        self.assertFalse(is_blocked)
+
+        # Joining the other chat still works
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            f'/api/chats/AcctHost/{self.other_chat.code}/join/',
+            {'username': 'AcctUser'},
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    @allure.title("Blocked users list is privacy-preserving")
+    def test_blocked_users_list_hides_linked_identities(self):
+        # Ban one identity
+        self._host_bans_username('FoxPanda')
+
+        self.client.force_login(self.host)
+        resp = self.client.get(
+            f'/api/chats/AcctHost/{self.chat_room.code}/blocked-users/'
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.json()
+
+        usernames = [row['username'].lower() for row in data['blocked_users']]
+        self.assertIn('foxpanda', usernames)
+        # Must NOT leak the other linked identities
+        self.assertNotIn('acctuser', usernames)
+        self.assertNotIn('owlraven', usernames)
+        self.assertEqual(len(usernames), 1)
+
+        # And 'user_account' must not appear in blocked_identifiers
+        row = data['blocked_users'][0]
+        self.assertNotIn('user_account', row.get('blocked_identifiers', []))
+
+    @allure.title("JWT epoch bumped for every linked identity on ban")
+    def test_jwt_epoch_bumped_for_all_linked_identities(self):
+        from chats.utils.security.auth import ChatSessionValidator
+
+        # Baseline epochs (0 by default)
+        before = {
+            u: ChatSessionValidator.get_epoch(self.chat_room.code, u)
+            for u in ('AcctUser', 'FoxPanda', 'OwlRaven')
+        }
+
+        self._host_bans_username('FoxPanda')
+
+        after = {
+            u: ChatSessionValidator.get_epoch(self.chat_room.code, u)
+            for u in ('AcctUser', 'FoxPanda', 'OwlRaven')
+        }
+        for uname in ('AcctUser', 'FoxPanda', 'OwlRaven'):
+            self.assertGreater(
+                after[uname], before[uname],
+                f"Epoch for linked identity {uname} should have been bumped",
+            )
+
+    @allure.title("Banned user cannot claim a fresh anon identity by logging in")
+    def test_banned_user_cannot_launder_via_post_login_claim(self):
+        from chats.models import ChatParticipation
+
+        # First ban the user via one of their existing identities
+        self._host_bans_username('FoxPanda')
+
+        # Simulate a brand-new anonymous session with a fresh anon participation.
+        # We create the ChatParticipation directly in the DB so the test does
+        # not depend on the full anonymous join pipeline (username validators,
+        # rate limits, etc.).
+        anon_client = Client()
+        # Establish a Django session for the client
+        anon_session = anon_client.session
+        anon_session['_test'] = True
+        anon_session.save()
+        anon_session_key = anon_client.session.session_key
+
+        spark = ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=None,
+            username='SparkWolf',
+            session_key=anon_session_key,
+            fingerprint='spark-fp',
+            ip_address='127.0.0.1',
+            is_anonymous_identity=False,
+        )
+        self.assertIsNone(spark.user_id)
+
+        # Now the banned user logs in on that same session
+        anon_client.force_login(self.user)
+        resp = anon_client.get(
+            f'/api/chats/AcctHost/{self.chat_room.code}/my-participation/'
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.json()
+        self.assertTrue(data.get('is_blocked'), "Banned user must see is_blocked=True")
+
+        # The SparkWolf row must NOT have been claimed by the banned user
+        spark.refresh_from_db()
+        self.assertIsNone(
+            spark.user_id,
+            "Banned user must not be able to claim a fresh anon identity via login",
+        )

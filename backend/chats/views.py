@@ -251,7 +251,8 @@ class ChatRoomDetailView(APIView):
             # Only allow non-host users to see the chat if host has joined
             host_has_joined = ChatParticipation.objects.filter(
                 chat_room=chat_room,
-                user=chat_room.host
+                user=chat_room.host,
+                is_anonymous_identity=False,
             ).exists()
 
             # If host hasn't joined, only allow the host to see the chat
@@ -302,7 +303,8 @@ class ChatRoomJoinView(APIView):
             # Only allow non-host users to join if host has joined first
             host_has_joined = ChatParticipation.objects.filter(
                 chat_room=chat_room,
-                user=chat_room.host
+                user=chat_room.host,
+                is_anonymous_identity=False,
             ).exists()
 
             # If host hasn't joined, only allow the host to join
@@ -343,9 +345,11 @@ class ChatRoomJoinView(APIView):
         # This applies to BOTH anonymous and logged-in users for new participations
         if request.user.is_authenticated:
             # Logged-in user: Check if this is a NEW participation (not rejoining)
+            # Only consider their REGISTERED participation here.
             existing_participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 user=request.user,
+                is_anonymous_identity=False,
                 is_active=True
             ).first()
 
@@ -463,24 +467,25 @@ class ChatRoomJoinView(APIView):
 
         # SECURITY CHECK 2: Check for existing participation (username persistence)
         if request.user.is_authenticated:
-            # Check if this user already joined this chat
+            # Check if this user already joined this chat as their REGISTERED identity
             existing_participation = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 user=request.user,
+                is_anonymous_identity=False,
                 is_active=True
             ).first()
             if existing_participation:
                 # User already joined - they must use the same username
-                # UNLESS they're switching to their own anonymous identity
+                # UNLESS they're switching to one of their own anonymous identities
                 if existing_participation.username != username:
-                    from .models import AnonymousIdentityLink
-                    # Check via permanent link
-                    is_own_anonymous = AnonymousIdentityLink.objects.filter(
-                        user=request.user,
+                    # Check if they own a claimed anonymous identity with this username
+                    is_own_anonymous = ChatParticipation.objects.filter(
                         chat_room=chat_room,
-                        participation__username__iexact=username
+                        user=request.user,
+                        is_anonymous_identity=True,
+                        username__iexact=username,
                     ).exists()
-                    # Fallback: check via session_key
+                    # Fallback: unclaimed anon on the current session
                     if not is_own_anonymous and session_key:
                         is_own_anonymous = ChatParticipation.objects.filter(
                             chat_room=chat_room, session_key=session_key,
@@ -511,20 +516,13 @@ class ChatRoomJoinView(APIView):
         # (excluding the current user/session who may be rejoining)
         # Usernames must be unique per chat room regardless of authentication status
         if request.user.is_authenticated:
-            # Registered user: check for ANY other participant (registered or anonymous)
-            # Exclude their own registered participation and linked anonymous participation
-            from .models import AnonymousIdentityLink as AILink
+            # Registered user: check for ANY other participant (registered or anonymous).
+            # Exclude all participations they own (registered + claimed anonymous).
             qs = ChatParticipation.objects.filter(
                 chat_room=chat_room,
                 username__iexact=username,
             ).exclude(user=request.user)
-            # Exclude their linked anonymous identity
-            linked_participation_ids = AILink.objects.filter(
-                user=request.user, chat_room=chat_room
-            ).values_list('participation_id', flat=True)
-            if linked_participation_ids:
-                qs = qs.exclude(id__in=linked_participation_ids)
-            # Also exclude by session_key
+            # Also exclude unclaimed anon on their current session
             if session_key:
                 qs = qs.exclude(session_key=session_key, user__isnull=True)
             username_taken = qs.exists()
@@ -546,37 +544,52 @@ class ChatRoomJoinView(APIView):
 
         # Create or update ChatParticipation
         if request.user.is_authenticated:
-            # Check if reclaiming anonymous identity (via permanent link or session)
-            anonymous_self = None
-            # Check via permanent link first
-            from .models import AnonymousIdentityLink
-            link = AnonymousIdentityLink.objects.filter(
-                user=request.user,
+            # Check if reclaiming an anonymous identity:
+            #   1. an already-claimed anonymous identity owned by this user, OR
+            #   2. an unclaimed anonymous participation on the current session,
+            #      which we will claim atomically below.
+            anonymous_self = ChatParticipation.objects.filter(
                 chat_room=chat_room,
-                participation__username__iexact=username
-            ).select_related('participation').first()
-            if link:
-                anonymous_self = link.participation
-            # Fallback: check via session_key
-            elif session_key:
+                user=request.user,
+                is_anonymous_identity=True,
+                username__iexact=username,
+            ).first()
+            if not anonymous_self and session_key:
                 anonymous_self = ChatParticipation.objects.filter(
-                    chat_room=chat_room, session_key=session_key,
-                    user__isnull=True, username__iexact=username
+                    chat_room=chat_room,
+                    session_key=session_key,
+                    user__isnull=True,
+                    username__iexact=username,
                 ).first()
 
             if anonymous_self:
-                # Reuse anonymous participation (soft-linking: don't set .user to preserve anonymous identity)
+                # Reuse anonymous participation. Mark it as a claimed
+                # anonymous identity owned by this user (single source of truth).
                 is_anonymous_identity = True
                 participation = anonymous_self
                 participation.ip_address = ip_address
+                participation.user = request.user
+                participation.is_anonymous_identity = True
+                # Before updating session_key, clear it from any OTHER anon
+                # participations in this chat that currently hold the same
+                # (chat_room, session_key) pair — otherwise the unique
+                # constraint will fire. Those other anons remain discoverable
+                # because they are still linked to the user via the FK.
+                if session_key and participation.session_key != session_key:
+                    ChatParticipation.objects.filter(
+                        chat_room=chat_room,
+                        session_key=session_key,
+                        user__isnull=True,
+                    ).exclude(id=participation.id).update(session_key=None)
                 participation.session_key = session_key  # Update session_key
                 participation.save()
                 created = False
             else:
-                # Logged-in user - find/create by user_id
+                # Logged-in user — find/create their REGISTERED participation.
                 participation, created = ChatParticipation.objects.get_or_create(
                     chat_room=chat_room,
                     user=request.user,
+                    is_anonymous_identity=False,
                     defaults={
                         'username': username,
                         'fingerprint': fingerprint,
@@ -616,14 +629,21 @@ class ChatRoomJoinView(APIView):
             if created and not participation.avatar_url:
                 self._generate_avatar_for_participation(participation, chat_room, avatar_seed=avatar_seed)
 
-        # Create or update AnonymousIdentityLink for logged-in users with anonymous identity
-        if request.user.is_authenticated and is_anonymous_identity and participation:
-            from .models import AnonymousIdentityLink
-            AnonymousIdentityLink.objects.update_or_create(
-                user=request.user,
+        # Phase 2d: Also claim any unclaimed orphan anon on the current session
+        # (e.g. user logged in mid-session and joined as their registered identity
+        # — make sure their prior anon participation in this chat gets linked).
+        # Claim is atomic: set user + is_anonymous_identity directly on the row.
+        if request.user.is_authenticated and session_key:
+            orphan_anons = ChatParticipation.objects.filter(
                 chat_room=chat_room,
-                defaults={'participation': participation}
+                session_key=session_key,
+                user__isnull=True,
             )
+            for orphan in orphan_anons:
+                if not participation or orphan.id != participation.id:
+                    orphan.user = request.user
+                    orphan.is_anonymous_identity = True
+                    orphan.save(update_fields=['user', 'is_anonymous_identity'])
 
         # Create JWT session token
         # If user is joining with anonymous identity, exclude user_id from token
@@ -863,6 +883,8 @@ class MessageListView(APIView):
             messages = self._fetch_from_db(chat_room, limit, before_timestamp, request, current_user_id, filter_mode, filter_username, current_session_key)
 
         # Filter blocked users for authenticated users
+        should_show_full = None
+        blocked_usernames = None
         if request.user and request.user.is_authenticated:
             from .utils.performance.cache import UserBlockCache
 
@@ -871,13 +893,42 @@ class MessageListView(APIView):
 
             # Filter messages in Python
             if blocked_usernames:
-                messages = [
-                    msg for msg in messages
-                    if msg.get('username') not in blocked_usernames
-                ]
+                current_username = None
+                participation = ChatParticipation.objects.filter(
+                    chat_room=chat_room, user=request.user, is_anonymous_identity=False
+                ).first()
+                if participation:
+                    current_username = participation.username
+
+                blocked_lower = {u.lower() for u in blocked_usernames}
+                current_lower = (current_username or '').lower()
+
+                def should_show_full(msg):
+                    author = msg.get('username', '') or ''
+                    author_lower = author.lower()
+                    author_blocked = author in blocked_usernames or author_lower in blocked_lower
+                    if author_blocked:
+                        if msg.get('is_broadcast'):
+                            return True
+                        if msg.get('message_type') == 'gift' and (msg.get('gift_recipient') or '').lower() == current_lower:
+                            return True
+                        return False
+                    # Hide gifts TO muted users (unless I'm the sender)
+                    if msg.get('message_type') == 'gift':
+                        recipient = (msg.get('gift_recipient') or '').lower()
+                        if recipient and recipient in blocked_lower:
+                            if author_lower != current_lower:
+                                return False
+                    return True
+
+                messages = [m for m in messages if should_show_full(m)]
 
         # Fetch pinned messages from Redis (pinned messages are ephemeral)
         pinned_messages = MessageCache.get_pinned_messages(chat_room.id)
+
+        # Apply same mute filter to pinned messages
+        if should_show_full is not None:
+            pinned_messages = [m for m in pinned_messages if should_show_full(m)]
 
         return Response({
             'messages': messages,
@@ -1156,7 +1207,8 @@ class MessageCreateView(generics.CreateAPIView):
         session_data = ChatSessionValidator.validate_session_token(
             token=session_token,
             chat_code=code,
-            username=username
+            username=username,
+            request=request,
         )
 
         # NOTE: Ban checks removed from per-message flow for performance.
@@ -1561,7 +1613,7 @@ class MessageBroadcastView(APIView):
             raise PermissionDenied("Session token is required")
 
         session_data = ChatSessionValidator.validate_session_token(
-            token=session_token, chat_code=code
+            token=session_token, chat_code=code, request=request,
         )
 
         # Host-only: verify the session user is the room host
@@ -1681,7 +1733,9 @@ class RefreshSessionView(APIView):
 
 class MyParticipationView(APIView):
     """Get current user's participation in a chat"""
+    from .throttles import MyParticipationRateThrottle
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [MyParticipationRateThrottle]
 
     def get(self, request, code, username=None):
         chat_room = get_chat_room_by_url(code, username)
@@ -1690,45 +1744,72 @@ class MyParticipationView(APIView):
         ip_address = get_client_ip(request)
 
         participation = None
-        anonymous_participation = None
+        anonymous_participations_list = []  # list of ChatParticipation
+
+        # SECURITY (defense-in-depth): Only treat the request as authenticated
+        # if DRF's auth pipeline actually ran a successful authenticator.
+        # This guards against any future bug that might populate request.user
+        # without a real authentication backend (which would otherwise allow
+        # silent leakage of linked anonymous identities).
+        is_truly_authenticated = (
+            request.user.is_authenticated
+            and getattr(request, 'successful_authenticator', None) is not None
+        )
+        if request.user.is_authenticated and not is_truly_authenticated:
+            import logging
+            logging.getLogger(__name__).warning(
+                "MyParticipationView: request.user authenticated but "
+                "successful_authenticator is None — treating as anonymous for safety"
+            )
 
         # Dual sessions: Priority 1 - logged-in user participation
-        if request.user.is_authenticated:
+        if is_truly_authenticated:
+            # Their REGISTERED participation (one and only one).
             participation = ChatParticipation.objects.select_related('theme').filter(
                 chat_room=chat_room,
-                user=request.user
-            ).first()
-            # Find anonymous identity via permanent link (survives logout/login/cookie clearing)
-            from .models import AnonymousIdentityLink
-            link = AnonymousIdentityLink.objects.select_related('participation', 'participation__theme').filter(
                 user=request.user,
-                chat_room=chat_room
+                is_anonymous_identity=False,
             ).first()
-            if link:
-                anonymous_participation = link.participation
-            else:
-                # Fallback 1: check current session (anonymous user just logged in)
-                current_session = request.session.session_key
-                if current_session:
-                    anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
+            # ALL claimed anonymous identities owned by this user in this chat.
+            anonymous_participations_list = list(
+                ChatParticipation.objects.select_related('theme').filter(
+                    chat_room=chat_room,
+                    user=request.user,
+                    is_anonymous_identity=True,
+                ).order_by('first_joined_at')
+            )
+            linked_ids = {p.id for p in anonymous_participations_list}
+
+            # Fallback: check current session (anonymous user just logged in).
+            # Atomically claim by setting user + is_anonymous_identity on the row.
+            # The user__isnull=True filter automatically guards against stealing
+            # an already-claimed identity.
+            current_session = request.session.session_key
+            if current_session:
+                session_anon = ChatParticipation.objects.select_related('theme').filter(
+                    chat_room=chat_room,
+                    session_key=current_session,
+                    user__isnull=True,
+                ).first()
+                if session_anon and session_anon.id not in linked_ids:
+                    # SECURITY: Refuse to claim a session-anon identity if the
+                    # authenticated user is banned from this chat at the account level.
+                    # Otherwise a banned user could launder a new anon identity by
+                    # simply logging in after joining anonymously.
+                    from .utils.security.blocking import check_if_blocked as _pre_check
+                    pre_blocked, _ = _pre_check(
                         chat_room=chat_room,
-                        session_key=current_session,
-                        user__isnull=True
-                    ).first()
-                # Fallback 2: check fingerprint (for pre-migration data where session_key is NULL)
-                if not anonymous_participation and fingerprint:
-                    anonymous_participation = ChatParticipation.objects.select_related('theme').filter(
-                        chat_room=chat_room,
-                        fingerprint=fingerprint,
-                        user__isnull=True
-                    ).first()
-                # Auto-create the permanent link so future lookups don't need fallback
-                if anonymous_participation:
-                    AnonymousIdentityLink.objects.get_or_create(
+                        username=session_anon.username,
                         user=request.user,
-                        chat_room=chat_room,
-                        defaults={'participation': anonymous_participation}
                     )
+                    if not pre_blocked:
+                        session_anon.user = request.user
+                        session_anon.is_anonymous_identity = True
+                        session_anon.save(update_fields=['user', 'is_anonymous_identity'])
+                        anonymous_participations_list.append(session_anon)
+                        linked_ids.add(session_anon.id)
+            # SECURITY: No fingerprint-based identity claim. Fingerprints are forgeable
+            # and used ONLY for ban enforcement, never to claim a participation.
         # Priority 2 - Anonymous user (session_key only, no fingerprint fallback)
         else:
             if session_key:
@@ -1756,7 +1837,7 @@ class MyParticipationView(APIView):
                 username=participation.username,
                 fingerprint=fingerprint,
                 session_key=session_key,
-                user=request.user if request.user.is_authenticated else None,
+                user=request.user if is_truly_authenticated else None,
                 ip_address=ip_address
             )
 
@@ -1770,7 +1851,7 @@ class MyParticipationView(APIView):
             participation.save()  # auto_now updates last_seen_at
 
             # Get seen_intros: global for registered users, per-chat for anonymous
-            if request.user.is_authenticated:
+            if is_truly_authenticated:
                 seen_intros = request.user.seen_intros or {}
             else:
                 seen_intros = participation.seen_intros or {}
@@ -1787,52 +1868,46 @@ class MyParticipationView(APIView):
                 'seen_intros': seen_intros
             }
 
-            # Include anonymous participation info if both exist (for identity chooser)
-            if anonymous_participation and anonymous_participation != participation:
-                response_data['anonymous_participation'] = {
-                    'username': anonymous_participation.username,
-                    'avatar_url': anonymous_participation.avatar_url,
-                    'first_joined_at': anonymous_participation.first_joined_at,
-                }
+            # Include anonymous participations info if any exist (for identity chooser)
+            extra_anons = [p for p in anonymous_participations_list if p.id != participation.id]
+            if extra_anons:
+                anon_list_payload = [{
+                    'username': p.username,
+                    'avatar_url': p.avatar_url,
+                    'first_joined_at': p.first_joined_at,
+                    'participation_id': str(p.id),
+                } for p in extra_anons]
+                response_data['anonymous_participations'] = anon_list_payload
+                # Backwards-compat singular field
+                response_data['anonymous_participation'] = anon_list_payload[0]
 
             return Response(response_data)
 
-        # Authenticated user with only anonymous participation (logged in after joining anonymously)
-        if anonymous_participation:
-            # Check if user is blocked
+        # Authenticated user with only anonymous participation(s) (logged in after joining anonymously)
+        if anonymous_participations_list:
             from .utils.security.blocking import check_if_blocked
             is_blocked, _ = check_if_blocked(
                 chat_room=chat_room,
-                username=anonymous_participation.username,
+                username=None,
                 fingerprint=fingerprint,
                 user=request.user,
                 ip_address=ip_address
             )
-
-            # Serialize theme if present
-            theme_data = None
-            if anonymous_participation.theme:
-                from .serializers import ChatThemeSerializer
-                theme_data = ChatThemeSerializer(anonymous_participation.theme).data
-
             seen_intros = request.user.seen_intros or {}
+            anon_list_payload = [{
+                'username': p.username,
+                'avatar_url': p.avatar_url,
+                'first_joined_at': p.first_joined_at,
+                'participation_id': str(p.id),
+            } for p in anonymous_participations_list]
 
             return Response({
-                'has_joined': True,
-                'is_anonymous_identity': True,
-                'username': anonymous_participation.username,
-                'username_is_reserved': False,
-                'avatar_url': anonymous_participation.avatar_url,
-                'first_joined_at': anonymous_participation.first_joined_at,
-                'last_seen_at': anonymous_participation.last_seen_at,
-                'theme': theme_data,
+                'has_joined': False,
                 'is_blocked': is_blocked,
                 'seen_intros': seen_intros,
-                'anonymous_participation': {
-                    'username': anonymous_participation.username,
-                    'avatar_url': anonymous_participation.avatar_url,
-                    'first_joined_at': anonymous_participation.first_joined_at,
-                }
+                'anonymous_participations': anon_list_payload,
+                # Backwards-compat singular field
+                'anonymous_participation': anon_list_payload[0],
             })
 
         # No participation found - check if first-time visitor is blocked
@@ -1842,7 +1917,7 @@ class MyParticipationView(APIView):
             chat_room=chat_room,
             username=None,  # No username yet (they haven't joined)
             fingerprint=fingerprint,
-            user=request.user if request.user.is_authenticated else None,
+            user=request.user if is_truly_authenticated else None,
             ip_address=ip_address
         )
 
@@ -1922,6 +1997,7 @@ class UpdateMyThemeView(APIView):
             participation = ChatParticipation.objects.select_related('theme').filter(
                 chat_room=chat_room,
                 user=request.user,
+                is_anonymous_identity=False,
                 is_active=True
             ).first()
         else:
@@ -2303,7 +2379,8 @@ class MessageReactionToggleView(APIView):
             session_data = ChatSessionValidator.validate_session_token(
                 token=session_token,
                 chat_code=code,
-                username=username
+                username=username,
+                request=request,
             )
         except Exception as e:
             raise
@@ -2482,7 +2559,7 @@ class VoiceUploadView(APIView):
             }, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
-            session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+            session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code, request=request)
         except PermissionDenied:
             return Response({
                 'error': 'Invalid session token'
@@ -2832,7 +2909,7 @@ class PhotoUploadView(APIView):
             }, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
-            session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+            session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code, request=request)
         except PermissionDenied:
             return Response({
                 'error': 'Invalid session token'
@@ -2973,7 +3050,7 @@ class VideoUploadView(APIView):
             }, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
-            session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+            session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code, request=request)
         except PermissionDenied:
             return Response({
                 'error': 'Invalid session token'
@@ -3129,7 +3206,8 @@ class BlockUserView(APIView):
         try:
             session_data = ChatSessionValidator.validate_session_token(
                 token=session_token,
-                chat_code=code
+                chat_code=code,
+                request=request,
             )
             logger.info(f"[BLOCK] Session validated: {session_data}")
         except Exception as e:
@@ -3156,12 +3234,8 @@ class BlockUserView(APIView):
                     session_key=session_key,
                     user__isnull=True
                 ).first()
-            if not host_participation and session_data.get('fingerprint'):
-                host_participation = ChatParticipation.objects.filter(
-                    chat_room=chat_room,
-                    fingerprint=session_data.get('fingerprint'),
-                    user__isnull=True
-                ).first()
+            # SECURITY: No fingerprint fallback for identity lookup. Fingerprints are
+            # forgeable and only used for ban enforcement.
 
         logger.info(f"[BLOCK] Host participation found: {host_participation}")
         if not host_participation:
@@ -3222,6 +3296,25 @@ class BlockUserView(APIView):
             )
             logger.info(f"[BLOCK] block_participation succeeded, created consolidated block with ID: {block_created.id}")
 
+            # SECURITY: Revoke all outstanding JWT tokens for this user in this chat.
+            # For account-level bans, bump epoch for EVERY linked identity (reserved + anon)
+            # so the user cannot continue posting under any of their other identities.
+            try:
+                ChatSessionValidator.bump_epoch(chat_room.code, participation.username)
+                if block_created.blocked_user_id:
+                    linked_usernames = ChatParticipation.objects.filter(
+                        chat_room=chat_room,
+                        user_id=block_created.blocked_user_id,
+                    ).values_list('username', flat=True)
+                    for linked_username in linked_usernames:
+                        if linked_username and linked_username != participation.username:
+                            try:
+                                ChatSessionValidator.bump_epoch(chat_room.code, linked_username)
+                            except Exception as e:
+                                logger.warning(f"[BLOCK] Failed to bump JWT epoch for linked identity {linked_username}: {e}")
+            except Exception as e:
+                logger.warning(f"[BLOCK] Failed to bump JWT epoch: {e}")
+
             # Determine which identifiers were blocked
             blocked_identifiers = []
             if block_created.blocked_username:
@@ -3248,15 +3341,27 @@ class BlockUserView(APIView):
             channel_layer = get_channel_layer()
             room_group_name = f'chat_{chat_room.code}'
 
-            # Send eviction event to the kicked user
-            async_to_sync(channel_layer.group_send)(
-                room_group_name,
-                {
-                    'type': 'user_kicked',
-                    'username': participation.username,
-                    'message': 'You have been removed from this chat by the host.',
-                }
-            )
+            # Determine all usernames to kick (account-level ban cascades to linked identities)
+            usernames_to_kick = [participation.username]
+            if block_created.blocked_user_id:
+                linked_usernames = list(ChatParticipation.objects.filter(
+                    chat_room=chat_room,
+                    user_id=block_created.blocked_user_id,
+                ).values_list('username', flat=True))
+                for linked_username in linked_usernames:
+                    if linked_username and linked_username not in usernames_to_kick:
+                        usernames_to_kick.append(linked_username)
+
+            # Send eviction events to each banned identity
+            for kick_username in usernames_to_kick:
+                async_to_sync(channel_layer.group_send)(
+                    room_group_name,
+                    {
+                        'type': 'user_kicked',
+                        'username': kick_username,
+                        'message': 'You have been removed from this chat by the host.',
+                    }
+                )
 
             # Notify all clients that this user is now banned (for badge updates)
             async_to_sync(channel_layer.group_send)(
@@ -3371,6 +3476,42 @@ class BlockedUsersListView(APIView):
         })
 
 
+class MutedUsersInChatView(APIView):
+    """Get list of users the current user has muted that participate in this chat."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, code, username=None):
+        from .models import UserBlock
+        from .utils.performance.cache import UserBlockCache
+
+        chat_room = get_chat_room_by_url(code, username)
+        blocked_usernames = UserBlockCache.get_blocked_usernames(request.user.id)
+
+        if not blocked_usernames:
+            return Response({'muted_users': [], 'count': 0})
+
+        participants = set(ChatParticipation.objects.filter(
+            chat_room=chat_room,
+            username__in=blocked_usernames
+        ).values_list('username', flat=True))
+
+        if not participants:
+            return Response({'muted_users': [], 'count': 0})
+
+        blocks = UserBlock.objects.filter(
+            blocker=request.user,
+            blocked_username__in=participants
+        ).order_by('-created_at')
+
+        return Response({
+            'muted_users': [
+                {'username': b.blocked_username, 'muted_at': b.created_at.isoformat()}
+                for b in blocks
+            ],
+            'count': blocks.count()
+        })
+
+
 class MessageDeleteView(APIView):
     """Soft delete a message (host only)"""
     permission_classes = [permissions.AllowAny]
@@ -3394,7 +3535,8 @@ class MessageDeleteView(APIView):
         try:
             session_data = ChatSessionValidator.validate_session_token(
                 token=session_token,
-                chat_code=code
+                chat_code=code,
+                request=request,
             )
             logger.info(f"[MESSAGE_DELETE] Session validated: {session_data}")
         except Exception as e:
@@ -4420,6 +4562,19 @@ class AdminSiteBanCreateView(APIView):
 
         logger.info(f"[ADMIN_BAN] Staff {request.user.username} created site ban {ban.id}")
 
+        # SECURITY: Bump JWT epoch for ALL active chat participations for this user
+        # so all outstanding JWT tokens (across every chat) become invalid.
+        if banned_user:
+            try:
+                from .utils.security.auth import ChatSessionValidator
+                participations = ChatParticipation.objects.filter(
+                    user=banned_user, is_active=True
+                ).values_list('chat_room__code', 'username').distinct()
+                for chat_code, p_username in participations:
+                    ChatSessionValidator.bump_epoch(chat_code, p_username)
+            except Exception as e:
+                logger.warning(f"[ADMIN_BAN] Failed to bump JWT epochs: {e}")
+
         # If banning a registered user, kick them from all active WebSocket connections
         if banned_user:
             from channels.layers import get_channel_layer
@@ -4538,6 +4693,13 @@ class AdminChatBanCreateView(APIView):
 
             logger.info(f"[ADMIN_CHAT_BAN] Created ChatBlock {block.id} for {participation.username}")
 
+            # SECURITY: Revoke all outstanding JWT tokens for this user in this chat
+            try:
+                from .utils.security.auth import ChatSessionValidator
+                ChatSessionValidator.bump_epoch(chat_room.code, participation.username)
+            except Exception as e:
+                logger.warning(f"[ADMIN_CHAT_BAN] Failed to bump JWT epoch: {e}")
+
             # Kick user via WebSocket
             from channels.layers import get_channel_layer
             from asgiref.sync import async_to_sync
@@ -4610,7 +4772,7 @@ class SendGiftView(APIView):
             raise PermissionDenied("Session token is required")
 
         session_data = ChatSessionValidator.validate_session_token(
-            token=session_token, chat_code=code
+            token=session_token, chat_code=code, request=request,
         )
         sender_username = session_data['username']
         sender_user_id = session_data.get('user_id')
@@ -4768,7 +4930,7 @@ class AcknowledgeGiftView(APIView):
             raise PermissionDenied("Session token is required")
 
         session_data = ChatSessionValidator.validate_session_token(
-            token=session_token, chat_code=code
+            token=session_token, chat_code=code, request=request,
         )
         current_username = session_data['username']
 

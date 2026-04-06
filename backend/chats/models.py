@@ -435,6 +435,20 @@ class ChatParticipation(models.Model):
     # IP address tracking
     ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Last known IP address")
 
+    # True if this participation is a registered user's claimed anonymous
+    # identity (user is set, but the username is NOT their reserved_username).
+    # A registered user may have at most one non-anonymous participation per
+    # chat (their primary registered identity) plus N anonymous identities.
+    is_anonymous_identity = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=(
+            "True if this participation is a registered user's claimed "
+            "anonymous identity (user is set but username is not their "
+            "reserved_username)"
+        ),
+    )
+
     # Timestamps
     first_joined_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now=True)
@@ -443,10 +457,18 @@ class ChatParticipation(models.Model):
     class Meta:
         ordering = ['-last_seen_at']
         constraints = [
+            # Only ONE registered (non-anonymous) participation per user per chat.
             models.UniqueConstraint(
                 fields=['chat_room', 'user'],
+                condition=models.Q(user__isnull=False, is_anonymous_identity=False),
+                name='unique_chat_user_registered'
+            ),
+            # A user may have multiple anonymous identities per chat, but each
+            # (user, username) pair must be unique to prevent duplicates.
+            models.UniqueConstraint(
+                fields=['chat_room', 'user', 'username'],
                 condition=models.Q(user__isnull=False),
-                name='unique_chat_user'
+                name='unique_chat_user_username'
             ),
             # Note: unique_chat_fingerprint removed — fingerprints can collide across
             # different sessions, and session_key is now the primary anonymous identifier
@@ -467,43 +489,6 @@ class ChatParticipation(models.Model):
     def __str__(self):
         identifier = f"User {self.user_id}" if self.user else f"Session {self.session_key[:8]}..." if self.session_key else f"Fingerprint {self.fingerprint[:8]}..."
         return f"{self.username} ({identifier}) in {self.chat_room.code}"
-
-
-class AnonymousIdentityLink(models.Model):
-    """Permanent link between a registered user and their anonymous participation in a chat.
-    Survives logout, login, cookie clearing, and device switching.
-    One anonymous identity per user per chat room."""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='anonymous_identity_links',
-        help_text="The registered user who owns this anonymous identity"
-    )
-    chat_room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='anonymous_identity_links')
-    participation = models.ForeignKey(
-        'ChatParticipation',
-        on_delete=models.CASCADE,
-        related_name='identity_link',
-        help_text="The anonymous ChatParticipation this user owns"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = 'Anonymous Identity Link'
-        verbose_name_plural = 'Anonymous Identity Links'
-        constraints = [
-            models.UniqueConstraint(
-                fields=['user', 'chat_room'],
-                name='unique_user_chat_anonymous_link'
-            ),
-        ]
-        indexes = [
-            models.Index(fields=['user', 'chat_room']),
-        ]
-
-    def __str__(self):
-        return f"{self.user.username} → {self.participation.username} in {self.chat_room.code}"
 
 
 class MessageReaction(models.Model):

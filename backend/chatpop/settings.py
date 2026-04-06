@@ -223,6 +223,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_RATES": {
+        "my_participation": "60/min",
+    },
 }
 
 # API Documentation
@@ -336,6 +339,13 @@ CONSTANCE_CONFIG = {
     'USERNAME_ANONYMOUS_DICE_HOLD_TTL_MINUTES': (
         5,
         'How long dice-generated usernames are held when an ANONYMOUS user joins a chat (minutes). Covers time spent browsing avatars and reading the join page.',
+        int
+    ),
+
+    # MyParticipationView Rate Limit
+    'MY_PARTICIPATION_RATE_LIMIT_PER_MINUTE': (
+        60,
+        'Max requests per minute to MyParticipationView per user/session/IP. Prevents abuse of the participation lookup endpoint.',
         int
     ),
 

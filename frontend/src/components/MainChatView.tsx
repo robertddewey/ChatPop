@@ -241,6 +241,9 @@ interface MainChatViewProps {
   handlePinOther?: (messageId: string) => void;
   handleBlockUser: (username: string) => void;
   handleUnblockUser: (username: string) => void;
+  handleUnmuteUser?: (username: string) => void;
+  mutedUsernames?: Set<string>;
+  onRequestSignup?: () => void;
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
@@ -286,6 +289,9 @@ function MainChatView({
   handlePinOther,
   handleBlockUser,
   handleUnblockUser,
+  handleUnmuteUser,
+  mutedUsernames,
+  onRequestSignup,
   handleTipUser,
   handleSendGift,
   handleThankGift,
@@ -451,6 +457,9 @@ function MainChatView({
         getPinRequirements={getPinRequirements}
         handleBlockUser={handleBlockUser}
         handleUnblockUser={handleUnblockUser}
+        handleUnmuteUser={handleUnmuteUser}
+        mutedUsernames={mutedUsernames}
+        onRequestSignup={onRequestSignup}
         handleTipUser={handleTipUser}
         handleSendGift={handleSendGift}
         handleThankGift={handleThankGift}
@@ -643,6 +652,9 @@ function MainChatView({
                   getPinRequirements={getPinRequirements}
                   onBlock={handleBlockUser}
                   onUnblock={handleUnblockUser}
+                  onUnmute={handleUnmuteUser}
+                  mutedUsernames={mutedUsernames}
+                  onRequestSignup={onRequestSignup}
                   onTip={handleTipUser}
                   onSendGift={handleSendGift}
                   onThankGift={handleThankGift}

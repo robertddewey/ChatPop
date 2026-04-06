@@ -1,8 +1,3 @@
-System check identified some issues:
-
-WARNINGS:
-?: (staticfiles.W004) The directory '/Users/robertdewey/GitProjects/ChatPop/backend/static' in the STATICFILES_DIRS setting does not exist.
-[info] Loaded allowlists: 7142 tokens, 16 substrings
 [
 {
   "model": "constance.constance",
@@ -474,6 +469,14 @@ WARNINGS:
   "fields": {
     "key": "LOCATION_ANALYSIS_SESSION_LIMIT_PER_HOUR",
     "value": "{\"__type__\": \"default\", \"__value__\": 10}"
+  }
+},
+{
+  "model": "constance.constance",
+  "pk": 131,
+  "fields": {
+    "key": "MY_PARTICIPATION_RATE_LIMIT_PER_MINUTE",
+    "value": "{\"__type__\": \"default\", \"__value__\": 60}"
   }
 }
 ]
