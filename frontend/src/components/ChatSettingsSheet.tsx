@@ -601,8 +601,8 @@ export default function ChatSettingsSheet({
             </div>
           </div>
 
-          {/* Muted Users navigation (any logged-in user) */}
-          {isLoggedIn && (
+          {/* Muted Users navigation (logged-in non-host users only — hosts ban, not mute) */}
+          {isLoggedIn && !isHost && (
             <div className={`pt-4 border-t ${styles.border}`}>
               <button
                 onClick={() => setSubPage('muted')}
