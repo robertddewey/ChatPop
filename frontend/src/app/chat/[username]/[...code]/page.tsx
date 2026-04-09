@@ -492,14 +492,20 @@ export default function ChatPage() {
       expandedStickyHeightRef.current = stickyHeight;
     }
   }, [stickyHeight, stickyIsHidden]);
-  // Compute FAB top: use remembered expanded height when expanding to avoid intermediate jump
-  // Collapsed sticky is ~31px tall; expanded is ~87px. Always add 8px gap.
+  // FAB strip positioning — Android perf:
+  // Instead of animating the `top` CSS property (which triggers layout on every frame
+  // and was laggy on Android Chrome), we keep `top` anchored at the EXPANDED position
+  // and apply a GPU-composited transform: translateY(-offset) when the sticky is
+  // collapsed. Transform animations are the only reliable fast path on Blink.
+  // `top` still updates when sticky content changes size (new pin etc.) but those
+  // transitions aren't animated — content-change jumps are rare and acceptable.
   const COLLAPSED_STICKY_HEIGHT = 31;
-  const fabTop = stickyHeight > 0
-    ? (stickyIsHidden
-        ? COLLAPSED_STICKY_HEIGHT + 8
-        : (stickyHeight > 40 ? stickyHeight + 8 : (expandedStickyHeightRef.current || stickyHeight) + 8))
+  const fabTopExpanded = stickyHeight > 0
+    ? (stickyHeight > 40 ? stickyHeight + 8 : (expandedStickyHeightRef.current || stickyHeight) + 8)
     : 8;
+  const fabCollapseOffset = stickyHeight > 0
+    ? Math.max(0, fabTopExpanded - (COLLAPSED_STICKY_HEIGHT + 8))
+    : 0;
   const stickyZeroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleStickyHeightChange = useCallback((height: number) => {
     if (stickyZeroTimerRef.current) {
@@ -2747,9 +2753,11 @@ export default function ChatPage() {
             className="absolute right-0 z-50"
             onTouchStart={() => { (document.activeElement as HTMLElement)?.blur(); }}
             style={{
-              top: `${fabTop}px`,
+              top: `${fabTopExpanded}px`,
               bottom: '8px',
-              transition: 'top 200ms ease-out',
+              transform: stickyIsHidden ? `translateY(-${fabCollapseOffset}px)` : 'translateY(0)',
+              transition: 'transform 200ms ease-out',
+              willChange: 'transform',
             }}
           >
             {/* Top fade — matches page background, icons dissolve into it */}

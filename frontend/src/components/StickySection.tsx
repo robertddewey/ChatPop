@@ -234,12 +234,11 @@ function StickySection({
 
   // Mark a toggle in progress — blocks ResizeObserver and scroll compensation for 220ms.
   //
-  // Note: `nextHidden` is the target state. We update the effective stickyHeight at
-  // different times depending on the direction:
-  //   - Expanding (nextHidden=false): set stickyHeight to the full outer height
-  //     IMMEDIATELY so the messages area reserves space before the sticky slides down.
-  //   - Collapsing (nextHidden=true): wait for the 200ms transform animation to finish,
-  //     then snap stickyHeight to the chevron-only height so messages shift up.
+  // Both collapse and expand defer the `setStickyHeight` update until the animation
+  // finishes (at the 220ms timer), so the parent's scroll-compensation useLayoutEffect
+  // fires in the same render as the padding-top change. If we update stickyHeight
+  // synchronously with the click, stickyToggleRef is still true during the subsequent
+  // layout effect and scroll compensation is skipped, causing messages to visibly jump.
   const markStickyToggle = (nextHidden: boolean) => {
     stickyToggleRef.current = true;
     cancelScrollAnimation?.();
@@ -254,22 +253,19 @@ function StickySection({
     const el = stickySectionRef.current;
     const contentEl = stickyContentWrapperRef.current;
     const fullOuter = el?.offsetHeight ?? 0;
-    const innerH = contentEl?.offsetHeight ?? 0;
-    // Chevron strip height = outer minus the content area (plus padding).
-    const collapsedH = Math.max(0, fullOuter - innerH);
-
-    if (!nextHidden) {
-      // Expanding: reserve full space immediately.
-      setStickyHeight(fullOuter);
-    }
+    // Inner's bottom edge relative to outer = offsetTop + offsetHeight.
+    // This includes the outer's top padding, so translateY by this amount
+    // fully clears the content off-screen above the sticky.
+    const innerBottom = contentEl
+      ? contentEl.offsetTop + contentEl.offsetHeight
+      : 0;
+    // Chevron strip height = whatever is below the inner content inside the outer.
+    const collapsedH = Math.max(0, fullOuter - innerBottom);
 
     if (stickyToggleTimerRef.current) clearTimeout(stickyToggleTimerRef.current);
     stickyToggleTimerRef.current = setTimeout(() => {
       stickyToggleRef.current = false;
-      if (nextHidden) {
-        // Collapsing: messages reclaim space after the transform animation finishes.
-        setStickyHeight(collapsedH);
-      }
+      setStickyHeight(nextHidden ? collapsedH : fullOuter);
     }, 220);
   };
 
@@ -286,8 +282,13 @@ function StickySection({
     stickyHiddenRef.current = stickyHidden;
   }, [stickyHidden]);
 
-  // Notify parent when stickyHidden changes (for FAB strip animation)
-  useEffect(() => {
+  // Notify parent when stickyHidden changes (for FAB strip animation).
+  // useLayoutEffect (not useEffect) so the parent's state flip is flushed in the
+  // same render tick as the child's transform update — otherwise the FAB
+  // transition starts one frame after the sticky transition, causing visible
+  // lag on Android Chrome where the gap shows as "sticky appears/disappears
+  // before the FAB catches up."
+  useLayoutEffect(() => {
     onStickyHiddenChange?.(stickyHidden);
   }, [stickyHidden, onStickyHiddenChange]);
 
@@ -334,8 +335,10 @@ function StickySection({
     }
 
     const outerH = stickyEl.offsetHeight;
-    const innerH = contentEl.offsetHeight;
-    setAnimatedContentHeight(innerH);
+    // Inner's bottom edge relative to outer — includes outer top padding,
+    // so transforming by this amount fully hides the content off-screen.
+    const innerBottom = contentEl.offsetTop + contentEl.offsetHeight;
+    setAnimatedContentHeight(innerBottom);
     if (!stickyHiddenRef.current) {
       setStickyHeight(outerH);
     }
@@ -343,8 +346,8 @@ function StickySection({
     const resizeObserver = new ResizeObserver(() => {
       if (stickyToggleRef.current) return;
       const nextOuter = stickyEl.offsetHeight;
-      const nextInner = contentEl.offsetHeight;
-      setAnimatedContentHeight(nextInner);
+      const nextInnerBottom = contentEl.offsetTop + contentEl.offsetHeight;
+      setAnimatedContentHeight(nextInnerBottom);
       if (!stickyHiddenRef.current) {
         setStickyHeight(nextOuter);
       }
@@ -406,7 +409,7 @@ function StickySection({
     <div
       ref={stickySectionRef}
       data-sticky-section
-      className={`${currentDesign.stickySection} ${stickyHidden ? '!pt-0' : ''}`}
+      className={currentDesign.stickySection}
       style={{
         // Transform-based collapse: slide the ENTIRE sticky bar up by the content's
         // height when hidden. Because the sticky is position:absolute, transform has
