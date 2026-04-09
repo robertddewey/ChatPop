@@ -2755,7 +2755,11 @@ export default function ChatPage() {
             style={{
               top: `${fabTopExpanded}px`,
               bottom: '8px',
-              transform: stickyIsHidden ? `translateY(-${fabCollapseOffset}px)` : 'translateY(0)',
+              // translate3d forces GPU layer pre-allocation on Android Chrome so the
+              // transition starts instantly instead of waiting for layer promotion.
+              transform: stickyIsHidden
+                ? `translate3d(0, -${fabCollapseOffset}px, 0)`
+                : 'translate3d(0, 0, 0)',
               transition: 'transform 200ms ease-out',
               willChange: 'transform',
             }}

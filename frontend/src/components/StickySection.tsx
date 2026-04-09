@@ -239,6 +239,10 @@ function StickySection({
   // fires in the same render as the padding-top change. If we update stickyHeight
   // synchronously with the click, stickyToggleRef is still true during the subsequent
   // layout effect and scroll compensation is skipped, causing messages to visibly jump.
+  //
+  // Perf: defer layout reads (offsetHeight/offsetTop) into the setTimeout callback
+  // so the touch/click handler does only one forced-layout read (scrollHeight) before
+  // yielding to React. Less synchronous work = faster animation start on Android Chrome.
   const markStickyToggle = (nextHidden: boolean) => {
     stickyToggleRef.current = true;
     cancelScrollAnimation?.();
@@ -250,21 +254,16 @@ function StickySection({
     }
     pendingToggleRef.current = true;
 
-    const el = stickySectionRef.current;
-    const contentEl = stickyContentWrapperRef.current;
-    const fullOuter = el?.offsetHeight ?? 0;
-    // Inner's bottom edge relative to outer = offsetTop + offsetHeight.
-    // This includes the outer's top padding, so translateY by this amount
-    // fully clears the content off-screen above the sticky.
-    const innerBottom = contentEl
-      ? contentEl.offsetTop + contentEl.offsetHeight
-      : 0;
-    // Chevron strip height = whatever is below the inner content inside the outer.
-    const collapsedH = Math.max(0, fullOuter - innerBottom);
-
     if (stickyToggleTimerRef.current) clearTimeout(stickyToggleTimerRef.current);
     stickyToggleTimerRef.current = setTimeout(() => {
       stickyToggleRef.current = false;
+      const el = stickySectionRef.current;
+      const contentEl = stickyContentWrapperRef.current;
+      const fullOuter = el?.offsetHeight ?? 0;
+      const innerBottom = contentEl
+        ? contentEl.offsetTop + contentEl.offsetHeight
+        : 0;
+      const collapsedH = Math.max(0, fullOuter - innerBottom);
       setStickyHeight(nextHidden ? collapsedH : fullOuter);
     }, 220);
   };
@@ -419,9 +418,22 @@ function StickySection({
         // iOS Safari was fine with grid-rows; Android Chrome was slow because the
         // semi-transparent bar over the messages forced per-frame re-composite.
         // Transform-only animations are the only reliable fast path on Blink.
-        transform: stickyHidden ? `translateY(-${animatedContentHeight}px)` : 'translateY(0)',
+        // Using translate3d (not translateY) forces Android Chrome to pre-allocate
+        // a GPU compositing layer for this element, so the animation starts the
+        // instant the transform value changes instead of waiting for layer promotion.
+        transform: stickyHidden
+          ? `translate3d(0, -${animatedContentHeight}px, 0)`
+          : 'translate3d(0, 0, 0)',
         transition: 'transform 200ms ease-out',
         willChange: 'transform',
+        // touch-action: none tells iOS Safari to skip its scroll-vs-tap gesture
+        // disambiguation pass and route every touch on this element directly to
+        // our handlers. Without this, touches near the bottom border of the sticky
+        // caused iOS to speculatively begin scrolling the messages area below,
+        // then roll it back when our swipe handler fired — producing a visible
+        // jitter. Trade-off: users can't initiate a message-area scroll by
+        // touching the sticky first, but that's a rare interaction.
+        touchAction: 'none',
         ...(stickyHidden ? { backgroundColor: currentDesign.stickyCollapsedBg || '#18181b' } : {}),
       }}
       onTouchStart={(e) => {
