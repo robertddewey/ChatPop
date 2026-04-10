@@ -866,6 +866,19 @@ export const messageApi = {
     return response.data;
   },
 
+  unpinMessage: async (code: string, messageId: string, roomUsername?: string): Promise<{
+    success: boolean;
+    message: string;
+    message_id: string;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/unpin/`, {
+      session_token: sessionToken,
+    });
+    return response.data;
+  },
+
   // User-to-User Blocking (registered users only, site-wide)
   blockUserSiteWide: async (username: string): Promise<{
     success: boolean;

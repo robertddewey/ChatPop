@@ -16,7 +16,8 @@ interface UseChatWebSocketOptions {
   onUserKicked?: (message: string) => void;
   onBanStatusChanged?: (username: string, isBanned: boolean) => void;
   onReaction?: (data: ReactionEventData) => void;
-  onMessageDeleted?: (messageId: string) => void;
+  onMessageDeleted?: (messageId: string, pinnedMessages: Message[]) => void;
+  onMessageUnpinned?: (messageId: string, pinnedMessages: Message[]) => void;
   onMessagePinned?: (message: Message, isTopPin: boolean) => void;
   onMessageBroadcast?: (message: Message, isBroadcast: boolean) => void;
   onGiftReceived?: (gift: GiftNotification) => void;
@@ -38,6 +39,7 @@ export function useChatWebSocket({
   onBanStatusChanged,
   onReaction,
   onMessageDeleted,
+  onMessageUnpinned,
   onMessagePinned,
   onMessageBroadcast,
   onGiftReceived,
@@ -64,6 +66,7 @@ export function useChatWebSocket({
   const onBanStatusChangedRef = useRef(onBanStatusChanged);
   const onReactionRef = useRef(onReaction);
   const onMessageDeletedRef = useRef(onMessageDeleted);
+  const onMessageUnpinnedRef = useRef(onMessageUnpinned);
   const onMessagePinnedRef = useRef(onMessagePinned);
   const onMessageBroadcastRef = useRef(onMessageBroadcast);
   const onGiftReceivedRef = useRef(onGiftReceived);
@@ -81,6 +84,7 @@ export function useChatWebSocket({
   useEffect(() => { onBanStatusChangedRef.current = onBanStatusChanged; }, [onBanStatusChanged]);
   useEffect(() => { onReactionRef.current = onReaction; }, [onReaction]);
   useEffect(() => { onMessageDeletedRef.current = onMessageDeleted; }, [onMessageDeleted]);
+  useEffect(() => { onMessageUnpinnedRef.current = onMessageUnpinned; }, [onMessageUnpinned]);
   useEffect(() => { onMessagePinnedRef.current = onMessagePinned; }, [onMessagePinned]);
   useEffect(() => { onMessageBroadcastRef.current = onMessageBroadcast; }, [onMessageBroadcast]);
   useEffect(() => { onGiftReceivedRef.current = onGiftReceived; }, [onGiftReceived]);
@@ -166,7 +170,16 @@ export function useChatWebSocket({
         if (data.type === 'message_deleted') {
           console.log('[WebSocket] Message deleted event received:', data.message_id);
           if (onMessageDeletedRef.current) {
-            onMessageDeletedRef.current(data.message_id);
+            onMessageDeletedRef.current(data.message_id, data.pinned_messages || []);
+          }
+          return;
+        }
+
+        // Handle message unpinned events
+        if (data.type === 'message_unpinned') {
+          console.log('[WebSocket] Message unpinned event received:', data.message_id);
+          if (onMessageUnpinnedRef.current) {
+            onMessageUnpinnedRef.current(data.message_id, data.pinned_messages || []);
           }
           return;
         }

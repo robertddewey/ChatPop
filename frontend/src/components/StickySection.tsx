@@ -171,6 +171,7 @@ interface StickySectionProps {
   handleThankGift: (messageId: string) => Promise<boolean>;
   handleBroadcastMessage: (messageId: string) => Promise<boolean>;
   handleDeleteMessage: (messageId: string) => void;
+  handleUnpinMessage?: (messageId: string) => void;
   handleReactionToggle: (messageId: string, emoji: string) => void;
 }
 
@@ -209,6 +210,7 @@ function StickySection({
   handleThankGift,
   handleBroadcastMessage,
   handleDeleteMessage,
+  handleUnpinMessage,
   handleReactionToggle,
   stickyToggleRef,
   pendingToggleRef,
@@ -490,6 +492,7 @@ function StickySection({
               onThankGift={handleThankGift}
               onBroadcast={handleBroadcastMessage}
               onDelete={handleDeleteMessage}
+              onUnpin={handleUnpinMessage}
               onReact={handleReactionToggle}
               onHighlight={highlightMessage}
               reactions={messageReactions[message.id] || message.reactions || []}
@@ -610,6 +613,7 @@ function StickySection({
               onThankGift={handleThankGift}
               onBroadcast={handleBroadcastMessage}
               onDelete={handleDeleteMessage}
+              onUnpin={handleUnpinMessage}
               onReact={handleReactionToggle}
               onHighlight={highlightMessage}
               reactions={messageReactions[stickyPinnedMessage.id] || stickyPinnedMessage.reactions || []}

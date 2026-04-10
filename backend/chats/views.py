@@ -1387,6 +1387,22 @@ class MessagePinView(APIView):
         chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
 
+        # Block pinning banned users' messages
+        from django.utils import timezone as tz
+        active_ban = ChatBlock.objects.filter(
+            chat_room=chat_room,
+        ).filter(
+            Q(blocked_username__iexact=message.username) |
+            Q(blocked_user=message.user) if message.user_id else Q(blocked_username__iexact=message.username)
+        ).filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
+        ).exists()
+        if active_ban:
+            return Response(
+                {'error': 'Cannot pin a message from a banned user'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         now = timezone.now()
 
         serializer = MessagePinSerializer(data=request.data)
@@ -1533,6 +1549,22 @@ class AddToPinView(APIView):
         """Add value and time to an existing pinned message."""
         chat_room = get_chat_room_by_url(code, username)
         message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
+
+        # Block adding to pins on banned users' messages
+        from django.utils import timezone as tz
+        active_ban = ChatBlock.objects.filter(
+            chat_room=chat_room,
+        ).filter(
+            Q(blocked_username__iexact=message.username) |
+            Q(blocked_user=message.user) if message.user_id else Q(blocked_username__iexact=message.username)
+        ).filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
+        ).exists()
+        if active_ban:
+            return Response(
+                {'error': 'Cannot pin a message from a banned user'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         now = timezone.now()
         is_expired = message.sticky_until and message.sticky_until < now
@@ -3347,6 +3379,52 @@ class BlockUserView(APIView):
             except Exception as e:
                 logger.warning(f"[BLOCK] Failed to clear spotlight on ban: {e}")
 
+            # Ban cascade: auto-unpin all pinned messages authored by the banned user.
+            # A banned user's content should not be elevated in the sticky area.
+            try:
+                banned_usernames = [participation.username.lower()]
+                if block_created.blocked_user_id:
+                    banned_usernames = list(
+                        ChatParticipation.objects.filter(
+                            chat_room=chat_room,
+                            user_id=block_created.blocked_user_id,
+                        ).values_list('username', flat=True)
+                    )
+                    banned_usernames = [u.lower() for u in banned_usernames if u]
+
+                pinned_msgs = Message.objects.filter(
+                    chat_room=chat_room,
+                    is_pinned=True,
+                    is_deleted=False,
+                    username__iregex=r'^(' + '|'.join(banned_usernames) + r')$',
+                ) if banned_usernames else Message.objects.none()
+
+                for msg in pinned_msgs:
+                    msg.is_pinned = False
+                    msg.pinned_at = None
+                    msg.sticky_until = None
+                    msg.save(update_fields=['is_pinned', 'pinned_at', 'sticky_until'])
+                    MessageCache.update_message(msg)
+                    MessageCache.remove_pinned_message(chat_room.id, str(msg.id))
+                    logger.info(f"[BLOCK] Auto-unpinned message {msg.id} by banned user")
+
+                # Broadcast updated pinned list so all clients reflect the change
+                if pinned_msgs.exists() or True:  # Always send to clear stale client state
+                    from channels.layers import get_channel_layer
+                    from asgiref.sync import async_to_sync
+                    remaining_pins = MessageCache.get_pinned_messages(chat_room.id)
+                    channel_layer = get_channel_layer()
+                    async_to_sync(channel_layer.group_send)(
+                        f'chat_{chat_room.code}',
+                        {
+                            'type': 'message_unpinned',
+                            'message_id': '',  # Multiple unpinned; clients use pinned_messages list
+                            'pinned_messages': remaining_pins,
+                        }
+                    )
+            except Exception as e:
+                logger.warning(f"[BLOCK] Failed to auto-unpin on ban: {e}")
+
             # SECURITY: Revoke all outstanding JWT tokens for this user in this chat.
             # For account-level bans, bump epoch for EVERY linked identity (reserved + anon)
             # so the user cannot continue posting under any of their other identities.
@@ -3859,14 +3937,18 @@ class MessageDeleteView(APIView):
         MessageCache.remove_message(chat_room.id, str(message_id))
         logger.info(f"[MESSAGE_DELETE] Message {message_id} removed from cache")
 
-        # Broadcast deletion event via WebSocket
+        # Broadcast deletion event via WebSocket — include the authoritative pinned
+        # messages list so all clients show the correct next pin if the deleted
+        # message was pinned.
+        remaining_pins = MessageCache.get_pinned_messages(chat_room.id)
         channel_layer = get_channel_layer()
         room_group_name = f'chat_{code}'
         async_to_sync(channel_layer.group_send)(
             room_group_name,
             {
                 'type': 'message_deleted',
-                'message_id': str(message_id)
+                'message_id': str(message_id),
+                'pinned_messages': remaining_pins,
             }
         )
         logger.info(f"[MESSAGE_DELETE] Deletion event broadcast via WebSocket")
@@ -3874,6 +3956,72 @@ class MessageDeleteView(APIView):
         return Response({
             'success': True,
             'message': 'Message deleted successfully',
+            'message_id': str(message_id)
+        })
+
+
+class MessageUnpinView(APIView):
+    """Unpin a message (host only). Removes pin status but keeps the message visible."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code, message_id, username=None):
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        chat_room = get_chat_room_by_url(code, username)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room)
+
+        # Validate session token
+        session_token = request.data.get('session_token')
+        if not session_token:
+            raise PermissionDenied("Session token is required")
+
+        ChatSessionValidator.validate_session_token(
+            token=session_token,
+            chat_code=code,
+            request=request,
+        )
+
+        # Verify user is the host
+        if not request.user.is_authenticated or request.user != chat_room.host:
+            raise PermissionDenied("Only the host can unpin messages")
+
+        if not message.is_pinned:
+            return Response({
+                'success': True,
+                'message': 'Message was not pinned',
+                'already_unpinned': True
+            })
+
+        # Unpin the message
+        message.is_pinned = False
+        message.pinned_at = None
+        message.sticky_until = None
+        # Keep pin_amount_paid for record-keeping
+        message.save()
+
+        # Update cache — update the message data AND remove from the pinned sorted set
+        # so the bid floor resets to the next valid pin's amount.
+        MessageCache.update_message(message)
+        MessageCache.remove_pinned_message(chat_room.id, str(message_id))
+
+        # Broadcast unpin event via WebSocket — include the authoritative pinned
+        # messages list so all clients can immediately show the correct next pin
+        # without relying on local state (which may not have all pins loaded).
+        remaining_pins = MessageCache.get_pinned_messages(chat_room.id)
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{code}',
+            {
+                'type': 'message_unpinned',
+                'message_id': str(message_id),
+                'pinned_messages': remaining_pins,
+            }
+        )
+
+        return Response({
+            'success': True,
+            'message': 'Message unpinned successfully',
             'message_id': str(message_id)
         })
 
