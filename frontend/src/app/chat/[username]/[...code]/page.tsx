@@ -683,7 +683,6 @@ export default function ChatPage() {
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
         setMessages(allMessages);
-        updateStickyFromMessages(allMessages);
         // Extract reactions
         const reactions: Record<string, ReactionSummary[]> = {};
         allMessages.forEach((msg) => {
@@ -719,7 +718,6 @@ export default function ChatPage() {
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
         setMessages(allMessages);
-        updateStickyFromMessages(allMessages);
       } catch (err) {
         console.error('Failed to load filtered messages:', err);
       } finally {
@@ -740,7 +738,7 @@ export default function ChatPage() {
         if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
       });
     });
-  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros, updateStickyFromMessages]);
+  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
 
   // Dismiss a feature intro
   const handleDismissIntro = useCallback((key: string) => {
@@ -2722,6 +2720,7 @@ export default function ChatPage() {
                   themeIsDarkMode={themeIsDarkMode}
                   userAvatarUrl={userAvatarUrl}
                   anonymousParticipations={anonymousParticipations}
+                  spotlightUsernames={spotlightUsernames}
                   registeredAvatarUrl={registeredAvatarUrl}
                   onAvatarChange={setUserAvatarUrl}
                   onIdentityChange={(identity) => {
@@ -2847,6 +2846,10 @@ export default function ChatPage() {
           <MessageInput
             chatRoom={chatRoom}
             isHost={previewIsHost ?? isHost}
+            isSpotlight={(() => {
+              const effectiveName = previewUsername ?? username;
+              return !!effectiveName && spotlightUsernames.has(effectiveName);
+            })()}
             hasJoined={hasJoined}
             sending={sending}
             username={previewUsername ?? username}
@@ -2927,7 +2930,7 @@ export default function ChatPage() {
       {showFeatureIntro === 'focus' && (
         <FeatureIntroModal
           title="Focus Mode"
-          description="Focus shows messages most relevant to you — your messages, replies to you, and host messages in your threads. Everything else is filtered out."
+          description="Focus shows your messages, replies to you, and messages from the host and spotlighted users. Everything else is filtered out."
           icon={Eye}
           themeIsDarkMode={themeIsDarkMode}
           onDismiss={() => handleDismissIntro('focus')}

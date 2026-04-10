@@ -421,8 +421,10 @@ function StickySection({
         // Using translate3d (not translateY) forces Android Chrome to pre-allocate
         // a GPU compositing layer for this element, so the animation starts the
         // instant the transform value changes instead of waiting for layer promotion.
+        // +2 buffer: Android Chrome rounds offsetTop/offsetHeight differently than the
+        // actual rendered height, leaving 1-2 pixels of content visible when collapsed.
         transform: stickyHidden
-          ? `translate3d(0, -${animatedContentHeight}px, 0)`
+          ? `translate3d(0, -${animatedContentHeight + 2}px, 0)`
           : 'translate3d(0, 0, 0)',
         transition: 'transform 200ms ease-out',
         willChange: 'transform',
@@ -517,10 +519,7 @@ function StickySection({
                       >
                         {message.username}
                       </span>
-                      {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                      <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
-                      <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                      {message.is_banned && <BannedPill />}
+                      <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                     </div>
                 <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
                   <span
@@ -642,14 +641,9 @@ function StickySection({
                       >
                         {stickyPinnedMessage.username}
                       </span>
-                  {stickyPinnedMessage.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                   {spotlightUsernames?.has(stickyPinnedMessage.username) && (
-                    <>
-                      <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
-                      <Star size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
-                    </>
+                    <Star size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                   )}
-                  {stickyPinnedMessage.is_banned && <BannedPill />}
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
                     currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'
                   }`}>

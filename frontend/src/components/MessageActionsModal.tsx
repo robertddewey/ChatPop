@@ -824,7 +824,7 @@ export default function MessageActionsModal({
                     {message.is_from_host && (
                       <>
                         <span className="ml-1"><HostPill color={themeColors?.crownIcon || '#2dd4bf'} /></span>
-                        <Crown className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
+                        <Crown className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
                       </>
                     )}
                     {message.is_pinned && !message.is_from_host && (

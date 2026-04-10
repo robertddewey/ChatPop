@@ -6,6 +6,7 @@
 // bg-gradient-to-t from-purple-500 to-blue-500
 // bg-zinc-900/95 bg-zinc-900/90 border-purple-500/30
 // bg-[#2a1f05] border-[#3d2e0a]
+// bg-yellow-950/40 border-yellow-900/40 hover:bg-yellow-950/60
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
 import { BadgeCheck, Reply, Crown, Pin, Radio, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown, Ban, Star } from 'lucide-react';
@@ -743,7 +744,7 @@ function MainChatView({
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                         <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
-                        <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                        <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                         {message.is_banned && <BannedPill />}
                       </div>
                     </div>
@@ -892,6 +893,8 @@ function MainChatView({
                         className={`mb-2 p-2 rounded-lg cursor-pointer transition-colors ${
                           message.is_pinned
                             ? currentDesign.uiStyles?.replyContextPinned || 'bg-white/10 border border-purple-500/30 hover:bg-white/15'
+                            : (isHostMessage || (!isHostMessage && spotlightUsernames?.has(message.username)))
+                            ? currentDesign.uiStyles?.replyContextHighlighted || 'bg-yellow-950/40 border border-yellow-900/40 hover:bg-yellow-950/60'
                             : message.username.toLowerCase() === username.toLowerCase()
                             ? currentDesign.uiStyles?.replyContextOwn || 'bg-white/10 border border-white/10 hover:bg-white/15'
                             : currentDesign.uiStyles?.replyContextOther || 'bg-white/10 border border-zinc-600 hover:bg-white/15'
@@ -917,18 +920,11 @@ function MainChatView({
                           {message.reply_to_message.username_is_reserved && (
                             <BadgeCheck size={12} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                           )}
-                          {message.reply_to_message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                           {message.reply_to_message.is_from_host && (
-                            <>
-                              <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
-                              <Crown size={12} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                            </>
+                            <Crown size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                           )}
                           {!message.reply_to_message.is_from_host && spotlightUsernames?.has(message.reply_to_message.username) && (
-                            <>
-                              <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
-                              <Star size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
-                            </>
+                            <Star size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                           )}
                           {message.reply_to_message.is_pinned && !message.reply_to_message.is_from_host && (
                             <Pin size={12} className="flex-shrink-0" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
