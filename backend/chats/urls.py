@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     ChatRoomCreateView, ChatRoomDetailView, ChatRoomUpdateView, ChatRoomJoinView, RefreshSessionView, MyChatsView,
     ChatConfigView, NearbyDiscoverableChatsView,
-    MessageListView, MessageCreateView, MessagePinView, AddToPinView, MessageBroadcastView, MessageDeleteView, PinTiersView,
+    MessageListView, MessageCreateView, MessagePinView, AddToPinView, MessageBroadcastView, MessageDeleteView, MessageUnpinView, PinTiersView,
     UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView,
     DismissIntroView,
     VoiceUploadView, VoiceStreamView, PhotoUploadView, VideoUploadView, UserAvatarView,
@@ -65,6 +65,7 @@ urlpatterns = [
     path('discover/<str:code>/messages/<uuid:message_id>/add-to-pin/', AddToPinView.as_view(), name='add-to-pin-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/broadcast/', MessageBroadcastView.as_view(), name='message-broadcast-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/delete/', MessageDeleteView.as_view(), name='message-delete-ai'),
+    path('discover/<str:code>/messages/<uuid:message_id>/unpin/', MessageUnpinView.as_view(), name='message-unpin-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/react/', MessageReactionToggleView.as_view(), name='message-react-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/reactions/', MessageReactionsListView.as_view(), name='message-reactions-list-ai'),
 
@@ -100,6 +101,7 @@ urlpatterns = [
     path('<str:username>/<str:code>/messages/<uuid:message_id>/add-to-pin/', AddToPinView.as_view(), name='add-to-pin'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/broadcast/', MessageBroadcastView.as_view(), name='message-broadcast'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/delete/', MessageDeleteView.as_view(), name='message-delete'),
+    path('<str:username>/<str:code>/messages/<uuid:message_id>/unpin/', MessageUnpinView.as_view(), name='message-unpin'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/react/', MessageReactionToggleView.as_view(), name='message-react'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/reactions/', MessageReactionsListView.as_view(), name='message-reactions-list'),
 

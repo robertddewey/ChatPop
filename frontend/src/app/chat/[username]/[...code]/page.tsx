@@ -826,9 +826,30 @@ export default function ChatPage() {
   }, [code, sessionToken]);
 
   // Handle message deletion WebSocket events
-  const handleMessageDeleted = useCallback((messageId: string) => {
+  // Set the sticky pinned message from an authoritative list of pinned messages
+  // (from the backend via WebSocket). Takes the highest-paying non-expired pin.
+  const setStickyPinFromList = useCallback((pinnedMessages: Message[]) => {
+    const now = new Date();
+    const valid = pinnedMessages
+      .filter(m => !m.is_from_host && m.sticky_until && new Date(m.sticky_until) > now)
+      .sort((a, b) => parseFloat(b.current_pin_amount) - parseFloat(a.current_pin_amount));
+    setStickyPinnedMsg(valid[0] || null);
+  }, []);
+
+  const handleMessageDeleted = useCallback((messageId: string, pinnedMessages: Message[]) => {
     // Remove message from local state
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
+
+    // Host sticky: fall back to previous host message from loaded messages
+    setStickyHostMessage(prev => {
+      if (prev?.id !== messageId) return prev;
+      // Use functional updater on messages won't help (already filtered above),
+      // so scan the current messages minus the deleted one
+      return null; // Accept the gap for host messages
+    });
+
+    // Pinned sticky: use authoritative list from backend
+    setStickyPinFromList(pinnedMessages);
 
     // Remove reactions for this message
     setMessageReactions(prev => {
@@ -836,7 +857,19 @@ export default function ChatPage() {
       delete updated[messageId];
       return updated;
     });
-  }, []);
+  }, [setStickyPinFromList]);
+
+  const handleMessageUnpinned = useCallback((messageId: string, pinnedMessages: Message[]) => {
+    // Update message in local state — clear pin fields
+    setMessages(prev => prev.map(msg =>
+      msg.id === messageId
+        ? { ...msg, is_pinned: false, pinned_at: null, sticky_until: null }
+        : msg
+    ));
+
+    // Pinned sticky: use authoritative list from backend
+    setStickyPinFromList(pinnedMessages);
+  }, [setStickyPinFromList]);
 
   // Handle message pinned WebSocket events
   const handleMessagePinned = useCallback((message: Message, isTopPin: boolean) => {
@@ -879,6 +912,7 @@ export default function ChatPage() {
     onBanStatusChanged: handleBanStatusChanged,
     onReaction: handleReactionEvent,
     onMessageDeleted: handleMessageDeleted,
+    onMessageUnpinned: handleMessageUnpinned,
     onMessagePinned: handleMessagePinned,
     onMessageBroadcast: handleMessageBroadcast,
     onGiftReceived: useCallback((gift: GiftNotification) => {
@@ -2189,6 +2223,26 @@ export default function ChatPage() {
     }
   }, [code, chatRoom, currentUserId]);
 
+  const handleUnpinMessage = useCallback(async (messageId: string) => {
+    if (!chatRoom || !currentUserId || chatRoom.host.id !== currentUserId) {
+      console.error('Only the host can unpin messages');
+      return;
+    }
+
+    // Optimistic update — update local state immediately so the UI reflects
+    // the change without waiting for the WebSocket round-trip.
+    // Pass empty pinned list for now; the WebSocket event will follow with
+    // the authoritative list from Redis and correct the sticky if needed.
+    handleMessageUnpinned(messageId, []);
+
+    try {
+      await messageApi.unpinMessage(code, messageId, roomUsername);
+      // WebSocket event will also fire for other connected clients
+    } catch (error) {
+      console.error('Failed to unpin message:', error);
+    }
+  }, [code, chatRoom, currentUserId, roomUsername, handleMessageUnpinned]);
+
   const handleReactionToggle = useCallback(async (messageId: string, emoji: string) => {
     if (!username) {
       console.warn('[Reactions] No username available');
@@ -2696,6 +2750,7 @@ export default function ChatPage() {
                 handleThankGift={handleThankGift}
                 handleBroadcastMessage={handleBroadcastMessage}
                 handleDeleteMessage={handleDeleteMessage}
+                handleUnpinMessage={handleUnpinMessage}
                 handleReactionToggle={handleReactionToggle}
                 messageReactions={messageReactions}
                 loadingOlder={loadingOlder}

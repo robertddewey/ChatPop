@@ -84,6 +84,7 @@ interface MessageActionsModalProps {
   onReact?: (messageId: string, emoji: string) => void;
   reactions?: ReactionSummary[];
   onDelete?: (messageId: string) => void;
+  onUnpin?: (messageId: string) => void;
   onReport?: (messageId: string, username: string) => void;
   onHighlight?: (messageId: string) => void;
   sessionToken?: string | null;
@@ -243,6 +244,7 @@ export default function MessageActionsModal({
   onReact,
   reactions = [],
   onDelete,
+  onUnpin,
   onReport,
   onHighlight,
   sessionToken,
@@ -260,6 +262,7 @@ export default function MessageActionsModal({
   const [confirmingBan, setConfirmingBan] = useState(false);
   const [confirmingUnban, setConfirmingUnban] = useState(false);
   const [confirmingMute, setConfirmingMute] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [muteLockedHint, setMuteLockedHint] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -385,6 +388,7 @@ export default function MessageActionsModal({
     setConfirmingBan(false);
     setConfirmingUnban(false);
     setConfirmingMute(false);
+    setConfirmingDelete(false);
     setMuteLockedHint(false);
 
     // Wait for transition to complete before removing from DOM
@@ -592,8 +596,8 @@ export default function MessageActionsModal({
     });
   }
 
-  // 3. Pin — always (non-host messages, pin support required)
-  const hasPinSupport = !message.is_from_host && (onPin || onAddToPin || getPinRequirements || onPinSelf || onPinOther);
+  // 3. Pin — always (non-host messages, non-banned authors, pin support required)
+  const hasPinSupport = !message.is_from_host && !message.is_banned && (onPin || onAddToPin || getPinRequirements || onPinSelf || onPinOther);
   const isPinExpired = message.is_pinned && message.sticky_until && new Date(message.sticky_until) < new Date();
 
   if (hasPinSupport) {
@@ -670,17 +674,27 @@ export default function MessageActionsModal({
     },
   });
 
-  // 5. Delete — host only (destructive)
+  // 5. Unpin — host only, pinned messages only
+  if (isHost && message.is_pinned && onUnpin) {
+    actions.push({
+      icon: Pin,
+      label: 'Unpin',
+      destructive: true,
+      action: () => {
+        onUnpin(message.id);
+        handleClose();
+      },
+    });
+  }
+
+  // 6. Delete — host only (destructive)
   if (isHost && onDelete) {
     actions.push({
       icon: Trash2,
       label: 'Delete',
       destructive: true,
       action: () => {
-        if (confirm('Are you sure you want to delete this message?')) {
-          onDelete(message.id);
-          handleClose();
-        }
+        setConfirmingDelete(true);
       },
     });
   }
@@ -1039,10 +1053,12 @@ export default function MessageActionsModal({
                         </button>
                       </div>
                     </div>
-                  ) : confirmingBan || confirmingUnban || confirmingMute ? (
+                  ) : confirmingBan || confirmingUnban || confirmingMute || confirmingDelete ? (
                     <div className="px-5 py-4 space-y-3">
                       <p className={`text-sm font-medium text-center ${themeModalStyles?.actionLabel || 'text-zinc-50'}`}>
-                        {confirmingBan ? (
+                        {confirmingDelete ? (
+                          <>Delete this message?</>
+                        ) : confirmingBan ? (
                           <>Ban <span className="font-bold">{message.username}</span> from this chat?</>
                         ) : confirmingMute ? (
                           <>Mute <span className="font-bold">{message.username}</span>?</>
@@ -1057,7 +1073,8 @@ export default function MessageActionsModal({
                             setConfirmingBan(false);
                             setConfirmingUnban(false);
                             setConfirmingMute(false);
-    setMuteLockedHint(false);
+                            setConfirmingDelete(false);
+                            setMuteLockedHint(false);
                           }}
                           className={`flex-1 px-4 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-95 cursor-pointer ${themeModalStyles?.secondaryButton || 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'}`}
                         >
@@ -1066,7 +1083,9 @@ export default function MessageActionsModal({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirmingBan && onBlock) {
+                            if (confirmingDelete && onDelete) {
+                              onDelete(message.id);
+                            } else if (confirmingBan && onBlock) {
                               onBlock(message.username);
                             } else if (confirmingMute && onBlock) {
                               onBlock(message.username);
@@ -1076,12 +1095,13 @@ export default function MessageActionsModal({
                             setConfirmingBan(false);
                             setConfirmingUnban(false);
                             setConfirmingMute(false);
-    setMuteLockedHint(false);
+                            setConfirmingDelete(false);
+                            setMuteLockedHint(false);
                             handleClose();
                           }}
                           className="flex-1 px-4 py-2.5 rounded-xl font-medium text-sm bg-red-500 text-white hover:bg-red-600 transition-all active:scale-95 cursor-pointer"
                         >
-                          {confirmingBan ? 'Ban' : confirmingMute ? 'Mute' : 'Unban'}
+                          {confirmingDelete ? 'Delete' : confirmingBan ? 'Ban' : confirmingMute ? 'Mute' : 'Unban'}
                         </button>
                       </div>
                     </div>

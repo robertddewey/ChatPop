@@ -214,7 +214,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Send message deletion notification to WebSocket
         await self.send(text_data=json.dumps({
             'type': 'message_deleted',
-            'message_id': event['message_id']
+            'message_id': event['message_id'],
+            'pinned_messages': event.get('pinned_messages', []),
+        }))
+
+    async def message_unpinned(self, event):
+        # Send unpin notification to WebSocket
+        await self.send(text_data=json.dumps({
+            'type': 'message_unpinned',
+            'message_id': event['message_id'],
+            'pinned_messages': event.get('pinned_messages', []),
         }))
 
     async def message_pinned(self, event):

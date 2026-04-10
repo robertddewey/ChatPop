@@ -265,6 +265,7 @@ interface MainChatViewProps {
   handleThankGift: (messageId: string) => Promise<boolean>;
   handleBroadcastMessage: (messageId: string) => Promise<boolean>;
   handleDeleteMessage: (messageId: string) => void;
+  handleUnpinMessage?: (messageId: string) => void;
   handleReactionToggle: (messageId: string, emoji: string) => void;
   messageReactions: Record<string, ReactionSummary[]>;
   loadingOlder?: boolean;
@@ -316,6 +317,7 @@ function MainChatView({
   handleThankGift,
   handleBroadcastMessage,
   handleDeleteMessage,
+  handleUnpinMessage,
   handleReactionToggle,
   messageReactions,
   loadingOlder = false,
@@ -487,6 +489,7 @@ function MainChatView({
         handleThankGift={handleThankGift}
         handleBroadcastMessage={handleBroadcastMessage}
         handleDeleteMessage={handleDeleteMessage}
+        handleUnpinMessage={handleUnpinMessage}
         handleReactionToggle={handleReactionToggle}
         stickyToggleRef={stickyToggleRef}
         pendingToggleRef={pendingToggleRef}
@@ -688,6 +691,7 @@ function MainChatView({
                   onThankGift={handleThankGift}
                   onBroadcast={handleBroadcastMessage}
                   onDelete={handleDeleteMessage}
+                  onUnpin={handleUnpinMessage}
                   onReact={handleReactionToggle}
                   onHighlight={highlightMessage}
                   reactions={messageReactions[message.id] || message.reactions || []}
@@ -699,14 +703,20 @@ function MainChatView({
                         <span
                           className={(() => {
                             const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                            return isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
+                            const isSpotlight = !isMyMessage && spotlightUsernames?.has(message.username);
+                            return isMyMessage
+                              ? currentDesign.myUsername
+                              : isSpotlight
+                              ? (currentDesign.hostUsername || 'text-sm font-semibold')
+                              : currentDesign.regularUsername;
                           })() || 'text-sm font-semibold'}
                           style={{
                             color: (() => {
                               const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                              const field = isMyMessage ? currentDesign.myUsername : currentDesign.regularUsername;
-                              const color = getTextColor(field) || '#ffffff';
-                              return color;
+                              const isSpotlight = !isMyMessage && spotlightUsernames?.has(message.username);
+                              if (isMyMessage) return getTextColor(currentDesign.myUsername) || '#ffffff';
+                              if (isSpotlight) return getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff';
+                              return getTextColor(currentDesign.regularUsername) || '#ffffff';
                             })()
                           }}
                         >
@@ -757,14 +767,21 @@ function MainChatView({
                         <span
                           className={(() => {
                             const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                            return isMyMessage ? currentDesign.myUsername : currentDesign.pinnedUsername;
+                            const isSpotlight = !isMyMessage && spotlightUsernames?.has(message.username);
+                            return isMyMessage
+                              ? currentDesign.myUsername
+                              : isSpotlight
+                              ? (currentDesign.hostUsername || 'text-sm font-semibold')
+                              : currentDesign.pinnedUsername;
                           })() || 'text-sm font-semibold'}
                           style={{
-                            color: getTextColor(
-                              message.username.toLowerCase() === username.toLowerCase()
-                                ? currentDesign.myUsername
-                                : currentDesign.pinnedUsername
-                            ) || getTextColor(currentDesign.pinnedText) || '#ffffff'
+                            color: (() => {
+                              const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                              const isSpotlight = !isMyMessage && spotlightUsernames?.has(message.username);
+                              if (isMyMessage) return getTextColor(currentDesign.myUsername) || '#ffffff';
+                              if (isSpotlight) return getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff';
+                              return getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff';
+                            })()
                           }}
                         >
                           {message.username}
@@ -906,13 +923,15 @@ function MainChatView({
                           <span
                             className="text-xs font-semibold"
                             style={{
-                              color: message.reply_to_message.is_from_host
-                                ? (getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff')
-                                : message.reply_to_message.is_pinned && !message.reply_to_message.is_from_host
-                                  ? (getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff')
-                                  : message.reply_to_message.username.toLowerCase() === username.toLowerCase()
-                                    ? (getTextColor(currentDesign.myUsername) || '#ef4444')
-                                    : (getTextColor(currentDesign.regularUsername) || '#ffffff')
+                              color: message.reply_to_message.username.toLowerCase() === username.toLowerCase()
+                                ? (getTextColor(currentDesign.myUsername) || '#ef4444')
+                                : message.reply_to_message.is_from_host
+                                  ? (getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff')
+                                  : spotlightUsernames?.has(message.reply_to_message.username)
+                                    ? (getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff')
+                                    : message.reply_to_message.is_pinned
+                                      ? (getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff')
+                                      : (getTextColor(currentDesign.regularUsername) || '#ffffff')
                             }}
                           >
                             {message.reply_to_message.username}
