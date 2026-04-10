@@ -54,6 +54,21 @@ class ChatTheme(models.Model):
     regular_message = models.TextField(help_text="Regular user message bubble classes")
     regular_text = models.TextField(help_text="Regular message text color classes")
 
+    # Spotlight Messages (host-assigned featured users)
+    spotlight_message = models.TextField(
+        default='max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl p-3 bg-[#2a1f05] border border-[#3d2e0a]',
+        help_text="Spotlighted user message bubble classes"
+    )
+    spotlight_text = models.TextField(
+        default='text-white',
+        help_text="Spotlighted user message text color classes"
+    )
+    spotlight_icon_color = models.CharField(
+        max_length=100,
+        default='text-yellow-400',
+        help_text="Tailwind classes for spotlight star icon and pill colors"
+    )
+
     # My Messages (current user)
     my_message = models.TextField(default='max-w-[calc(100%-2.5%-5rem+5px)] rounded-xl px-4 py-2.5 bg-blue-500 shadow-md', help_text="Message bubble classes for current user's own messages")
     my_text = models.TextField(default='text-white', help_text="Text color classes for current user's own messages")
@@ -398,7 +413,14 @@ class ChatParticipation(models.Model):
         null=True,
         blank=True,
         db_index=True,
-        help_text="Browser fingerprint - primary for anonymous, stored for logged-in"
+        help_text="Browser fingerprint - stored for ban enforcement only"
+    )
+    session_key = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Django session key - primary identifier for anonymous users"
     )
 
     # Username locked for this chat
@@ -425,8 +447,31 @@ class ChatParticipation(models.Model):
     # Feature intro tracking (for anonymous users — per-chat since no global user record)
     seen_intros = models.JSONField(default=dict, blank=True, help_text="Feature intros dismissed by anonymous user in this chat")
 
+    # Host-assigned spotlight status (per-participation, not per-account)
+    is_spotlight = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Host-assigned spotlight status. Spotlighted users get a star icon, "
+                  "'Spotlight' pill, and appear in the Focus room filter. Per-participation — "
+                  "different identities of the same user are independently spotlighted."
+    )
+
     # IP address tracking
     ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Last known IP address")
+
+    # True if this participation is a registered user's claimed anonymous
+    # identity (user is set, but the username is NOT their reserved_username).
+    # A registered user may have at most one non-anonymous participation per
+    # chat (their primary registered identity) plus N anonymous identities.
+    is_anonymous_identity = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=(
+            "True if this participation is a registered user's claimed "
+            "anonymous identity (user is set but username is not their "
+            "reserved_username)"
+        ),
+    )
 
     # Timestamps
     first_joined_at = models.DateTimeField(auto_now_add=True)
@@ -436,56 +481,38 @@ class ChatParticipation(models.Model):
     class Meta:
         ordering = ['-last_seen_at']
         constraints = [
+            # Only ONE registered (non-anonymous) participation per user per chat.
             models.UniqueConstraint(
                 fields=['chat_room', 'user'],
-                condition=models.Q(user__isnull=False),
-                name='unique_chat_user'
+                condition=models.Q(user__isnull=False, is_anonymous_identity=False),
+                name='unique_chat_user_registered'
             ),
+            # A user may have multiple anonymous identities per chat, but each
+            # (user, username) pair must be unique to prevent duplicates.
             models.UniqueConstraint(
-                fields=['chat_room', 'fingerprint'],
-                condition=models.Q(user__isnull=True),
-                name='unique_chat_fingerprint'
+                fields=['chat_room', 'user', 'username'],
+                condition=models.Q(user__isnull=False),
+                name='unique_chat_user_username'
+            ),
+            # Note: unique_chat_fingerprint removed — fingerprints can collide across
+            # different sessions, and session_key is now the primary anonymous identifier
+            models.UniqueConstraint(
+                fields=['chat_room', 'session_key'],
+                condition=models.Q(session_key__isnull=False, user__isnull=True),
+                name='unique_chat_session_key'
             ),
         ]
         indexes = [
             models.Index(fields=['chat_room', 'user']),
             models.Index(fields=['chat_room', 'fingerprint']),
+            models.Index(fields=['chat_room', 'session_key']),
             models.Index(fields=['chat_room', 'username']),
             models.Index(fields=['-last_seen_at']),
         ]
 
     def __str__(self):
-        identifier = f"User {self.user_id}" if self.user else f"Fingerprint {self.fingerprint[:8]}..."
+        identifier = f"User {self.user_id}" if self.user else f"Session {self.session_key[:8]}..." if self.session_key else f"Fingerprint {self.fingerprint[:8]}..."
         return f"{self.username} ({identifier}) in {self.chat_room.code}"
-
-
-class AnonymousUserFingerprint(models.Model):
-    """Track anonymous user browser fingerprints for username persistence"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    chat_room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='fingerprints')
-
-    # Fingerprint from FingerprintJS
-    fingerprint = models.CharField(max_length=255, db_index=True, help_text="Browser fingerprint hash")
-    username = models.CharField(max_length=100, help_text="Username associated with this fingerprint")
-
-    # IP address tracking
-    ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="Last known IP address")
-
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    last_seen = models.DateTimeField(auto_now=True, help_text="Last time this fingerprint was used")
-
-    class Meta:
-        ordering = ['-last_seen']
-        unique_together = ['chat_room', 'fingerprint']
-        indexes = [
-            models.Index(fields=['fingerprint', 'chat_room']),
-            models.Index(fields=['chat_room', '-last_seen']),
-        ]
-
-    def __str__(self):
-        return f"{self.username} ({self.fingerprint[:8]}...) in {self.chat_room.code}"
 
 
 class MessageReaction(models.Model):
@@ -510,7 +537,14 @@ class MessageReaction(models.Model):
         null=True,
         blank=True,
         db_index=True,
-        help_text="Anonymous user fingerprint"
+        help_text="Anonymous user fingerprint (legacy, ban enforcement)"
+    )
+    session_key = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Django session key - primary identifier for anonymous reactions"
     )
 
     # Username at time of reaction (for display)
@@ -525,6 +559,7 @@ class MessageReaction(models.Model):
             models.Index(fields=['message', 'emoji']),
             models.Index(fields=['message', 'user', 'emoji']),
             models.Index(fields=['message', 'fingerprint', 'emoji']),
+            models.Index(fields=['message', 'session_key', 'emoji']),
         ]
         constraints = [
             # One reaction per emoji per logged-in user per message
@@ -533,16 +568,16 @@ class MessageReaction(models.Model):
                 condition=models.Q(user__isnull=False),
                 name='unique_message_user_emoji_reaction'
             ),
-            # One reaction per emoji per anonymous user per message
+            # One reaction per emoji per anonymous user per message (session-based)
             models.UniqueConstraint(
-                fields=['message', 'fingerprint', 'emoji'],
-                condition=models.Q(user__isnull=True),
-                name='unique_message_fingerprint_emoji_reaction'
+                fields=['message', 'session_key', 'emoji'],
+                condition=models.Q(session_key__isnull=False, user__isnull=True),
+                name='unique_message_session_emoji_reaction'
             ),
         ]
 
     def __str__(self):
-        identifier = f"User {self.user_id}" if self.user else f"Fingerprint {self.fingerprint[:8]}..."
+        identifier = f"User {self.user_id}" if self.user else f"Session {self.session_key[:8]}..." if self.session_key else f"Fingerprint {self.fingerprint[:8]}..."
         return f"{self.emoji} on message {self.message_id} by {identifier}"
 
 
@@ -584,7 +619,29 @@ class ChatBlock(models.Model):
     blocked_ip_address = models.GenericIPAddressField(
         null=True,
         blank=True,
-        help_text="IP address for tracking (future: may be used for blocking)"
+        help_text="IP address block"
+    )
+    blocked_session_key = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        help_text="Django session key block"
+    )
+
+    # Ban tier determines how the block is enforced
+    BAN_TIER_SESSION = 'session'
+    BAN_TIER_FINGERPRINT_IP = 'fingerprint_ip'
+    BAN_TIER_IP = 'ip'
+    BAN_TIER_CHOICES = [
+        (BAN_TIER_SESSION, 'Session Ban'),
+        (BAN_TIER_FINGERPRINT_IP, 'Device + IP Ban'),
+        (BAN_TIER_IP, 'Total IP Ban'),
+    ]
+    ban_tier = models.CharField(
+        max_length=20,
+        choices=BAN_TIER_CHOICES,
+        default=BAN_TIER_SESSION,
+        help_text="Ban enforcement level: session (clearable), fingerprint+IP (device), or IP (network)"
     )
 
     # Who created the block
@@ -617,6 +674,8 @@ class ChatBlock(models.Model):
             models.Index(fields=['chat_room', 'blocked_username']),
             models.Index(fields=['chat_room', 'blocked_fingerprint']),
             models.Index(fields=['chat_room', 'blocked_user']),
+            models.Index(fields=['chat_room', 'blocked_session_key']),
+            models.Index(fields=['chat_room', 'ban_tier']),
             models.Index(fields=['expires_at']),
         ]
         constraints = [
@@ -625,11 +684,7 @@ class ChatBlock(models.Model):
                 condition=models.Q(blocked_username__isnull=False),
                 name='unique_chat_username_block'
             ),
-            models.UniqueConstraint(
-                fields=['chat_room', 'blocked_fingerprint'],
-                condition=models.Q(blocked_fingerprint__isnull=False),
-                name='unique_chat_fingerprint_block'
-            ),
+            # No fingerprint constraint — multiple banned users can share the same fingerprint
             models.UniqueConstraint(
                 fields=['chat_room', 'blocked_user'],
                 condition=models.Q(blocked_user__isnull=False),
@@ -713,6 +768,13 @@ class SiteBan(models.Model):
         db_index=True,
         help_text="Browser fingerprint ban"
     )
+    banned_session_key = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Django session key ban"
+    )
 
     # Who created the ban (must be staff)
     banned_by = models.ForeignKey(
@@ -741,6 +803,7 @@ class SiteBan(models.Model):
             models.Index(fields=['banned_user']),
             models.Index(fields=['banned_ip_address']),
             models.Index(fields=['banned_fingerprint']),
+            models.Index(fields=['banned_session_key']),
             models.Index(fields=['is_active', 'expires_at']),
         ]
 
@@ -762,15 +825,20 @@ class SiteBan(models.Model):
         return timezone.now() > self.expires_at
 
     @classmethod
-    def is_banned(cls, user=None, ip_address=None, fingerprint=None):
+    def is_banned(cls, user=None, ip_address=None, fingerprint=None, session_key=None, chat_room=None):
         """
         Check if any of the provided identifiers are banned.
+        Host of the chat_room (if provided) is always exempt.
 
         Returns the active SiteBan if found, None otherwise.
         """
         from django.db.models import Q
 
-        if not any([user, ip_address, fingerprint]):
+        # Host exemption: if user is the host of the chat, they're never banned
+        if chat_room and user and hasattr(chat_room, 'host') and chat_room.host == user:
+            return None
+
+        if not any([user, ip_address, fingerprint, session_key]):
             return None
 
         # Build query for active, non-expired bans
@@ -784,6 +852,8 @@ class SiteBan(models.Model):
             identifier_query |= Q(banned_ip_address=ip_address)
         if fingerprint:
             identifier_query |= Q(banned_fingerprint=fingerprint)
+        if session_key:
+            identifier_query |= Q(banned_session_key=session_key)
 
         return cls.objects.filter(query & identifier_query).first()
 

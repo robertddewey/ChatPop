@@ -37,6 +37,7 @@ body {
 .animate-pulse-scale {
   animation: pulseScale 1s ease-in-out 2;
   transform-origin: center;
+  will-change: transform;
 }
 
 @keyframes giftBreath {

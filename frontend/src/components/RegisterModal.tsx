@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi, chatApi } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
 import { MARKETING } from '@/lib/marketing';
-import { getFingerprint } from '@/lib/usernameStorage';
 import { X, Dices, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getModalTheme } from '@/lib/modal-theme';
 
@@ -47,9 +46,6 @@ export function RegisterFormContent({ onClose, onSwitchToLogin, hideTitle }: Reg
   const [avatarSeeds, setAvatarSeeds] = useState<string[]>(() => [crypto.randomUUID()]);
   const [avatarIndex, setAvatarIndex] = useState(0);
 
-  // Fingerprint state
-  const [fingerprint, setFingerprint] = useState<string | null>(null);
-
   const getAvatarUrl = (seed: string, size: number = 80): string => {
     return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
   };
@@ -69,10 +65,6 @@ export function RegisterFormContent({ onClose, onSwitchToLogin, hideTitle }: Reg
       setAvatarIndex(avatarIndex + 1);
     }
   };
-
-  useEffect(() => {
-    getFingerprint().then(setFingerprint);
-  }, []);
 
   // Validate username format in real-time
   useEffect(() => {
@@ -99,13 +91,12 @@ export function RegisterFormContent({ onClose, onSwitchToLogin, hideTitle }: Reg
       setUsernameStatus({ checking: false, available: true, message: 'Username is available' });
       return;
     }
-    if (!fingerprint) return;
 
     setUsernameStatus({ checking: true, available: null, message: 'Checking...' });
 
     const timeoutId = setTimeout(async () => {
       try {
-        const result = await authApi.checkUsername(username, fingerprint);
+        const result = await authApi.checkUsername(username);
         setUsernameStatus({
           checking: false,
           available: result.available,
@@ -117,7 +108,7 @@ export function RegisterFormContent({ onClose, onSwitchToLogin, hideTitle }: Reg
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [formData.reserved_username, usernameValidation.valid, usernameSource, fingerprint]);
+  }, [formData.reserved_username, usernameValidation.valid, usernameSource]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,10 +131,8 @@ export function RegisterFormContent({ onClose, onSwitchToLogin, hideTitle }: Reg
     setLoading(true);
 
     try {
-      const fingerprint = await getFingerprint();
       await authApi.register({
         ...formData,
-        fingerprint,
         avatar_seed: currentAvatarSeed,
       });
       await authApi.login(formData.email, formData.password);
@@ -218,8 +207,7 @@ export function RegisterFormContent({ onClose, onSwitchToLogin, hideTitle }: Reg
   const handleSuggestUsername = async () => {
     setIsSuggestingUsername(true);
     try {
-      const fingerprint = await getFingerprint();
-      const result = await authApi.suggestUsername(fingerprint);
+      const result = await authApi.suggestUsername();
       setFormData({ ...formData, reserved_username: result.username });
       setDiceUsername(result.username);
       setUsernameSource('dice');

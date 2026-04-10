@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
-from .models import ChatRoom, Message, Transaction, AnonymousUserFingerprint, ChatTheme
+from .models import ChatRoom, Message, Transaction, ChatTheme
 
 
 # Custom admin site configuration to add monitoring dashboard link
@@ -72,14 +72,3 @@ class TransactionAdmin(admin.ModelAdmin):
     date_hierarchy = 'created_at'
 
 
-@admin.register(AnonymousUserFingerprint)
-class AnonymousUserFingerprintAdmin(admin.ModelAdmin):
-    list_display = ['username', 'chat_room', 'fingerprint_preview', 'ip_address', 'last_seen', 'created_at']
-    list_filter = ['created_at', 'last_seen']
-    search_fields = ['username', 'fingerprint', 'chat_room__name', 'chat_room__code', 'ip_address']
-    readonly_fields = ['id', 'fingerprint', 'ip_address', 'created_at', 'updated_at', 'last_seen']
-    date_hierarchy = 'last_seen'
-
-    def fingerprint_preview(self, obj):
-        return f"{obj.fingerprint[:16]}..." if len(obj.fingerprint) > 16 else obj.fingerprint
-    fingerprint_preview.short_description = 'Fingerprint'

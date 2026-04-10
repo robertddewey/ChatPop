@@ -244,9 +244,18 @@ class ChatSessionSecurityTests(TestCase):
 
     def test_join_endpoint_issues_valid_token(self):
         """Test that join endpoint properly issues session tokens"""
+        # First, get a generated username via suggest-username
+        suggest_response = self.client.post(
+            f'/api/chats/testuser/{self.chat_code}/suggest-username/',
+            data={'fingerprint': 'join_test_fp'},
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+        username = suggest_response.json()['username']
+
         response = self.client.post(
             f'/api/chats/testuser/{self.chat_code}/join/',
-            data={'username': 'newuser'},
+            data={'username': username, 'fingerprint': 'join_test_fp'},
             content_type='application/json'
         )
 
@@ -258,7 +267,7 @@ class ChatSessionSecurityTests(TestCase):
         token = data['session_token']
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
         self.assertEqual(payload['chat_code'], self.chat_code)
-        self.assertEqual(payload['username'], 'newuser')
+        self.assertEqual(payload['username'], username)
 
     def test_valid_token_allows_message_send(self):
         """Test that valid tokens allow message sending"""
@@ -464,10 +473,18 @@ class ChatSessionSecurityTests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-        # Try with correct access code
+        # Try with correct access code - first generate a valid username
+        suggest_response = self.client.post(
+            f'/api/chats/testuser/{private_chat.code}/suggest-username/',
+            data={'fingerprint': 'legit_fp'},
+            content_type='application/json'
+        )
+        self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+        legit_username = suggest_response.json()['username']
+
         response = self.client.post(
             f'/api/chats/testuser/{private_chat.code}/join/',
-            data={'username': 'legit_user', 'access_code': 'secret123'},
+            data={'username': legit_username, 'access_code': 'secret123', 'fingerprint': 'legit_fp'},
             content_type='application/json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -522,8 +539,12 @@ class UsernameReservationSecurityTests(TestCase):
     def test_two_anonymous_users_same_username_blocked(self):
         """Test that username uniqueness is enforced: first user claims username successfully,
         second user is blocked from using the same username"""
+        # Use separate clients to simulate separate sessions (separate anonymous users)
+        client1 = Client()
+        client2 = Client()
+
         # First anonymous user gets a generated username
-        suggest_response = self.client.post(
+        suggest_response = client1.post(
             f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
             data={'fingerprint': 'fingerprint1'},
             content_type='application/json'
@@ -532,15 +553,15 @@ class UsernameReservationSecurityTests(TestCase):
         username = suggest_response.json()['username']
 
         # First anonymous user joins with generated username
-        response1 = self.client.post(
+        response1 = client1.post(
             f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': username, 'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
 
-        # Second anonymous user tries to join with same username but different fingerprint
-        response2 = self.client.post(
+        # Second anonymous user tries to join with same username but different session
+        response2 = client2.post(
             f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': username, 'fingerprint': 'fingerprint2'},
             content_type='application/json'
@@ -563,8 +584,8 @@ class UsernameReservationSecurityTests(TestCase):
         self.assertIn('reserved', error_msg)
 
 
-    def test_anonymous_user_username_persistence_via_fingerprint(self):
-        """Test that anonymous users are locked to their username via fingerprint"""
+    def test_anonymous_user_username_persistence_via_session(self):
+        """Test that anonymous users are locked to their username via session"""
         # Anonymous user gets a generated username
         suggest_response = self.client.post(
             f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
@@ -582,18 +603,10 @@ class UsernameReservationSecurityTests(TestCase):
         )
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
 
-        # Same fingerprint tries to rejoin with different username (generate a different one)
-        suggest_response2 = self.client.post(
-            f'/api/chats/HostUser/{self.chat_code}/suggest-username/',
-            data={'fingerprint': 'fingerprint1'},
-            content_type='application/json'
-        )
-        self.assertEqual(suggest_response2.status_code, status.HTTP_200_OK)
-        different_username = suggest_response2.json()['username']
-
+        # Same session tries to rejoin with a different (arbitrary) username
         response2 = self.client.post(
             f'/api/chats/HostUser/{self.chat_code}/join/',
-            data={'username': different_username, 'fingerprint': 'fingerprint1'},
+            data={'username': 'DifferentName99', 'fingerprint': 'fingerprint1'},
             content_type='application/json'
         )
         self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
@@ -602,34 +615,24 @@ class UsernameReservationSecurityTests(TestCase):
 
     def test_registered_user_username_persistence(self):
         """Test that registered users are locked to their chosen username in a chat"""
-        # user1 joins with custom username "SuperAlice" (not their reserved_username)
+        # user1 joins with their reserved_username "Alice"
         self.client.force_login(self.user1)
         response1 = self.client.post(
             f'/api/chats/HostUser/{self.chat_code}/join/',
-            data={'username': 'SuperAlice'},
+            data={'username': 'Alice'},
             content_type='application/json'
         )
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
 
-        # user1 tries to rejoin with different username (even their own reserved_username)
-        response2 = self.client.post(
-            f'/api/chats/HostUser/{self.chat_code}/join/',
-            data={'username': 'Alice'},  # Their own reserved_username
-            content_type='application/json'
-        )
-        self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
-        error_msg = str(response2.json()).lower()
-        self.assertIn('already joined', error_msg)
-
         # user1 tries to rejoin with a completely different username
-        response3 = self.client.post(
+        response2 = self.client.post(
             f'/api/chats/HostUser/{self.chat_code}/join/',
             data={'username': 'MegaAlice'},
             content_type='application/json'
         )
-        self.assertEqual(response3.status_code, status.HTTP_400_BAD_REQUEST)
-        error_msg = str(response3.json()).lower()
-        self.assertIn('already joined', error_msg)
+        self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
+        error_msg = str(response2.json()).lower()
+        self.assertIn('previously joined', error_msg)
 
     def test_reserved_username_case_insensitive_uniqueness(self):
         """Test that reserved usernames are unique case-insensitively but case is preserved"""
@@ -724,7 +727,8 @@ class UsernameReservationSecurityTests(TestCase):
         from ..models import ChatParticipation
         participation = ChatParticipation.objects.get(
             chat_room__code=self.chat_code,
-            fingerprint='fingerprint_case_test'
+            username=username,
+            user__isnull=True
         )
         # Generated usernames like "HappyTiger42" have mixed case - verify it's preserved
         self.assertEqual(participation.username, username)
@@ -870,12 +874,17 @@ class ReservedUsernameSecurityTests(TestCase):
     @allure.severity(allure.severity_level.NORMAL)
     def test_my_participation_flags_reserved_username_for_anonymous(self):
         """MyParticipationView should flag username_is_reserved for anonymous participations with reserved names"""
-        # Create an anonymous participation with a reserved username
+        # First, make a request to establish a session
+        self.client.get(f'/api/chats/HostUser/{self.chat_code}/')
+        session_key = self.client.session.session_key
+
+        # Create an anonymous participation with a reserved username and session_key
         ChatParticipation.objects.create(
             chat_room=self.chat_room,
             user=None,
             username='ReservedUser',
             fingerprint='anon_reserved_fp',
+            session_key=session_key,
             is_active=True
         )
 
@@ -886,3 +895,147 @@ class ReservedUsernameSecurityTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         self.assertTrue(data.get('username_is_reserved', False))
+
+
+@allure.feature('Chat Security')
+@allure.story('JWT Revocation via Epoch Counter')
+class JWTRevocationEpochTests(TestCase):
+    """Tests for Tier 2 Fix #4 — per-(chat, username) JWT revocation epoch."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            email='epoch@example.com', password='pw', reserved_username='epochuser'
+        )
+        self.chat_room = ChatRoom.objects.create(
+            name='Epoch Chat', host=self.user, access_mode='public'
+        )
+        self.chat_code = self.chat_room.code
+
+    def test_freshly_issued_token_validates(self):
+        token = ChatSessionValidator.create_session_token(
+            chat_code=self.chat_code, username='epochuser', user_id=str(self.user.id)
+        )
+        payload = ChatSessionValidator.validate_session_token(
+            token=token, chat_code=self.chat_code, username='epochuser'
+        )
+        self.assertEqual(payload['epoch'], 0)
+
+    def test_bumping_epoch_invalidates_outstanding_token(self):
+        token = ChatSessionValidator.create_session_token(
+            chat_code=self.chat_code, username='epochuser', user_id=str(self.user.id)
+        )
+        ChatSessionValidator.bump_epoch(self.chat_code, 'epochuser')
+        from rest_framework.exceptions import PermissionDenied
+        with self.assertRaises(PermissionDenied):
+            ChatSessionValidator.validate_session_token(
+                token=token, chat_code=self.chat_code, username='epochuser'
+            )
+
+    def test_new_token_after_bump_validates(self):
+        ChatSessionValidator.bump_epoch(self.chat_code, 'epochuser')
+        token = ChatSessionValidator.create_session_token(
+            chat_code=self.chat_code, username='epochuser', user_id=str(self.user.id)
+        )
+        payload = ChatSessionValidator.validate_session_token(
+            token=token, chat_code=self.chat_code, username='epochuser'
+        )
+        self.assertGreaterEqual(payload['epoch'], 1)
+
+    def test_legacy_token_without_epoch_passes_when_epoch_zero(self):
+        # Forge a token that has no `epoch` claim (mimics tokens issued before Tier 2)
+        payload = {
+            'chat_code': self.chat_code,
+            'username': 'epochuser',
+            'user_id': str(self.user.id),
+            'fingerprint': None,
+            'session_key': None,
+            'iat': datetime.utcnow(),
+            'exp': datetime.utcnow() + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+        result = ChatSessionValidator.validate_session_token(
+            token=token, chat_code=self.chat_code, username='epochuser'
+        )
+        self.assertNotIn('epoch', {k: v for k, v in result.items() if k == 'epoch' and v})
+
+    def test_legacy_token_without_epoch_fails_after_bump(self):
+        ChatSessionValidator.bump_epoch(self.chat_code, 'epochuser')
+        payload = {
+            'chat_code': self.chat_code,
+            'username': 'epochuser',
+            'user_id': str(self.user.id),
+            'fingerprint': None,
+            'session_key': None,
+            'iat': datetime.utcnow(),
+            'exp': datetime.utcnow() + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+        from rest_framework.exceptions import PermissionDenied
+        with self.assertRaises(PermissionDenied):
+            ChatSessionValidator.validate_session_token(
+                token=token, chat_code=self.chat_code, username='epochuser'
+            )
+
+
+@allure.feature('Chat Security')
+@allure.story('MyParticipationView Auth Defense')
+class MyParticipationAuthAssertionTests(TestCase):
+    """Tests for Tier 2 Fix #5 — defense-in-depth authenticator check."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.user = User.objects.create_user(
+            email='owner@example.com', password='pw', reserved_username='owner'
+        )
+        self.chat_room = ChatRoom.objects.create(
+            name='Auth Test Chat', host=self.user, access_mode='public'
+        )
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            user=self.user,
+            username='owner',
+            is_anonymous_identity=False,
+        )
+
+    def test_unauthenticated_request_does_not_leak_authenticated_branch(self):
+        # No login → request.user is anonymous, successful_authenticator is None.
+        # Should NOT enter the authenticated branch.
+        response = self.client.get(
+            f'/api/chats/owner/{self.chat_room.code}/my-participation/'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        # Anonymous viewer never joined — should NOT be returned the host's participation.
+        self.assertFalse(data.get('has_joined', False))
+
+
+@allure.feature('Chat Security')
+@allure.story('MyParticipationView Rate Limit')
+class MyParticipationRateLimitTests(TestCase):
+    """Tests for Tier 2 Fix #6 — DRF throttle on MyParticipationView."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.user = User.objects.create_user(
+            email='rl@example.com', password='pw', reserved_username='rluser'
+        )
+        self.chat_room = ChatRoom.objects.create(
+            name='RL Chat', host=self.user, access_mode='public'
+        )
+
+    def test_throttle_triggers_at_limit(self):
+        from chats.throttles import MyParticipationRateThrottle
+        # Force a tiny rate by monkeypatching get_rate
+        original = MyParticipationRateThrottle.get_rate
+        MyParticipationRateThrottle.get_rate = lambda self: '3/min'
+        try:
+            url = f'/api/chats/rluser/{self.chat_room.code}/my-participation/'
+            statuses = [self.client.get(url).status_code for _ in range(5)]
+        finally:
+            MyParticipationRateThrottle.get_rate = original
+            cache.clear()
+        # At least one request should be throttled (429)
+        self.assertIn(429, statuses)

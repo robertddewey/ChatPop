@@ -664,16 +664,21 @@ class GeneratedUsernameSecurityTests(TestCase):
         fingerprint = 'test_security_fp_4'
         username = 'ExistingUser99'
 
-        # Step 1: Create an existing participation (simulate previous join)
+        # Step 1: Make a request to establish a session key
+        self.client.get(f'/api/chats/RegUser99/{self.chat.code}/')
+        session_key = self.client.session.session_key
+
+        # Step 2: Create an existing participation with session_key (simulate previous join)
         participation = ChatParticipation.objects.create(
             chat_room=self.chat,
             username=username,
             fingerprint=fingerprint,
+            session_key=session_key,
             user=None,  # Anonymous user
             is_active=True
         )
 
-        # Step 2: Try to rejoin with the same username and fingerprint (should succeed)
+        # Step 3: Try to rejoin with the same username and session (should succeed)
         rejoin_response = self.client.post(
             f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
@@ -687,31 +692,32 @@ class GeneratedUsernameSecurityTests(TestCase):
         self.assertIn('session_token', data)
         self.assertEqual(data['username'], username)
 
-    @allure.title("Anonymous user cannot use another fingerprint's username")
-    @allure.description("Test that anonymous users cannot use usernames generated for different fingerprints")
+    @allure.title("Anonymous user cannot use another session's username")
+    @allure.description("Test that anonymous users cannot use usernames generated for different sessions")
     @allure.severity(allure.severity_level.CRITICAL)
-    def test_anonymous_user_cannot_use_another_fingerprints_generated_username(self):
-        """Test that anonymous users cannot use usernames generated for different fingerprints"""
-        fingerprint_a = 'test_security_fp_5a'
-        fingerprint_b = 'test_security_fp_5b'
+    def test_anonymous_user_cannot_use_another_sessions_generated_username(self):
+        """Test that anonymous users cannot use usernames generated for different sessions"""
+        from django.test import Client
+        client_a = Client()
+        client_b = Client()
 
-        # Step 1: Generate username for fingerprint A
-        suggest_response = self.client.post(
+        # Step 1: Generate username for session A
+        suggest_response = client_a.post(
             f'/api/chats/RegUser99/{self.chat.code}/suggest-username/',
             {
-                'fingerprint': fingerprint_a
+                'fingerprint': 'test_security_fp_5a'
             },
             content_type='application/json'
         )
         self.assertEqual(suggest_response.status_code, 200)
         username_for_a = suggest_response.json()['username']
 
-        # Step 2: Try to join with username_for_a using fingerprint B (should fail)
-        join_response = self.client.post(
+        # Step 2: Try to join with username_for_a using session B (should fail)
+        join_response = client_b.post(
             f'/api/chats/RegUser99/{self.chat.code}/join/',
             {
                 'username': username_for_a,
-                'fingerprint': fingerprint_b
+                'fingerprint': 'test_security_fp_5b'
             },
             content_type='application/json'
         )
@@ -732,17 +738,22 @@ class GeneratedUsernameSecurityTests(TestCase):
         fingerprint = 'test_security_fp_6'
         username = 'RejoiningUser99'
 
-        # Step 1: Create an existing participation with an arbitrary username
+        # Step 1: Make a request to establish a session key
+        self.client.get(f'/api/chats/RegUser99/{self.chat.code}/')
+        session_key = self.client.session.session_key
+
+        # Step 2: Create an existing participation with session_key and an arbitrary username
         # (This simulates a user who joined before the security check was implemented)
         participation = ChatParticipation.objects.create(
             chat_room=self.chat,
             username=username,
             fingerprint=fingerprint,
+            session_key=session_key,
             user=None,
             is_active=True
         )
 
-        # Step 2: Rejoin with the same username (should succeed even if not in generated cache)
+        # Step 3: Rejoin with the same username (should succeed even if not in generated cache)
         rejoin_response = self.client.post(
             f'/api/chats/RegUser99/{self.chat.code}/join/',
             {

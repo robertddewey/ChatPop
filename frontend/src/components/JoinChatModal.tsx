@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, ChevronDown, ChevronLeft, ChevronRight, Dices, RotateCcw } from 'lucide-react';
+import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Crown, Dices, RotateCcw, Star } from 'lucide-react';
 import type { ChatRoom, AnonymousParticipationInfo } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
-import { getFingerprint } from '@/lib/usernameStorage';
 import { getModalTheme } from '@/lib/modal-theme';
+import { verifyHuman } from '@/lib/turnstile';
 
 
 interface JoinChatModalProps {
@@ -19,11 +19,12 @@ interface JoinChatModalProps {
   hasReservedUsername?: boolean;
   themeIsDarkMode?: boolean;
   userAvatarUrl?: string | null;
-  anonymousParticipation?: AnonymousParticipationInfo | null;
+  anonymousParticipations?: AnonymousParticipationInfo[];
+  spotlightUsernames?: Set<string>;
   registeredAvatarUrl?: string | null;
   onAvatarChange?: (avatarUrl: string) => void;
   onIdentityChange?: (identity: { username: string; avatarUrl: string | null; hasReservedUsername: boolean }) => void;
-  onJoin: (username: string, accessCode?: string, avatarSeed?: string) => void;
+  onJoin: (username: string, accessCode?: string, avatarSeed?: string) => Promise<{ error?: string } | void>;
   onLogin?: () => void;
   onSignup?: () => void;
 }
@@ -32,12 +33,14 @@ export default function JoinChatModal({
   chatRoom,
   currentUserDisplayName,
   hasJoinedBefore,
+  isBlocked = false,
   isLoggedIn,
   hasReservedUsername = false,
   themeIsDarkMode = true,
   userAvatarUrl,
   onAvatarChange,
-  anonymousParticipation,
+  anonymousParticipations,
+  spotlightUsernames,
   registeredAvatarUrl,
   onIdentityChange,
   onJoin,
@@ -84,20 +87,23 @@ export default function JoinChatModal({
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+
+
+
   const [isSuggestingUsername, setIsSuggestingUsername] = useState(false);
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [usernameAvailable, setUsernameAvailable] = useState(false);
-  const [isRateLimited, setIsRateLimited] = useState(false);
-  const [rateLimitChecked, setRateLimitChecked] = useState(false);
   const [generationRemaining, setGenerationRemaining] = useState<number | null>(null);
   const [suggestionRemaining, setSuggestionRemaining] = useState<number | null>(null);
   const [usernameSource, setUsernameSource] = useState<'manual' | 'dice'>(persisted.current?.usernameSource || 'manual');
   const [diceUsername, setDiceUsername] = useState<string | null>(persisted.current?.diceUsername || null);
   const [isReturningUser, setIsReturningUser] = useState(false);
-  // Identity chooser state (when logged-in user has prior anonymous participation)
-  const showIdentityChooser = isLoggedIn && !!anonymousParticipation && !hasJoinedBefore;
-  const [selectedIdentity, setSelectedIdentity] = useState<'registered' | 'anonymous'>('registered');
+  // Identity chooser state (when logged-in user has prior anonymous participation(s))
+  const anonList = anonymousParticipations || [];
+  const showIdentityChooser = isLoggedIn && anonList.length > 0 && !hasJoinedBefore;
+  // selectedIdentity: 'registered' | `anonymous:${index}`
+  const [selectedIdentity, setSelectedIdentity] = useState<string>('registered');
   // Notify parent when identity selection changes (updates MessageInput avatar/badge)
   // Skip the initial render — only fire when user actively toggles identity
   const identityInitialized = useRef(false);
@@ -110,12 +116,16 @@ export default function JoinChatModal({
       identityInitialized.current = true;
       return;
     }
-    if (selectedIdentity === 'anonymous') {
-      onIdentityChange({
-        username: anonymousParticipation!.username,
-        avatarUrl: anonymousParticipation!.avatar_url,
-        hasReservedUsername: false,
-      });
+    if (selectedIdentity.startsWith('anonymous:')) {
+      const idx = parseInt(selectedIdentity.split(':')[1], 10);
+      const anon = anonList[idx];
+      if (anon) {
+        onIdentityChange({
+          username: anon.username,
+          avatarUrl: anon.avatar_url,
+          hasReservedUsername: false,
+        });
+      }
     } else {
       onIdentityChange({
         username: currentUserDisplayName,
@@ -163,7 +173,7 @@ export default function JoinChatModal({
 
   // Avatar seed browsing state (restore from persisted if available)
   const [avatarSeeds, setAvatarSeeds] = useState<string[]>(
-    persisted.current?.avatarSeeds || [`${username || currentUserDisplayName || 'anonymous'}-${chatRoom.code}`]
+    persisted.current?.avatarSeeds || [username || currentUserDisplayName || crypto.randomUUID()]
   );
   const [avatarIndex, setAvatarIndex] = useState(persisted.current?.avatarIndex || 0);
 
@@ -215,36 +225,6 @@ export default function JoinChatModal({
     }
   };
 
-  // Check rate limit on mount (for anonymous users only)
-  useEffect(() => {
-    const checkRateLimit = async () => {
-      if (isLoggedIn || hasJoinedBefore) {
-        // Logged-in users and returning users are exempt
-        setIsRateLimited(false);
-        setError('');
-        setRateLimitChecked(true);
-        return;
-      }
-
-      try {
-        const fingerprint = await getFingerprint();
-        const result = await chatApi.checkRateLimit(chatRoom.code, fingerprint, chatRoom.host.reserved_username || undefined);
-
-        if (result.is_rate_limited) {
-          setIsRateLimited(true);
-          setError('Max anonymous usernames. Log in to continue.');
-        }
-      } catch (err) {
-        console.error('Failed to check rate limit:', err);
-        // Don't block if check fails
-      } finally {
-        setRateLimitChecked(true);
-      }
-    };
-
-    checkRateLimit();
-  }, [isLoggedIn, hasJoinedBefore, chatRoom.code]);
-
   // Real-time username validation with debouncing
   useEffect(() => {
     // Clear any existing timeout
@@ -293,9 +273,12 @@ export default function JoinChatModal({
     await initAudioContext();
 
     // Identity chooser: use the selected identity's username
-    const finalUsername = showIdentityChooser && selectedIdentity === 'anonymous'
-      ? anonymousParticipation!.username
-      : (username.trim() || currentUserDisplayName || '');
+    let finalUsername = username.trim() || currentUserDisplayName || '';
+    if (showIdentityChooser && selectedIdentity.startsWith('anonymous:')) {
+      const idx = parseInt(selectedIdentity.split(':')[1], 10);
+      const anon = anonList[idx];
+      if (anon) finalUsername = anon.username;
+    }
 
     // Validate username format
     const validation = validateUsername(finalUsername);
@@ -311,15 +294,17 @@ export default function JoinChatModal({
 
     setIsJoining(true);
 
-    try {
-      await onJoin(finalUsername.trim(), accessCode.trim() || undefined, showAvatarChevrons ? avatarSeeds[avatarIndex] : undefined);
-      // Clean up persisted state on successful join
+    const result = await onJoin(finalUsername.trim(), accessCode.trim() || undefined, showAvatarChevrons ? avatarSeeds[avatarIndex] : undefined);
+
+    if (!result) {
+      // Success — clean up persisted state
       try { sessionStorage.removeItem(storageKey); } catch { /* ignore */ }
-    } catch (err: unknown) {
-      const error = err as Error;
-      setError(error.message || 'Failed to join chat');
-      setIsJoining(false);
+      return;
     }
+
+    // General error
+    setError(result.error || 'Failed to join chat');
+    setIsJoining(false);
   };
 
   const handleLogin = () => {
@@ -353,8 +338,7 @@ export default function JoinChatModal({
     setIsSuggestingUsername(true);
 
     try {
-      const fingerprint = await getFingerprint();
-      const result = await chatApi.suggestUsername(chatRoom.code, fingerprint, chatRoom.host.reserved_username || undefined);
+      const result = await chatApi.suggestUsername(chatRoom.code, chatRoom.host.reserved_username || undefined);
 
       // Backend returns username for both new generation and rotation through previous ones
       if (result.username) {
@@ -389,12 +373,15 @@ export default function JoinChatModal({
   };
 
   // Auto-fetch username for anonymous users on mount to detect returning users
+  // Waits for Turnstile verification first (suggest-username is a protected endpoint)
   // Skip if we already have a persisted username (returning from auth modal)
   useEffect(() => {
-    if (!isLoggedIn && !hasJoinedBefore && rateLimitChecked && !isRateLimited && !persisted.current?.username) {
-      handleSuggestUsername();
+    if (!isLoggedIn && !hasJoinedBefore && !persisted.current?.username) {
+      verifyHuman().then((verified) => {
+        if (verified) handleSuggestUsername();
+      });
     }
-  }, [isLoggedIn, hasJoinedBefore, rateLimitChecked, isRateLimited]);
+  }, [isLoggedIn, hasJoinedBefore]);
 
   // Persist join modal state to sessionStorage so it survives auth modal navigation
   useEffect(() => {
@@ -482,7 +469,7 @@ export default function JoinChatModal({
       </div>}
 
       {/* Form */}
-      <form onSubmit={handleJoin} className="space-y-4">
+      <form data-join-form onSubmit={handleJoin} className="space-y-4">
         {/* Identity Chooser — logged-in user with prior anonymous participation */}
         {showIdentityChooser ? (
           <div className="space-y-3">
@@ -490,35 +477,52 @@ export default function JoinChatModal({
               Choose how to join this chat:
             </p>
 
-            {/* Anonymous identity card */}
-            <button
-              type="button"
-              onClick={() => setSelectedIdentity('anonymous')}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
-                selectedIdentity === 'anonymous'
-                  ? 'border-cyan-500 bg-cyan-500/10'
-                  : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-500'
-              }`}
-            >
-              <img
-                src={anonymousParticipation!.avatar_url || ''}
-                alt="Anonymous avatar"
-                className="w-12 h-12 rounded-full bg-zinc-700 flex-shrink-0"
-              />
-              <div className="text-left min-w-0">
-                <p className={`font-semibold ${modalStyles.title} truncate`}>
-                  {anonymousParticipation!.username}
-                </p>
-                <p className={`text-xs ${modalStyles.subtitle}`}>
-                  Continue as guest
-                </p>
-              </div>
-              {selectedIdentity === 'anonymous' && (
-                <div className="ml-auto flex-shrink-0 w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full bg-white" />
-                </div>
-              )}
-            </button>
+            {/* Anonymous identity cards (one per linked anonymous participation) */}
+            {anonList.map((anon, idx) => {
+              const key = `anonymous:${idx}`;
+              const isSelected = selectedIdentity === key;
+              return (
+                <button
+                  key={anon.participation_id || `${anon.username}-${idx}`}
+                  type="button"
+                  onClick={() => setSelectedIdentity(key)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
+                    isSelected
+                      ? 'border-cyan-500 bg-cyan-500/10'
+                      : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-500'
+                  }`}
+                >
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={anon.avatar_url || ''}
+                      alt="Anonymous avatar"
+                      className="w-12 h-12 rounded-full bg-zinc-700"
+                    />
+                    {spotlightUsernames?.has(anon.username) && (
+                      <Star
+                        size={14}
+                        fill="currentColor"
+                        className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
+                        style={{ transform: 'rotate(-15deg)' }}
+                      />
+                    )}
+                  </div>
+                  <div className="text-left min-w-0">
+                    <p className={`font-semibold ${modalStyles.title} truncate`}>
+                      {anon.username}
+                    </p>
+                    <p className={`text-xs ${modalStyles.subtitle}`}>
+                      Continue anonymously
+                    </p>
+                  </div>
+                  {isSelected && (
+                    <div className="ml-auto flex-shrink-0 w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center">
+                      <div className="w-2 h-2 rounded-full bg-white" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
 
             {/* Registered identity card */}
             <button
@@ -530,11 +534,23 @@ export default function JoinChatModal({
                   : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-500'
               }`}
             >
-              <img
-                src={registeredAvatarUrl || userAvatarUrl || ''}
-                alt="Registered avatar"
-                className="w-12 h-12 rounded-full bg-zinc-700 flex-shrink-0"
-              />
+              <div className="relative flex-shrink-0">
+                <img
+                  src={registeredAvatarUrl || userAvatarUrl || ''}
+                  alt="Registered avatar"
+                  className="w-12 h-12 rounded-full bg-zinc-700"
+                />
+                {chatRoom.host.reserved_username?.toLowerCase() === currentUserDisplayName.toLowerCase() ? (
+                  <Crown size={14} fill="currentColor" className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.crown_icon_color || 'text-amber-400'}`} style={{ transform: 'rotate(-30deg)' }} />
+                ) : spotlightUsernames?.has(currentUserDisplayName) && (
+                  <Star
+                    size={14}
+                    fill="currentColor"
+                    className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
+                    style={{ transform: 'rotate(-15deg)' }}
+                  />
+                )}
+              </div>
               <div className="text-left min-w-0">
                 <div className="flex items-center gap-1">
                   <p className={`font-semibold ${modalStyles.title} truncate`}>
@@ -645,7 +661,7 @@ export default function JoinChatModal({
               <button
                 type="button"
                 onClick={handleSuggestUsername}
-                disabled={isJoining || isSuggestingUsername || isRateLimited}
+                disabled={isJoining || isSuggestingUsername}
                 className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg ${modalStyles.secondaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
                 title="Generate random username"
               >
@@ -686,14 +702,26 @@ export default function JoinChatModal({
           </p>
         )}
 
-        {/* Join Button */}
-        <button
-          type="submit"
-          disabled={isJoining || isRateLimited || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
-          className={`w-full px-6 py-3 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
-        >
-          {isJoining ? 'Joining...' : 'Join Chat'}
-        </button>
+        {/* Banned message OR Join Button */}
+        {isBlocked ? (
+          <div className="text-center py-4 space-y-2">
+            <div className="flex items-center justify-center gap-2 text-red-400">
+              <Ban size={20} />
+              <span className="font-semibold">You have been banned from this chat</span>
+            </div>
+            <p className="text-xs text-zinc-500">
+              You can no longer join or send messages in this chat.
+            </p>
+          </div>
+        ) : (
+          <button
+            type="submit"
+            disabled={isJoining || (!isLoggedIn && hasReservedUsername && (hasJoinedBefore || isReturningUser))}
+            className={`w-full px-6 py-3 rounded-xl font-semibold ${mt.primaryButton} transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+          >
+            {isJoining ? 'Joining...' : 'Join Chat'}
+          </button>
+        )}
 
         {/* Auth links (only for non-logged-in users) */}
         {!isLoggedIn && (

@@ -176,9 +176,6 @@ class DeduplicationTests(TestCase):
     @patch('media_analysis.views.MediaStorage.save_file')
     def test_duplicate_image_response_has_cached_flag(self, mock_save_file, mock_get_vision_provider, mock_config):
         """Test that cached responses include 'cached': true flag."""
-        # Disable rate limiting for this test
-        mock_config.PHOTO_ANALYSIS_ENABLE_RATE_LIMITING = False
-
         # Configure mocks
         mock_provider = MagicMock()
         mock_provider.is_available.return_value = True

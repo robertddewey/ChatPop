@@ -11,8 +11,48 @@ from .serializers import (
 )
 from chats.utils.username.validators import validate_username, is_username_globally_available
 from chats.utils.username.generator import generate_username
+from chats.utils.turnstile import require_turnstile, verify_turnstile_token, get_client_ip
 from django.core.cache import cache
+from django.conf import settings
 from constance import config
+
+
+def _claim_anonymous_identities_on_auth(old_session_key, user):
+    """
+    Claim any orphan anonymous ChatParticipation rows tied to the user's
+    pre-auth Django session_key. Called from LoginView and RegisterView BEFORE
+    Django's ``login(request, user)`` rotates the session key — otherwise the
+    pre-auth key is lost and the anon rows stay orphaned forever.
+
+    For each claimed row, also runs ``check_if_blocked`` to refuse the claim
+    if the authenticating user is account-banned from that chat — prevents
+    ban laundering via login.
+    """
+    if not old_session_key:
+        return
+    from chats.models import ChatParticipation
+    from chats.utils.security.blocking import check_if_blocked
+
+    orphans = ChatParticipation.objects.filter(
+        session_key=old_session_key,
+        user__isnull=True,
+    ).select_related('chat_room')
+
+    for p in orphans:
+        # If this user is banned from this chat, do not claim the orphan —
+        # leave it detached so a banned user cannot launder identities.
+        is_blocked, _ = check_if_blocked(
+            chat_room=p.chat_room,
+            username=p.username,
+            user=user,
+        )
+        if is_blocked:
+            continue
+        # Also skip if another link already claims this participation (shouldn't
+        # happen given user__isnull=True, but defense in depth).
+        p.user = user
+        p.is_anonymous_identity = True
+        p.save(update_fields=['user', 'is_anonymous_identity'])
 
 
 class RegisterView(generics.CreateAPIView):
@@ -20,10 +60,19 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
 
+    @require_turnstile
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+
+        # Capture the pre-register session_key and claim any orphan anon
+        # ChatParticipation rows tied to it before anything rotates the session.
+        # Note: RegisterView doesn't itself call login() here — the client
+        # typically follows up with a LoginView call — but claiming at register
+        # time is still valuable because subsequent login will rotate the key.
+        pre_register_session_key = request.session.session_key
+        _claim_anonymous_identities_on_auth(pre_register_session_key, user)
 
         # Create token for the user
         token, created = Token.objects.get_or_create(user=user)
@@ -43,6 +92,10 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data['user']
+        # Capture the pre-login session_key BEFORE Django's login() rotates it,
+        # then claim any orphan anon ChatParticipation rows that were tied to it.
+        pre_login_session_key = request.session.session_key
+        _claim_anonymous_identities_on_auth(pre_login_session_key, user)
         login(request, user)
 
         # Get or create token
@@ -125,7 +178,6 @@ class CheckUsernameView(APIView):
 
     def get(self, request):
         username = request.query_params.get('username', '').strip()
-        fingerprint = request.query_params.get('fingerprint', '').strip()
 
         if not username:
             return Response({'available': False, 'message': 'Username is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -139,23 +191,20 @@ class CheckUsernameView(APIView):
                 'message': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Fallback fingerprint to IP if not provided
-        if not fingerprint:
-            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-            if x_forwarded_for:
-                fingerprint = x_forwarded_for.split(',')[0]
-            else:
-                fingerprint = request.META.get('REMOTE_ADDR', 'unknown')
+        # Use Django session key for reservation ownership (avoids shared-IP collisions)
+        if not request.session.session_key:
+            request.session.create()
+        identity_key = request.session.session_key
 
         # Check global username availability (User.reserved_username + ChatParticipation.username + Redis reservations)
-        # Pass fingerprint to allow same user to re-check their own reservation
-        available = is_username_globally_available(username, fingerprint=fingerprint)
+        # Pass identity_key to allow same user to re-check their own reservation
+        available = is_username_globally_available(username, fingerprint=identity_key)
 
-        # If available, reserve it temporarily in Redis with fingerprint ownership
+        # If available, reserve it temporarily in Redis with session ownership
         if available:
             cache_ttl = config.USERNAME_REGISTRATION_HOLD_TTL_MINUTES * 60  # Convert minutes to seconds
             reservation_key = f"username:reserved:{username.lower()}"
-            cache.set(reservation_key, fingerprint, cache_ttl)  # Store fingerprint, not True
+            cache.set(reservation_key, identity_key, cache_ttl)
 
         return Response({
             'available': available,
@@ -167,26 +216,16 @@ class SuggestUsernameView(APIView):
     """Suggest a random username for registration (globally unique)"""
     permission_classes = [permissions.AllowAny]
 
+    @require_turnstile
     def post(self, request):
-        # Get fingerprint from request (fallback to IP if not provided)
-        fingerprint = request.data.get('fingerprint')
-        if not fingerprint:
-            # Fallback to IP address for anonymous registration attempts
-            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-            if x_forwarded_for:
-                fingerprint = x_forwarded_for.split(',')[0]
-            else:
-                fingerprint = request.META.get('REMOTE_ADDR', 'unknown')
-
-        # DEBUG: Log fingerprint value
-        print(f"[SUGGEST_USERNAME] Fingerprint: {fingerprint}")
+        # Use Django session key for rate limiting (avoids shared-IP collisions)
+        if not request.session.session_key:
+            request.session.create()
+        identity_key = request.session.session_key
 
         # Generate username with higher limit for registration (100 vs chat's 10)
         # Registration gets more attempts since it's a one-time action
-        username, remaining_attempts = generate_username(fingerprint, chat_code=None, max_attempts=100)
-
-        # DEBUG: Log result
-        print(f"[SUGGEST_USERNAME] Generated: {username}, Remaining: {remaining_attempts}")
+        username, remaining_attempts = generate_username(identity_key, chat_code=None, max_attempts=100)
 
         if username:
             return Response({
@@ -195,13 +234,13 @@ class SuggestUsernameView(APIView):
             }, status=status.HTTP_200_OK)
         else:
             # Rate limit hit - rotate through previously generated usernames
-            generated_key = f"username:generated_for_fingerprint:{fingerprint}"
+            generated_key = f"username:generated_for_session:{identity_key}"
             generated_usernames = cache.get(generated_key, set())
 
             if generated_usernames:
                 # Rotate through previously generated usernames
                 usernames_list = sorted(list(generated_usernames))  # Consistent order
-                rotation_key = f"username:rotation_index:registration:{fingerprint}"
+                rotation_key = f"username:rotation_index:registration:{identity_key}"
                 current_index = cache.get(rotation_key, 0)
 
                 # Get next username in rotation
@@ -222,3 +261,37 @@ class SuggestUsernameView(APIView):
                     'error': 'Failed to generate username. Please try again later.',
                     'remaining_attempts': remaining_attempts
                 }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+class VerifyHumanView(APIView):
+    """Verify a user is human via Cloudflare Turnstile. Called once per session."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        # Already verified this session
+        if request.session.get('turnstile_verified'):
+            return Response({'verified': True, 'already_verified': True})
+
+        # No-op if Turnstile not configured
+        if not settings.CLOUDFLARE_TURNSTILE_SECRET_KEY:
+            request.session['turnstile_verified'] = True
+            return Response({'verified': True})
+
+        token = request.data.get('turnstile_token', '')
+        if not token:
+            return Response(
+                {'verified': False, 'error': 'Token required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        ip_address = get_client_ip(request)
+        if verify_turnstile_token(token, ip_address):
+            if not request.session.session_key:
+                request.session.create()
+            request.session['turnstile_verified'] = True
+            return Response({'verified': True})
+        else:
+            return Response(
+                {'verified': False, 'error': 'Verification failed'},
+                status=status.HTTP_403_FORBIDDEN
+            )

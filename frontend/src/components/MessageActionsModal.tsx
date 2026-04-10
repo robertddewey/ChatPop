@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Message, ReactionSummary } from '@/lib/api';
-import { Pin, Gift, Ban, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Radio } from 'lucide-react';
+import { Pin, Gift, Ban, ShieldCheck, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Radio, Star } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import ReactionBar from './ReactionBar';
 import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
@@ -70,6 +70,13 @@ interface MessageActionsModalProps {
   onAddToPin?: (messageId: string, amountCents: number) => Promise<boolean>;
   getPinRequirements?: (messageId: string) => Promise<PinRequirements>;
   onBlock?: (username: string) => void;
+  onUnblock?: (username: string) => void;
+  onUnmute?: (username: string) => void;
+  mutedUsernames?: Set<string>;
+  onSpotlightAdd?: (username: string) => void;
+  onSpotlightRemove?: (username: string) => void;
+  spotlightUsernames?: Set<string>;
+  onRequestSignup?: () => void;
   onTip?: (username: string) => void;
   onSendGift?: (giftId: string, recipientUsername: string) => Promise<boolean>;
   onThankGift?: (messageId: string) => Promise<boolean>;
@@ -222,6 +229,13 @@ export default function MessageActionsModal({
   onAddToPin,
   getPinRequirements,
   onBlock,
+  onUnblock,
+  onUnmute,
+  mutedUsernames,
+  onSpotlightAdd,
+  onSpotlightRemove,
+  spotlightUsernames,
+  onRequestSignup,
   onTip,
   onSendGift,
   onThankGift,
@@ -243,6 +257,10 @@ export default function MessageActionsModal({
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [confirmingBan, setConfirmingBan] = useState(false);
+  const [confirmingUnban, setConfirmingUnban] = useState(false);
+  const [confirmingMute, setConfirmingMute] = useState(false);
+  const [muteLockedHint, setMuteLockedHint] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [slideIn, setSlideIn] = useState(false);
@@ -364,6 +382,10 @@ export default function MessageActionsModal({
     setIsClosing(true);
     setSlideIn(false);
     setIsDragging(false);
+    setConfirmingBan(false);
+    setConfirmingUnban(false);
+    setConfirmingMute(false);
+    setMuteLockedHint(false);
 
     // Wait for transition to complete before removing from DOM
     setTimeout(() => {
@@ -607,6 +629,23 @@ export default function MessageActionsModal({
     });
   }
 
+  // 4c. Spotlight — host-only, on others' (non-host) messages, immediate toggle
+  if (isHost && !isOwnMessage && !isHostMessage && (onSpotlightAdd || onSpotlightRemove)) {
+    const isSpotlit = spotlightUsernames?.has(message.username) || false;
+    actions.push({
+      icon: Star,
+      label: isSpotlit ? 'Unspotlight' : 'Spotlight',
+      action: () => {
+        if (isSpotlit) {
+          onSpotlightRemove?.(message.username);
+        } else {
+          onSpotlightAdd?.(message.username);
+        }
+        handleClose();
+      },
+    });
+  }
+
   // 5. Copy — always (copies "username: content" to clipboard, disabled for media-only)
   const hasTextContent = !!message.content?.trim();
   actions.push({
@@ -646,19 +685,54 @@ export default function MessageActionsModal({
     });
   }
 
-  // 6. Mute/Ban — registered users, others only (destructive)
-  if (!isOwnMessage && !isHostMessage && onBlock) {
+  // 6. Mute/Ban/Unban — registered users, others only
+  if (!isOwnMessage && !isHostMessage) {
     const authToken = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-    if (authToken) {
+    if (!authToken && !isHost) {
+      // Anonymous users see a locked Mute action
       actions.push({
         icon: Ban,
-        label: isHost ? 'Ban' : 'Mute',
+        label: 'Mute',
         destructive: true,
         action: () => {
-          onBlock(message.username);
-          handleClose();
+          setMuteLockedHint(true);
         },
       });
+    } else if (authToken) {
+      if (isHost && message.is_banned && onUnblock) {
+        // Host sees "Unban" for already-banned users
+        actions.push({
+          icon: ShieldCheck,
+          label: 'Unban',
+          destructive: true,
+          action: () => {
+            setConfirmingUnban(true);
+          },
+        });
+      } else if (!isHost && mutedUsernames && mutedUsernames.has(message.username) && onUnmute) {
+        actions.push({
+          icon: ShieldCheck,
+          label: 'Unmute',
+          destructive: true,
+          action: () => {
+            onUnmute(message.username);
+            handleClose();
+          },
+        });
+      } else if (onBlock) {
+        actions.push({
+          icon: Ban,
+          label: isHost ? 'Ban' : 'Mute',
+          destructive: true,
+          action: () => {
+            if (isHost) {
+              setConfirmingBan(true);
+            } else {
+              setConfirmingMute(true);
+            }
+          },
+        });
+      }
     }
   }
 
@@ -750,7 +824,7 @@ export default function MessageActionsModal({
                     {message.is_from_host && (
                       <>
                         <span className="ml-1"><HostPill color={themeColors?.crownIcon || '#2dd4bf'} /></span>
-                        <Crown className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
+                        <Crown className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
                       </>
                     )}
                     {message.is_pinned && !message.is_from_host && (
@@ -936,7 +1010,82 @@ export default function MessageActionsModal({
                   {/* Divider */}
                   <div className={`mx-5 border-t ${modalStyles.divider}`} />
 
-                  {/* Horizontal Scrollable Action Row */}
+                  {/* Horizontal Scrollable Action Row OR Ban Confirmation */}
+                  {muteLockedHint ? (
+                    <div className="px-5 py-4 space-y-3">
+                      <p className={`text-sm font-medium text-center ${themeModalStyles?.actionLabel || 'text-zinc-50'}`}>
+                        🤫 Muting is a members-only superpower.
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMuteLockedHint(false);
+                          }}
+                          className={`flex-1 px-4 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-95 cursor-pointer ${themeModalStyles?.secondaryButton || 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'}`}
+                        >
+                          Not now
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMuteLockedHint(false);
+                            handleClose();
+                            onRequestSignup?.();
+                          }}
+                          className="flex-1 px-4 py-2.5 rounded-xl font-medium text-sm bg-blue-500 text-white hover:bg-blue-600 transition-all active:scale-95 cursor-pointer text-center"
+                        >
+                          Sign up
+                        </button>
+                      </div>
+                    </div>
+                  ) : confirmingBan || confirmingUnban || confirmingMute ? (
+                    <div className="px-5 py-4 space-y-3">
+                      <p className={`text-sm font-medium text-center ${themeModalStyles?.actionLabel || 'text-zinc-50'}`}>
+                        {confirmingBan ? (
+                          <>Ban <span className="font-bold">{message.username}</span> from this chat?</>
+                        ) : confirmingMute ? (
+                          <>Mute <span className="font-bold">{message.username}</span>?</>
+                        ) : (
+                          <>Unban <span className="font-bold">{message.username}</span>?</>
+                        )}
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmingBan(false);
+                            setConfirmingUnban(false);
+                            setConfirmingMute(false);
+    setMuteLockedHint(false);
+                          }}
+                          className={`flex-1 px-4 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-95 cursor-pointer ${themeModalStyles?.secondaryButton || 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'}`}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirmingBan && onBlock) {
+                              onBlock(message.username);
+                            } else if (confirmingMute && onBlock) {
+                              onBlock(message.username);
+                            } else if (confirmingUnban && onUnblock) {
+                              onUnblock(message.username);
+                            }
+                            setConfirmingBan(false);
+                            setConfirmingUnban(false);
+                            setConfirmingMute(false);
+    setMuteLockedHint(false);
+                            handleClose();
+                          }}
+                          className="flex-1 px-4 py-2.5 rounded-xl font-medium text-sm bg-red-500 text-white hover:bg-red-600 transition-all active:scale-95 cursor-pointer"
+                        >
+                          {confirmingBan ? 'Ban' : confirmingMute ? 'Mute' : 'Unban'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                   <div className="pt-3">
                     <div
                       className="overflow-x-scroll actions-scrollbar-hide actions-scroll-container px-5"
@@ -964,6 +1113,7 @@ export default function MessageActionsModal({
                       </div>
                     </div>
                   </div>
+                  )}
                   </div>
 
                   {/* Panel 2: Pin Input */}

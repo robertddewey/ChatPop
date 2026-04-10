@@ -3,7 +3,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from .utils.security.auth import ChatSessionValidator
 from .utils.performance.cache import MessageCache, UnacknowledgedGiftCache
-from .models import ChatRoom, Message, ChatParticipation
+from .models import ChatRoom, Message, ChatParticipation, ChatBlock
 from urllib.parse import parse_qs
 
 
@@ -62,7 +62,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.username,
             session_data.get('fingerprint'),
             self.user_id,
-            client_ip
+            client_ip,
+            session_data.get('session_key')
         )
         if is_banned:
             if ban_type == 'site':
@@ -185,9 +186,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message_data = event['message_data']
         sender_username = message_data.get('username')
 
-        # Skip message if sender is blocked by this user
+        # Skip message if sender is blocked by this user, with exceptions
         if sender_username and sender_username in self.blocked_usernames:
-            return  # Don't send message to this WebSocket
+            # Exception: host broadcasts always shown
+            if message_data.get('is_broadcast'):
+                pass
+            # Exception: gifts TO this user from a muted sender
+            elif message_data.get('message_type') == 'gift' and message_data.get('gift_recipient') == self.username:
+                pass
+            else:
+                return  # Don't send message to this WebSocket
+
+        # Also hide gifts TO muted users (unless sent by me)
+        if message_data.get('message_type') == 'gift':
+            recipient = message_data.get('gift_recipient')
+            if recipient and recipient in self.blocked_usernames and sender_username != self.username:
+                return
 
         # Send message to WebSocket
         await self.send(text_data=json.dumps(message_data))
@@ -252,6 +266,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Close the WebSocket connection
             await self.close(code=4403)
 
+    async def user_ban_status(self, event):
+        """Broadcast ban/unban status change to all connected clients."""
+        await self.send(text_data=json.dumps({
+            'type': 'ban_status_changed',
+            'username': event.get('username'),
+            'is_banned': event.get('is_banned', True),
+        }))
+
+    async def spotlight_update(self, event):
+        """Broadcast spotlight add/remove to all clients in the room."""
+        await self.send(text_data=json.dumps({
+            'type': 'spotlight_update',
+            'action': event.get('action'),
+            'username': event.get('username'),
+        }))
+
     async def site_banned(self, event):
         """Handle user being site-wide banned by staff (SiteBan)"""
         await self.send(text_data=json.dumps({
@@ -267,8 +297,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def gift_sent(self, event):
         """Gift chat message - broadcast to all (respects block list)."""
         message_data = event['message_data']
-        if message_data.get('username') in self.blocked_usernames:
+        sender_username = message_data.get('username')
+        recipient = message_data.get('gift_recipient')
+
+        # Hide gift if sender is muted, unless I'm the recipient
+        if sender_username in self.blocked_usernames:
+            if recipient != self.username:
+                return
+        # Hide gift to muted recipients (unless I'm the sender)
+        if recipient and recipient in self.blocked_usernames and sender_username != self.username:
             return
+
         await self.send(text_data=json.dumps(message_data))
 
     async def gift_received(self, event):
@@ -425,6 +464,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not avatar_url:
             avatar_url = get_fallback_dicebear_url(message.username, style=None)
 
+        # Check if sender is banned (single indexed query)
+        from django.utils import timezone as tz
+        from django.db.models import Q
+        is_banned = ChatBlock.objects.filter(
+            chat_room=message.chat_room,
+            blocked_username__iexact=message.username
+        ).filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
+        ).exists()
+
+        # Check if sender is currently spotlighted (per-participation)
+        is_spotlight = ChatParticipation.objects.filter(
+            chat_room=message.chat_room,
+            username__iexact=message.username,
+            is_spotlight=True,
+        ).exists()
+
         return {
             'id': str(message.id),
             'chat_code': message.chat_room.code,
@@ -451,6 +507,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'avatar_url': avatar_url,
             'created_at': message.created_at.isoformat(),
             'is_deleted': message.is_deleted,
+            'is_banned': is_banned,
+            'is_spotlight': is_spotlight,
         }
 
     @database_sync_to_async
@@ -474,26 +532,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return blocked_usernames
 
     @database_sync_to_async
-    def check_if_banned(self, chat_code, username, fingerprint=None, user_id=None, ip_address=None):
+    def check_if_banned(self, chat_code, username, fingerprint=None, user_id=None, ip_address=None, session_key=None):
         """
         Check if user is banned from this chat (ChatBlock) or site-wide (SiteBan).
-
-        Args:
-            chat_code: Chat room code
-            username: Username to check
-            fingerprint: Browser fingerprint (optional)
-            user_id: User ID for registered users (optional)
-            ip_address: IP address (optional, for site bans)
+        Uses the tiered ban system and host exemption.
 
         Returns:
             tuple: (is_banned: bool, ban_type: str|None)
-                   ban_type is 'chat' for ChatBlock, 'site' for SiteBan, None if not banned
         """
-        from .models import ChatBlock, SiteBan
+        from .models import SiteBan
+        from .utils.security.blocking import check_if_blocked
         from django.contrib.auth import get_user_model
         User = get_user_model()
 
-        # Check for site-wide ban first (applies to all chats)
+        # Resolve user object
         user = None
         if user_id:
             try:
@@ -501,39 +553,33 @@ class ChatConsumer(AsyncWebsocketConsumer):
             except User.DoesNotExist:
                 pass
 
-        site_ban = SiteBan.is_banned(
-            user=user,
-            ip_address=ip_address,
-            fingerprint=fingerprint
-        )
-        if site_ban:
-            return True, 'site'
-
-        # Get chat room for ChatBlock check
+        # Get chat room
         try:
             chat_room = ChatRoom.objects.get(code=chat_code)
         except ChatRoom.DoesNotExist:
             return False, None
 
-        # Check for ChatBlock by username (case-insensitive)
-        if ChatBlock.objects.filter(
-            chat_room=chat_room,
-            blocked_username__iexact=username
-        ).exists():
-            return True, 'chat'
+        # Check for site-wide ban (host exempt)
+        site_ban = SiteBan.is_banned(
+            user=user,
+            ip_address=ip_address,
+            fingerprint=fingerprint,
+            session_key=session_key,
+            chat_room=chat_room
+        )
+        if site_ban:
+            return True, 'site'
 
-        # Check for ChatBlock by fingerprint
-        if fingerprint and ChatBlock.objects.filter(
+        # Check for chat-specific block (uses tiered ban system with host exemption)
+        is_blocked, _ = check_if_blocked(
             chat_room=chat_room,
-            blocked_fingerprint=fingerprint
-        ).exists():
-            return True, 'chat'
-
-        # Check for ChatBlock by user ID
-        if user_id and ChatBlock.objects.filter(
-            chat_room=chat_room,
-            blocked_user_id=user_id
-        ).exists():
+            username=username,
+            fingerprint=fingerprint,
+            session_key=session_key,
+            user=user,
+            ip_address=ip_address
+        )
+        if is_blocked:
             return True, 'chat'
 
         return False, None

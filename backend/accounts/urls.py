@@ -2,7 +2,8 @@ from django.urls import path
 from .views import (
     RegisterView, LoginView, LogoutView, CurrentUserView,
     UserSubscriptionListCreateView, UserSubscriptionDestroyView,
-    MySubscribersView, CheckUsernameView, SuggestUsernameView
+    MySubscribersView, CheckUsernameView, SuggestUsernameView,
+    VerifyHumanView
 )
 
 app_name = 'accounts'
@@ -15,6 +16,7 @@ urlpatterns = [
     path('me/', CurrentUserView.as_view(), name='current-user'),
     path('check-username/', CheckUsernameView.as_view(), name='check-username'),
     path('suggest-username/', SuggestUsernameView.as_view(), name='suggest-username'),
+    path('verify-human/', VerifyHumanView.as_view(), name='verify-human'),
 
     # Subscriptions
     path('subscriptions/', UserSubscriptionListCreateView.as_view(), name='subscription-list'),

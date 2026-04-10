@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, memo, useMemo, useRef, useEffect } from 'react';
-import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown, Trash2 } from 'lucide-react';
+import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown, Star, Trash2 } from 'lucide-react';
 import type { Message, ChatRoom } from '@/lib/api';
 import VoiceRecorder, { type VoicePreview } from './VoiceRecorder';
 import MediaPicker from './MediaPicker';
@@ -15,6 +15,7 @@ interface RecordingMetadata {
 interface MessageInputProps {
   chatRoom: ChatRoom | null;
   isHost: boolean;
+  isSpotlight?: boolean;
   hasJoined: boolean;
   sending: boolean;
   replyingTo: Message | null;
@@ -44,6 +45,7 @@ interface MessageInputProps {
 function MessageInputComponent({
   chatRoom,
   isHost,
+  isSpotlight = false,
   hasJoined,
   sending,
   replyingTo,
@@ -333,7 +335,11 @@ function MessageInputComponent({
         <div className={`flex items-center gap-1 ${replyingTo || mediaPreview || voicePreview ? 'mt-0.5' : '-mt-2'} mb-0.5 px-1`}>
           <span className={`text-[10px] ${inputStyles?.chattingAsText || 'text-zinc-600'} flex items-center gap-0.5`}>
             You are <span className="font-medium">@{username}</span>
-            {isHost && <Crown size={10} style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />}
+            {isHost ? (
+              <Crown size={10} fill="currentColor" style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />
+            ) : isSpotlight && (
+              <Star size={10} fill="currentColor" style={{ color: inputStyles?.spotlightIconColor || '#facc15' }} />
+            )}
           </span>
         </div>
       )}

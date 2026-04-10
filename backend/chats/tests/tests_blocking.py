@@ -300,16 +300,19 @@ class BlockingUtilityTests(TestCase):
     @allure.description("Test checking if a device fingerprint is blocked in a chat room")
     @allure.severity(allure.severity_level.CRITICAL)
     def test_check_if_blocked_by_fingerprint(self):
-        """Test checking if a fingerprint is blocked"""
+        """Test checking if a fingerprint+IP is blocked (fingerprint_ip tier)"""
         ChatBlock.objects.create(
             chat_room=self.chat_room,
             blocked_by=self.host_participation,
-            blocked_fingerprint='abc123'
+            blocked_fingerprint='abc123',
+            blocked_ip_address='10.0.0.1',
+            ban_tier=ChatBlock.BAN_TIER_FINGERPRINT_IP
         )
 
         is_blocked, _ = check_if_blocked(
             chat_room=self.chat_room,
-            fingerprint='abc123'
+            fingerprint='abc123',
+            ip_address='10.0.0.1'
         )
         self.assertTrue(is_blocked)
 
@@ -750,7 +753,7 @@ class JoinEnforcementTests(TestCase):
     @allure.description("Test that a blocked device fingerprint is prevented from joining the chat room")
     @allure.severity(allure.severity_level.CRITICAL)
     def test_blocked_fingerprint_cannot_join(self):
-        """Test that a blocked fingerprint cannot join the chat"""
+        """Test that a blocked fingerprint+IP cannot join the chat"""
         # Generate a username for this fingerprint
         fingerprint = 'blocked_fingerprint_fp'
         suggest_response = self.client.post(
@@ -761,11 +764,13 @@ class JoinEnforcementTests(TestCase):
         self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
         username = suggest_response.data['username']
 
-        # Block the fingerprint
+        # Block the fingerprint+IP (fingerprint_ip tier)
         ChatBlock.objects.create(
             chat_room=self.chat_room,
             blocked_by=self.host_participation,
-            blocked_fingerprint=fingerprint
+            blocked_fingerprint=fingerprint,
+            blocked_ip_address='127.0.0.1',
+            ban_tier=ChatBlock.BAN_TIER_FINGERPRINT_IP
         )
 
         # Try to join with blocked fingerprint

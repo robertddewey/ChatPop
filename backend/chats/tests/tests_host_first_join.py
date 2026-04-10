@@ -239,15 +239,16 @@ class HostFirstJoinTests(TestCase):
             fingerprint='host-fingerprint'
         )
 
-        # Create a dummy username generation record for anonymous user
-        # This is required for anonymous users to join (see SECURITY CHECK 0 in views.py)
-        from django.core.cache import cache
-        test_fingerprint = 'anonymous-fingerprint'
-        test_username = 'AnonymousUser'
-        generated_key = f"username:generated_for_fingerprint:{test_fingerprint}"
-        cache.set(generated_key, {test_username}, 3600)
-
         # No authentication (anonymous user)
+        # Use suggest-username to get a valid generated username (stored against session_key)
+        test_fingerprint = 'anonymous-fingerprint'
+        suggest_response = self.client.post(
+            f'/api/chats/HostUser/{self.chat_room.code}/suggest-username/',
+            {'fingerprint': test_fingerprint},
+            format='json'
+        )
+        self.assertEqual(suggest_response.status_code, 200)
+        test_username = suggest_response.data['username']
 
         # Try to join chat
         response = self.client.post(f'/api/chats/HostUser/{self.chat_room.code}/join/', {

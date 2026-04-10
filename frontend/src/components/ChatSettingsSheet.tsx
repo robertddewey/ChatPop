@@ -10,8 +10,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { chatApi, type ChatRoom } from '@/lib/api';
-import { Copy, Check, BadgeCheck, Moon, ArrowLeft, Image, Mic, Video } from 'lucide-react';
+import { chatApi, messageApi, type ChatRoom } from '@/lib/api';
+import { Copy, Check, BadgeCheck, Moon, ArrowLeft, Image, Mic, Video, Ban, ShieldCheck, ChevronRight, Settings, Star } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 // Theme color constants for optimistic updates
@@ -68,7 +68,6 @@ const updateThemeColorMetaTags = (themeColors: { light: string; dark: string }) 
 interface ChatSettingsSheetProps {
   chatRoom: ChatRoom;
   currentUserId?: string;
-  fingerprint?: string;
   activeThemeId?: string;
   onUpdate?: (chatRoom: ChatRoom) => void;
   onThemeChange?: (theme: ThemeId) => void;
@@ -76,12 +75,14 @@ interface ChatSettingsSheetProps {
   children: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  spotlightUsernames?: Set<string>;
+  onSpotlightAdd?: (username: string) => Promise<void> | void;
+  onSpotlightRemove?: (username: string) => Promise<void> | void;
 }
 
 export default function ChatSettingsSheet({
   chatRoom,
   currentUserId,
-  fingerprint,
   activeThemeId,
   onUpdate,
   onThemeChange,
@@ -89,6 +90,9 @@ export default function ChatSettingsSheet({
   children,
   open,
   onOpenChange,
+  spotlightUsernames,
+  onSpotlightAdd,
+  onSpotlightRemove,
 }: ChatSettingsSheetProps) {
   const router = useRouter();
   const isHost = chatRoom.host.id === currentUserId;
@@ -124,6 +128,168 @@ export default function ChatSettingsSheet({
   const [success, setSuccess] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [subPage, setSubPage] = useState<'main' | 'banned' | 'muted' | 'edit' | 'spotlight'>('main');
+
+  // Spotlight sub-page state (host only)
+  const [spotlightList, setSpotlightList] = useState<Array<{ username: string; avatar_url: string | null; last_seen_at: string | null }>>([]);
+  const [spotlightLoading, setSpotlightLoading] = useState(false);
+  const [removingSpotlight, setRemovingSpotlight] = useState<string | null>(null);
+  const [spotlightQuery, setSpotlightQuery] = useState('');
+  const [spotlightSuggestions, setSpotlightSuggestions] = useState<Array<{ username: string; avatar_url: string | null; last_seen_at: string | null }>>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<string | null>(null);
+  const [addingSpotlight, setAddingSpotlight] = useState(false);
+
+  // Banned users state (host only)
+  const [bannedUsers, setBannedUsers] = useState<Array<{ username: string; blocked_at: string; banned_by: string | null }>>([]);
+  const [bannedUsersLoading, setBannedUsersLoading] = useState(false);
+  const [unbanningUser, setUnbanningUser] = useState<string | null>(null);
+  const [banSortBy, setBanSortBy] = useState<'recent' | 'name'>('recent');
+
+  // Muted users state (any logged-in user)
+  const [mutedUsers, setMutedUsers] = useState<Array<{ username: string; muted_at: string }>>([]);
+  const [mutedUsersLoading, setMutedUsersLoading] = useState(false);
+  const [unmutingUser, setUnmutingUser] = useState<string | null>(null);
+  const [muteSortBy, setMuteSortBy] = useState<'recent' | 'name'>('recent');
+  const isLoggedIn = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
+
+  // Reset to main page when sheet closes
+  useEffect(() => {
+    if (!isOpen) setSubPage('main');
+  }, [isOpen]);
+
+  // Load banned users when sheet opens (host only)
+  useEffect(() => {
+    if (isOpen && isHost) {
+      setBannedUsersLoading(true);
+      messageApi.getBannedUsers(chatRoom.code, chatRoom.host.reserved_username)
+        .then((data) => {
+          setBannedUsers(data.blocked_users);
+        })
+        .catch(() => {
+          setBannedUsers([]);
+        })
+        .finally(() => {
+          setBannedUsersLoading(false);
+        });
+    }
+  }, [isOpen, isHost, chatRoom.code, chatRoom.host.reserved_username]);
+
+  // Load muted users when sheet opens (logged-in users)
+  useEffect(() => {
+    if (isOpen && isLoggedIn) {
+      setMutedUsersLoading(true);
+      messageApi.getMutedUsersInChat(chatRoom.code, chatRoom.host.reserved_username)
+        .then((data) => {
+          setMutedUsers(data.muted_users);
+        })
+        .catch(() => {
+          setMutedUsers([]);
+        })
+        .finally(() => {
+          setMutedUsersLoading(false);
+        });
+    }
+  }, [isOpen, isLoggedIn, chatRoom.code, chatRoom.host.reserved_username]);
+
+  const handleUnmuteUser = async (username: string) => {
+    setUnmutingUser(username);
+    try {
+      await messageApi.unblockUserSiteWide(username);
+      setMutedUsers(prev => prev.filter(u => u.username.toLowerCase() !== username.toLowerCase()));
+    } catch {
+      // Silent fail
+    } finally {
+      setUnmutingUser(null);
+    }
+  };
+
+  // Load spotlight list when sheet opens or sub-page switches to spotlight (host only)
+  useEffect(() => {
+    if (!isHost || !isOpen) return;
+    if (subPage !== 'spotlight' && !isOpen) return;
+    let cancelled = false;
+    setSpotlightLoading(true);
+    messageApi.getSpotlightUsers(chatRoom.code, chatRoom.host.reserved_username)
+      .then((data) => {
+        if (!cancelled) setSpotlightList(data.spotlight_users);
+      })
+      .catch((err) => {
+        console.error('Failed to load spotlight list', err);
+        if (!cancelled) setSpotlightList([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSpotlightLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isHost, isOpen, subPage, chatRoom.code, chatRoom.host.reserved_username]);
+
+  // Sync local spotlight list with parent's spotlightUsernames set
+  useEffect(() => {
+    if (!spotlightUsernames) return;
+    setSpotlightList((prev) => prev.filter((u) => spotlightUsernames.has(u.username)));
+  }, [spotlightUsernames]);
+
+  // Debounced participant search
+  useEffect(() => {
+    if (spotlightQuery.trim().length < 2) {
+      setSpotlightSuggestions([]);
+      return;
+    }
+    setSearchLoading(true);
+    const timer = setTimeout(() => {
+      messageApi.searchParticipants(chatRoom.code, spotlightQuery.trim(), chatRoom.host.reserved_username)
+        .then((data) => setSpotlightSuggestions(data.results))
+        .catch((err) => {
+          console.error('Participant search failed', err);
+          setSpotlightSuggestions([]);
+        })
+        .finally(() => setSearchLoading(false));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [spotlightQuery, chatRoom.code, chatRoom.host.reserved_username]);
+
+  const handleAddSpotlight = async () => {
+    if (!selectedSuggestion) return;
+    setAddingSpotlight(true);
+    try {
+      await onSpotlightAdd?.(selectedSuggestion);
+      // Refetch list to include the newly added user with metadata
+      const data = await messageApi.getSpotlightUsers(chatRoom.code, chatRoom.host.reserved_username);
+      setSpotlightList(data.spotlight_users);
+      setSpotlightQuery('');
+      setSpotlightSuggestions([]);
+      setSelectedSuggestion(null);
+    } catch (err) {
+      console.error('Failed to add spotlight', err);
+    } finally {
+      setAddingSpotlight(false);
+    }
+  };
+
+  const handleRemoveSpotlight = async (username: string) => {
+    setRemovingSpotlight(username);
+    try {
+      await onSpotlightRemove?.(username);
+      setSpotlightList((prev) => prev.filter((u) => u.username !== username));
+    } catch (err) {
+      console.error('Failed to remove spotlight', err);
+    } finally {
+      setRemovingSpotlight(null);
+    }
+  };
+
+  const handleUnbanUser = async (username: string) => {
+    setUnbanningUser(username);
+    try {
+      await messageApi.unblockUser(chatRoom.code, username, chatRoom.host.reserved_username);
+      setBannedUsers(prev => prev.filter(u => u.username.toLowerCase() !== username.toLowerCase()));
+    } catch {
+      // Failed silently — user stays in list
+    } finally {
+      setUnbanningUser(null);
+    }
+  };
 
   // Form state (only for host)
   const [formData, setFormData] = useState({
@@ -201,6 +367,170 @@ export default function ChatSettingsSheet({
           </SheetHeader>
 
           <div className="mt-6 space-y-6">
+
+          {/* Sub-page: Banned Users */}
+          {subPage === 'banned' && (
+            <div className="space-y-4">
+              <button
+                onClick={() => setSubPage('main')}
+                className={`flex items-center gap-1 text-sm font-medium cursor-pointer ${themeIsDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-purple-600 hover:text-purple-500'}`}
+              >
+                <ArrowLeft size={16} />
+                Back to Settings
+              </button>
+
+              <h3 className={`text-sm font-semibold ${styles.title} flex items-center gap-1.5`}>
+                <Ban size={14} className="text-red-400" />
+                Banned Users
+                {bannedUsers.length > 0 && (
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                    {bannedUsers.length}
+                  </span>
+                )}
+              </h3>
+
+              {bannedUsersLoading ? (
+                <p className={`text-sm ${styles.subtext}`}>Loading...</p>
+              ) : bannedUsers.length === 0 ? (
+                <p className={`text-sm ${styles.subtext}`}>No banned users</p>
+              ) : (
+                <div className="space-y-2">
+                  {/* Sort toggle */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setBanSortBy('recent')}
+                      className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        banSortBy === 'recent'
+                          ? (themeIsDarkMode ? 'bg-zinc-600 text-white' : 'bg-gray-300 text-gray-900')
+                          : (themeIsDarkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')
+                      }`}
+                    >
+                      Most recent
+                    </button>
+                    <button
+                      onClick={() => setBanSortBy('name')}
+                      className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        banSortBy === 'name'
+                          ? (themeIsDarkMode ? 'bg-zinc-600 text-white' : 'bg-gray-300 text-gray-900')
+                          : (themeIsDarkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')
+                      }`}
+                    >
+                      A–Z
+                    </button>
+                  </div>
+                  {[...bannedUsers].sort((a, b) =>
+                    banSortBy === 'name'
+                      ? a.username.localeCompare(b.username)
+                      : new Date(b.blocked_at).getTime() - new Date(a.blocked_at).getTime()
+                  ).map((user) => (
+                    <div key={user.username} className={`flex items-center justify-between p-3 rounded-lg ${styles.card}`}>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium ${styles.text} truncate`}>{user.username}</p>
+                        <p className={`text-xs ${styles.subtext}`}>
+                          Banned {new Date(user.blocked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{user.banned_by ? ` by ${user.banned_by}` : ''}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleUnbanUser(user.username)}
+                        disabled={unbanningUser === user.username}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 cursor-pointer disabled:opacity-50 ${
+                          themeIsDarkMode
+                            ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                            : 'bg-red-50 text-red-600 hover:bg-red-100'
+                        }`}
+                      >
+                        <ShieldCheck size={12} />
+                        {unbanningUser === user.username ? 'Unbanning...' : 'Unban'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sub-page: Muted Users */}
+          {subPage === 'muted' && (
+            <div className="space-y-4">
+              <button
+                onClick={() => setSubPage('main')}
+                className={`flex items-center gap-1 text-sm font-medium cursor-pointer ${themeIsDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-purple-600 hover:text-purple-500'}`}
+              >
+                <ArrowLeft size={16} />
+                Back to Settings
+              </button>
+
+              <h3 className={`text-sm font-semibold ${styles.title} flex items-center gap-1.5`}>
+                <Ban size={14} className="text-orange-400" />
+                Muted Users
+                {mutedUsers.length > 0 && (
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
+                    {mutedUsers.length}
+                  </span>
+                )}
+              </h3>
+
+              {mutedUsersLoading ? (
+                <p className={`text-sm ${styles.subtext}`}>Loading...</p>
+              ) : mutedUsers.length === 0 ? (
+                <p className={`text-sm ${styles.subtext}`}>No muted users in this chat</p>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setMuteSortBy('recent')}
+                      className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        muteSortBy === 'recent'
+                          ? (themeIsDarkMode ? 'bg-zinc-600 text-white' : 'bg-gray-300 text-gray-900')
+                          : (themeIsDarkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')
+                      }`}
+                    >
+                      Most recent
+                    </button>
+                    <button
+                      onClick={() => setMuteSortBy('name')}
+                      className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        muteSortBy === 'name'
+                          ? (themeIsDarkMode ? 'bg-zinc-600 text-white' : 'bg-gray-300 text-gray-900')
+                          : (themeIsDarkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')
+                      }`}
+                    >
+                      A–Z
+                    </button>
+                  </div>
+                  {[...mutedUsers].sort((a, b) =>
+                    muteSortBy === 'name'
+                      ? a.username.localeCompare(b.username)
+                      : new Date(b.muted_at).getTime() - new Date(a.muted_at).getTime()
+                  ).map((user) => (
+                    <div key={user.username} className={`flex items-center justify-between p-3 rounded-lg ${styles.card}`}>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium ${styles.text} truncate`}>{user.username}</p>
+                        <p className={`text-xs ${styles.subtext}`}>
+                          Muted {new Date(user.muted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleUnmuteUser(user.username)}
+                        disabled={unmutingUser === user.username}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 cursor-pointer disabled:opacity-50 ${
+                          themeIsDarkMode
+                            ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
+                            : 'bg-orange-50 text-orange-600 hover:bg-orange-100'
+                        }`}
+                      >
+                        <ShieldCheck size={12} />
+                        {unmutingUser === user.username ? 'Unmuting...' : 'Unmute'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Main settings page */}
+          {subPage === 'main' && <>
           {/* Theme Selection */}
           <div className="space-y-4 relative">
             <h3 className={`text-sm font-semibold ${styles.title}`}>
@@ -236,7 +566,7 @@ export default function ChatSettingsSheet({
                     updateThemeColorMetaTags(THEME_COLORS['dark-mode']);
 
                     // Wait for API to complete (no race condition)
-                    await chatApi.updateMyTheme(chatRoom.code, 'dark-mode', fingerprint, chatRoom.host.reserved_username);
+                    await chatApi.updateMyTheme(chatRoom.code, 'dark-mode', chatRoom.host.reserved_username);
 
                     // Reload to apply theme
                     window.location.reload();
@@ -362,145 +692,340 @@ export default function ChatSettingsSheet({
             </div>
           </div>
 
-          {/* Host-Only Settings */}
+          {/* Muted Users navigation (logged-in non-host users only — hosts ban, not mute) */}
+          {isLoggedIn && !isHost && (
+            <div className={`pt-4 border-t ${styles.border}`}>
+              <button
+                onClick={() => setSubPage('muted')}
+                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Ban size={16} className="text-orange-400" />
+                  <span className={`text-sm font-medium ${styles.text}`}>Muted Users</span>
+                  {mutedUsers.length > 0 && (
+                    <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
+                      {mutedUsers.length}
+                    </span>
+                  )}
+                </div>
+                <ChevronRight size={16} className={styles.subtext} />
+              </button>
+            </div>
+          )}
+
+          {/* Edit Settings navigation (Host Only) */}
           {isHost && (
-            <form onSubmit={handleSubmit} className={`space-y-4 pt-4 border-t ${styles.border}`}>
-              <h3 className={`text-sm font-semibold ${styles.title}`}>
-                Edit Settings (Host Only)
+            <div className={`pt-4 border-t ${styles.border}`}>
+              <button
+                onClick={() => setSubPage('edit')}
+                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Settings size={16} className={themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'} />
+                  <span className={`text-sm font-medium ${styles.text}`}>Edit Settings</span>
+                </div>
+                <ChevronRight size={16} className={styles.subtext} />
+              </button>
+            </div>
+          )}
+
+          {/* Spotlight Users navigation (Host Only) */}
+          {isHost && (
+            <div className={`pt-4 border-t ${styles.border}`}>
+              <button
+                onClick={() => setSubPage('spotlight')}
+                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Star size={16} className="text-yellow-400" fill="currentColor" />
+                  <span className={`text-sm font-medium ${styles.text}`}>Spotlight Users</span>
+                  {spotlightList.length > 0 && (
+                    <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400">
+                      {spotlightList.length}
+                    </span>
+                  )}
+                </div>
+                <ChevronRight size={16} className={styles.subtext} />
+              </button>
+            </div>
+          )}
+
+          {/* Banned Users navigation (Host Only) */}
+          {isHost && (
+            <div className={`pt-4 border-t ${styles.border}`}>
+              <button
+                onClick={() => setSubPage('banned')}
+                className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Ban size={16} className="text-red-400" />
+                  <span className={`text-sm font-medium ${styles.text}`}>Banned Users</span>
+                  {bannedUsers.length > 0 && (
+                    <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                      {bannedUsers.length}
+                    </span>
+                  )}
+                </div>
+                <ChevronRight size={16} className={styles.subtext} />
+              </button>
+            </div>
+          )}
+          </>}
+
+          {/* Sub-page: Spotlight Users */}
+          {subPage === 'spotlight' && (
+            <div className="space-y-4">
+              <button
+                onClick={() => setSubPage('main')}
+                className={`flex items-center gap-1 text-sm font-medium cursor-pointer ${themeIsDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-purple-600 hover:text-purple-500'}`}
+              >
+                <ArrowLeft size={16} />
+                Back to Settings
+              </button>
+
+              <h3 className={`text-sm font-semibold ${styles.title} flex items-center gap-1.5`}>
+                <Star size={14} className="text-yellow-400" fill="currentColor" />
+                Spotlight Users
+                {spotlightList.length > 0 && (
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400">
+                    {spotlightList.length}
+                  </span>
+                )}
               </h3>
 
-              {error && (
-                <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-red-900/20 border border-red-800 text-red-400' : 'bg-red-50 border border-red-200 text-red-600'}`}>
-                  {error}
-                </div>
-              )}
-
-              {success && (
-                <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-green-900/20 border border-green-800 text-green-400' : 'bg-green-50 border border-green-200 text-green-600'}`}>
-                  {success}
-                </div>
-              )}
-
-              {/* Chat Name */}
-              <div>
-                <label className={`block text-sm font-medium mb-1 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
-                  Chat Name
+              {/* Add user input */}
+              <div className="space-y-2">
+                <label className={`text-xs font-medium uppercase tracking-wide ${styles.subtext}`}>
+                  Add user to spotlight
                 </label>
                 <input
                   type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  value={spotlightQuery}
+                  onChange={(e) => { setSpotlightQuery(e.target.value); setSelectedSuggestion(null); }}
+                  placeholder="Type a username..."
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
-                  required
                 />
+
+                {spotlightQuery.trim().length >= 2 && (
+                  <div className={`rounded-lg border ${styles.border} overflow-hidden`}>
+                    {searchLoading && (
+                      <div className={`p-3 text-sm ${styles.subtext} text-center`}>Searching...</div>
+                    )}
+                    {!searchLoading && spotlightSuggestions.length === 0 && (
+                      <div className={`p-3 text-sm ${styles.subtext} text-center`}>No matching users.</div>
+                    )}
+                    {!searchLoading && spotlightSuggestions.map((u) => (
+                      <button
+                        key={u.username}
+                        onClick={() => setSelectedSuggestion(u.username)}
+                        className={`w-full flex items-center gap-3 p-3 text-left transition-colors ${
+                          selectedSuggestion === u.username
+                            ? 'bg-yellow-500/20'
+                            : `${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`
+                        }`}
+                      >
+                        {u.avatar_url && (
+                          <img src={u.avatar_url} alt="" className="w-8 h-8 rounded-full" />
+                        )}
+                        <span className={`text-sm ${styles.text}`}>{u.username}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedSuggestion && (
+                  <button
+                    onClick={handleAddSpotlight}
+                    disabled={addingSpotlight}
+                    className="w-full px-4 py-2 rounded-lg bg-yellow-500 text-black font-medium text-sm hover:bg-yellow-600 transition-colors disabled:opacity-50"
+                  >
+                    {addingSpotlight ? 'Adding...' : `Spotlight ${selectedSuggestion}`}
+                  </button>
+                )}
               </div>
 
-              {/* Access Mode */}
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
-                  Access Mode
-                </label>
-                <div className="flex gap-4">
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="radio"
-                      value="public"
-                      checked={formData.access_mode === 'public'}
-                      onChange={(e) =>
-                        setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
-                      }
-                      className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
-                    />
-                    <span className={`text-sm ${styles.text}`}>Public</span>
-                  </label>
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="radio"
-                      value="private"
-                      checked={formData.access_mode === 'private'}
-                      onChange={(e) =>
-                        setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
-                      }
-                      className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
-                    />
-                    <span className={`text-sm ${styles.text}`}>Private</span>
-                  </label>
-                </div>
+              {/* Current spotlight list */}
+              <div className={`pt-2 border-t ${styles.border} space-y-2`}>
+                {spotlightLoading ? (
+                  <p className={`text-sm ${styles.subtext}`}>Loading...</p>
+                ) : spotlightList.length === 0 ? (
+                  <p className={`text-sm ${styles.subtext}`}>
+                    Nobody in the spotlight yet. Add a user above or long-press any message to spotlight its author.
+                  </p>
+                ) : (
+                  spotlightList.map((u) => (
+                    <div key={u.username} className={`flex items-center justify-between p-3 rounded-lg ${styles.card}`}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        {u.avatar_url && <img src={u.avatar_url} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />}
+                        <span className={`text-sm font-medium ${styles.text} truncate`}>{u.username}</span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveSpotlight(u.username)}
+                        disabled={removingSpotlight === u.username}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-95 cursor-pointer disabled:opacity-50 ${
+                          themeIsDarkMode
+                            ? 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        {removingSpotlight === u.username ? 'Removing...' : 'Remove'}
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
+            </div>
+          )}
 
-              {/* Access Code (if private) */}
-              {formData.access_mode === 'private' && (
+          {/* Sub-page: Edit Settings */}
+          {subPage === 'edit' && (
+            <div className="space-y-4">
+              <button
+                onClick={() => setSubPage('main')}
+                className={`flex items-center gap-1 text-sm font-medium cursor-pointer ${themeIsDarkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-purple-600 hover:text-purple-500'}`}
+              >
+                <ArrowLeft size={16} />
+                Back to Settings
+              </button>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <h3 className={`text-sm font-semibold ${styles.title}`}>
+                  Edit Settings
+                </h3>
+
+                {error && (
+                  <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-red-900/20 border border-red-800 text-red-400' : 'bg-red-50 border border-red-200 text-red-600'}`}>
+                    {error}
+                  </div>
+                )}
+
+                {success && (
+                  <div className={`p-3 rounded-lg text-sm ${themeIsDarkMode ? 'bg-green-900/20 border border-green-800 text-green-400' : 'bg-green-50 border border-green-200 text-green-600'}`}>
+                    {success}
+                  </div>
+                )}
+
+                {/* Chat Name */}
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
-                    Access Code
+                    Chat Name
                   </label>
                   <input
                     type="text"
-                    value={formData.access_code}
-                    onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
-                    placeholder="Enter access code"
                     required
                   />
                 </div>
-              )}
 
-              {/* Sharing Settings */}
-              <div className="space-y-2">
-                <label className={`block text-sm font-medium ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
-                  Sharing Settings
-                </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
-                  <div className="flex items-center gap-2">
-                    <Image className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
-                    <span className={`text-sm ${styles.text}`}>Photo Sharing</span>
+                {/* Access Mode */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
+                    Access Mode
+                  </label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        value="public"
+                        checked={formData.access_mode === 'public'}
+                        onChange={(e) =>
+                          setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
+                        }
+                        className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
+                      />
+                      <span className={`text-sm ${styles.text}`}>Public</span>
+                    </label>
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        value="private"
+                        checked={formData.access_mode === 'private'}
+                        onChange={(e) =>
+                          setFormData({ ...formData, access_mode: e.target.value as 'public' | 'private' })
+                        }
+                        className={themeIsDarkMode ? 'mr-2 text-cyan-400 focus:ring-cyan-400' : 'mr-2 text-purple-600 focus:ring-purple-500'}
+                      />
+                      <span className={`text-sm ${styles.text}`}>Private</span>
+                    </label>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={formData.photo_enabled}
-                    onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
-                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
-                  />
-                </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
-                  <div className="flex items-center gap-2">
-                    <Mic className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
-                    <span className={`text-sm ${styles.text}`}>Voice Messages</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={formData.voice_enabled}
-                    onChange={(e) => setFormData({ ...formData, voice_enabled: e.target.checked })}
-                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
-                  />
-                </label>
-                <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
-                  <div className="flex items-center gap-2">
-                    <Video className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
-                    <span className={`text-sm ${styles.text}`}>Video Messages</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={formData.video_enabled}
-                    onChange={(e) => setFormData({ ...formData, video_enabled: e.target.checked })}
-                    className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
-                  />
-                </label>
-              </div>
+                </div>
 
-              {/* Save Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
-                  loading
-                    ? (themeIsDarkMode ? 'bg-gray-600 cursor-not-allowed text-white' : 'bg-gray-400 cursor-not-allowed text-white')
-                    : styles.button
-                }`}
-              >
-                {loading ? 'Saving...' : 'Save Changes'}
-              </button>
-            </form>
+                {/* Access Code (if private) */}
+                {formData.access_mode === 'private' && (
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
+                      Access Code
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.access_code}
+                      onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
+                      placeholder="Enter access code"
+                      required
+                    />
+                  </div>
+                )}
+
+                {/* Sharing Settings */}
+                <div className="space-y-2">
+                  <label className={`block text-sm font-medium ${themeIsDarkMode ? 'text-zinc-300' : 'text-gray-700'}`}>
+                    Sharing Settings
+                  </label>
+                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
+                    <div className="flex items-center gap-2">
+                      <Image className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
+                      <span className={`text-sm ${styles.text}`}>Photo Sharing</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.photo_enabled}
+                      onChange={(e) => setFormData({ ...formData, photo_enabled: e.target.checked })}
+                      className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
+                    />
+                  </label>
+                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
+                    <div className="flex items-center gap-2">
+                      <Mic className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
+                      <span className={`text-sm ${styles.text}`}>Voice Messages</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.voice_enabled}
+                      onChange={(e) => setFormData({ ...formData, voice_enabled: e.target.checked })}
+                      className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
+                    />
+                  </label>
+                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}>
+                    <div className="flex items-center gap-2">
+                      <Video className={`w-4 h-4 ${themeIsDarkMode ? 'text-cyan-400' : 'text-purple-600'}`} />
+                      <span className={`text-sm ${styles.text}`}>Video Messages</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.video_enabled}
+                      onChange={(e) => setFormData({ ...formData, video_enabled: e.target.checked })}
+                      className={themeIsDarkMode ? 'rounded text-cyan-400 focus:ring-cyan-400' : 'rounded text-purple-600 focus:ring-purple-500'}
+                    />
+                  </label>
+                </div>
+
+                {/* Save Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
+                    loading
+                      ? (themeIsDarkMode ? 'bg-gray-600 cursor-not-allowed text-white' : 'bg-gray-400 cursor-not-allowed text-white')
+                      : styles.button
+                  }`}
+                >
+                  {loading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </form>
+            </div>
           )}
           </div>
       </SheetContent>

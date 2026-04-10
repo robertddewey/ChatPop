@@ -14,6 +14,7 @@ interface UseChatWebSocketOptions {
   onMessage?: (message: Message) => void;
   onUserBlocked?: (message: string) => void;
   onUserKicked?: (message: string) => void;
+  onBanStatusChanged?: (username: string, isBanned: boolean) => void;
   onReaction?: (data: ReactionEventData) => void;
   onMessageDeleted?: (messageId: string) => void;
   onMessagePinned?: (message: Message, isTopPin: boolean) => void;
@@ -21,6 +22,8 @@ interface UseChatWebSocketOptions {
   onGiftReceived?: (gift: GiftNotification) => void;
   onGiftQueue?: (gifts: GiftNotification[]) => void;
   onGiftAcknowledged?: (messageIds: string[]) => void;
+  onBlockUpdate?: (action: 'add' | 'remove', blockedUsername: string) => void;
+  onSpotlightUpdate?: (action: 'add' | 'remove', username: string) => void;
   onError?: (error: Event) => void;
   onVisibilityChange?: (isVisible: boolean) => void;
   enabled?: boolean;
@@ -32,6 +35,7 @@ export function useChatWebSocket({
   onMessage,
   onUserBlocked,
   onUserKicked,
+  onBanStatusChanged,
   onReaction,
   onMessageDeleted,
   onMessagePinned,
@@ -39,6 +43,8 @@ export function useChatWebSocket({
   onGiftReceived,
   onGiftQueue,
   onGiftAcknowledged,
+  onBlockUpdate,
+  onSpotlightUpdate,
   onError,
   onVisibilityChange,
   enabled = true,
@@ -55,6 +61,7 @@ export function useChatWebSocket({
   const onMessageRef = useRef(onMessage);
   const onUserBlockedRef = useRef(onUserBlocked);
   const onUserKickedRef = useRef(onUserKicked);
+  const onBanStatusChangedRef = useRef(onBanStatusChanged);
   const onReactionRef = useRef(onReaction);
   const onMessageDeletedRef = useRef(onMessageDeleted);
   const onMessagePinnedRef = useRef(onMessagePinned);
@@ -62,6 +69,8 @@ export function useChatWebSocket({
   const onGiftReceivedRef = useRef(onGiftReceived);
   const onGiftQueueRef = useRef(onGiftQueue);
   const onGiftAcknowledgedRef = useRef(onGiftAcknowledged);
+  const onBlockUpdateRef = useRef(onBlockUpdate);
+  const onSpotlightUpdateRef = useRef(onSpotlightUpdate);
   const onErrorRef = useRef(onError);
   const onVisibilityChangeRef = useRef(onVisibilityChange);
 
@@ -69,6 +78,7 @@ export function useChatWebSocket({
   useEffect(() => { onMessageRef.current = onMessage; }, [onMessage]);
   useEffect(() => { onUserBlockedRef.current = onUserBlocked; }, [onUserBlocked]);
   useEffect(() => { onUserKickedRef.current = onUserKicked; }, [onUserKicked]);
+  useEffect(() => { onBanStatusChangedRef.current = onBanStatusChanged; }, [onBanStatusChanged]);
   useEffect(() => { onReactionRef.current = onReaction; }, [onReaction]);
   useEffect(() => { onMessageDeletedRef.current = onMessageDeleted; }, [onMessageDeleted]);
   useEffect(() => { onMessagePinnedRef.current = onMessagePinned; }, [onMessagePinned]);
@@ -76,6 +86,8 @@ export function useChatWebSocket({
   useEffect(() => { onGiftReceivedRef.current = onGiftReceived; }, [onGiftReceived]);
   useEffect(() => { onGiftQueueRef.current = onGiftQueue; }, [onGiftQueue]);
   useEffect(() => { onGiftAcknowledgedRef.current = onGiftAcknowledged; }, [onGiftAcknowledged]);
+  useEffect(() => { onBlockUpdateRef.current = onBlockUpdate; }, [onBlockUpdate]);
+  useEffect(() => { onSpotlightUpdateRef.current = onSpotlightUpdate; }, [onSpotlightUpdate]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
   useEffect(() => { onVisibilityChangeRef.current = onVisibilityChange; }, [onVisibilityChange]);
 
@@ -133,6 +145,14 @@ export function useChatWebSocket({
           return;
         }
 
+        // Handle ban status change (update badges for all clients)
+        if (data.type === 'ban_status_changed') {
+          if (onBanStatusChangedRef.current) {
+            onBanStatusChangedRef.current(data.username, data.is_banned);
+          }
+          return;
+        }
+
         // Handle reaction events
         if (data.type === 'reaction') {
           console.log('[WebSocket] Reaction event received:', data);
@@ -180,6 +200,22 @@ export function useChatWebSocket({
         if (data.type === 'gift_queue') {
           if (onGiftQueueRef.current) {
             onGiftQueueRef.current(data.gifts);
+          }
+          return;
+        }
+
+        // Handle block_update events (mute/unmute sync)
+        if (data.type === 'block_update') {
+          if (onBlockUpdateRef.current) {
+            onBlockUpdateRef.current(data.action, data.blocked_username);
+          }
+          return;
+        }
+
+        // Handle spotlight_update events (host added/removed someone from spotlight)
+        if (data.type === 'spotlight_update') {
+          if (onSpotlightUpdateRef.current) {
+            onSpotlightUpdateRef.current(data.action, data.username);
           }
           return;
         }

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { api, chatApi, messageApi, authApi, backRoomApi, giftApi, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification, type AnonymousParticipationInfo } from '@/lib/api';
+import { api, chatApi, messageApi, authApi, backRoomApi, giftApi, isTokenExpiringSoon, isTokenMissingSessionKey, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification, type AnonymousParticipationInfo } from '@/lib/api';
 import Header from '@/components/Header';
 import ChatSettingsSheet from '@/components/ChatSettingsSheet';
 import GameRoomTab from '@/components/GameRoomTab';
@@ -21,10 +21,11 @@ import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Bell } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Bell, Star } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
+import { verifyHuman } from '@/lib/turnstile';
 
 // Type for Axios-style errors
 interface ApiError {
@@ -64,6 +65,9 @@ interface CamelCaseTheme {
   pinnedMessageFade: string;
   regularMessage: string;
   regularText: string;
+  spotlightMessage: string;
+  spotlightText: string;
+  spotlightIconColor: string;
   myMessage: string;
   myText: string;
   voiceMessageStyles: Record<string, unknown>;
@@ -133,6 +137,9 @@ function convertThemeToCamelCase(theme: ChatTheme): CamelCaseTheme {
     pinnedMessageFade: theme.pinned_message_fade,
     regularMessage: theme.regular_message,
     regularText: theme.regular_text,
+    spotlightMessage: theme.spotlight_message,
+    spotlightText: theme.spotlight_text,
+    spotlightIconColor: theme.spotlight_icon_color,
     myMessage: theme.my_message,
     myText: theme.my_text,
     voiceMessageStyles: theme.voice_message_styles || {},
@@ -407,6 +414,9 @@ export default function ChatPage() {
 
   // No theme switching - always use dark-mode
 
+  // Verify human on page load (session-based, runs once)
+  useEffect(() => { verifyHuman(); }, []);
+
   // Detect mobile viewport for inline auth rendering
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -433,7 +443,7 @@ export default function ChatPage() {
   const [hasJoinedBefore, setHasJoinedBefore] = useState(false);
   const [joinModalKey, setJoinModalKey] = useState(0); // Force remount on back navigation
   const [isBlocked, setIsBlocked] = useState(false);
-  const [anonymousParticipation, setAnonymousParticipation] = useState<AnonymousParticipationInfo | null>(null);
+  const [anonymousParticipations, setAnonymousParticipations] = useState<AnonymousParticipationInfo[]>([]);
   const [registeredDisplayName, setRegisteredDisplayName] = useState(''); // Stable registered username for identity chooser
   const [registeredAvatarUrl, setRegisteredAvatarUrl] = useState<string | null>(null); // Stable registered avatar for identity chooser
   const [username, setUsername] = useState('');
@@ -482,14 +492,20 @@ export default function ChatPage() {
       expandedStickyHeightRef.current = stickyHeight;
     }
   }, [stickyHeight, stickyIsHidden]);
-  // Compute FAB top: use remembered expanded height when expanding to avoid intermediate jump
-  // Collapsed sticky is ~31px tall; expanded is ~87px. Always add 8px gap.
+  // FAB strip positioning — Android perf:
+  // Instead of animating the `top` CSS property (which triggers layout on every frame
+  // and was laggy on Android Chrome), we keep `top` anchored at the EXPANDED position
+  // and apply a GPU-composited transform: translateY(-offset) when the sticky is
+  // collapsed. Transform animations are the only reliable fast path on Blink.
+  // `top` still updates when sticky content changes size (new pin etc.) but those
+  // transitions aren't animated — content-change jumps are rare and acceptable.
   const COLLAPSED_STICKY_HEIGHT = 31;
-  const fabTop = stickyHeight > 0
-    ? (stickyIsHidden
-        ? COLLAPSED_STICKY_HEIGHT + 8
-        : (stickyHeight > 40 ? stickyHeight + 8 : (expandedStickyHeightRef.current || stickyHeight) + 8))
+  const fabTopExpanded = stickyHeight > 0
+    ? (stickyHeight > 40 ? stickyHeight + 8 : (expandedStickyHeightRef.current || stickyHeight) + 8)
     : 8;
+  const fabCollapseOffset = stickyHeight > 0
+    ? Math.max(0, fabTopExpanded - (COLLAPSED_STICKY_HEIGHT + 8))
+    : 0;
   const stickyZeroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleStickyHeightChange = useCallback((height: number) => {
     if (stickyZeroTimerRef.current) {
@@ -555,8 +571,51 @@ export default function ChatPage() {
   const [stickyHostMessage, setStickyHostMessage] = useState<Message | null>(null);
   const [stickyPinnedMsg, setStickyPinnedMsg] = useState<Message | null>(null);
 
-  // Stable array reference for StickySection memo — avoids re-render on every parent render
-  const stickyHostMessages = useMemo(() => stickyHostMessage ? [stickyHostMessage] : [], [stickyHostMessage]);
+  // Mute state — declared here because the sticky/filtered memos below depend on it.
+  const [mutedUsernames, setMutedUsernames] = useState<Set<string>>(new Set());
+
+  // Spotlight state — host-curated featured users (visible to all)
+  const [spotlightUsernames, setSpotlightUsernames] = useState<Set<string>>(new Set());
+
+  // Shared mute-filter helper matching the rules in filteredMessages.applyMute.
+  // Returns the message if it should render, or null if it should be hidden.
+  const applyMuteToSticky = useCallback((msg: Message | null): Message | null => {
+    if (!msg) return null;
+    const author = msg.username || '';
+    if (mutedUsernames.has(author)) {
+      if (msg.is_broadcast) return msg;
+      if (
+        msg.message_type === 'gift' &&
+        msg.gift_recipient &&
+        msg.gift_recipient.toLowerCase() === (username || '').toLowerCase()
+      ) {
+        return msg;
+      }
+      return null;
+    }
+    if (msg.message_type === 'gift' && msg.gift_recipient) {
+      if (
+        mutedUsernames.has(msg.gift_recipient) &&
+        author.toLowerCase() !== (username || '').toLowerCase()
+      ) {
+        return null;
+      }
+    }
+    return msg;
+  }, [mutedUsernames, username]);
+
+  // Stable array reference for StickySection memo — avoids re-render on every parent render.
+  // Applies mute rules: muted users don't appear in host sticky even if they're the host.
+  const stickyHostMessages = useMemo(() => {
+    const filtered = applyMuteToSticky(stickyHostMessage);
+    return filtered ? [filtered] : [];
+  }, [stickyHostMessage, applyMuteToSticky]);
+
+  // Apply mute rules to the sticky pinned message.
+  const stickyPinnedMsgFiltered = useMemo(
+    () => applyMuteToSticky(stickyPinnedMsg),
+    [stickyPinnedMsg, applyMuteToSticky]
+  );
 
   // Settings sheet state
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
@@ -624,7 +683,6 @@ export default function ChatPage() {
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
         setMessages(allMessages);
-        updateStickyFromMessages(allMessages);
         // Extract reactions
         const reactions: Record<string, ReactionSummary[]> = {};
         allMessages.forEach((msg) => {
@@ -660,7 +718,6 @@ export default function ChatPage() {
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
         setMessages(allMessages);
-        updateStickyFromMessages(allMessages);
       } catch (err) {
         console.error('Failed to load filtered messages:', err);
       } finally {
@@ -681,7 +738,7 @@ export default function ChatPage() {
         if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
       });
     });
-  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros, updateStickyFromMessages]);
+  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
 
   // Dismiss a feature intro
   const handleDismissIntro = useCallback((key: string) => {
@@ -734,18 +791,23 @@ export default function ChatPage() {
 
   // Handle user kicked event (host removed user from chat)
   const handleUserKicked = useCallback((message: string) => {
-    // Clear local state
-    localStorage.removeItem(`chat_session_${code}`);
-    setSessionToken(null);
+    // Keep session token so getMyParticipation returns is_blocked=true with original username
+    // Don't redirect — stay on the chat page and show blocked state
     setHasJoined(false);
+    setIsBlocked(true);
     setMessages([]);
     setStickyHostMessage(null);
     setStickyPinnedMsg(null);
+  }, []);
 
-    // Show alert and redirect to home page
-    alert(message || 'You have been removed from this chat by the host.');
-    window.location.href = '/';
-  }, [code]);
+  // Handle ban status change (update is_banned on all messages from that user)
+  const handleBanStatusChanged = useCallback((bannedUsername: string, isBanned: boolean) => {
+    setMessages(prev => prev.map(msg =>
+      msg.username.toLowerCase() === bannedUsername.toLowerCase()
+        ? { ...msg, is_banned: isBanned }
+        : msg
+    ));
+  }, []);
 
   // Handle reaction WebSocket events
   const handleReactionEvent = useCallback(async (data: { message_id: string; action: string; emoji: string }) => {
@@ -814,6 +876,7 @@ export default function ChatPage() {
     onMessage: handleWebSocketMessage,
     onUserBlocked: handleUserBlocked,
     onUserKicked: handleUserKicked,
+    onBanStatusChanged: handleBanStatusChanged,
     onReaction: handleReactionEvent,
     onMessageDeleted: handleMessageDeleted,
     onMessagePinned: handleMessagePinned,
@@ -829,9 +892,90 @@ export default function ChatPage() {
         messageIds.includes(msg.id) ? { ...msg, is_gift_acknowledged: true } : msg
       ));
     }, []),
+    onBlockUpdate: useCallback((action: 'add' | 'remove', blockedUsername: string) => {
+      setMutedUsernames(prev => {
+        const next = new Set(prev);
+        if (action === 'add') next.add(blockedUsername);
+        else next.delete(blockedUsername);
+        return next;
+      });
+    }, []),
+    onSpotlightUpdate: useCallback((action: 'add' | 'remove', spotlightUsername: string) => {
+      setSpotlightUsernames(prev => {
+        const next = new Set(prev);
+        if (action === 'add') next.add(spotlightUsername);
+        else next.delete(spotlightUsername);
+        return next;
+      });
+    }, []),
     onVisibilityChange: handleVisibilityChange,
     enabled: hasJoined || (!!chatRoom && chatRoom.access_mode === 'public'),
   });
+
+  // Fetch muted users in this chat for authenticated users
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!chatRoom) return;
+    const authToken = localStorage.getItem('auth_token');
+    if (!authToken) return;
+    messageApi
+      .getMutedUsersInChat(code, roomUsername)
+      .then((data) => {
+        setMutedUsernames(new Set(data.muted_users.map((u) => u.username)));
+      })
+      .catch(() => {
+        // Silent fail
+      });
+  }, [chatRoom, code, roomUsername]);
+
+  // Fetch spotlight users (public — anyone who can view the chat can see)
+  useEffect(() => {
+    if (!chatRoom) return;
+    messageApi
+      .getSpotlightUsers(code, roomUsername)
+      .then((data) => {
+        setSpotlightUsernames(new Set(data.spotlight_users.map((u) => u.username)));
+      })
+      .catch((err) => {
+        console.error('Failed to load spotlight users', err);
+      });
+  }, [chatRoom, code, roomUsername]);
+
+  // Spotlight handlers (host only)
+  const handleSpotlightAdd = useCallback(async (targetUsername: string) => {
+    try {
+      await messageApi.spotlightAdd(code, targetUsername, roomUsername);
+      setSpotlightUsernames((prev) => {
+        const next = new Set(prev);
+        next.add(targetUsername);
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to spotlight user', err);
+    }
+  }, [code, roomUsername]);
+
+  // Show intro overlay when current user gets spotlighted (first time only)
+  useEffect(() => {
+    if (!username) return;
+    if (!hasJoined) return;
+    if (!spotlightUsernames.has(username)) return;
+    if (seenIntros.spotlight_first_time) return;
+    setShowFeatureIntro('spotlight_first_time');
+  }, [spotlightUsernames, username, hasJoined, seenIntros]);
+
+  const handleSpotlightRemove = useCallback(async (targetUsername: string) => {
+    try {
+      await messageApi.spotlightRemove(code, targetUsername, roomUsername);
+      setSpotlightUsernames((prev) => {
+        const next = new Set(prev);
+        next.delete(targetUsername);
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to unspotlight user', err);
+    }
+  }, [code, roomUsername]);
 
   // Detect forward navigation and redirect back to home
   // This prevents users from using browser forward to return to chat join modal
@@ -847,12 +991,9 @@ export default function ChatPage() {
     const existingSession = localStorage.getItem(`chat_session_${code}`);
 
     if (!existingSession && hasChatBeenVisited(code)) {
-      // User has visited this chat page before in this session,
-      // has no existing session, and didn't come from modal
-      // This is forward navigation - redirect to home
-      console.log('[ChatPage] Forward navigation detected, redirecting to home');
-      router.replace('/');
-      return;
+      // User visited before but has no session — clear marker so they can rejoin.
+      // Previously this redirected to home, but that blocks legitimate direct URL access.
+      clearChatVisited(code);
     }
 
     // First-time visit via direct URL or existing session - allow
@@ -861,6 +1002,24 @@ export default function ChatPage() {
   // Add chat-layout class to body (position:fixed, overflow:hidden, etc.)
   // Remove during mobile inline auth so the page scrolls naturally with the keyboard
   const inlineAuthActive = !!(authMode && isMobile);
+
+  // When closing inline auth, the chat JSX remounts with a fresh DOM — scrollTop is lost.
+  // Restore by snapping to bottom (messages/state are preserved in React).
+  const prevInlineAuthActiveRef = useRef(inlineAuthActive);
+  useEffect(() => {
+    if (prevInlineAuthActiveRef.current && !inlineAuthActive) {
+      // Transitioned from auth → chat; scroll to bottom after remount
+      requestAnimationFrame(() => {
+        const container = messagesContainerRef.current;
+        if (container) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
+          shouldAutoScrollRef.current = true;
+        }
+      });
+    }
+    prevInlineAuthActiveRef.current = inlineAuthActive;
+  }, [inlineAuthActive]);
+
   useEffect(() => {
     document.body.classList.add('chat-layout');
     return () => {
@@ -916,6 +1075,44 @@ export default function ChatPage() {
       loadMessages();
     }
   }, [hasJoined, sessionToken]);
+
+  // One-time upgrade for old JWTs missing session_key — force rejoin to get a proper token
+  useEffect(() => {
+    if (!hasJoined || !sessionToken) return;
+    if (!isTokenMissingSessionKey(code)) return;
+
+    // Old token without session_key can't be safely refreshed — clear it to trigger rejoin
+    localStorage.removeItem(`chat_session_${code}`);
+    setSessionToken(null);
+    setHasJoined(false);
+  }, [hasJoined, sessionToken, code]);
+
+  // Proactive JWT refresh — check every 5 minutes, refresh if within 1 hour of expiry
+  useEffect(() => {
+    if (!hasJoined || !sessionToken) return;
+
+    const checkInterval = setInterval(async () => {
+      if (!isTokenExpiringSoon(code)) return;
+
+      const authToken = localStorage.getItem('auth_token');
+      const currentToken = localStorage.getItem(`chat_session_${code}`);
+      if (!currentToken) return;
+
+      if (authToken) {
+        // Logged-in user: silent refresh
+        try {
+          await chatApi.refreshSession(code, currentToken, roomUsername);
+          setSessionToken(localStorage.getItem(`chat_session_${code}`));
+        } catch {
+          // Refresh failed — will fall through to join modal on next API error
+        }
+      }
+      // Anonymous users: can't refresh silently (need PIN)
+      // They'll be dumped to join modal when token expires
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(checkInterval);
+  }, [hasJoined, sessionToken, code, roomUsername]);
 
   // Load preview messages for public chats (shown blurred behind join modal)
   // Double rAF ensures messages are rendered before scrolling to bottom
@@ -976,12 +1173,11 @@ export default function ChatPage() {
           setRegisteredDisplayName(currentUser.reserved_username || '');
           setRegisteredAvatarUrl(`/api/chats/media/avatars/user/${currentUser.id}`);
 
-          // Track anonymous participation for identity chooser
-          if (participation.anonymous_participation) {
-            setAnonymousParticipation(participation.anonymous_participation);
-          }
+          // Track anonymous participations for identity chooser
+          const anonsList = participation.anonymous_participations || (participation.anonymous_participation ? [participation.anonymous_participation] : []);
+          setAnonymousParticipations(anonsList);
 
-          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && !participation.anonymous_participation) {
+          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && anonsList.length === 0) {
             // Returning user with registered identity only (no anonymous alt) - use their locked username
             setUsername(participation.username);
             setHasJoinedBefore(true);
@@ -989,9 +1185,9 @@ export default function ChatPage() {
             setHasReservedUsername(participation.username_is_reserved || false);
             // Use participation avatar (same source as message avatars)
             setUserAvatarUrl(participation.avatar_url || currentUser.avatar_url || null);
-          } else if (participation.anonymous_participation || participation.is_anonymous_identity) {
-            // Has anonymous participation (with or without registered) — show identity chooser
-            setAnonymousParticipation(participation.anonymous_participation || null);
+          } else if (anonsList.length > 0 || participation.is_anonymous_identity) {
+            // Has anonymous participation(s) (with or without registered) — show identity chooser
+            setAnonymousParticipations(anonsList);
             setUsername(currentUser.reserved_username || '');
             setHasJoinedBefore(false);
             setIsBlocked(participation.is_blocked || false);
@@ -1046,11 +1242,31 @@ export default function ChatPage() {
     loadChatRoom();
   }, [code, router]);
 
-  // Listen for auth changes (login/register)
+  // Listen for auth changes (login/register/logout)
   useEffect(() => {
     const handleAuthChange = async () => {
-      // User just logged in or registered - refresh user state
       const token = localStorage.getItem('auth_token');
+      if (!token) {
+        // User just logged out — clear any identity state tied to the previous user
+        // so the JoinChatModal doesn't render with their reserved_username pre-filled.
+        setCurrentUserId(undefined);
+        setRegisteredDisplayName('');
+        setRegisteredAvatarUrl(null);
+        setHasReservedUsername(false);
+        setUserAvatarUrl(null);
+        setUsername('');
+        setHasJoined(false);
+        setHasJoinedBefore(false);
+        setAnonymousParticipations([]);
+        setIsBlocked(false);
+        setJoinModalKey((prev) => prev + 1);
+        // Django's logout() flushed the session, wiping turnstile_verified server-side.
+        // Re-run the human verification flow so the fresh session gets re-flagged
+        // before the user touches any @require_turnstile endpoint (suggest-username, join, etc.).
+        verifyHuman().catch(() => { /* fail-open handled inside */ });
+        return;
+      }
+      // User just logged in or registered - refresh user state
       if (token) {
         try {
           const currentUser = await authApi.getCurrentUser();
@@ -1078,20 +1294,24 @@ export default function ChatPage() {
             setParticipationTheme(participation.theme);
           }
 
-          // Track anonymous participation for identity chooser
-          if (participation.anonymous_participation) {
-            setAnonymousParticipation(participation.anonymous_participation);
-          }
+          // Phase 1 fix: clear stale identity state so chat re-runs join flow with fresh user
+          setHasJoined(false);
+          setUsername('');
+          setAnonymousParticipations([]);
+          setJoinModalKey(prev => prev + 1);
 
-          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && !participation.anonymous_participation) {
+          // Track anonymous participations for identity chooser
+          const anonsList = participation.anonymous_participations || (participation.anonymous_participation ? [participation.anonymous_participation] : []);
+          setAnonymousParticipations(anonsList);
+
+          if (participation.has_joined && participation.username && !participation.is_anonymous_identity && anonsList.length === 0) {
             // They already joined with registered identity only (no anonymous alt)
             setUsername(participation.username);
             setHasJoinedBefore(true);
             setIsBlocked(participation.is_blocked || false);
             setHasReservedUsername(participation.username_is_reserved || false);
-          } else if (participation.anonymous_participation || participation.is_anonymous_identity) {
-            // Has anonymous participation (with or without registered) — show identity chooser
-            setAnonymousParticipation(participation.anonymous_participation || null);
+          } else if (anonsList.length > 0 || participation.is_anonymous_identity) {
+            // Has anonymous participation(s) (with or without registered) — show identity chooser
             setUsername(currentUser.reserved_username || '');
             setHasJoinedBefore(false);
             setIsBlocked(participation.is_blocked || false);
@@ -1116,12 +1336,7 @@ export default function ChatPage() {
     return () => window.removeEventListener('auth-change', handleAuthChange);
   }, [code]);
 
-  // Redirect blocked users to home page immediately
-  useEffect(() => {
-    if (isBlocked) {
-            router.replace('/'); // Use replace to avoid adding to browser history
-    }
-  }, [isBlocked, router]);
+  // Blocked users stay on the page — JoinChatModal shows a "banned" message
 
   // Listen for back button to handle auth, settings overlay, and chat exit
   useEffect(() => {
@@ -1156,7 +1371,7 @@ export default function ChatPage() {
       if (hasJoined) {
         setHasJoined(false);
         // If user has both identities, show identity chooser again (not "Welcome back")
-        setHasJoinedBefore(anonymousParticipation ? false : true);
+        setHasJoinedBefore(anonymousParticipations.length > 0 ? false : true);
         setMessages([]);
         setStickyHostMessage(null);
         setStickyPinnedMsg(null);
@@ -1175,7 +1390,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipation]);
+  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -1329,7 +1544,7 @@ export default function ChatPage() {
   };
 
   // Join handler for modal
-  const handleJoinChat = async (username: string, accessCode?: string, avatarSeed?: string) => {
+  const handleJoinChat = async (username: string, accessCode?: string, avatarSeed?: string): Promise<{ error?: string } | void> => {
     try {
       // Get fingerprint
       let fingerprint: string | undefined;
@@ -1339,7 +1554,18 @@ export default function ChatPage() {
         console.warn('Failed to get fingerprint:', fpErr);
       }
 
-      await chatApi.joinChat(code, username, accessCode, fingerprint, roomUsername, avatarSeed);
+      // Wrap in inner try/catch to prevent AxiosError from triggering Next.js error overlay
+      let joinError: ApiError | null = null;
+      try {
+        await chatApi.joinChat(code, username, accessCode, fingerprint, roomUsername, avatarSeed);
+      } catch (e) {
+        joinError = e as ApiError;
+      }
+
+      if (joinError) {
+        // Throw to outer catch for standard error handling
+        throw joinError;
+      }
 
       // Update session token immediately after joining
       const newSessionToken = localStorage.getItem(`chat_session_${code}`);
@@ -1358,10 +1584,7 @@ export default function ChatPage() {
       window.history.pushState({ joined: true }, '', window.location.href);
     } catch (err: unknown) {
       const apiErr = err as ApiError;
-      // Log the full error structure for debugging
       console.error('[Join Error] Full error:', err);
-      console.error('[Join Error] Response data:', apiErr.response?.data);
-      console.error('[Join Error] Status:', apiErr.response?.status);
 
       // Extract error message from various DRF error formats
       let errorMessage = 'Failed to join chat';
@@ -1369,25 +1592,15 @@ export default function ChatPage() {
       if (apiErr.response?.data) {
         const data = apiErr.response.data;
 
-        // Direct array response: ["error message"]
         if (Array.isArray(data) && data.length > 0) {
           errorMessage = String(data[0]);
-        }
-        // PermissionDenied: { detail: "message" }
-        else if (typeof data === 'object' && data !== null && 'detail' in data && data.detail) {
+        } else if (typeof data === 'object' && data !== null && 'detail' in data && data.detail) {
           errorMessage = String(data.detail);
-        }
-        // ValidationError: { non_field_errors: ["message"] }
-        else if (typeof data === 'object' && data !== null && 'non_field_errors' in data && Array.isArray(data.non_field_errors)) {
+        } else if (typeof data === 'object' && data !== null && 'non_field_errors' in data && Array.isArray(data.non_field_errors)) {
           errorMessage = String(data.non_field_errors[0]);
-        }
-        // ValidationError: direct string message
-        else if (typeof data === 'string') {
+        } else if (typeof data === 'string') {
           errorMessage = data;
-        }
-        // Check for field-specific errors (e.g., { username: ["error"] })
-        else if (typeof data === 'object' && data !== null) {
-          // Get first error from any field
+        } else if (typeof data === 'object' && data !== null) {
           const dataObj = data as Record<string, unknown>;
           const firstField = Object.keys(dataObj)[0];
           if (firstField && Array.isArray(dataObj[firstField])) {
@@ -1398,21 +1611,19 @@ export default function ChatPage() {
 
       // Check if user is blocked - trigger redirect
       if (errorMessage.includes('blocked from this chat')) {
-                setIsBlocked(true);
-        // Don't throw error - the redirect will happen via useEffect
+        setIsBlocked(true);
         return;
       }
 
-      // If this is a username persistence error, extract the username and store it for pre-population
+      // Username persistence error
       const usernameMatch = errorMessage.match(/already joined this chat as '([^']+)'/);
       if (usernameMatch && chatRoom) {
         const existingUsername = usernameMatch[1];
-        // Store the suggested username in localStorage so the modal can pick it up
         localStorage.setItem(`chat_${chatRoom.code}_suggested_username`, existingUsername);
         errorMessage = `You previously joined as "${existingUsername}". Please use that username to rejoin.`;
       }
 
-      throw new Error(errorMessage);
+      return { error: errorMessage };
     }
   };
 
@@ -1463,7 +1674,7 @@ export default function ChatPage() {
         if (!messageUsername) {
           const token = localStorage.getItem('auth_token');
           const isLoggedIn = !!token;
-          messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+          messageUsername = (await UsernameStorage.getUsername(code)) || '';
         }
 
         if (!messageUsername && chatRoom) {
@@ -1501,7 +1712,7 @@ export default function ChatPage() {
       if (!messageUsername) {
         const token = localStorage.getItem('auth_token');
         const isLoggedIn = !!token;
-        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+        messageUsername = (await UsernameStorage.getUsername(code)) || '';
       }
 
       if (!messageUsername && chatRoom) {
@@ -1561,7 +1772,7 @@ export default function ChatPage() {
       if (!messageUsername) {
         const token = localStorage.getItem('auth_token');
         const isLoggedIn = !!token;
-        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+        messageUsername = (await UsernameStorage.getUsername(code)) || '';
       }
 
       if (!messageUsername && chatRoom) {
@@ -1616,7 +1827,7 @@ export default function ChatPage() {
       if (!messageUsername) {
         const token = localStorage.getItem('auth_token');
         const isLoggedIn = !!token;
-        messageUsername = (await UsernameStorage.getUsername(code, isLoggedIn)) || '';
+        messageUsername = (await UsernameStorage.getUsername(code)) || '';
       }
 
       if (!messageUsername && chatRoom) {
@@ -1852,21 +2063,40 @@ export default function ChatPage() {
       if (userIsHost) {
         // Host can ban users from the chat (ChatBlock)
         await messageApi.blockUser(code, { blocked_username: username }, roomUsername);
-                alert(`Banned ${username} from this chat. They will no longer be able to join or send messages.`);
       } else {
         // Non-hosts can only mute users site-wide (UserBlock)
         await messageApi.blockUserSiteWide(username);
-                alert(`Blocked ${username}. You will no longer see their messages anywhere on ChatPop.`);
+        setMutedUsernames(prev => {
+          const next = new Set(prev);
+          next.add(username);
+          return next;
+        });
       }
-      // TODO: Update local state to filter out blocked user's messages
     } catch (err: unknown) {
-      const error = err as ApiError & { response?: { data?: { username?: string[]; message?: string } } };
-      console.error('Failed to block user:', error);
-      const errorData = error.response?.data;
-      const errorMsg = errorData?.username?.[0] || errorData?.message || 'Failed to block user. Please try again.';
-      alert(errorMsg);
+      console.error('Failed to block user:', err);
     }
-  }, [currentUserId, chatRoom, code]);
+  }, [currentUserId, chatRoom, code, roomUsername]);
+
+  const handleUnmuteUser = useCallback(async (username: string) => {
+    try {
+      await messageApi.unblockUserSiteWide(username);
+      setMutedUsernames(prev => {
+        const next = new Set(prev);
+        next.delete(username);
+        return next;
+      });
+    } catch (err: unknown) {
+      console.error('Failed to unmute user:', err);
+    }
+  }, []);
+
+  const handleUnblockUser = useCallback(async (username: string) => {
+    try {
+      await messageApi.unblockUser(code, username, roomUsername);
+    } catch (err: unknown) {
+      console.error('Failed to unban user:', err);
+    }
+  }, [code, roomUsername]);
 
   const handleTipUser = useCallback((username: string) => {
         // TODO: Implement tip user logic with payment
@@ -1971,7 +2201,6 @@ export default function ChatPage() {
         messageId,
         emoji,
         username,
-        fingerprint,
         roomUsername
       );
 
@@ -2006,12 +2235,42 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Failed to toggle reaction:', error);
     }
-  }, [code, username, fingerprint]);
+  }, [code, username]);
 
   // Filter messages based on room (memoized to prevent recalculation on unrelated state changes)
   const filteredMessages = useMemo(() => {
     // While room is loading, return empty to prevent stale content flash
     if (roomLoading) return [];
+
+    // Client-side mute filter (mirrors backend rules):
+    // - Hide messages from muted users
+    // - Exception: host broadcasts always shown
+    // - Exception: gifts TO me from muted user still shown
+    // - Also hide gifts TO muted users (unless I'm the sender)
+    const applyMute = (msg: Message): boolean => {
+      const author = msg.username || '';
+      const authorMuted = mutedUsernames.has(author);
+      if (authorMuted) {
+        if (msg.is_broadcast) return true;
+        if (
+          msg.message_type === 'gift' &&
+          msg.gift_recipient &&
+          msg.gift_recipient.toLowerCase() === (username || '').toLowerCase()
+        ) {
+          return true;
+        }
+        return false;
+      }
+      if (msg.message_type === 'gift' && msg.gift_recipient) {
+        if (
+          mutedUsernames.has(msg.gift_recipient) &&
+          author.toLowerCase() !== (username || '').toLowerCase()
+        ) {
+          return false;
+        }
+      }
+      return true;
+    };
 
     // Server already returns filtered results, but real-time WS messages
     // arrive unfiltered — apply client-side filter for those
@@ -2021,7 +2280,7 @@ export default function ChatPage() {
         if (msg.username === username) return true;
         if (msg.gift_recipient && msg.gift_recipient.toLowerCase() === username?.toLowerCase()) return true;
         return false;
-      });
+      }).filter(applyMute);
     }
 
     if (currentRoom === 'focus') {
@@ -2029,16 +2288,17 @@ export default function ChatPage() {
         if (msg.is_from_host) return true;
         if (msg.username === username) return true;
         if (msg.reply_to_message?.username?.toLowerCase() === username?.toLowerCase()) return true;
+        if (spotlightUsernames.has(msg.username)) return true;
         return false;
-      });
+      }).filter(applyMute);
     }
 
     if (currentRoom === 'broadcast') {
-      return messages.filter(msg => msg.is_broadcast);
+      return messages.filter(msg => msg.is_broadcast).filter(applyMute);
     }
 
-    return messages;
-  }, [messages, currentRoom, roomLoading, username]);
+    return messages.filter(applyMute);
+  }, [messages, currentRoom, roomLoading, username, mutedUsernames, spotlightUsernames]);
 
   // Check if current user is the host
   const isHost = useMemo(() => {
@@ -2406,7 +2666,7 @@ export default function ChatPage() {
                 sessionToken={sessionToken}
                 filteredMessages={filteredMessages}
                 stickyHostMessages={stickyHostMessages}
-                stickyPinnedMessage={stickyPinnedMsg}
+                stickyPinnedMessage={stickyPinnedMsgFiltered}
                 messagesContainerRef={messagesContainerRef}
                 messagesEndRef={messagesEndRef}
                 currentDesign={currentDesign}
@@ -2424,6 +2684,13 @@ export default function ChatPage() {
                 handleAddToPin={handleAddToPin}
                 getPinRequirements={getPinRequirements}
                 handleBlockUser={handleBlockUser}
+                handleUnblockUser={handleUnblockUser}
+                handleUnmuteUser={handleUnmuteUser}
+                mutedUsernames={mutedUsernames}
+                spotlightUsernames={spotlightUsernames}
+                onSpotlightAdd={handleSpotlightAdd}
+                onSpotlightRemove={handleSpotlightRemove}
+                onRequestSignup={() => openAuth('signup')}
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
                 handleThankGift={handleThankGift}
@@ -2452,7 +2719,8 @@ export default function ChatPage() {
                   hasReservedUsername={hasReservedUsername}
                   themeIsDarkMode={themeIsDarkMode}
                   userAvatarUrl={userAvatarUrl}
-                  anonymousParticipation={anonymousParticipation}
+                  anonymousParticipations={anonymousParticipations}
+                  spotlightUsernames={spotlightUsernames}
                   registeredAvatarUrl={registeredAvatarUrl}
                   onAvatarChange={setUserAvatarUrl}
                   onIdentityChange={(identity) => {
@@ -2484,9 +2752,15 @@ export default function ChatPage() {
             className="absolute right-0 z-50"
             onTouchStart={() => { (document.activeElement as HTMLElement)?.blur(); }}
             style={{
-              top: `${fabTop}px`,
+              top: `${fabTopExpanded}px`,
               bottom: '8px',
-              transition: 'top 200ms ease-out',
+              // translate3d forces GPU layer pre-allocation on Android Chrome so the
+              // transition starts instantly instead of waiting for layer promotion.
+              transform: stickyIsHidden
+                ? `translate3d(0, -${fabCollapseOffset}px, 0)`
+                : 'translate3d(0, 0, 0)',
+              transition: 'transform 200ms ease-out',
+              willChange: 'transform',
             }}
           >
             {/* Top fade — matches page background, icons dissolve into it */}
@@ -2572,6 +2846,10 @@ export default function ChatPage() {
           <MessageInput
             chatRoom={chatRoom}
             isHost={previewIsHost ?? isHost}
+            isSpotlight={(() => {
+              const effectiveName = previewUsername ?? username;
+              return !!effectiveName && spotlightUsernames.has(effectiveName);
+            })()}
             hasJoined={hasJoined}
             sending={sending}
             username={previewUsername ?? username}
@@ -2616,10 +2894,12 @@ export default function ChatPage() {
           key={hasJoined ? 'joined' : 'not-joined'}
           chatRoom={chatRoom}
           currentUserId={currentUserId}
-          fingerprint={fingerprint}
           activeThemeId={(participationTheme || chatRoom.theme)?.theme_id}
           onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
           themeIsDarkMode={themeIsDarkMode}
+          spotlightUsernames={spotlightUsernames}
+          onSpotlightAdd={handleSpotlightAdd}
+          onSpotlightRemove={handleSpotlightRemove}
           open={showSettingsSheet}
           onOpenChange={(open) => {
             if (!open && showSettingsSheet) {
@@ -2650,10 +2930,19 @@ export default function ChatPage() {
       {showFeatureIntro === 'focus' && (
         <FeatureIntroModal
           title="Focus Mode"
-          description="Focus shows messages most relevant to you — your messages, replies to you, and host messages in your threads. Everything else is filtered out."
+          description="Focus shows your messages, replies to you, and messages from the host and spotlighted users. Everything else is filtered out."
           icon={Eye}
           themeIsDarkMode={themeIsDarkMode}
           onDismiss={() => handleDismissIntro('focus')}
+        />
+      )}
+      {showFeatureIntro === 'spotlight_first_time' && (
+        <FeatureIntroModal
+          title="You're in the spotlight!"
+          description="The host has featured you in this chat. Your messages will appear in the Focus room and carry a star for all members to see."
+          icon={Star}
+          themeIsDarkMode={themeIsDarkMode}
+          onDismiss={() => handleDismissIntro('spotlight_first_time')}
         />
       )}
     </>

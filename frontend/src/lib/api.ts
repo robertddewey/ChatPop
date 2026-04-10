@@ -38,6 +38,44 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor: self-healing for "Human verification required".
+// The server's Django session can lose its turnstile_verified flag for several
+// reasons (logout, server restart, session eviction, flush). When that happens,
+// any @require_turnstile endpoint returns 403 with this specific error. Rather
+// than bubbling it to the user and requiring a manual refresh, we catch it,
+// re-run verifyHuman() to re-flag the session, and retry the original request
+// once. If the retry also fails, we bubble the error normally.
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const status = error?.response?.status;
+    const errMsg = error?.response?.data?.error || '';
+    const config = error?.config;
+    // Only retry 403s that came from the turnstile decorator.
+    // Guard against infinite loops with a per-request _turnstileRetried flag.
+    if (status === 403 && errMsg === 'Human verification required' && config && !config._turnstileRetried) {
+      config._turnstileRetried = true;
+      try {
+        // Clear the in-memory + sessionStorage flags so verifyHuman() actually re-runs
+        // instead of short-circuiting on a stale "already verified".
+        if (typeof window !== 'undefined') {
+          try { sessionStorage.removeItem('turnstile_verified'); } catch { /* ignore */ }
+        }
+        const { resetTurnstileVerification, verifyHuman } = await import('./turnstile');
+        resetTurnstileVerification();
+        const ok = await verifyHuman();
+        if (ok) {
+          // Retry the original request with the freshly-verified session.
+          return api.request(config);
+        }
+      } catch {
+        // Fall through to reject with the original error
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Types
 export interface User {
   id: string;
@@ -81,6 +119,9 @@ export interface ChatTheme {
   pinned_message_fade: string;
   regular_message: string;
   regular_text: string;
+  spotlight_message: string;
+  spotlight_text: string;
+  spotlight_icon_color: string;
   my_message: string;
   my_text: string;
   voice_message_styles: {
@@ -192,7 +233,6 @@ export interface MessageReaction {
   message: string;
   emoji: string;
   user: User | null;
-  fingerprint: string | null;
   username: string;
   created_at: string;
 }
@@ -234,6 +274,8 @@ export interface Message {
   avatar_url: string;
   created_at: string;
   is_deleted: boolean;
+  is_banned?: boolean;
+  is_spotlight?: boolean;
   gift_recipient?: string | null;
   is_gift_acknowledged?: boolean;
   is_broadcast?: boolean;
@@ -283,7 +325,7 @@ export interface PhotoAnalysisResponse {
 
 // API Functions
 export const authApi = {
-  register: async (data: { email: string; password: string; reserved_username?: string; fingerprint?: string; avatar_seed?: string }) => {
+  register: async (data: { email: string; password: string; reserved_username?: string; avatar_seed?: string }) => {
     const response = await api.post('/api/auth/register/', data);
     return response.data;
   },
@@ -313,6 +355,32 @@ export const authApi = {
     } finally {
       // Always clear local storage
       localStorage.removeItem('auth_token');
+      // Clear the per-tab turnstile verification flag. Django's logout() flushes the
+      // session on the server (wiping turnstile_verified), so the frontend cached flag
+      // in sessionStorage becomes out of sync — clear it so verifyHuman() re-runs on
+      // the next protected request.
+      try {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('turnstile_verified');
+          // Clear any cached join-modal state — the previous user's reserved_username
+          // may be persisted in sessionStorage under `joinModal_<code>`. If we don't
+          // purge them, the Join Chat page shows the old user's name in the username
+          // input for the next visitor.
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const k = sessionStorage.key(i);
+            if (k && k.startsWith('joinModal_')) keysToRemove.push(k);
+          }
+          keysToRemove.forEach((k) => sessionStorage.removeItem(k));
+        }
+        // Also reset the in-memory cached flag so verifyHuman() actually re-runs.
+        const { resetTurnstileVerification } = await import('./turnstile');
+        resetTurnstileVerification();
+      } catch { /* ignore */ }
+      // Notify listeners (chat page, header, etc.) that auth state changed.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('auth-change'));
+      }
     }
   },
 
@@ -321,17 +389,15 @@ export const authApi = {
     return response.data;
   },
 
-  checkUsername: async (username: string, fingerprint?: string): Promise<{ available: boolean; message: string }> => {
+  checkUsername: async (username: string): Promise<{ available: boolean; message: string }> => {
     const response = await api.get('/api/auth/check-username/', {
-      params: { username, fingerprint },
+      params: { username },
     });
     return response.data;
   },
 
-  suggestUsername: async (fingerprint?: string): Promise<{ username: string; remaining_attempts?: number; is_rotating?: boolean }> => {
-    const response = await api.post('/api/auth/suggest-username/', {
-      fingerprint,
-    });
+  suggestUsername: async (): Promise<{ username: string; remaining_attempts?: number; is_rotating?: boolean }> => {
+    const response = await api.post('/api/auth/suggest-username/', {});
     return response.data;
   },
 };
@@ -340,6 +406,7 @@ export interface AnonymousParticipationInfo {
   username: string;
   avatar_url: string | null;
   first_joined_at: string;
+  participation_id?: string;
 }
 
 export interface ChatParticipation {
@@ -353,7 +420,9 @@ export interface ChatParticipation {
   is_blocked?: boolean;
   seen_intros?: Record<string, boolean>;
   is_anonymous_identity?: boolean;
+  /** @deprecated Use anonymous_participations instead */
   anonymous_participation?: AnonymousParticipationInfo;
+  anonymous_participations?: AnonymousParticipationInfo[];
 }
 
 /**
@@ -400,12 +469,12 @@ export const chatApi = {
 
   getMyParticipation: async (code: string, fingerprint?: string, roomUsername?: string): Promise<ChatParticipation> => {
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/my-participation/`, {
-      params: { fingerprint },
+      params: { fingerprint },  // Fingerprint still sent as fallback for transition period
     });
     return response.data;
   },
 
-  validateUsername: async (code: string, username: string, fingerprint?: string, roomUsername?: string): Promise<{
+  validateUsername: async (code: string, username: string, roomUsername?: string): Promise<{
     available: boolean;
     username: string;
     in_use_in_chat: boolean;
@@ -415,32 +484,17 @@ export const chatApi = {
   }> => {
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/validate-username/`, {
       username,
-      fingerprint,
     });
     return response.data;
   },
 
-  suggestUsername: async (code: string, fingerprint?: string, roomUsername?: string): Promise<{
+  suggestUsername: async (code: string, roomUsername?: string): Promise<{
     username: string;
     remaining: number;
     generation_remaining?: number;
     is_returning?: boolean;
   }> => {
-    const response = await api.post(`${buildChatUrl(code, roomUsername)}/suggest-username/`, {
-      fingerprint,
-    });
-    return response.data;
-  },
-
-  checkRateLimit: async (code: string, fingerprint?: string, roomUsername?: string): Promise<{
-    can_join: boolean;
-    is_rate_limited: boolean;
-    anonymous_count?: number;
-    max_allowed?: number;
-    existing_username?: string;
-  }> => {
-    const params = fingerprint ? { fingerprint } : {};
-    const response = await api.get(`${buildChatUrl(code, roomUsername)}/check-rate-limit/`, { params });
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/suggest-username/`, {});
     return response.data;
   },
 
@@ -448,7 +502,7 @@ export const chatApi = {
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/join/`, {
       username,
       access_code: accessCode,
-      fingerprint,
+      fingerprint,  // Sent for ban enforcement data collection only
       avatar_seed: avatarSeed,
     });
 
@@ -457,6 +511,16 @@ export const chatApi = {
       localStorage.setItem(`chat_session_${code}`, response.data.session_token);
     }
 
+    return response.data;
+  },
+
+  refreshSession: async (code: string, sessionToken: string, roomUsername?: string) => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/refresh-session/`, {
+      session_token: sessionToken,
+    });
+    if (response.data.session_token) {
+      localStorage.setItem(`chat_session_${code}`, response.data.session_token);
+    }
     return response.data;
   },
 
@@ -480,10 +544,9 @@ export const chatApi = {
     return response.data;
   },
 
-  updateMyTheme: async (code: string, themeId: string, fingerprint?: string, roomUsername?: string): Promise<{ success: boolean; theme: ChatTheme | null }> => {
+  updateMyTheme: async (code: string, themeId: string, roomUsername?: string): Promise<{ success: boolean; theme: ChatTheme | null }> => {
     const response = await api.post(`${buildChatUrl(code, roomUsername)}/update-my-theme/`, {
       theme_id: themeId,
-      fingerprint,
     });
     return response.data;
   },
@@ -675,7 +738,7 @@ export const messageApi = {
   },
 
   // Reactions
-  toggleReaction: async (code: string, messageId: string, emoji: string, username: string, fingerprint?: string, roomUsername?: string): Promise<{
+  toggleReaction: async (code: string, messageId: string, emoji: string, username: string, roomUsername?: string): Promise<{
     action: 'added' | 'removed' | 'updated';
     message: string;
     emoji: string;
@@ -687,7 +750,6 @@ export const messageApi = {
       emoji,
       session_token: sessionToken,
       username,
-      fingerprint,
     });
     return response.data;
   },
@@ -717,6 +779,77 @@ export const messageApi = {
       ...data,
       session_token: sessionToken,
     });
+    return response.data;
+  },
+
+  unblockUser: async (code: string, username: string, roomUsername?: string): Promise<{
+    success: boolean;
+    message: string;
+    blocks_removed: number;
+  }> => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/unblock/`, {
+      username,
+    });
+    return response.data;
+  },
+
+  getBannedUsers: async (code: string, roomUsername?: string): Promise<{
+    blocked_users: Array<{
+      username: string;
+      blocked_at: string;
+      banned_by: string | null;
+      reason: string | null;
+      blocked_identifiers: string[];
+      expires_at: string | null;
+    }>;
+    count: number;
+  }> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/blocked-users/`);
+    return response.data;
+  },
+
+  getMutedUsersInChat: async (code: string, roomUsername?: string): Promise<{
+    muted_users: Array<{ username: string; muted_at: string }>;
+    count: number;
+  }> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/muted-users/`);
+    return response.data;
+  },
+
+  // ===== Spotlight =====
+  getSpotlightUsers: async (code: string, roomUsername?: string): Promise<{
+    spotlight_users: Array<{ username: string; avatar_url: string | null; last_seen_at: string | null }>;
+    count: number;
+  }> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/spotlight/`);
+    return response.data;
+  },
+
+  spotlightAdd: async (code: string, username: string, roomUsername?: string): Promise<{
+    success: boolean;
+    username?: string;
+    already_spotlighted?: boolean;
+  }> => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/spotlight/add/`, { username });
+    return response.data;
+  },
+
+  spotlightRemove: async (code: string, username: string, roomUsername?: string): Promise<{
+    success: boolean;
+    username?: string;
+    already_removed?: boolean;
+  }> => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/spotlight/remove/`, { username });
+    return response.data;
+  },
+
+  searchParticipants: async (code: string, q: string, roomUsername?: string): Promise<{
+    results: Array<{ username: string; avatar_url: string | null; last_seen_at: string | null }>;
+  }> => {
+    const response = await api.get(
+      `${buildChatUrl(code, roomUsername)}/participants/search/`,
+      { params: { q } }
+    );
     return response.data;
   },
 
@@ -772,7 +905,7 @@ export const messageApi = {
   analyzePhoto: async (
     photo: File,
     fingerprint?: string,
-    username?: string
+    username?: string,
   ): Promise<PhotoAnalysisResponse> => {
     const formData = new FormData();
     formData.append('image', photo); // Backend expects 'image', not 'photo'
@@ -971,7 +1104,7 @@ export const locationApi = {
   getSuggestions: async (
     latitude: number,
     longitude: number,
-    fingerprint?: string
+    fingerprint?: string,
   ): Promise<LocationAnalysisResponse> => {
     const response = await api.post('/api/media-analysis/location/suggest/', {
       latitude,
@@ -1200,6 +1333,31 @@ export interface DevRecentPhoto {
   id: string;
   image_url: string;
   created_at: string;
+}
+
+// JWT expiry utilities
+export function getTokenExpiry(code: string): number | null {
+  const token = localStorage.getItem(`chat_session_${code}`);
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp ? payload.exp * 1000 : null; // Convert to ms
+  } catch { return null; }
+}
+
+export function isTokenExpiringSoon(code: string, thresholdMs: number = 3600000): boolean {
+  const expiry = getTokenExpiry(code);
+  if (!expiry) return true; // No token = treat as expired
+  return (expiry - Date.now()) < thresholdMs;
+}
+
+export function isTokenMissingSessionKey(code: string): boolean {
+  const token = localStorage.getItem(`chat_session_${code}`);
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return !payload.session_key && !payload.user_id;
+  } catch { return false; }
 }
 
 export const devApi = {

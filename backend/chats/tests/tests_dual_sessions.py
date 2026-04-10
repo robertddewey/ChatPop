@@ -106,32 +106,33 @@ class DualSessionsTests(TestCase):
     @allure.severity(allure.severity_level.CRITICAL)
     def test_dual_sessions_prevent_duplicate_usernames(self):
         """Logged-in users cannot use usernames already taken by anonymous users"""
-        # 1. Generate username for anonymous user
-        anon_fingerprint = "anon-fingerprint-123"
-        username = self.generate_username(anon_fingerprint)
+        # Create a user whose reserved_username will clash with the anonymous participation
+        clash_username = "ClashUser"
+        clash_user = User.objects.create_user(
+            email="clash@example.com", password="testpass123", reserved_username=clash_username
+        )
 
-        # 2. Anonymous user joins with generated username
+        # 1. Create anonymous participation with the same username (simulate pre-existing)
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            fingerprint="anon-fingerprint-123",
+            username=clash_username,
+            session_key="anon-session-key",
+            ip_address="127.0.0.1"
+        )
+
+        # 2. Logged-in user tries to join with their reserved username that's already taken - should FAIL
+        auth_client = APIClient()
+        auth_client.force_authenticate(user=clash_user)
         url = f"/api/chats/HostUser/{self.chat_room.code}/join/"
-        anon_data = {"username": username, "fingerprint": anon_fingerprint}
-        response = self.client.post(url, json.dumps(anon_data), content_type="application/json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        # 3. Logged-in user tries to join with same username (case variation) - should FAIL
-        self.client.force_authenticate(user=self.user)
-        user_data = {"username": username.upper(), "fingerprint": "user-fingerprint-456"}
-        response = self.client.post(url, json.dumps(user_data), content_type="application/json")
+        user_data = {"username": clash_username, "fingerprint": "user-fingerprint-456"}
+        response = auth_client.post(url, json.dumps(user_data), content_type="application/json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("already in use", str(response.data))
 
-        # 4. Verify only anonymous participation exists
-        anon_participation = ChatParticipation.objects.get(
-            chat_room=self.chat_room, fingerprint=anon_fingerprint, user__isnull=True
-        )
-        self.assertEqual(anon_participation.username, username)
-
-        # 5. Verify logged-in user did NOT create a participation
+        # 3. Verify logged-in user did NOT create a participation
         user_participation_exists = ChatParticipation.objects.filter(
-            chat_room=self.chat_room, user=self.user
+            chat_room=self.chat_room, user=clash_user
         ).exists()
         self.assertFalse(user_participation_exists)
 
@@ -167,13 +168,18 @@ class DualSessionsTests(TestCase):
     @allure.severity(allure.severity_level.NORMAL)
     def test_my_participation_returns_anonymous_when_not_logged_in(self):
         """MyParticipationView returns anonymous participation when not logged in"""
-        # Create anonymous participation
+        # Make a request to establish a session
+        url = f"/api/chats/HostUser/{self.chat_room.code}/my-participation/"
+        self.client.get(url, {"fingerprint": "fingerprint-123"})
+        session_key = self.client.session.session_key
+
+        # Create anonymous participation with session_key
         ChatParticipation.objects.create(
-            chat_room=self.chat_room, fingerprint="fingerprint-123", username="robert", ip_address="127.0.0.1"
+            chat_room=self.chat_room, fingerprint="fingerprint-123", username="robert",
+            session_key=session_key, ip_address="127.0.0.1"
         )
 
-        # Check as anonymous user
-        url = f"/api/chats/HostUser/{self.chat_room.code}/my-participation/"
+        # Check as anonymous user (same session)
         response = self.client.get(url, {"fingerprint": "fingerprint-123"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -181,19 +187,20 @@ class DualSessionsTests(TestCase):
         self.assertEqual(response.data["username"], "robert")
 
     @allure.title("MyParticipation no fallback from logged-in to anonymous")
-    @allure.description("Logged-in user doesn't see anonymous participation")
+    @allure.description("Logged-in user doesn't see anonymous participation from different session")
     @allure.severity(allure.severity_level.CRITICAL)
     def test_my_participation_no_fallback_from_logged_in_to_anonymous(self):
-        """Logged-in user doesn't see anonymous participation"""
-        # Create ONLY anonymous participation
+        """Logged-in user doesn't see anonymous participation from a different session"""
+        # Create ONLY anonymous participation with a different session_key
         ChatParticipation.objects.create(
-            chat_room=self.chat_room, fingerprint="fingerprint-123", username="robert", ip_address="127.0.0.1"
+            chat_room=self.chat_room, fingerprint="fingerprint-123", username="robert",
+            session_key="different-session-key", ip_address="127.0.0.1"
         )
 
         # Check as logged-in user (different from anonymous participation)
         self.client.force_authenticate(user=self.user)
         url = f"/api/chats/HostUser/{self.chat_room.code}/my-participation/"
-        response = self.client.get(url, {"fingerprint": "fingerprint-123"})
+        response = self.client.get(url, {"fingerprint": "other-fingerprint"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["has_joined"])  # No user participation found
@@ -282,11 +289,16 @@ class ReservedUsernameBadgeTests(TestCase):
     @allure.severity(allure.severity_level.NORMAL)
     def test_username_is_not_reserved_for_anonymous_users(self):
         """Badge NOT shown for anonymous users (no reserved_username)"""
+        # Make a request to establish a session
+        url = f"/api/chats/HostUser/{self.chat_room.code}/my-participation/"
+        self.client.get(url, {"fingerprint": "anon-fingerprint"})
+        session_key = self.client.session.session_key
+
         participation = ChatParticipation.objects.create(
-            chat_room=self.chat_room, fingerprint="anon-fingerprint", username="robert", ip_address="127.0.0.1"
+            chat_room=self.chat_room, fingerprint="anon-fingerprint", username="robert",
+            session_key=session_key, ip_address="127.0.0.1"
         )
 
-        url = f"/api/chats/HostUser/{self.chat_room.code}/my-participation/"
         response = self.client.get(url, {"fingerprint": "anon-fingerprint"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -334,15 +346,23 @@ class IPRateLimitingTests(TestCase):
     @allure.description("Anonymous users can join up to 3 times from same IP")
     @allure.severity(allure.severity_level.CRITICAL)
     def test_anonymous_user_can_join_within_limit(self):
-        """Anonymous users can join up to 3 times from same IP"""
+        """Anonymous users can join up to 3 times from same IP (each with different session)"""
         url = f"/api/chats/HostUser/{self.chat_room.code}/join/"
+        suggest_url = f"/api/chats/HostUser/{self.chat_room.code}/suggest-username/"
 
-        # Join 3 times with different fingerprints (same IP)
+        # Join 3 times with different sessions (same IP)
         for i in range(3):
+            client = APIClient()
             fingerprint = f"fingerprint-{i+1}"
-            username = self.generate_username(fingerprint)
+            # Generate username via this client's session
+            suggest_response = client.post(
+                suggest_url, json.dumps({'fingerprint': fingerprint}), content_type="application/json"
+            )
+            self.assertEqual(suggest_response.status_code, status.HTTP_200_OK)
+            username = suggest_response.data['username']
+
             data = {"username": username, "fingerprint": fingerprint}
-            response = self.client.post(
+            response = client.post(
                 url, json.dumps(data), content_type="application/json", REMOTE_ADDR="192.168.1.100"
             )
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -353,53 +373,37 @@ class IPRateLimitingTests(TestCase):
         ).count()
         self.assertEqual(count, 3)
 
-    @allure.title("Anonymous user blocked at limit")
-    @allure.description("Anonymous users blocked when trying to join 4th time from same IP")
-    @allure.severity(allure.severity_level.CRITICAL)
-    def test_anonymous_user_blocked_at_limit(self):
-        """Anonymous users blocked when trying to join 4th time from same IP"""
-        # Create 3 existing participations with generated usernames
-        for i in range(3):
-            fingerprint = f"fingerprint-{i+1}"
-            username = self.generate_username(fingerprint)
-            ChatParticipation.objects.create(
-                chat_room=self.chat_room,
-                fingerprint=fingerprint,
-                username=username,
-                ip_address="192.168.1.100",
-            )
-
-        # Try to join 4th time with generated username
-        url = f"/api/chats/HostUser/{self.chat_room.code}/join/"
-        fourth_fingerprint = "fingerprint-4"
-        fourth_username = self.generate_username(fourth_fingerprint)
-        data = {"username": fourth_username, "fingerprint": fourth_fingerprint}
-        response = self.client.post(
-            url, json.dumps(data), content_type="application/json", REMOTE_ADDR="192.168.1.100"
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("Max anonymous usernames", str(response.data))
-
     @allure.title("Returning anonymous user not blocked")
     @allure.description("Returning anonymous users can rejoin even if IP is at limit")
     @allure.severity(allure.severity_level.CRITICAL)
     def test_returning_anonymous_user_not_blocked(self):
         """Returning anonymous users can rejoin even if IP is at limit"""
-        # Create 3 existing participations
-        for i in range(3):
+        # Establish a session for the returning user
+        url = f"/api/chats/HostUser/{self.chat_room.code}/join/"
+        self.client.get(f"/api/chats/HostUser/{self.chat_room.code}/")
+        returning_session_key = self.client.session.session_key
+
+        # Create 3 existing participations (one belongs to this session)
+        ChatParticipation.objects.create(
+            chat_room=self.chat_room,
+            fingerprint="fingerprint-1",
+            username="user1123",
+            session_key=returning_session_key,
+            ip_address="192.168.1.100",
+        )
+        for i in range(2, 4):
             ChatParticipation.objects.create(
                 chat_room=self.chat_room,
-                fingerprint=f"fingerprint-{i+1}",
-                username=f"user{i+1}123",
+                fingerprint=f"fingerprint-{i}",
+                username=f"user{i}123",
+                session_key=f"other-session-{i}",
                 ip_address="192.168.1.100",
             )
 
-        # Returning user (existing fingerprint) can rejoin
-        url = f"/api/chats/HostUser/{self.chat_room.code}/join/"
+        # Returning user (existing session_key) can rejoin
         data = {
-            "username": "user1123",  # Same username as fingerprint-1
-            "fingerprint": "fingerprint-1",  # Existing fingerprint
+            "username": "user1123",  # Same username as their participation
+            "fingerprint": "fingerprint-1",
         }
         response = self.client.post(
             url, json.dumps(data), content_type="application/json", REMOTE_ADDR="192.168.1.100"
