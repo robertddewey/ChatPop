@@ -21,7 +21,7 @@ import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Bell } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Bell, Star } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
@@ -65,6 +65,9 @@ interface CamelCaseTheme {
   pinnedMessageFade: string;
   regularMessage: string;
   regularText: string;
+  spotlightMessage: string;
+  spotlightText: string;
+  spotlightIconColor: string;
   myMessage: string;
   myText: string;
   voiceMessageStyles: Record<string, unknown>;
@@ -134,6 +137,9 @@ function convertThemeToCamelCase(theme: ChatTheme): CamelCaseTheme {
     pinnedMessageFade: theme.pinned_message_fade,
     regularMessage: theme.regular_message,
     regularText: theme.regular_text,
+    spotlightMessage: theme.spotlight_message,
+    spotlightText: theme.spotlight_text,
+    spotlightIconColor: theme.spotlight_icon_color,
     myMessage: theme.my_message,
     myText: theme.my_text,
     voiceMessageStyles: theme.voice_message_styles || {},
@@ -486,14 +492,20 @@ export default function ChatPage() {
       expandedStickyHeightRef.current = stickyHeight;
     }
   }, [stickyHeight, stickyIsHidden]);
-  // Compute FAB top: use remembered expanded height when expanding to avoid intermediate jump
-  // Collapsed sticky is ~31px tall; expanded is ~87px. Always add 8px gap.
+  // FAB strip positioning — Android perf:
+  // Instead of animating the `top` CSS property (which triggers layout on every frame
+  // and was laggy on Android Chrome), we keep `top` anchored at the EXPANDED position
+  // and apply a GPU-composited transform: translateY(-offset) when the sticky is
+  // collapsed. Transform animations are the only reliable fast path on Blink.
+  // `top` still updates when sticky content changes size (new pin etc.) but those
+  // transitions aren't animated — content-change jumps are rare and acceptable.
   const COLLAPSED_STICKY_HEIGHT = 31;
-  const fabTop = stickyHeight > 0
-    ? (stickyIsHidden
-        ? COLLAPSED_STICKY_HEIGHT + 8
-        : (stickyHeight > 40 ? stickyHeight + 8 : (expandedStickyHeightRef.current || stickyHeight) + 8))
+  const fabTopExpanded = stickyHeight > 0
+    ? (stickyHeight > 40 ? stickyHeight + 8 : (expandedStickyHeightRef.current || stickyHeight) + 8)
     : 8;
+  const fabCollapseOffset = stickyHeight > 0
+    ? Math.max(0, fabTopExpanded - (COLLAPSED_STICKY_HEIGHT + 8))
+    : 0;
   const stickyZeroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleStickyHeightChange = useCallback((height: number) => {
     if (stickyZeroTimerRef.current) {
@@ -561,6 +573,9 @@ export default function ChatPage() {
 
   // Mute state — declared here because the sticky/filtered memos below depend on it.
   const [mutedUsernames, setMutedUsernames] = useState<Set<string>>(new Set());
+
+  // Spotlight state — host-curated featured users (visible to all)
+  const [spotlightUsernames, setSpotlightUsernames] = useState<Set<string>>(new Set());
 
   // Shared mute-filter helper matching the rules in filteredMessages.applyMute.
   // Returns the message if it should render, or null if it should be hidden.
@@ -668,7 +683,6 @@ export default function ChatPage() {
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
         setMessages(allMessages);
-        updateStickyFromMessages(allMessages);
         // Extract reactions
         const reactions: Record<string, ReactionSummary[]> = {};
         allMessages.forEach((msg) => {
@@ -704,7 +718,6 @@ export default function ChatPage() {
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
         setMessages(allMessages);
-        updateStickyFromMessages(allMessages);
       } catch (err) {
         console.error('Failed to load filtered messages:', err);
       } finally {
@@ -725,7 +738,7 @@ export default function ChatPage() {
         if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
       });
     });
-  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros, updateStickyFromMessages]);
+  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
 
   // Dismiss a feature intro
   const handleDismissIntro = useCallback((key: string) => {
@@ -887,6 +900,14 @@ export default function ChatPage() {
         return next;
       });
     }, []),
+    onSpotlightUpdate: useCallback((action: 'add' | 'remove', spotlightUsername: string) => {
+      setSpotlightUsernames(prev => {
+        const next = new Set(prev);
+        if (action === 'add') next.add(spotlightUsername);
+        else next.delete(spotlightUsername);
+        return next;
+      });
+    }, []),
     onVisibilityChange: handleVisibilityChange,
     enabled: hasJoined || (!!chatRoom && chatRoom.access_mode === 'public'),
   });
@@ -906,6 +927,55 @@ export default function ChatPage() {
         // Silent fail
       });
   }, [chatRoom, code, roomUsername]);
+
+  // Fetch spotlight users (public — anyone who can view the chat can see)
+  useEffect(() => {
+    if (!chatRoom) return;
+    messageApi
+      .getSpotlightUsers(code, roomUsername)
+      .then((data) => {
+        setSpotlightUsernames(new Set(data.spotlight_users.map((u) => u.username)));
+      })
+      .catch((err) => {
+        console.error('Failed to load spotlight users', err);
+      });
+  }, [chatRoom, code, roomUsername]);
+
+  // Spotlight handlers (host only)
+  const handleSpotlightAdd = useCallback(async (targetUsername: string) => {
+    try {
+      await messageApi.spotlightAdd(code, targetUsername, roomUsername);
+      setSpotlightUsernames((prev) => {
+        const next = new Set(prev);
+        next.add(targetUsername);
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to spotlight user', err);
+    }
+  }, [code, roomUsername]);
+
+  // Show intro overlay when current user gets spotlighted (first time only)
+  useEffect(() => {
+    if (!username) return;
+    if (!hasJoined) return;
+    if (!spotlightUsernames.has(username)) return;
+    if (seenIntros.spotlight_first_time) return;
+    setShowFeatureIntro('spotlight_first_time');
+  }, [spotlightUsernames, username, hasJoined, seenIntros]);
+
+  const handleSpotlightRemove = useCallback(async (targetUsername: string) => {
+    try {
+      await messageApi.spotlightRemove(code, targetUsername, roomUsername);
+      setSpotlightUsernames((prev) => {
+        const next = new Set(prev);
+        next.delete(targetUsername);
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to unspotlight user', err);
+    }
+  }, [code, roomUsername]);
 
   // Detect forward navigation and redirect back to home
   // This prevents users from using browser forward to return to chat join modal
@@ -2218,6 +2288,7 @@ export default function ChatPage() {
         if (msg.is_from_host) return true;
         if (msg.username === username) return true;
         if (msg.reply_to_message?.username?.toLowerCase() === username?.toLowerCase()) return true;
+        if (spotlightUsernames.has(msg.username)) return true;
         return false;
       }).filter(applyMute);
     }
@@ -2227,7 +2298,7 @@ export default function ChatPage() {
     }
 
     return messages.filter(applyMute);
-  }, [messages, currentRoom, roomLoading, username, mutedUsernames]);
+  }, [messages, currentRoom, roomLoading, username, mutedUsernames, spotlightUsernames]);
 
   // Check if current user is the host
   const isHost = useMemo(() => {
@@ -2616,6 +2687,9 @@ export default function ChatPage() {
                 handleUnblockUser={handleUnblockUser}
                 handleUnmuteUser={handleUnmuteUser}
                 mutedUsernames={mutedUsernames}
+                spotlightUsernames={spotlightUsernames}
+                onSpotlightAdd={handleSpotlightAdd}
+                onSpotlightRemove={handleSpotlightRemove}
                 onRequestSignup={() => openAuth('signup')}
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
@@ -2646,6 +2720,7 @@ export default function ChatPage() {
                   themeIsDarkMode={themeIsDarkMode}
                   userAvatarUrl={userAvatarUrl}
                   anonymousParticipations={anonymousParticipations}
+                  spotlightUsernames={spotlightUsernames}
                   registeredAvatarUrl={registeredAvatarUrl}
                   onAvatarChange={setUserAvatarUrl}
                   onIdentityChange={(identity) => {
@@ -2677,9 +2752,15 @@ export default function ChatPage() {
             className="absolute right-0 z-50"
             onTouchStart={() => { (document.activeElement as HTMLElement)?.blur(); }}
             style={{
-              top: `${fabTop}px`,
+              top: `${fabTopExpanded}px`,
               bottom: '8px',
-              transition: 'top 200ms ease-out',
+              // translate3d forces GPU layer pre-allocation on Android Chrome so the
+              // transition starts instantly instead of waiting for layer promotion.
+              transform: stickyIsHidden
+                ? `translate3d(0, -${fabCollapseOffset}px, 0)`
+                : 'translate3d(0, 0, 0)',
+              transition: 'transform 200ms ease-out',
+              willChange: 'transform',
             }}
           >
             {/* Top fade — matches page background, icons dissolve into it */}
@@ -2765,6 +2846,10 @@ export default function ChatPage() {
           <MessageInput
             chatRoom={chatRoom}
             isHost={previewIsHost ?? isHost}
+            isSpotlight={(() => {
+              const effectiveName = previewUsername ?? username;
+              return !!effectiveName && spotlightUsernames.has(effectiveName);
+            })()}
             hasJoined={hasJoined}
             sending={sending}
             username={previewUsername ?? username}
@@ -2812,6 +2897,9 @@ export default function ChatPage() {
           activeThemeId={(participationTheme || chatRoom.theme)?.theme_id}
           onUpdate={(updatedRoom) => setChatRoom(updatedRoom)}
           themeIsDarkMode={themeIsDarkMode}
+          spotlightUsernames={spotlightUsernames}
+          onSpotlightAdd={handleSpotlightAdd}
+          onSpotlightRemove={handleSpotlightRemove}
           open={showSettingsSheet}
           onOpenChange={(open) => {
             if (!open && showSettingsSheet) {
@@ -2842,10 +2930,19 @@ export default function ChatPage() {
       {showFeatureIntro === 'focus' && (
         <FeatureIntroModal
           title="Focus Mode"
-          description="Focus shows messages most relevant to you — your messages, replies to you, and host messages in your threads. Everything else is filtered out."
+          description="Focus shows your messages, replies to you, and messages from the host and spotlighted users. Everything else is filtered out."
           icon={Eye}
           themeIsDarkMode={themeIsDarkMode}
           onDismiss={() => handleDismissIntro('focus')}
+        />
+      )}
+      {showFeatureIntro === 'spotlight_first_time' && (
+        <FeatureIntroModal
+          title="You're in the spotlight!"
+          description="The host has featured you in this chat. Your messages will appear in the Focus room and carry a star for all members to see."
+          icon={Star}
+          themeIsDarkMode={themeIsDarkMode}
+          onDismiss={() => handleDismissIntro('spotlight_first_time')}
         />
       )}
     </>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Crown, Pin, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban } from 'lucide-react';
+import { BadgeCheck, Crown, Pin, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban, Star } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import { ChatRoom, Message, ReactionSummary } from '@/lib/api';
 
@@ -102,6 +102,16 @@ function HostPill({ color }: { color?: string }) {
   );
 }
 
+function SpotlightPill({ color }: { color?: string }) {
+  const c = color || '#facc15';
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      style={{ backgroundColor: `${c}20`, color: c }}
+    >spotlight</span>
+  );
+}
+
 function BannedPill() {
   return (
     <span
@@ -152,6 +162,9 @@ interface StickySectionProps {
   handleUnblockUser: (username: string) => void;
   handleUnmuteUser?: (username: string) => void;
   mutedUsernames?: Set<string>;
+  spotlightUsernames?: Set<string>;
+  onSpotlightAdd?: (username: string) => void;
+  onSpotlightRemove?: (username: string) => void;
   onRequestSignup?: () => void;
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
@@ -187,6 +200,9 @@ function StickySection({
   handleUnblockUser,
   handleUnmuteUser,
   mutedUsernames,
+  spotlightUsernames,
+  onSpotlightAdd,
+  onSpotlightRemove,
   onRequestSignup,
   handleTipUser,
   handleSendGift,
@@ -207,13 +223,27 @@ function StickySection({
   const [stickyHidden, setStickyHidden] = useState(false);
   const stickyHiddenRef = useRef(false);
   const [stickyHeight, setStickyHeight] = useState(0);
+  // Measured height of the animated content area (used as the transform distance).
+  // Kept in sync with the inner content wrapper's natural offsetHeight so the transform
+  // moves the content exactly off-screen when hiding.
+  const [animatedContentHeight, setAnimatedContentHeight] = useState(0);
 
   const initialRenderDoneRef = useRef(false);
   const [allowAnimations, setAllowAnimations] = useState(false);
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
 
-  // Mark a toggle in progress — blocks ResizeObserver and scroll compensation for 220ms
-  const markStickyToggle = () => {
+  // Mark a toggle in progress — blocks ResizeObserver and scroll compensation for 220ms.
+  //
+  // Both collapse and expand defer the `setStickyHeight` update until the animation
+  // finishes (at the 220ms timer), so the parent's scroll-compensation useLayoutEffect
+  // fires in the same render as the padding-top change. If we update stickyHeight
+  // synchronously with the click, stickyToggleRef is still true during the subsequent
+  // layout effect and scroll compensation is skipped, causing messages to visibly jump.
+  //
+  // Perf: defer layout reads (offsetHeight/offsetTop) into the setTimeout callback
+  // so the touch/click handler does only one forced-layout read (scrollHeight) before
+  // yielding to React. Less synchronous work = faster animation start on Android Chrome.
+  const markStickyToggle = (nextHidden: boolean) => {
     stickyToggleRef.current = true;
     cancelScrollAnimation?.();
     const container = messagesContainerRef.current;
@@ -223,20 +253,25 @@ function StickySection({
       );
     }
     pendingToggleRef.current = true;
+
     if (stickyToggleTimerRef.current) clearTimeout(stickyToggleTimerRef.current);
     stickyToggleTimerRef.current = setTimeout(() => {
       stickyToggleRef.current = false;
       const el = stickySectionRef.current;
-      if (el) {
-        setStickyHeight(el.offsetHeight);
-      }
+      const contentEl = stickyContentWrapperRef.current;
+      const fullOuter = el?.offsetHeight ?? 0;
+      const innerBottom = contentEl
+        ? contentEl.offsetTop + contentEl.offsetHeight
+        : 0;
+      const collapsedH = Math.max(0, fullOuter - innerBottom);
+      setStickyHeight(nextHidden ? collapsedH : fullOuter);
     }, 220);
   };
 
   // Expand sticky section when signaled from parent
   useEffect(() => {
     if (expandStickySignal && stickyHidden) {
-      markStickyToggle();
+      markStickyToggle(false);
       setStickyHidden(false);
     }
   }, [expandStickySignal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -246,8 +281,13 @@ function StickySection({
     stickyHiddenRef.current = stickyHidden;
   }, [stickyHidden]);
 
-  // Notify parent when stickyHidden changes (for FAB strip animation)
-  useEffect(() => {
+  // Notify parent when stickyHidden changes (for FAB strip animation).
+  // useLayoutEffect (not useEffect) so the parent's state flip is flushed in the
+  // same render tick as the child's transform update — otherwise the FAB
+  // transition starts one frame after the sticky transition, causing visible
+  // lag on Android Chrome where the gap shows as "sticky appears/disappears
+  // before the FAB catches up."
+  useLayoutEffect(() => {
     onStickyHiddenChange?.(stickyHidden);
   }, [stickyHidden, onStickyHiddenChange]);
 
@@ -262,28 +302,58 @@ function StickySection({
     regularUsername: getTextColor(currentDesign.regularUsername) || '#ffffff',
   }), [currentDesign]);
 
-  // Measure sticky section height dynamically
+  // Measure sticky section height dynamically.
+  //
+  // Android perf fix: the previous implementation used grid-template-rows 0fr→1fr
+  // animation, which triggers layout on every frame. On Android Chrome this was
+  // O(N) with the number of messages because Blink can't composite semi-transparent
+  // overlays without repainting the underlying region. iOS Safari (WebKit) composites
+  // this correctly and was always smooth.
+  //
+  // New approach: the outer sticky container is transformed via translateY(-contentHeight)
+  // when hidden. The chevron (which is at the bottom of the container in the normal flow)
+  // ends up at visual y=0 when the content translates off-screen above the viewport.
+  // Transform is a GPU-composited property — constant cost regardless of DOM complexity
+  // below the sticky.
+  //
+  // We track two heights:
+  //   - `animatedContentHeight`: the natural height of the content area (without chevron).
+  //     Used as the transform distance so content slides exactly off-screen.
+  //   - `stickyHeight`: the effective height reported to the parent for messages area
+  //     padding-top. When expanded, this equals the full outer height. When collapsed,
+  //     it's updated after the 200ms animation to reflect just the chevron strip.
   useLayoutEffect(() => {
     const stickyEl = stickySectionRef.current;
+    const contentEl = stickyContentWrapperRef.current;
     const hasSticky = stickyHostMessages.length > 0 || stickyPinnedMessage;
 
-    if (!stickyEl || !hasSticky) {
+    if (!stickyEl || !contentEl || !hasSticky) {
       setStickyHeight(0);
+      setAnimatedContentHeight(0);
       return;
     }
 
-    const height = stickyEl.offsetHeight;
-    setStickyHeight(height);
+    const outerH = stickyEl.offsetHeight;
+    // Inner's bottom edge relative to outer — includes outer top padding,
+    // so transforming by this amount fully hides the content off-screen.
+    const innerBottom = contentEl.offsetTop + contentEl.offsetHeight;
+    setAnimatedContentHeight(innerBottom);
+    if (!stickyHiddenRef.current) {
+      setStickyHeight(outerH);
+    }
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const height = entry.borderBoxSize?.[0]?.blockSize ?? (entry.target as HTMLElement).offsetHeight;
-        if (stickyToggleRef.current) return;
-        setStickyHeight(height);
+    const resizeObserver = new ResizeObserver(() => {
+      if (stickyToggleRef.current) return;
+      const nextOuter = stickyEl.offsetHeight;
+      const nextInnerBottom = contentEl.offsetTop + contentEl.offsetHeight;
+      setAnimatedContentHeight(nextInnerBottom);
+      if (!stickyHiddenRef.current) {
+        setStickyHeight(nextOuter);
       }
     });
 
     resizeObserver.observe(stickyEl);
+    resizeObserver.observe(contentEl);
     return () => resizeObserver.disconnect();
   }, [stickyHostMessages.length, stickyPinnedMessage]);
 
@@ -308,7 +378,7 @@ function StickySection({
     if (stickyContentKey !== stickyContentKeyRef.current) {
       stickyContentKeyRef.current = stickyContentKey;
       if (stickyHidden) {
-        markStickyToggle();
+        markStickyToggle(false);
       }
       setStickyHidden(false);
     }
@@ -338,8 +408,36 @@ function StickySection({
     <div
       ref={stickySectionRef}
       data-sticky-section
-      className={`${currentDesign.stickySection} ${stickyHidden ? '!pt-0' : ''}`}
-      style={stickyHidden ? { backgroundColor: currentDesign.stickyCollapsedBg || '#18181b' } : undefined}
+      className={currentDesign.stickySection}
+      style={{
+        // Transform-based collapse: slide the ENTIRE sticky bar up by the content's
+        // height when hidden. Because the sticky is position:absolute, transform has
+        // zero layout cost. The chevron, which is a child of this element, slides
+        // up with it and naturally ends up at the top edge — visually matching the
+        // previous grid-rows behavior while being GPU-composited.
+        // iOS Safari was fine with grid-rows; Android Chrome was slow because the
+        // semi-transparent bar over the messages forced per-frame re-composite.
+        // Transform-only animations are the only reliable fast path on Blink.
+        // Using translate3d (not translateY) forces Android Chrome to pre-allocate
+        // a GPU compositing layer for this element, so the animation starts the
+        // instant the transform value changes instead of waiting for layer promotion.
+        // +2 buffer: Android Chrome rounds offsetTop/offsetHeight differently than the
+        // actual rendered height, leaving 1-2 pixels of content visible when collapsed.
+        transform: stickyHidden
+          ? `translate3d(0, -${animatedContentHeight + 2}px, 0)`
+          : 'translate3d(0, 0, 0)',
+        transition: 'transform 200ms ease-out',
+        willChange: 'transform',
+        // touch-action: none tells iOS Safari to skip its scroll-vs-tap gesture
+        // disambiguation pass and route every touch on this element directly to
+        // our handlers. Without this, touches near the bottom border of the sticky
+        // caused iOS to speculatively begin scrolling the messages area below,
+        // then roll it back when our swipe handler fired — producing a visible
+        // jitter. Trade-off: users can't initiate a message-area scroll by
+        // touching the sticky first, but that's a rare interaction.
+        touchAction: 'none',
+        ...(stickyHidden ? { backgroundColor: currentDesign.stickyCollapsedBg || '#18181b' } : {}),
+      }}
       onTouchStart={(e) => {
         touchStartYRef.current = e.touches[0].clientY;
       }}
@@ -347,10 +445,10 @@ function StickySection({
         if (touchStartYRef.current !== null) {
           const deltaY = touchStartYRef.current - e.changedTouches[0].clientY;
           if (deltaY > 30 && !stickyHidden) {
-            markStickyToggle();
+            markStickyToggle(true);
             setStickyHidden(true);
           } else if (deltaY < -30 && stickyHidden) {
-            markStickyToggle();
+            markStickyToggle(false);
             setStickyHidden(false);
           }
           touchStartYRef.current = null;
@@ -359,11 +457,6 @@ function StickySection({
     >
       <div
         ref={stickyContentWrapperRef}
-        style={{
-          display: 'grid',
-          gridTemplateRows: stickyHidden ? '0fr' : '1fr',
-          transition: 'grid-template-rows 200ms ease-out',
-        }}
       >
         <div className="space-y-2" style={{ overflow: 'hidden' }}>
           {/* Host Messages */}
@@ -388,6 +481,9 @@ function StickySection({
               onUnblock={handleUnblockUser}
               onUnmute={handleUnmuteUser}
               mutedUsernames={mutedUsernames}
+              spotlightUsernames={spotlightUsernames}
+              onSpotlightAdd={onSpotlightAdd}
+              onSpotlightRemove={onSpotlightRemove}
               onRequestSignup={onRequestSignup}
               onTip={handleTipUser}
               onSendGift={handleSendGift}
@@ -423,10 +519,7 @@ function StickySection({
                       >
                         {message.username}
                       </span>
-                      {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                      <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
-                      <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                      {message.is_banned && <BannedPill />}
+                      <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                     </div>
                 <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
                   <span
@@ -508,6 +601,9 @@ function StickySection({
               onUnblock={handleUnblockUser}
               onUnmute={handleUnmuteUser}
               mutedUsernames={mutedUsernames}
+              spotlightUsernames={spotlightUsernames}
+              onSpotlightAdd={onSpotlightAdd}
+              onSpotlightRemove={onSpotlightRemove}
               onRequestSignup={onRequestSignup}
               onTip={handleTipUser}
               onSendGift={handleSendGift}
@@ -545,8 +641,9 @@ function StickySection({
                       >
                         {stickyPinnedMessage.username}
                       </span>
-                  {stickyPinnedMessage.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                  {stickyPinnedMessage.is_banned && <BannedPill />}
+                  {spotlightUsernames?.has(stickyPinnedMessage.username) && (
+                    <Star size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
+                  )}
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
                     currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'
                   }`}>
@@ -618,7 +715,7 @@ function StickySection({
       </div>
       <button
         onClick={() => {
-          markStickyToggle();
+          markStickyToggle(!stickyHidden);
           setStickyHidden(h => !h);
         }}
         className={`w-full flex items-center justify-center -my-1 transition-opacity`}

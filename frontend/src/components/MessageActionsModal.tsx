@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Message, ReactionSummary } from '@/lib/api';
-import { Pin, Gift, Ban, ShieldCheck, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Radio } from 'lucide-react';
+import { Pin, Gift, Ban, ShieldCheck, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Radio, Star } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import ReactionBar from './ReactionBar';
 import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
@@ -73,6 +73,9 @@ interface MessageActionsModalProps {
   onUnblock?: (username: string) => void;
   onUnmute?: (username: string) => void;
   mutedUsernames?: Set<string>;
+  onSpotlightAdd?: (username: string) => void;
+  onSpotlightRemove?: (username: string) => void;
+  spotlightUsernames?: Set<string>;
   onRequestSignup?: () => void;
   onTip?: (username: string) => void;
   onSendGift?: (giftId: string, recipientUsername: string) => Promise<boolean>;
@@ -229,6 +232,9 @@ export default function MessageActionsModal({
   onUnblock,
   onUnmute,
   mutedUsernames,
+  onSpotlightAdd,
+  onSpotlightRemove,
+  spotlightUsernames,
   onRequestSignup,
   onTip,
   onSendGift,
@@ -623,6 +629,23 @@ export default function MessageActionsModal({
     });
   }
 
+  // 4c. Spotlight — host-only, on others' (non-host) messages, immediate toggle
+  if (isHost && !isOwnMessage && !isHostMessage && (onSpotlightAdd || onSpotlightRemove)) {
+    const isSpotlit = spotlightUsernames?.has(message.username) || false;
+    actions.push({
+      icon: Star,
+      label: isSpotlit ? 'Unspotlight' : 'Spotlight',
+      action: () => {
+        if (isSpotlit) {
+          onSpotlightRemove?.(message.username);
+        } else {
+          onSpotlightAdd?.(message.username);
+        }
+        handleClose();
+      },
+    });
+  }
+
   // 5. Copy — always (copies "username: content" to clipboard, disabled for media-only)
   const hasTextContent = !!message.content?.trim();
   actions.push({
@@ -801,7 +824,7 @@ export default function MessageActionsModal({
                     {message.is_from_host && (
                       <>
                         <span className="ml-1"><HostPill color={themeColors?.crownIcon || '#2dd4bf'} /></span>
-                        <Crown className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
+                        <Crown className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
                       </>
                     )}
                     {message.is_pinned && !message.is_from_host && (

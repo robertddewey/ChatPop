@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Crown, Dices, RotateCcw } from 'lucide-react';
+import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Crown, Dices, RotateCcw, Star } from 'lucide-react';
 import type { ChatRoom, AnonymousParticipationInfo } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
@@ -20,6 +20,7 @@ interface JoinChatModalProps {
   themeIsDarkMode?: boolean;
   userAvatarUrl?: string | null;
   anonymousParticipations?: AnonymousParticipationInfo[];
+  spotlightUsernames?: Set<string>;
   registeredAvatarUrl?: string | null;
   onAvatarChange?: (avatarUrl: string) => void;
   onIdentityChange?: (identity: { username: string; avatarUrl: string | null; hasReservedUsername: boolean }) => void;
@@ -39,6 +40,7 @@ export default function JoinChatModal({
   userAvatarUrl,
   onAvatarChange,
   anonymousParticipations,
+  spotlightUsernames,
   registeredAvatarUrl,
   onIdentityChange,
   onJoin,
@@ -490,11 +492,21 @@ export default function JoinChatModal({
                       : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-500'
                   }`}
                 >
-                  <img
-                    src={anon.avatar_url || ''}
-                    alt="Anonymous avatar"
-                    className="w-12 h-12 rounded-full bg-zinc-700 flex-shrink-0"
-                  />
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={anon.avatar_url || ''}
+                      alt="Anonymous avatar"
+                      className="w-12 h-12 rounded-full bg-zinc-700"
+                    />
+                    {spotlightUsernames?.has(anon.username) && (
+                      <Star
+                        size={14}
+                        fill="currentColor"
+                        className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
+                        style={{ transform: 'rotate(-15deg)' }}
+                      />
+                    )}
+                  </div>
                   <div className="text-left min-w-0">
                     <p className={`font-semibold ${modalStyles.title} truncate`}>
                       {anon.username}
@@ -528,8 +540,15 @@ export default function JoinChatModal({
                   alt="Registered avatar"
                   className="w-12 h-12 rounded-full bg-zinc-700"
                 />
-                {chatRoom.host.reserved_username?.toLowerCase() === currentUserDisplayName.toLowerCase() && (
+                {chatRoom.host.reserved_username?.toLowerCase() === currentUserDisplayName.toLowerCase() ? (
                   <Crown size={14} fill="currentColor" className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.crown_icon_color || 'text-amber-400'}`} style={{ transform: 'rotate(-30deg)' }} />
+                ) : spotlightUsernames?.has(currentUserDisplayName) && (
+                  <Star
+                    size={14}
+                    fill="currentColor"
+                    className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
+                    style={{ transform: 'rotate(-15deg)' }}
+                  />
                 )}
               </div>
               <div className="text-left min-w-0">

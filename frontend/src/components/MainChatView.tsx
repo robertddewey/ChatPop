@@ -5,9 +5,11 @@
 // bg-purple-900 border-purple-500/40 bg-purple-500/30
 // bg-gradient-to-t from-purple-500 to-blue-500
 // bg-zinc-900/95 bg-zinc-900/90 border-purple-500/30
+// bg-[#2a1f05] border-[#3d2e0a]
+// bg-yellow-950/40 border-yellow-900/40 hover:bg-yellow-950/60
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin, Radio, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown, Ban } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Radio, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown, Ban, Star } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
@@ -188,6 +190,17 @@ function HostPill({ color }: { color?: string }) {
   );
 }
 
+// "spotlight" pill shown next to spotlighted users' usernames
+function SpotlightPill({ color }: { color?: string }) {
+  const c = color || '#facc15';
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      style={{ backgroundColor: `${c}20`, color: c }}
+    >spotlight</span>
+  );
+}
+
 // "banned" pill shown next to banned users' usernames
 function BannedPill() {
   return (
@@ -243,6 +256,9 @@ interface MainChatViewProps {
   handleUnblockUser: (username: string) => void;
   handleUnmuteUser?: (username: string) => void;
   mutedUsernames?: Set<string>;
+  spotlightUsernames?: Set<string>;
+  onSpotlightAdd?: (username: string) => void;
+  onSpotlightRemove?: (username: string) => void;
   onRequestSignup?: () => void;
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
@@ -291,6 +307,9 @@ function MainChatView({
   handleUnblockUser,
   handleUnmuteUser,
   mutedUsernames,
+  spotlightUsernames,
+  onSpotlightAdd,
+  onSpotlightRemove,
   onRequestSignup,
   handleTipUser,
   handleSendGift,
@@ -459,6 +478,9 @@ function MainChatView({
         handleUnblockUser={handleUnblockUser}
         handleUnmuteUser={handleUnmuteUser}
         mutedUsernames={mutedUsernames}
+        spotlightUsernames={spotlightUsernames}
+        onSpotlightAdd={onSpotlightAdd}
+        onSpotlightRemove={onSpotlightRemove}
         onRequestSignup={onRequestSignup}
         handleTipUser={handleTipUser}
         handleSendGift={handleSendGift}
@@ -617,6 +639,9 @@ function MainChatView({
                       {isHostMessage && (
                         <Crown size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
                       )}
+                      {!isHostMessage && spotlightUsernames?.has(message.username) && (
+                        <Star size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15', transform: 'rotate(-15deg)' }} />
+                      )}
                       {message.username_is_reserved && (
                         <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
                       )}
@@ -654,6 +679,9 @@ function MainChatView({
                   onUnblock={handleUnblockUser}
                   onUnmute={handleUnmuteUser}
                   mutedUsernames={mutedUsernames}
+                  spotlightUsernames={spotlightUsernames}
+                  onSpotlightAdd={onSpotlightAdd}
+                  onSpotlightRemove={onSpotlightRemove}
                   onRequestSignup={onRequestSignup}
                   onTip={handleTipUser}
                   onSendGift={handleSendGift}
@@ -685,6 +713,12 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
+                        {spotlightUsernames?.has(message.username) && (
+                          <>
+                            <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
+                            <Star size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
+                          </>
+                        )}
                         {message.is_banned && <BannedPill />}
                       </div>
                     </div>
@@ -710,7 +744,7 @@ function MainChatView({
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                         <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
-                        <Crown size={16} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                        <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                         {message.is_banned && <BannedPill />}
                       </div>
                     </div>
@@ -736,6 +770,12 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
+                        {spotlightUsernames?.has(message.username) && (
+                          <>
+                            <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
+                            <Star size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
+                          </>
+                        )}
                         {message.is_banned && <BannedPill />}
                       </div>
                     </div>
@@ -809,10 +849,16 @@ function MainChatView({
                   <div
                     className={(() => {
                       const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
+                      const isSpotlightBubble =
+                        !isHostMessage &&
+                        !message.is_pinned &&
+                        spotlightUsernames?.has(message.username);
                       const selectedStyle = isHostMessage
                         ? currentDesign.hostMessage + ' flex-1'
                         : message.is_pinned
                         ? currentDesign.pinnedMessage
+                        : isSpotlightBubble
+                        ? currentDesign.spotlightMessage
                         : isMyMessage
                         ? currentDesign.myMessage
                         : currentDesign.regularMessage;
@@ -847,6 +893,8 @@ function MainChatView({
                         className={`mb-2 p-2 rounded-lg cursor-pointer transition-colors ${
                           message.is_pinned
                             ? currentDesign.uiStyles?.replyContextPinned || 'bg-white/10 border border-purple-500/30 hover:bg-white/15'
+                            : (isHostMessage || (!isHostMessage && spotlightUsernames?.has(message.username)))
+                            ? currentDesign.uiStyles?.replyContextHighlighted || 'bg-yellow-950/40 border border-yellow-900/40 hover:bg-yellow-950/60'
                             : message.username.toLowerCase() === username.toLowerCase()
                             ? currentDesign.uiStyles?.replyContextOwn || 'bg-white/10 border border-white/10 hover:bg-white/15'
                             : currentDesign.uiStyles?.replyContextOther || 'bg-white/10 border border-zinc-600 hover:bg-white/15'
@@ -872,12 +920,11 @@ function MainChatView({
                           {message.reply_to_message.username_is_reserved && (
                             <BadgeCheck size={12} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                           )}
-                          {message.reply_to_message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                           {message.reply_to_message.is_from_host && (
-                            <>
-                              <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
-                              <Crown size={12} style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                            </>
+                            <Crown size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                          )}
+                          {!message.reply_to_message.is_from_host && spotlightUsernames?.has(message.reply_to_message.username) && (
+                            <Star size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                           )}
                           {message.reply_to_message.is_pinned && !message.reply_to_message.is_from_host && (
                             <Pin size={12} className="flex-shrink-0" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />

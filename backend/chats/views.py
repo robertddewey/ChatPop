@@ -767,10 +767,20 @@ class MessageListView(APIView):
                 )
             elif filter_mode and filter_username:
                 if filter_mode == 'focus':
-                    messages = MessageCache.get_focus_messages(
-                        chat_room.id, filter_username, limit=limit,
-                        before_timestamp=float(before_timestamp) if before_timestamp else None
-                    )
+                    # If any spotlight users exist, bypass cache for focus mode
+                    # so spotlighted messages are included (cache index doesn't
+                    # know about spotlight). Returning [] forces partial-cache
+                    # path to fall through to _fetch_from_db below.
+                    has_spotlight = ChatParticipation.objects.filter(
+                        chat_room=chat_room, is_spotlight=True
+                    ).exists()
+                    if has_spotlight:
+                        messages = []
+                    else:
+                        messages = MessageCache.get_focus_messages(
+                            chat_room.id, filter_username, limit=limit,
+                            before_timestamp=float(before_timestamp) if before_timestamp else None
+                        )
                 elif filter_mode == 'gifts':
                     messages = MessageCache.get_gift_messages(
                         chat_room.id, username=filter_username, limit=limit,
@@ -864,8 +874,16 @@ class MessageListView(APIView):
                         Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
                     ).values_list('blocked_username', flat=True)
                 )
+                spotlight_usernames_cached = set(
+                    ChatParticipation.objects.filter(
+                        chat_room=chat_room,
+                        is_spotlight=True,
+                        username__in=[u for u in unique_usernames_cached if u],
+                    ).values_list('username', flat=True)
+                )
                 for msg in messages:
                     msg['is_banned'] = msg.get('username', '').lower() in banned_usernames_cached
+                    msg['is_spotlight'] = msg.get('username', '') in spotlight_usernames_cached
             else:
                 # Cache miss - fall back to PostgreSQL and backfill cache
                 print(f"DEBUG: Cache miss! Calling _fetch_from_db, limit={limit}, before_timestamp={before_timestamp}")
@@ -960,10 +978,16 @@ class MessageListView(APIView):
             queryset = queryset.filter(is_broadcast=True)
         elif filter_mode and filter_username:
             if filter_mode == 'focus':
+                spotlight_usernames_in_chat = list(
+                    ChatParticipation.objects.filter(
+                        chat_room=chat_room, is_spotlight=True
+                    ).values_list('username', flat=True)
+                )
                 queryset = queryset.filter(
                     Q(is_from_host=True) |
                     Q(username__iexact=filter_username) |
-                    Q(reply_to__username__iexact=filter_username)
+                    Q(reply_to__username__iexact=filter_username) |
+                    Q(username__in=spotlight_usernames_in_chat)
                 )
             elif filter_mode == 'gifts':
                 queryset = queryset.filter(
@@ -1033,6 +1057,15 @@ class MessageListView(APIView):
             ).filter(
                 Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
             ).values_list('blocked_username', flat=True)
+        )
+
+        # Batch fetch spotlighted usernames (ONE query)
+        spotlight_usernames_db = set(
+            ChatParticipation.objects.filter(
+                chat_room=chat_room,
+                is_spotlight=True,
+                username__in=[u for u in unique_usernames if u],
+            ).values_list('username', flat=True)
         )
 
         # Serialize (with username_is_reserved, avatar_url, and is_banned)
@@ -1117,6 +1150,7 @@ class MessageListView(APIView):
                 'created_at': msg.created_at.isoformat(),
                 'is_deleted': msg.is_deleted,
                 'is_banned': msg.username.lower() in banned_usernames_db,
+                'is_spotlight': msg.username in spotlight_usernames_db,
                 'reactions': top_reactions,
             })
 
@@ -3296,6 +3330,23 @@ class BlockUserView(APIView):
             )
             logger.info(f"[BLOCK] block_participation succeeded, created consolidated block with ID: {block_created.id}")
 
+            # Ban cascade: a banned user should never be in the spotlight.
+            try:
+                if block_created.blocked_user_id:
+                    ChatParticipation.objects.filter(
+                        chat_room=chat_room,
+                        user_id=block_created.blocked_user_id,
+                        is_spotlight=True,
+                    ).update(is_spotlight=False)
+                else:
+                    ChatParticipation.objects.filter(
+                        chat_room=chat_room,
+                        username__iexact=participation.username,
+                        is_spotlight=True,
+                    ).update(is_spotlight=False)
+            except Exception as e:
+                logger.warning(f"[BLOCK] Failed to clear spotlight on ban: {e}")
+
             # SECURITY: Revoke all outstanding JWT tokens for this user in this chat.
             # For account-level bans, bump epoch for EVERY linked identity (reserved + anon)
             # so the user cannot continue posting under any of their other identities.
@@ -3510,6 +3561,249 @@ class MutedUsersInChatView(APIView):
             ],
             'count': blocks.count()
         })
+
+
+# ========================
+# Spotlight Views
+# ========================
+
+def _dispatch_spotlight_event(chat_room, action, target_username):
+    """Broadcast a spotlight add/remove event to all WS clients in the room."""
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{chat_room.code}',
+            {
+                'type': 'spotlight_update',
+                'action': action,
+                'username': target_username,
+            }
+        )
+    except Exception:
+        # Best-effort broadcast — never fail the request because of WS dispatch
+        pass
+
+
+class SpotlightListView(APIView):
+    """
+    List all currently-spotlighted participations in a chat.
+
+    Available to ALL chat viewers — clients need this to render stars/pills
+    consistently for spotlighted users.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
+        ps = ChatParticipation.objects.filter(
+            chat_room=chat_room, is_spotlight=True
+        ).order_by('-last_seen_at')
+        spotlight_users = [{
+            'username': p.username,
+            'avatar_url': p.avatar_url,
+            'last_seen_at': p.last_seen_at.isoformat() if p.last_seen_at else None,
+        } for p in ps]
+        return Response({
+            'spotlight_users': spotlight_users,
+            'count': len(spotlight_users),
+        })
+
+
+def _is_username_banned_in_chat(chat_room, target_username):
+    """Return True if target_username has any active username-level ChatBlock."""
+    from django.utils import timezone as tz
+    return ChatBlock.objects.filter(
+        chat_room=chat_room,
+        blocked_username__iexact=target_username,
+    ).filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
+    ).exists()
+
+
+def _is_user_banned_in_chat(chat_room, user_id):
+    """Return True if user_id has any active account-level ChatBlock."""
+    if not user_id:
+        return False
+    from django.utils import timezone as tz
+    return ChatBlock.objects.filter(
+        chat_room=chat_room,
+        blocked_user_id=user_id,
+    ).filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
+    ).exists()
+
+
+class SpotlightAddView(APIView):
+    """Host-only: add a participation to the spotlight."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
+        if request.user != chat_room.host:
+            raise PermissionDenied("Only the host can manage the spotlight.")
+
+        target_username = (request.data.get('username') or '').strip()
+        if not target_username:
+            raise ValidationError("username is required")
+
+        # Disallow spotlighting the host themselves
+        host_reserved = (chat_room.host.reserved_username or '')
+        if host_reserved and target_username.lower() == host_reserved.lower():
+            raise ValidationError("Cannot spotlight the chat host.")
+
+        try:
+            participation = ChatParticipation.objects.get(
+                chat_room=chat_room,
+                username__iexact=target_username,
+            )
+        except ChatParticipation.DoesNotExist:
+            return Response(
+                {'detail': 'Participation not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Reject banned users (username-level OR account-level)
+        if _is_username_banned_in_chat(chat_room, participation.username) or \
+                _is_user_banned_in_chat(chat_room, participation.user_id):
+            raise ValidationError("Cannot spotlight a banned user.")
+
+        if participation.is_spotlight:
+            return Response({
+                'success': True,
+                'already_spotlighted': True,
+                'username': participation.username,
+            })
+
+        participation.is_spotlight = True
+        participation.save(update_fields=['is_spotlight'])
+
+        _dispatch_spotlight_event(chat_room, 'add', participation.username)
+
+        return Response({
+            'success': True,
+            'username': participation.username,
+        })
+
+
+class SpotlightRemoveView(APIView):
+    """Host-only: remove a participation from the spotlight."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
+        if request.user != chat_room.host:
+            raise PermissionDenied("Only the host can manage the spotlight.")
+
+        target_username = (request.data.get('username') or '').strip()
+        if not target_username:
+            raise ValidationError("username is required")
+
+        try:
+            participation = ChatParticipation.objects.get(
+                chat_room=chat_room,
+                username__iexact=target_username,
+            )
+        except ChatParticipation.DoesNotExist:
+            return Response(
+                {'detail': 'Participation not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not participation.is_spotlight:
+            return Response({
+                'success': True,
+                'already_removed': True,
+                'username': participation.username,
+            })
+
+        participation.is_spotlight = False
+        participation.save(update_fields=['is_spotlight'])
+
+        _dispatch_spotlight_event(chat_room, 'remove', participation.username)
+
+        return Response({
+            'success': True,
+            'username': participation.username,
+        })
+
+
+class ParticipantSearchView(APIView):
+    """
+    Host-only autocomplete: search this chat's participations by username prefix.
+
+    Excludes:
+      - The host themselves
+      - Already-spotlighted participations
+      - Banned users (username-level OR account-level)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_throttles(self):
+        from .throttles import ParticipantSearchRateThrottle
+        return [ParticipantSearchRateThrottle()]
+
+    def get(self, request, code, username=None):
+        chat_room = get_chat_room_by_url(code, username)
+        if request.user != chat_room.host:
+            raise PermissionDenied("Only the host can search participants.")
+
+        q = (request.query_params.get('q') or '').strip()
+        if len(q) < 2:
+            return Response({'results': []})
+
+        from django.utils import timezone as tz
+
+        host_reserved = (chat_room.host.reserved_username or '')
+        qs = ChatParticipation.objects.filter(
+            chat_room=chat_room,
+            username__istartswith=q,
+            is_spotlight=False,
+        )
+        if host_reserved:
+            qs = qs.exclude(username__iexact=host_reserved)
+
+        # Compute active bans for exclusion (small N per chat)
+        active_blocks = ChatBlock.objects.filter(
+            chat_room=chat_room,
+        ).filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())
+        )
+        banned_usernames_lower = set(
+            (u or '').lower()
+            for u in active_blocks.values_list('blocked_username', flat=True)
+            if u
+        )
+        banned_user_ids = set(
+            active_blocks.exclude(blocked_user__isnull=True)
+            .values_list('blocked_user_id', flat=True)
+        )
+
+        candidates = list(qs.order_by('-last_seen_at')[:50])
+        results = []
+        seen = set()
+        for p in candidates:
+            key = p.username.lower()
+            if key in seen:
+                continue
+            if key in banned_usernames_lower:
+                continue
+            if p.user_id and p.user_id in banned_user_ids:
+                continue
+            seen.add(key)
+            results.append({
+                'username': p.username,
+                'avatar_url': p.avatar_url,
+                'last_seen_at': p.last_seen_at.isoformat() if p.last_seen_at else None,
+            })
+            if len(results) >= 10:
+                break
+
+        return Response({'results': results})
+
 
 
 class MessageDeleteView(APIView):

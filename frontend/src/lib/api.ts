@@ -119,6 +119,9 @@ export interface ChatTheme {
   pinned_message_fade: string;
   regular_message: string;
   regular_text: string;
+  spotlight_message: string;
+  spotlight_text: string;
+  spotlight_icon_color: string;
   my_message: string;
   my_text: string;
   voice_message_styles: {
@@ -272,6 +275,7 @@ export interface Message {
   created_at: string;
   is_deleted: boolean;
   is_banned?: boolean;
+  is_spotlight?: boolean;
   gift_recipient?: string | null;
   is_gift_acknowledged?: boolean;
   is_broadcast?: boolean;
@@ -809,6 +813,43 @@ export const messageApi = {
     count: number;
   }> => {
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/muted-users/`);
+    return response.data;
+  },
+
+  // ===== Spotlight =====
+  getSpotlightUsers: async (code: string, roomUsername?: string): Promise<{
+    spotlight_users: Array<{ username: string; avatar_url: string | null; last_seen_at: string | null }>;
+    count: number;
+  }> => {
+    const response = await api.get(`${buildChatUrl(code, roomUsername)}/spotlight/`);
+    return response.data;
+  },
+
+  spotlightAdd: async (code: string, username: string, roomUsername?: string): Promise<{
+    success: boolean;
+    username?: string;
+    already_spotlighted?: boolean;
+  }> => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/spotlight/add/`, { username });
+    return response.data;
+  },
+
+  spotlightRemove: async (code: string, username: string, roomUsername?: string): Promise<{
+    success: boolean;
+    username?: string;
+    already_removed?: boolean;
+  }> => {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/spotlight/remove/`, { username });
+    return response.data;
+  },
+
+  searchParticipants: async (code: string, q: string, roomUsername?: string): Promise<{
+    results: Array<{ username: string; avatar_url: string | null; last_seen_at: string | null }>;
+  }> => {
+    const response = await api.get(
+      `${buildChatUrl(code, roomUsername)}/participants/search/`,
+      { params: { q } }
+    );
     return response.data;
   },
 
