@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, memo, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, memo, useMemo, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown, Spotlight, Trash2 } from 'lucide-react';
 import type { Message, ChatRoom } from '@/lib/api';
 import VoiceRecorder, { type VoicePreview } from './VoiceRecorder';
@@ -42,7 +42,11 @@ interface MessageInputProps {
   };
 }
 
-function MessageInputComponent({
+export interface MessageInputHandle {
+  focus: () => void;
+}
+
+const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(function MessageInputComponent({
   chatRoom,
   isHost,
   isSpotlight = false,
@@ -60,7 +64,7 @@ function MessageInputComponent({
   disabled = false,
   disabledMessage,
   design,
-}: MessageInputProps) {
+}, ref) {
   const inputStyles = design.inputStyles;
   const [message, setMessage] = useState('');
   const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
@@ -91,6 +95,12 @@ function MessageInputComponent({
       textarea.style.height = '';
     }
   }, [message, isExpanded]);
+
+  // Expose focus method to parent via ref (for iOS Safari which requires
+  // focus to be called within the user gesture event handler chain)
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus(),
+  }), []);
 
   // Handle focus - expand the input and move cursor to end
   const handleFocus = useCallback(() => {
@@ -330,20 +340,6 @@ function MessageInputComponent({
         </div>
       )}
 
-      {/* Username indicator */}
-      {username && (
-        <div className={`flex items-center gap-1 ${replyingTo || mediaPreview || voicePreview ? 'mt-0.5' : '-mt-2'} mb-0.5 px-1`}>
-          <span className={`text-[10px] ${inputStyles?.chattingAsText || 'text-zinc-600'} flex items-center gap-0.5`}>
-            You are <span className="font-medium">@{username}</span>
-            {isHost ? (
-              <Crown size={10} fill="currentColor" style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />
-            ) : isSpotlight && (
-              <Spotlight size={10} fill="currentColor" style={{ color: inputStyles?.spotlightIconColor || '#facc15' }} />
-            )}
-          </span>
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className={`flex items-center gap-2 ${replyingTo && !mediaPreview ? 'mt-2' : ''}`}>
         {/* Text input container */}
         <div className="relative flex-1 min-w-0 flex items-center">
@@ -460,8 +456,23 @@ function MessageInputComponent({
           Send
         </button>
       </form>
+
+      {/* Username indicator — positioned after the form so reply/media/voice
+          previews above don't shift it. Always in the same position. */}
+      {username && (
+        <div className="flex items-center gap-1 mt-0.5 px-1">
+          <span className={`text-[10px] ${inputStyles?.chattingAsText || 'text-zinc-600'} flex items-center gap-0.5`}>
+            You are <span className="font-medium">@{username}</span>
+            {isHost ? (
+              <Crown size={10} fill="currentColor" style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />
+            ) : isSpotlight && (
+              <Spotlight size={10} fill="currentColor" style={{ color: inputStyles?.spotlightIconColor || '#facc15' }} />
+            )}
+          </span>
+        </div>
+      )}
     </div>
   );
-}
+});
 
 export default memo(MessageInputComponent);

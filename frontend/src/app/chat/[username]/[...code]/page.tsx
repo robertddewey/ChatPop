@@ -17,7 +17,7 @@ import FeatureIntroModal from '@/components/FeatureIntroModal';
 import LoginModal, { LoginFormContent } from '@/components/LoginModal';
 import RegisterModal, { RegisterFormContent } from '@/components/RegisterModal';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
-import MessageInput from '@/components/MessageInput';
+import MessageInput, { type MessageInputHandle } from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
@@ -462,6 +462,7 @@ export default function ChatPage() {
   const headerTouchStartYRef = useRef<number | null>(null);
 
   // Message input state (message text is managed locally in MessageInput component)
+  const messageInputRef = useRef<MessageInputHandle>(null);
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
@@ -2078,7 +2079,14 @@ export default function ChatPage() {
   }, [code, roomUsername]);
 
   const handleReply = useCallback((message: Message) => {
-        setReplyingTo(message);
+    // flushSync forces React to commit the state update synchronously,
+    // keeping everything within the original tap's call stack. iOS Safari
+    // only honors .focus() (opening the keyboard) if it's called
+    // synchronously within a user gesture handler. Without flushSync,
+    // React's async re-render breaks the gesture chain and iOS ignores
+    // the focus. Android Chrome is more permissive and works either way.
+    flushSync(() => setReplyingTo(message));
+    messageInputRef.current?.focus();
   }, []);
 
   const handleCancelReply = useCallback(() => {
@@ -2921,6 +2929,7 @@ export default function ChatPage() {
       {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && (
         <div className="relative">
           <MessageInput
+            ref={messageInputRef}
             chatRoom={chatRoom}
             isHost={previewIsHost ?? isHost}
             isSpotlight={(() => {
