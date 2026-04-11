@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, memo, useMemo, useRef, useEffect } from 'react';
-import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown, Star, Trash2 } from 'lucide-react';
+import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown, Spotlight, Trash2 } from 'lucide-react';
 import type { Message, ChatRoom } from '@/lib/api';
 import VoiceRecorder, { type VoicePreview } from './VoiceRecorder';
 import MediaPicker from './MediaPicker';
@@ -338,7 +338,7 @@ function MessageInputComponent({
             {isHost ? (
               <Crown size={10} fill="currentColor" style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />
             ) : isSpotlight && (
-              <Star size={10} fill="currentColor" style={{ color: inputStyles?.spotlightIconColor || '#facc15' }} />
+              <Spotlight size={10} fill="currentColor" style={{ color: inputStyles?.spotlightIconColor || '#facc15' }} />
             )}
           </span>
         </div>

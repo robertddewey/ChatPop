@@ -28,7 +28,7 @@ class ChatThemeSerializer(serializers.ModelSerializer):
             'voice_message_styles', 'my_voice_message_styles', 'host_voice_message_styles', 'pinned_voice_message_styles',
             'filter_button_active', 'filter_button_inactive',
             'input_area', 'input_field',
-            'pin_icon_color', 'broadcast_icon_color', 'crown_icon_color', 'badge_icon_color', 'reply_icon_color',
+            'pin_icon_color', 'highlight_icon_color', 'crown_icon_color', 'badge_icon_color', 'reply_icon_color',
             'my_username', 'regular_username', 'host_username', 'my_host_username', 'pinned_username',
             'sticky_host_username', 'sticky_pinned_username',
             'my_timestamp', 'regular_timestamp', 'host_timestamp', 'pinned_timestamp',
@@ -323,7 +323,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'reply_to', 'reply_to_message',
             'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount',
             'is_from_host', 'username_is_reserved', 'time_until_unpin', 'avatar_url', 'created_at', 'is_deleted',
-            'gift_recipient', 'is_gift_acknowledged', 'is_broadcast'
+            'gift_recipient', 'is_gift_acknowledged', 'is_highlight'
         ]
         read_only_fields = [
             'id', 'user', 'message_type',

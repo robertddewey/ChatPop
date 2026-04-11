@@ -189,7 +189,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Skip message if sender is blocked by this user, with exceptions
         if sender_username and sender_username in self.blocked_usernames:
             # Exception: host broadcasts always shown
-            if message_data.get('is_broadcast'):
+            if message_data.get('is_highlight'):
                 pass
             # Exception: gifts TO this user from a muted sender
             elif message_data.get('message_type') == 'gift' and message_data.get('gift_recipient') == self.username:
@@ -234,12 +234,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'is_top_pin': event.get('is_top_pin', False),
         }))
 
-    async def message_broadcast(self, event):
-        # Send broadcast update notification to WebSocket
+    async def message_highlight(self, event):
+        # Send highlight update notification to WebSocket
         await self.send(text_data=json.dumps({
-            'type': 'message_broadcast',
+            'type': 'message_highlight',
             'message': event['message'],
-            'is_broadcast': event.get('is_broadcast', False),
+            'is_highlight': event.get('is_highlight', False),
+        }))
+
+    async def broadcast_sticky_update(self, event):
+        """Broadcast sticky set/clear to all clients."""
+        await self.send(text_data=json.dumps({
+            'type': 'broadcast_sticky_update',
+            'message': event.get('message'),
         }))
 
     async def block_update(self, event):

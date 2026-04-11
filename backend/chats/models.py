@@ -92,7 +92,7 @@ class ChatTheme(models.Model):
     crown_icon_color = models.CharField(max_length=100, default='text-yellow-400', help_text="Tailwind classes for crown (host) icon color")
     badge_icon_color = models.CharField(max_length=100, default='text-blue-400', help_text="Tailwind classes for verified badge icon color")
     reply_icon_color = models.CharField(max_length=100, default='text-cyan-400', help_text="Tailwind classes for reply icon color")
-    broadcast_icon_color = models.CharField(max_length=100, default='text-blue-400', help_text="Tailwind classes for broadcast icon color")
+    highlight_icon_color = models.CharField(max_length=100, default='text-blue-400', help_text="Tailwind classes for highlight icon color")
 
     # Reaction Highlight (when user has reacted)
     reaction_highlight_bg = models.CharField(max_length=100, default='bg-zinc-700', help_text="Background classes for highlighted reaction pill")
@@ -202,6 +202,17 @@ class ChatRoom(models.Model):
     voice_enabled = models.BooleanField(default=False)
     video_enabled = models.BooleanField(default=False)
     photo_enabled = models.BooleanField(default=True)
+
+    # Broadcast sticky
+    broadcast_message = models.ForeignKey(
+        'Message',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='broadcast_in',
+        help_text="Host-curated broadcast message shown in the top sticky slot. "
+                  "Only one per chat. Set by the host via toggle."
+    )
 
     # Theme settings
     theme = models.ForeignKey('ChatTheme', on_delete=models.SET_NULL, null=True, related_name='chat_rooms', help_text="Theme for this chat room")
@@ -340,8 +351,9 @@ class Message(models.Model):
     gift_recipient = models.CharField(max_length=100, blank=True, null=True, help_text="Recipient username for gift messages (denormalized for filter indexing)")
     is_gift_acknowledged = models.BooleanField(default=False)
 
-    # Broadcast (host-only, appears in all users' Focus view)
-    is_broadcast = models.BooleanField(default=False)
+    # Highlight (host-only, appears in all users' Focus view)
+    is_highlight = models.BooleanField(default=False)
+    highlighted_at = models.DateTimeField(null=True, blank=True, help_text="When the host highlighted this message. Used for ordering the highlight sticky slot.")
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

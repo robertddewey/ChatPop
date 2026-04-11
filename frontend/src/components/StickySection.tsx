@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Crown, Pin, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban, Star } from 'lucide-react';
+import { BadgeCheck, Crown, Pin, Megaphone, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban, Spotlight } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import { ChatRoom, Message, ReactionSummary } from '@/lib/api';
 
@@ -169,7 +169,9 @@ interface StickySectionProps {
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
-  handleBroadcastMessage: (messageId: string) => Promise<boolean>;
+  handleHighlightMessage: (messageId: string) => Promise<boolean>;
+  handleToggleBroadcast?: (messageId: string) => void;
+  broadcastMessageId?: string | null;
   handleDeleteMessage: (messageId: string) => void;
   handleUnpinMessage?: (messageId: string) => void;
   handleReactionToggle: (messageId: string, emoji: string) => void;
@@ -208,7 +210,9 @@ function StickySection({
   handleTipUser,
   handleSendGift,
   handleThankGift,
-  handleBroadcastMessage,
+  handleHighlightMessage,
+  handleToggleBroadcast,
+  broadcastMessageId,
   handleDeleteMessage,
   handleUnpinMessage,
   handleReactionToggle,
@@ -298,6 +302,7 @@ function StickySection({
     badgeIcon: getIconColor(currentDesign.badgeIconColor) || '#3b82f6',
     crownIcon: getIconColor(currentDesign.crownIconColor) || '#2dd4bf',
     pinIcon: getIconColor(currentDesign.pinIconColor) || '#fbbf24',
+    spotlightIcon: getIconColor(currentDesign.spotlightIconColor) || '#facc15',
     hostUsername: getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff',
     pinnedUsername: getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff',
     myUsername: getTextColor(currentDesign.myUsername) || '#ef4444',
@@ -490,25 +495,57 @@ function StickySection({
               onTip={handleTipUser}
               onSendGift={handleSendGift}
               onThankGift={handleThankGift}
-              onBroadcast={handleBroadcastMessage}
+              onToggleHighlight={handleHighlightMessage}
+              onToggleBroadcast={handleToggleBroadcast}
+              broadcastMessageId={broadcastMessageId}
               onDelete={handleDeleteMessage}
               onUnpin={handleUnpinMessage}
-              onReact={handleReactionToggle}
+                                                        onReact={handleReactionToggle}
               onHighlight={highlightMessage}
               reactions={messageReactions[message.id] || message.reactions || []}
             >
+              {(() => {
+                const isHostMsg = message.is_from_host;
+                const isSpotlightMsg = !isHostMsg && spotlightUsernames?.has(message.username);
+                const isMyMsg = message.username.toLowerCase() === username.toLowerCase();
+
+                // Text/username styling based on message author type
+                // Priority: my username (red) > host > spotlight > regular (white)
+                const textClass = isHostMsg ? currentDesign.hostText : currentDesign.pinnedText;
+                const usernameClass = (isHostMsg || isSpotlightMsg)
+                  ? (currentDesign.stickyHostUsername || 'text-sm font-semibold')
+                  : (currentDesign.stickyPinnedUsername || 'text-sm font-semibold');
+                const usernameColor = isMyMsg
+                  ? (getTextColor(currentDesign.myUsername) || '#ef4444')
+                  : (isHostMsg || isSpotlightMsg)
+                    ? (getTextColor(currentDesign.stickyHostUsername || currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff')
+                    : '#ffffff';
+                const timestampColor = isHostMsg
+                  ? (getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff')
+                  : (getTextColor(currentDesign.pinnedTimestamp) || getTextColor(currentDesign.pinnedText) || '#ffffff');
+
+                // Avatar: no icon for regular users → shift up to fill space
+                const hasAvatarIcon = isHostMsg || isSpotlightMsg;
+
+                return (
               <div
-                className={`${currentDesign.stickyHostMessage} !py-1.5 w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
+                className={`${isHostMsg ? currentDesign.stickyHostMessage : currentDesign.stickyPinnedMessage} !py-1.5 w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
+                style={!isHostMsg ? { backgroundColor: '#0a1a2f', borderColor: '#1e3a5f' } : undefined}
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
-                  <div className="relative flex-shrink-0 mt-1">
+                  <div className={`relative flex-shrink-0 ${hasAvatarIcon ? 'mt-1' : 'mt-0'}`}>
                     <img
                       src={message.avatar_url || getDiceBearUrl(currentDesign.avatarStyle || 'pixel-art', message.username, 80)}
                       alt={message.username}
                       className={`${currentDesign.avatarSize || 'w-10 h-10'} rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'} ${currentDesign.avatarBorder || ''}`}
                     />
-                    <Crown size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
+                    {isHostMsg && (
+                      <Crown size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
+                    )}
+                    {isSpotlightMsg && (
+                      <Spotlight size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
+                    )}
                     {message.username_is_reserved && (
                       <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
                     )}
@@ -517,17 +554,23 @@ function StickySection({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1 mb-1">
                       <span
-                        className={currentDesign.stickyHostUsername || 'text-sm font-semibold'}
-                        style={{ color: getTextColor(currentDesign.stickyHostUsername || currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff' }}
+                        className={usernameClass}
+                        style={{ color: usernameColor }}
                       >
                         {message.username}
                       </span>
-                      <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                      {isHostMsg && (
+                        <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                      )}
+                      {isSpotlightMsg && (
+                        <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
+                      )}
+                      <Megaphone size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.highlightIconColor) || '#60a5fa' }} />
                     </div>
                 <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
                   <span
                     className="text-xs opacity-60"
-                    style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }}
+                    style={{ color: timestampColor }}
                   >
                     {formatTimestamp(message.created_at)}
                   </span>
@@ -536,27 +579,27 @@ function StickySection({
                     className="p-1 rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity"
                     aria-label="Go to message"
                   >
-                    <CornerDownRight size={14} style={{ color: getTextColor(currentDesign.hostTimestamp) || getTextColor(currentDesign.hostText) || '#ffffff' }} />
+                    <CornerDownRight size={14} style={{ color: timestampColor }} />
                   </button>
                 </div>
                 {message.voice_url ? (
                   <div className="flex items-center gap-2">
-                    <Mic size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.hostText} opacity-70 truncate`}>
+                    <Mic size={16} className={textClass} style={{ opacity: 0.7 }} />
+                    <span className={`text-sm ${textClass} opacity-70 truncate`}>
                       Voice{message.content ? `: ${message.content}` : message.voice_duration ? ` (${Math.floor(message.voice_duration / 60)}:${String(Math.floor(message.voice_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
                 ) : message.photo_url ? (
                   <div className="flex items-center gap-2">
-                    <ImageIcon size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.hostText} opacity-70 truncate`}>
+                    <ImageIcon size={16} className={textClass} style={{ opacity: 0.7 }} />
+                    <span className={`text-sm ${textClass} opacity-70 truncate`}>
                       Photo{message.content ? `: ${message.content}` : ''}
                     </span>
                   </div>
                 ) : message.video_url ? (
                   <div className="flex items-center gap-2">
-                    <Video size={16} className={currentDesign.hostText} style={{ opacity: 0.7 }} />
-                    <span className={`text-sm ${currentDesign.hostText} opacity-70 truncate`}>
+                    <Video size={16} className={textClass} style={{ opacity: 0.7 }} />
+                    <span className={`text-sm ${textClass} opacity-70 truncate`}>
                       Video{message.content ? `: ${message.content}` : message.video_duration ? ` (${Math.floor(message.video_duration / 60)}:${String(Math.floor(message.video_duration % 60)).padStart(2, '0')})` : ''}
                     </span>
                   </div>
@@ -566,20 +609,22 @@ function StickySection({
                   const recipient = m ? m[3] : '';
                   return (
                     <div className="flex items-center gap-1.5 text-sm">
-                      <span className={`${currentDesign.hostText} truncate`}>
+                      <span className={`${textClass} truncate`}>
                         sent {emoji} to <span className="font-semibold">@{recipient}</span>
                         {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
                       </span>
                     </div>
                   );
                 })() : (
-                  <p className={`text-sm ${currentDesign.hostText} truncate`}>
+                  <p className={`text-sm ${textClass} truncate`}>
                     {message.content}
                   </p>
                 )}
                   </div>
                 </div>
               </div>
+                );
+              })()}
             </MessageActionsModal>
           ))}
 
@@ -611,10 +656,12 @@ function StickySection({
               onTip={handleTipUser}
               onSendGift={handleSendGift}
               onThankGift={handleThankGift}
-              onBroadcast={handleBroadcastMessage}
+              onToggleHighlight={handleHighlightMessage}
+              onToggleBroadcast={handleToggleBroadcast}
+              broadcastMessageId={broadcastMessageId}
               onDelete={handleDeleteMessage}
               onUnpin={handleUnpinMessage}
-              onReact={handleReactionToggle}
+                                                        onReact={handleReactionToggle}
               onHighlight={highlightMessage}
               reactions={messageReactions[stickyPinnedMessage.id] || stickyPinnedMessage.reactions || []}
             >
@@ -646,7 +693,7 @@ function StickySection({
                         {stickyPinnedMessage.username}
                       </span>
                   {spotlightUsernames?.has(stickyPinnedMessage.username) && (
-                    <Star size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
+                    <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                   )}
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
                     currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'

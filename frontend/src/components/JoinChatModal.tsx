@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Crown, Dices, RotateCcw, Star } from 'lucide-react';
+import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Crown, Dices, RotateCcw, Spotlight } from 'lucide-react';
 import type { ChatRoom, AnonymousParticipationInfo } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
@@ -499,11 +499,10 @@ export default function JoinChatModal({
                       className="w-12 h-12 rounded-full bg-zinc-700"
                     />
                     {spotlightUsernames?.has(anon.username) && (
-                      <Star
+                      <Spotlight
                         size={14}
                         fill="currentColor"
                         className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
-                        style={{ transform: 'rotate(-15deg)' }}
                       />
                     )}
                   </div>
@@ -543,11 +542,10 @@ export default function JoinChatModal({
                 {chatRoom.host.reserved_username?.toLowerCase() === currentUserDisplayName.toLowerCase() ? (
                   <Crown size={14} fill="currentColor" className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.crown_icon_color || 'text-amber-400'}`} style={{ transform: 'rotate(-30deg)' }} />
                 ) : spotlightUsernames?.has(currentUserDisplayName) && (
-                  <Star
+                  <Spotlight
                     size={14}
                     fill="currentColor"
                     className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
-                    style={{ transform: 'rotate(-15deg)' }}
                   />
                 )}
               </div>

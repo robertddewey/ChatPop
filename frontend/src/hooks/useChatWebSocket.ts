@@ -19,7 +19,8 @@ interface UseChatWebSocketOptions {
   onMessageDeleted?: (messageId: string, pinnedMessages: Message[]) => void;
   onMessageUnpinned?: (messageId: string, pinnedMessages: Message[]) => void;
   onMessagePinned?: (message: Message, isTopPin: boolean) => void;
-  onMessageBroadcast?: (message: Message, isBroadcast: boolean) => void;
+  onMessageHighlight?: (message: Message, isHighlight: boolean) => void;
+  onBroadcastStickyUpdate?: (message: Message | null) => void;
   onGiftReceived?: (gift: GiftNotification) => void;
   onGiftQueue?: (gifts: GiftNotification[]) => void;
   onGiftAcknowledged?: (messageIds: string[]) => void;
@@ -41,7 +42,8 @@ export function useChatWebSocket({
   onMessageDeleted,
   onMessageUnpinned,
   onMessagePinned,
-  onMessageBroadcast,
+  onMessageHighlight,
+  onBroadcastStickyUpdate,
   onGiftReceived,
   onGiftQueue,
   onGiftAcknowledged,
@@ -68,7 +70,8 @@ export function useChatWebSocket({
   const onMessageDeletedRef = useRef(onMessageDeleted);
   const onMessageUnpinnedRef = useRef(onMessageUnpinned);
   const onMessagePinnedRef = useRef(onMessagePinned);
-  const onMessageBroadcastRef = useRef(onMessageBroadcast);
+  const onMessageHighlightRef = useRef(onMessageHighlight);
+  const onBroadcastStickyUpdateRef = useRef(onBroadcastStickyUpdate);
   const onGiftReceivedRef = useRef(onGiftReceived);
   const onGiftQueueRef = useRef(onGiftQueue);
   const onGiftAcknowledgedRef = useRef(onGiftAcknowledged);
@@ -86,7 +89,8 @@ export function useChatWebSocket({
   useEffect(() => { onMessageDeletedRef.current = onMessageDeleted; }, [onMessageDeleted]);
   useEffect(() => { onMessageUnpinnedRef.current = onMessageUnpinned; }, [onMessageUnpinned]);
   useEffect(() => { onMessagePinnedRef.current = onMessagePinned; }, [onMessagePinned]);
-  useEffect(() => { onMessageBroadcastRef.current = onMessageBroadcast; }, [onMessageBroadcast]);
+  useEffect(() => { onMessageHighlightRef.current = onMessageHighlight; }, [onMessageHighlight]);
+  useEffect(() => { onBroadcastStickyUpdateRef.current = onBroadcastStickyUpdate; }, [onBroadcastStickyUpdate]);
   useEffect(() => { onGiftReceivedRef.current = onGiftReceived; }, [onGiftReceived]);
   useEffect(() => { onGiftQueueRef.current = onGiftQueue; }, [onGiftQueue]);
   useEffect(() => { onGiftAcknowledgedRef.current = onGiftAcknowledged; }, [onGiftAcknowledged]);
@@ -193,10 +197,18 @@ export function useChatWebSocket({
           return;
         }
 
-        // Handle message broadcast events
-        if (data.type === 'message_broadcast') {
-          if (onMessageBroadcastRef.current) {
-            onMessageBroadcastRef.current(data.message, data.is_broadcast);
+        // Handle message highlight events
+        if (data.type === 'message_highlight') {
+          if (onMessageHighlightRef.current) {
+            onMessageHighlightRef.current(data.message, data.is_highlight);
+          }
+          return;
+        }
+
+        // Handle broadcast sticky update events
+        if (data.type === 'broadcast_sticky_update') {
+          if (onBroadcastStickyUpdateRef.current) {
+            onBroadcastStickyUpdateRef.current(data.message || null);
           }
           return;
         }
