@@ -90,7 +90,7 @@
       "regular_timestamp": "text-xs text-white opacity-60",
       "host_timestamp": "text-xs opacity-60",
       "pinned_timestamp": "text-xs opacity-60",
-      "reply_preview_container": "flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700",
+      "reply_preview_container": "flex items-center justify-between px-4 py-2 rounded-xl bg-[#1f1f23] border border-[#1f1f23]",
       "reply_preview_icon": "w-4 h-4 flex-shrink-0 text-cyan-400",
       "reply_preview_username": "text-xs font-semibold text-zinc-300",
       "reply_preview_content": "text-xs text-zinc-400 truncate",
