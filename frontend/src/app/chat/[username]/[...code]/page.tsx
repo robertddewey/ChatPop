@@ -21,7 +21,7 @@ import MessageInput from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Bell, Star } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Star, Bell, Spotlight } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
@@ -79,7 +79,7 @@ interface CamelCaseTheme {
   inputArea: string;
   inputField: string;
   pinIconColor: string;
-  broadcastIconColor: string;
+  highlightIconColor: string;
   crownIconColor: string;
   badgeIconColor: string;
   replyIconColor: string;
@@ -151,7 +151,7 @@ function convertThemeToCamelCase(theme: ChatTheme): CamelCaseTheme {
     inputArea: theme.input_area,
     inputField: theme.input_field,
     pinIconColor: theme.pin_icon_color,
-    broadcastIconColor: theme.broadcast_icon_color,
+    highlightIconColor: theme.highlight_icon_color,
     crownIconColor: theme.crown_icon_color,
     badgeIconColor: theme.badge_icon_color,
     replyIconColor: theme.reply_icon_color,
@@ -254,7 +254,7 @@ const defaultTheme: ChatTheme = {
     durationTextColor: "text-white/80",
   },
   pin_icon_color: "text-purple-400",
-  broadcast_icon_color: "text-blue-400",
+  highlight_icon_color: "text-blue-400",
   crown_icon_color: "text-amber-400",
   badge_icon_color: "text-blue-500",
   reply_icon_color: "text-emerald-300",
@@ -470,7 +470,7 @@ export default function ChatPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   // Room navigation — unified state for all views
-  type Room = 'main' | 'focus' | 'gifts' | 'broadcast' | 'backroom';
+  type Room = 'main' | 'focus' | 'gifts' | 'highlight' | 'backroom';
   const [currentRoom, setCurrentRoom] = useState<Room>('main');
   const [previousRoom, setPreviousRoom] = useState<Room>('main');
   const [roomLoading, setRoomLoading] = useState(false);
@@ -542,7 +542,7 @@ export default function ChatPage() {
 
   // Helper: get filter param for API calls (only chat filter rooms have a filter)
   const getRoomFilter = useCallback((room: Room): string | undefined => {
-    if (room === 'focus' || room === 'gifts' || room === 'broadcast') return room;
+    if (room === 'focus' || room === 'gifts' || room === 'highlight') return room;
     return undefined;
   }, []);
 
@@ -555,11 +555,11 @@ export default function ChatPage() {
   const getRoomLoadingText = useCallback((target: Room, prev: Room): string => {
     if (target === 'focus') return 'Focusing...';
     if (target === 'gifts') return 'Gifting...';
-    if (target === 'broadcast') return 'Broadcasting...';
+    if (target === 'highlight') return 'Starring...';
     if (target === 'backroom') return 'Gaming...';
     if (prev === 'focus') return 'Unfocusing...';
     if (prev === 'gifts') return 'Ungifting...';
-    if (prev === 'broadcast') return 'Unbroadcasting...';
+    if (prev === 'highlight') return 'Unstarring...';
     if (prev === 'backroom') return 'Ungaming...';
     return 'Loading...';
   }, []);
@@ -583,7 +583,7 @@ export default function ChatPage() {
     if (!msg) return null;
     const author = msg.username || '';
     if (mutedUsernames.has(author)) {
-      if (msg.is_broadcast) return msg;
+      if (msg.is_highlight) return msg;
       if (
         msg.message_type === 'gift' &&
         msg.gift_recipient &&
@@ -627,10 +627,9 @@ export default function ChatPage() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   // Extract sticky-worthy messages and update state (never clears — only updates)
+  // NOTE: Host sticky is now populated from the API's broadcast_message field,
+  // NOT auto-populated from the latest host message.
   const updateStickyFromMessages = useCallback((msgs: Message[]) => {
-    const latestHost = msgs.filter(m => m.is_from_host).slice(-1)[0];
-    if (latestHost) setStickyHostMessage(latestHost);
-
     const now = new Date();
     const topPinned = msgs
       .filter(m => m.is_pinned && !m.is_from_host && (!m.sticky_until || new Date(m.sticky_until) > now))
@@ -663,7 +662,7 @@ export default function ChatPage() {
     window.history.replaceState({ room: target }, '', window.location.href);
 
     const filterParam = getRoomFilter(target);
-    const filterUser = filterParam && filterParam !== 'broadcast' ? username : undefined;
+    const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
 
     if (target === 'main') {
       // Main room: fetch fresh (no firehose caching)
@@ -764,10 +763,7 @@ export default function ChatPage() {
       // Let handleScroll manage shouldAutoScrollRef based on user's position
       return [...prev, message];
     });
-    // Update sticky if this is a host message
-    if (message.is_from_host) {
-      setStickyHostMessage(message);
-    }
+    // NOTE: Host sticky is now controlled by manual host pin, not auto-populated from host messages.
     // Play receive sound only when someone replies to YOUR message (not their own)
     if (message.reply_to_message?.username === username && message.username !== username) {
       playReceiveMessageSound();
@@ -840,14 +836,6 @@ export default function ChatPage() {
     // Remove message from local state
     setMessages(prev => prev.filter(msg => msg.id !== messageId));
 
-    // Host sticky: fall back to previous host message from loaded messages
-    setStickyHostMessage(prev => {
-      if (prev?.id !== messageId) return prev;
-      // Use functional updater on messages won't help (already filtered above),
-      // so scan the current messages minus the deleted one
-      return null; // Accept the gap for host messages
-    });
-
     // Pinned sticky: use authoritative list from backend
     setStickyPinFromList(pinnedMessages);
 
@@ -857,6 +845,8 @@ export default function ChatPage() {
       delete updated[messageId];
       return updated;
     });
+
+    // NOTE: broadcast sticky cleanup is handled by the backend via broadcast_sticky_update WS event
   }, [setStickyPinFromList]);
 
   const handleMessageUnpinned = useCallback((messageId: string, pinnedMessages: Message[]) => {
@@ -885,12 +875,19 @@ export default function ChatPage() {
     }
   }, []);
 
-  const handleMessageBroadcast = useCallback((message: Message, isBroadcast: boolean) => {
-    setMessages(prev => prev.map(msg =>
-      msg.id === message.id
-        ? { ...msg, is_broadcast: isBroadcast }
-        : msg
-    ));
+  const handleMessageHighlight = useCallback((message: Message, isHighlight: boolean) => {
+    if (message) {
+      setMessages(prev => prev.map(msg =>
+        msg.id === message.id
+          ? { ...msg, is_highlight: isHighlight }
+          : msg
+      ));
+    }
+    // NOTE: highlight no longer touches sticky — broadcast is independent
+  }, []);
+
+  const handleBroadcastStickyUpdate = useCallback((message: Message | null) => {
+    setStickyHostMessage(message);
   }, []);
 
   // Handle visibility changes (mobile app switching)
@@ -914,7 +911,8 @@ export default function ChatPage() {
     onMessageDeleted: handleMessageDeleted,
     onMessageUnpinned: handleMessageUnpinned,
     onMessagePinned: handleMessagePinned,
-    onMessageBroadcast: handleMessageBroadcast,
+    onMessageHighlight: handleMessageHighlight,
+    onBroadcastStickyUpdate: handleBroadcastStickyUpdate,
     onGiftReceived: useCallback((gift: GiftNotification) => {
       setGiftQueue(prev => [...prev, gift]);
     }, []),
@@ -1462,8 +1460,8 @@ export default function ChatPage() {
       const currentSessionToken = localStorage.getItem(`chat_session_${code}`) || undefined;
       // Pass filter params when in focus/gifts room
       const filterParam = getRoomFilter(currentRoom);
-      const filterUser = filterParam && filterParam !== 'broadcast' ? username : undefined;
-      const { messages: msgs, pinnedMessages } = await messageApi.getMessages(code, roomUsername, currentSessionToken, filterParam, filterUser);
+      const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
+      const { messages: msgs, pinnedMessages, broadcastMessage } = await messageApi.getMessages(code, roomUsername, currentSessionToken, filterParam, filterUser);
 
       // Create a map of pinned messages for quick lookup
       const pinnedMap = new Map(pinnedMessages.map(pm => [pm.id, pm]));
@@ -1494,6 +1492,13 @@ export default function ChatPage() {
 
       setMessages(allMessages);
       updateStickyFromMessages(allMessages);
+
+      // Set broadcast sticky from API response
+      if (broadcastMessage) {
+        setStickyHostMessage(broadcastMessage);
+      } else {
+        setStickyHostMessage(null);
+      }
       setHasMoreMessages(true);
 
       // Extract reactions from messages
@@ -1543,7 +1548,7 @@ export default function ChatPage() {
 
       // Fetch older messages (async - user may scroll during this)
       const filterParam = getRoomFilter(currentRoom);
-      const filterUser = filterParam && filterParam !== 'broadcast' ? username : undefined;
+      const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
       const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(code, beforeTimestamp, 50, roomUsername, filterParam, filterUser);
 
       if (olderMessages.length > 0) {
@@ -2197,15 +2202,30 @@ export default function ChatPage() {
     }
   }, [code, roomUsername]);
 
-  const handleBroadcastMessage = useCallback(async (messageId: string): Promise<boolean> => {
+  const handleHighlightMessage = useCallback(async (messageId: string): Promise<boolean> => {
     try {
-      await messageApi.broadcastMessage(code, messageId, roomUsername);
+      await messageApi.highlightMessage(code, messageId, roomUsername);
       return true;
     } catch (error) {
-      console.error('[Broadcast] Toggle failed:', error);
+      console.error('[Highlight] Toggle failed:', error);
       return false;
     }
   }, [code, roomUsername]);
+
+  const handleToggleBroadcast = useCallback(async (messageId: string) => {
+    if (!chatRoom || !currentUserId || chatRoom.host.id !== currentUserId) return;
+    // Optimistic update
+    setStickyHostMessage(prev => {
+      if (prev?.id === messageId) return null; // Unbroadcast
+      const msg = messages.find(m => m.id === messageId);
+      return msg || prev;
+    });
+    try {
+      await messageApi.toggleBroadcastSticky(code, messageId, roomUsername);
+    } catch (error) {
+      console.error('Failed to toggle broadcast:', error);
+    }
+  }, [code, chatRoom, currentUserId, roomUsername, messages]);
 
   const handleDeleteMessage = useCallback(async (messageId: string) => {
     // Only hosts can delete messages
@@ -2298,14 +2318,14 @@ export default function ChatPage() {
 
     // Client-side mute filter (mirrors backend rules):
     // - Hide messages from muted users
-    // - Exception: host broadcasts always shown
+    // - Exception: host highlights always shown
     // - Exception: gifts TO me from muted user still shown
     // - Also hide gifts TO muted users (unless I'm the sender)
     const applyMute = (msg: Message): boolean => {
       const author = msg.username || '';
       const authorMuted = mutedUsernames.has(author);
       if (authorMuted) {
-        if (msg.is_broadcast) return true;
+        if (msg.is_highlight) return true;
         if (
           msg.message_type === 'gift' &&
           msg.gift_recipient &&
@@ -2347,8 +2367,8 @@ export default function ChatPage() {
       }).filter(applyMute);
     }
 
-    if (currentRoom === 'broadcast') {
-      return messages.filter(msg => msg.is_broadcast).filter(applyMute);
+    if (currentRoom === 'highlight') {
+      return messages.filter(msg => msg.is_highlight).filter(applyMute);
     }
 
     return messages.filter(applyMute);
@@ -2730,9 +2750,9 @@ export default function ChatPage() {
                 cancelScrollAnimation={cancelScrollAnimation}
                 highlightMessage={highlightMessage}
                 handleReply={handleReply}
-                disableReply={currentRoom === 'gifts' || currentRoom === 'broadcast'}
+                disableReply={currentRoom === 'gifts' || currentRoom === 'highlight'}
                 filterLoading={roomLoading}
-                filterMode={currentRoom === 'main' ? 'all' : currentRoom as 'focus' | 'gifts' | 'broadcast'}
+                filterMode={currentRoom === 'main' ? 'all' : currentRoom as 'focus' | 'gifts' | 'highlight'}
                 filterLoadingText={getRoomLoadingText(currentRoom, previousRoom)}
                 handlePin={handlePin}
                 handleAddToPin={handleAddToPin}
@@ -2748,7 +2768,9 @@ export default function ChatPage() {
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
                 handleThankGift={handleThankGift}
-                handleBroadcastMessage={handleBroadcastMessage}
+                handleHighlightMessage={handleHighlightMessage}
+                handleToggleBroadcast={handleToggleBroadcast}
+                broadcastMessageId={stickyHostMessage?.id || null}
                 handleDeleteMessage={handleDeleteMessage}
                 handleUnpinMessage={handleUnpinMessage}
                 handleReactionToggle={handleReactionToggle}
@@ -2829,14 +2851,14 @@ export default function ChatPage() {
               onScroll={updateFabScrollFades}
               className="h-full flex flex-col items-center gap-2 overflow-y-auto no-scrollbar px-1 py-1"
             >
-              {/* Broadcast Room */}
+              {/* Highlight Room */}
               <FloatingActionButton
                 inline
-                icon={Radio}
+                icon={Star}
                 toggledIcon={MessageSquare}
-                onClick={() => switchRoom(currentRoom === 'broadcast' ? 'main' : 'broadcast')}
-                isToggled={currentRoom === 'broadcast'}
-                ariaLabel="Broadcasts"
+                onClick={() => switchRoom(currentRoom === 'highlight' ? 'main' : 'highlight')}
+                isToggled={currentRoom === 'highlight'}
+                ariaLabel="Star Room"
                 toggledAriaLabel="Show All Messages"
                 design={'dark-mode'}
               />
@@ -2896,7 +2918,7 @@ export default function ChatPage() {
       </div>
 
       {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms) */}
-      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'broadcast' && (
+      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && (
         <div className="relative">
           <MessageInput
             chatRoom={chatRoom}
@@ -2995,7 +3017,7 @@ export default function ChatPage() {
         <FeatureIntroModal
           title="You're in the spotlight!"
           description="The host has featured you in this chat. Your messages will appear in the Focus room and carry a star for all members to see."
-          icon={Star}
+          icon={Spotlight}
           themeIsDarkMode={themeIsDarkMode}
           onDismiss={() => handleDismissIntro('spotlight_first_time')}
         />

@@ -11,7 +11,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { chatApi, messageApi, type ChatRoom } from '@/lib/api';
-import { Copy, Check, BadgeCheck, Moon, ArrowLeft, Image, Mic, Video, Ban, ShieldCheck, ChevronRight, Settings, Star } from 'lucide-react';
+import { Copy, Check, BadgeCheck, Moon, ArrowLeft, Image, Mic, Video, Ban, ShieldCheck, ChevronRight, Settings, Spotlight } from 'lucide-react';
 import { migrateLegacyTheme, DEFAULT_THEME, type ThemeId, isDarkTheme } from '@/lib/themes';
 
 // Theme color constants for optimistic updates
@@ -737,7 +737,7 @@ export default function ChatSettingsSheet({
                 className={`w-full flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${styles.card} ${themeIsDarkMode ? 'hover:bg-zinc-700' : 'hover:bg-gray-100'}`}
               >
                 <div className="flex items-center gap-2">
-                  <Star size={16} className="text-yellow-400" fill="currentColor" />
+                  <Spotlight size={16} className="text-yellow-400" fill="currentColor" />
                   <span className={`text-sm font-medium ${styles.text}`}>Spotlight Users</span>
                   {spotlightList.length > 0 && (
                     <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400">
@@ -784,7 +784,7 @@ export default function ChatSettingsSheet({
               </button>
 
               <h3 className={`text-sm font-semibold ${styles.title} flex items-center gap-1.5`}>
-                <Star size={14} className="text-yellow-400" fill="currentColor" />
+                <Spotlight size={14} className="text-yellow-400" fill="currentColor" />
                 Spotlight Users
                 {spotlightList.length > 0 && (
                   <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400">

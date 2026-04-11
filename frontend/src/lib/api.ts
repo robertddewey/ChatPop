@@ -161,7 +161,7 @@ export interface ChatTheme {
   input_area: string;
   input_field: string;
   pin_icon_color: string;
-  broadcast_icon_color: string;
+  highlight_icon_color: string;
   crown_icon_color: string;
   badge_icon_color: string;
   reply_icon_color: string;
@@ -278,7 +278,7 @@ export interface Message {
   is_spotlight?: boolean;
   gift_recipient?: string | null;
   is_gift_acknowledged?: boolean;
-  is_broadcast?: boolean;
+  is_highlight?: boolean;
   reactions?: ReactionSummary[]; // Top 3 reactions for display
 }
 
@@ -553,7 +553,7 @@ export const chatApi = {
 };
 
 export const messageApi = {
-  getMessages: async (code: string, roomUsername?: string, sessionToken?: string, filter?: string, filterUsername?: string): Promise<{ messages: Message[], pinnedMessages: Message[] }> => {
+  getMessages: async (code: string, roomUsername?: string, sessionToken?: string, filter?: string, filterUsername?: string): Promise<{ messages: Message[], pinnedMessages: Message[], broadcastMessage: Message | null }> => {
     const params: Record<string, string> = {};
     if (sessionToken) {
       params.session_token = sessionToken;
@@ -570,7 +570,8 @@ export const messageApi = {
     // Fallback to direct array: [...]
     const messages = response.data.messages || response.data.results || response.data;
     const pinnedMessages = response.data.pinned_messages || [];
-    return { messages, pinnedMessages };
+    const broadcastMessage = response.data.broadcast_message || null;
+    return { messages, pinnedMessages, broadcastMessage };
   },
 
   getMessagesBefore: async (code: string, beforeTimestamp: number, limit: number = 50, roomUsername?: string, filter?: string, filterUsername?: string): Promise<{ messages: Message[], hasMore: boolean }> => {
@@ -654,13 +655,26 @@ export const messageApi = {
     return response.data;
   },
 
-  // Toggle broadcast on a message (host-only)
-  broadcastMessage: async (code: string, messageId: string, roomUsername?: string): Promise<{
+  // Toggle highlight on a message (host-only)
+  highlightMessage: async (code: string, messageId: string, roomUsername?: string): Promise<{
     success: boolean;
-    is_broadcast: boolean;
+    is_highlight: boolean;
   }> => {
     const sessionToken = localStorage.getItem(`chat_session_${code}`);
-    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/broadcast/`, {
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/highlight/`, {
+      session_token: sessionToken,
+    });
+    return response.data;
+  },
+
+  // Toggle broadcast sticky on a message (host-only, one at a time)
+  toggleBroadcastSticky: async (code: string, messageId: string, roomUsername?: string): Promise<{
+    success: boolean;
+    action: string;
+    message_id?: string;
+  }> => {
+    const sessionToken = localStorage.getItem(`chat_session_${code}`);
+    const response = await api.post(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/broadcast-sticky/`, {
       session_token: sessionToken,
     });
     return response.data;

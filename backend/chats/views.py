@@ -760,8 +760,8 @@ class MessageListView(APIView):
 
         if cache_enabled:
             # Route to filter-specific cache reads when filter is set
-            if filter_mode == 'broadcast':
-                messages = MessageCache.get_broadcast_messages(
+            if filter_mode == 'highlight':
+                messages = MessageCache.get_highlight_messages(
                     chat_room.id, limit=limit,
                     before_timestamp=float(before_timestamp) if before_timestamp else None
                 )
@@ -926,7 +926,7 @@ class MessageListView(APIView):
                     author_lower = author.lower()
                     author_blocked = author in blocked_usernames or author_lower in blocked_lower
                     if author_blocked:
-                        if msg.get('is_broadcast'):
+                        if msg.get('is_highlight'):
                             return True
                         if msg.get('message_type') == 'gift' and (msg.get('gift_recipient') or '').lower() == current_lower:
                             return True
@@ -948,9 +948,22 @@ class MessageListView(APIView):
         if should_show_full is not None:
             pinned_messages = [m for m in pinned_messages if should_show_full(m)]
 
+        # Broadcast sticky message
+        broadcast_sticky_data = None
+        if chat_room.broadcast_message_id:
+            try:
+                from rest_framework.renderers import JSONRenderer
+                import json as json_module
+                bm = chat_room.broadcast_message
+                if bm and not bm.is_deleted:
+                    broadcast_sticky_data = json_module.loads(JSONRenderer().render(MessageSerializer(bm).data))
+            except Exception:
+                pass
+
         return Response({
             'messages': messages,
             'pinned_messages': pinned_messages,
+            'broadcast_message': broadcast_sticky_data,
             'source': source,  # Shows where data came from (redis/postgresql/postgresql_fallback)
             'cache_enabled': cache_enabled,
             'count': len(messages),
@@ -974,8 +987,8 @@ class MessageListView(APIView):
         ).select_related('user', 'reply_to').prefetch_related('reactions')
 
         # Apply filter mode
-        if filter_mode == 'broadcast':
-            queryset = queryset.filter(is_broadcast=True)
+        if filter_mode == 'highlight':
+            queryset = queryset.filter(is_highlight=True)
         elif filter_mode and filter_username:
             if filter_mode == 'focus':
                 spotlight_usernames_in_chat = list(
@@ -1660,8 +1673,8 @@ class AddToPinView(APIView):
         })
 
 
-class MessageBroadcastView(APIView):
-    """Toggle broadcast status on a message (host-only, free action)."""
+class MessageHighlightView(APIView):
+    """Toggle highlight status on a message (host-only, free action)."""
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, code, message_id, username=None):
@@ -1685,18 +1698,22 @@ class MessageBroadcastView(APIView):
         # Host-only: verify the session user is the room host
         user_id = session_data.get('user_id')
         if not user_id or str(chat_room.host_id) != str(user_id):
-            raise PermissionDenied("Only the host can broadcast messages")
+            raise PermissionDenied("Only the host can highlight messages")
 
-        # Toggle broadcast
-        message.is_broadcast = not message.is_broadcast
-        message.save(update_fields=['is_broadcast'])
+        # Toggle highlight
+        message.is_highlight = not message.is_highlight
+        if message.is_highlight:
+            message.highlighted_at = timezone.now()
+        else:
+            message.highlighted_at = None
+        message.save(update_fields=['is_highlight', 'highlighted_at'])
 
         # Update Redis cache
         MessageCache.update_message(message)
-        if message.is_broadcast:
-            MessageCache.add_to_broadcast_index(message)
+        if message.is_highlight:
+            MessageCache.add_to_highlight_index(message)
         else:
-            MessageCache.remove_from_broadcast_index(chat_room.id, str(message.id))
+            MessageCache.remove_from_highlight_index(chat_room.id, str(message.id))
 
         # Broadcast via WebSocket
         channel_layer = get_channel_layer()
@@ -1708,16 +1725,70 @@ class MessageBroadcastView(APIView):
         async_to_sync(channel_layer.group_send)(
             room_group_name,
             {
-                'type': 'message_broadcast',
+                'type': 'message_highlight',
                 'message': json_safe_data,
-                'is_broadcast': message.is_broadcast,
+                'is_highlight': message.is_highlight,
             }
         )
 
         return Response({
             'success': True,
-            'is_broadcast': message.is_broadcast,
+            'is_highlight': message.is_highlight,
         })
+
+
+class BroadcastStickyView(APIView):
+    """Toggle broadcast sticky — host-only, one at a time."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, code, message_id, username=None):
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        from rest_framework.renderers import JSONRenderer
+        import json as json_module
+
+        chat_room = get_chat_room_by_url(code, username)
+        message = get_object_or_404(Message, id=message_id, chat_room=chat_room, is_deleted=False)
+
+        # Validate session token
+        session_token = request.data.get('session_token')
+        if not session_token:
+            raise PermissionDenied("Session token is required")
+        session_data = ChatSessionValidator.validate_session_token(
+            token=session_token, chat_code=code, request=request,
+        )
+
+        # Host-only
+        user_id = session_data.get('user_id')
+        if not user_id or str(chat_room.host_id) != str(user_id):
+            raise PermissionDenied("Only the host can broadcast messages")
+
+        # Toggle: if this message is already the broadcast, clear it. Otherwise set it.
+        if chat_room.broadcast_message_id == message.id:
+            # Unbroadcast
+            chat_room.broadcast_message = None
+            chat_room.save(update_fields=['broadcast_message'])
+
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'chat_{code}',
+                {'type': 'broadcast_sticky_update', 'message': None}
+            )
+            return Response({'success': True, 'action': 'unbroadcast'})
+        else:
+            # Broadcast (replaces any existing broadcast)
+            chat_room.broadcast_message = message
+            chat_room.save(update_fields=['broadcast_message'])
+
+            serialized = MessageSerializer(message).data
+            json_safe = json_module.loads(JSONRenderer().render(serialized))
+
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'chat_{code}',
+                {'type': 'broadcast_sticky_update', 'message': json_safe}
+            )
+            return Response({'success': True, 'action': 'broadcast', 'message_id': str(message.id)})
 
 
 class RefreshSessionView(APIView):
@@ -3425,6 +3496,41 @@ class BlockUserView(APIView):
             except Exception as e:
                 logger.warning(f"[BLOCK] Failed to auto-unpin on ban: {e}")
 
+            # Ban cascade: unhighlight all messages by banned user
+            try:
+                highlighted_by_banned = Message.objects.filter(
+                    chat_room=chat_room,
+                    is_highlight=True,
+                    username__in=[u for u in banned_usernames],
+                )
+                if highlighted_by_banned.exists():
+                    for msg in highlighted_by_banned:
+                        msg.is_highlight = False
+                        msg.save(update_fields=['is_highlight'])
+                        MessageCache.update_message(msg)
+                        MessageCache.remove_from_highlight_index(chat_room.id, str(msg.id))
+                    logger.info(f"[BLOCK] Unhighlighted messages by banned user")
+            except Exception as e:
+                logger.warning(f"[BLOCK] Failed to unhighlight on ban: {e}")
+
+            # Ban cascade: clear broadcast if it's from the banned user
+            try:
+                if chat_room.broadcast_message_id:
+                    bm = chat_room.broadcast_message
+                    if bm and bm.username.lower() in [u.lower() for u in banned_usernames]:
+                        chat_room.broadcast_message = None
+                        chat_room.save(update_fields=['broadcast_message'])
+                        from channels.layers import get_channel_layer
+                        from asgiref.sync import async_to_sync
+                        channel_layer_bc = get_channel_layer()
+                        async_to_sync(channel_layer_bc.group_send)(
+                            f'chat_{chat_room.code}',
+                            {'type': 'broadcast_sticky_update', 'message': None}
+                        )
+                        logger.info(f"[BLOCK] Cleared broadcast sticky from banned user")
+            except Exception as e:
+                logger.warning(f"[BLOCK] Failed to clear broadcast on ban: {e}")
+
             # SECURITY: Revoke all outstanding JWT tokens for this user in this chat.
             # For account-level bans, bump epoch for EVERY linked identity (reserved + anon)
             # so the user cannot continue posting under any of their other identities.
@@ -3662,7 +3768,7 @@ def _dispatch_spotlight_event(chat_room, action, target_username):
             }
         )
     except Exception:
-        # Best-effort broadcast — never fail the request because of WS dispatch
+        # Best-effort WebSocket dispatch — never fail the request because of WS dispatch
         pass
 
 
@@ -3936,6 +4042,17 @@ class MessageDeleteView(APIView):
         # Remove from Redis cache
         MessageCache.remove_message(chat_room.id, str(message_id))
         logger.info(f"[MESSAGE_DELETE] Message {message_id} removed from cache")
+
+        # If deleted message was highlighted, clear the highlight
+        if message.is_highlight:
+            message.is_highlight = False
+            message.save(update_fields=['is_highlight'])
+            logger.info(f"[MESSAGE_DELETE] Cleared highlight for deleted message {message_id}")
+
+        # If deleted message was the broadcast, clear it
+        if chat_room.broadcast_message_id == message.id:
+            chat_room.broadcast_message = None
+            chat_room.save(update_fields=['broadcast_message'])
 
         # Broadcast deletion event via WebSocket — include the authoritative pinned
         # messages list so all clients show the correct next pin if the deleted

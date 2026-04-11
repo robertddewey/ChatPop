@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Message, ReactionSummary } from '@/lib/api';
-import { Pin, Gift, Ban, ShieldCheck, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Radio, Star } from 'lucide-react';
+import { Pin, Gift, Ban, ShieldCheck, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Star, Radio, Megaphone, Spotlight } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import ReactionBar from './ReactionBar';
 import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
@@ -26,6 +26,16 @@ function HostPill({ color }: { color?: string }) {
       className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
       style={{ backgroundColor: `${c}20`, color: c }}
     >host</span>
+  );
+}
+
+function SpotlightPill({ color }: { color?: string }) {
+  const c = color || '#facc15';
+  return (
+    <span
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      style={{ backgroundColor: `${c}20`, color: c }}
+    >spotlight</span>
   );
 }
 
@@ -52,6 +62,7 @@ interface ThemeColors {
   badgeIcon?: string;    // BadgeCheck icon color
   crownIcon?: string;    // Crown icon color
   pinIcon?: string;      // Pin icon color
+  spotlightIcon?: string; // Spotlight icon color
   hostUsername?: string;  // Host username text color
   pinnedUsername?: string; // Pinned username text color
   myUsername?: string;    // Own username text color
@@ -80,7 +91,9 @@ interface MessageActionsModalProps {
   onTip?: (username: string) => void;
   onSendGift?: (giftId: string, recipientUsername: string) => Promise<boolean>;
   onThankGift?: (messageId: string) => Promise<boolean>;
-  onBroadcast?: (messageId: string) => Promise<boolean>;
+  onToggleHighlight?: (messageId: string) => Promise<boolean>;
+  onToggleBroadcast?: (messageId: string) => void;
+  broadcastMessageId?: string | null;
   onReact?: (messageId: string, emoji: string) => void;
   reactions?: ReactionSummary[];
   onDelete?: (messageId: string) => void;
@@ -240,7 +253,9 @@ export default function MessageActionsModal({
   onTip,
   onSendGift,
   onThankGift,
-  onBroadcast,
+  onToggleHighlight,
+  onToggleBroadcast,
+  broadcastMessageId,
   onReact,
   reactions = [],
   onDelete,
@@ -259,10 +274,7 @@ export default function MessageActionsModal({
 }: MessageActionsModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const [confirmingBan, setConfirmingBan] = useState(false);
-  const [confirmingUnban, setConfirmingUnban] = useState(false);
-  const [confirmingMute, setConfirmingMute] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<string | null>(null);
   const [muteLockedHint, setMuteLockedHint] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -385,10 +397,7 @@ export default function MessageActionsModal({
     setIsClosing(true);
     setSlideIn(false);
     setIsDragging(false);
-    setConfirmingBan(false);
-    setConfirmingUnban(false);
-    setConfirmingMute(false);
-    setConfirmingDelete(false);
+    setConfirmAction(null);
     setMuteLockedHint(false);
 
     // Wait for transition to complete before removing from DOM
@@ -596,19 +605,22 @@ export default function MessageActionsModal({
     });
   }
 
-  // 3. Pin — always (non-host messages, non-banned authors, pin support required)
-  const hasPinSupport = !message.is_from_host && !message.is_banned && (onPin || onAddToPin || getPinRequirements || onPinSelf || onPinOther);
-  const isPinExpired = message.is_pinned && message.sticky_until && new Date(message.sticky_until) < new Date();
+  // 3. Pin actions — regular users get paid pin (host uses Unpin in section 5)
+  if (!isHost) {
+    // Regular users: paid pin (existing logic)
+    const hasPinSupport = !message.is_from_host && !message.is_banned && (onPin || onAddToPin || getPinRequirements || onPinSelf || onPinOther);
+    const isPinExpired = message.is_pinned && message.sticky_until && new Date(message.sticky_until) < new Date();
 
-  if (hasPinSupport) {
-    if (!message.is_pinned) {
-      actions.push({ icon: Pin, label: 'Pin', action: handleOpenPinInput });
-    } else if (isPinExpired) {
-      actions.push({ icon: Pin, label: 'Re-pin', action: handleOpenPinInput });
-    } else if (isOutbid) {
-      actions.push({ icon: Pin, label: 'Reclaim', action: handleOpenPinInput });
-    } else {
-      actions.push({ icon: Pin, label: 'Add Pin', action: handleOpenPinInput });
+    if (hasPinSupport) {
+      if (!message.is_pinned) {
+        actions.push({ icon: Pin, label: 'Paid Pin', action: handleOpenPinInput });
+      } else if (isPinExpired) {
+        actions.push({ icon: Pin, label: 'Re-pin', action: handleOpenPinInput });
+      } else if (isOutbid) {
+        actions.push({ icon: Pin, label: 'Reclaim', action: handleOpenPinInput });
+      } else {
+        actions.push({ icon: Pin, label: 'Add Pin', action: handleOpenPinInput });
+      }
     }
   }
 
@@ -621,32 +633,35 @@ export default function MessageActionsModal({
     });
   }
 
-  // 4b. Broadcast — host-only toggle
-  if (isHost && onBroadcast) {
+  // 4b. Announce — host-only toggle (sticky slot)
+  if (isHost && onToggleBroadcast) {
+    const isBroadcast = message.id === broadcastMessageId;
     actions.push({
-      icon: Radio,
-      label: message.is_broadcast ? 'Unbroadcast' : 'Broadcast',
-      action: async () => {
-        await onBroadcast(message.id);
-        handleClose();
-      },
+      icon: Megaphone,
+      label: isBroadcast ? 'Unannounce' : 'Announce',
+      destructive: isBroadcast,
+      action: () => setConfirmAction(isBroadcast ? 'unannounce' : 'announce'),
     });
   }
 
-  // 4c. Spotlight — host-only, on others' (non-host) messages, immediate toggle
+  // 4c. Highlight — host-only toggle (highlight room)
+  if (isHost && onToggleHighlight) {
+    actions.push({
+      icon: Star,
+      label: message.is_highlight ? 'Unstar' : 'Star',
+      destructive: !!message.is_highlight,
+      action: () => setConfirmAction(message.is_highlight ? 'unhighlight' : 'highlight'),
+    });
+  }
+
+  // 4d. Spotlight — host-only, on others' (non-host) messages
   if (isHost && !isOwnMessage && !isHostMessage && (onSpotlightAdd || onSpotlightRemove)) {
     const isSpotlit = spotlightUsernames?.has(message.username) || false;
     actions.push({
-      icon: Star,
+      icon: Spotlight,
       label: isSpotlit ? 'Unspotlight' : 'Spotlight',
-      action: () => {
-        if (isSpotlit) {
-          onSpotlightRemove?.(message.username);
-        } else {
-          onSpotlightAdd?.(message.username);
-        }
-        handleClose();
-      },
+      destructive: isSpotlit,
+      action: () => setConfirmAction(isSpotlit ? 'unspotlight' : 'spotlight'),
     });
   }
 
@@ -680,10 +695,7 @@ export default function MessageActionsModal({
       icon: Pin,
       label: 'Unpin',
       destructive: true,
-      action: () => {
-        onUnpin(message.id);
-        handleClose();
-      },
+      action: () => setConfirmAction('unpin'),
     });
   }
 
@@ -694,7 +706,7 @@ export default function MessageActionsModal({
       label: 'Delete',
       destructive: true,
       action: () => {
-        setConfirmingDelete(true);
+        setConfirmAction('delete');
       },
     });
   }
@@ -720,7 +732,7 @@ export default function MessageActionsModal({
           label: 'Unban',
           destructive: true,
           action: () => {
-            setConfirmingUnban(true);
+            setConfirmAction('unban');
           },
         });
       } else if (!isHost && mutedUsernames && mutedUsernames.has(message.username) && onUnmute) {
@@ -740,9 +752,9 @@ export default function MessageActionsModal({
           destructive: true,
           action: () => {
             if (isHost) {
-              setConfirmingBan(true);
+              setConfirmAction('ban');
             } else {
-              setConfirmingMute(true);
+              setConfirmAction('mute');
             }
           },
         });
@@ -820,30 +832,39 @@ export default function MessageActionsModal({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="mb-1">
-                    <span
-                      className="text-sm font-bold"
-                      style={{
-                        color: message.is_from_host
+                    {(() => {
+                      const isSpotlight = !message.is_from_host && spotlightUsernames?.has(message.username);
+                      const usernameColor = isOwnMessage
+                        ? (themeColors?.myUsername || '#ef4444')
+                        : (message.is_from_host || isSpotlight)
                           ? (themeColors?.hostUsername || '#fbbf24')
-                          : isOwnMessage
-                            ? (themeColors?.myUsername || '#ef4444')
-                            : message.is_pinned
-                              ? (themeColors?.pinnedUsername || '#c084fc')
-                              : (themeColors?.regularUsername || '#ffffff')
-                      }}
-                    >
-                      {message.username}
-                    </span>
-                    {message.username.toLowerCase() === currentUsername?.toLowerCase() && <span className="ml-1"><YouPill className={themeModalStyles?.youPill} /></span>}
-                    {message.is_from_host && (
-                      <>
-                        <span className="ml-1"><HostPill color={themeColors?.crownIcon || '#2dd4bf'} /></span>
-                        <Crown className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
-                      </>
-                    )}
-                    {message.is_pinned && !message.is_from_host && (
-                      <Pin className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.pinIcon || '#fbbf24' }} />
-                    )}
+                          : message.is_pinned
+                            ? (themeColors?.pinnedUsername || '#c084fc')
+                            : (themeColors?.regularUsername || '#ffffff');
+                      return (
+                        <>
+                          <span
+                            className="text-sm font-bold"
+                            style={{ color: usernameColor }}
+                          >
+                            {message.username}
+                          </span>
+                          {isOwnMessage && <span className="ml-1"><YouPill className={themeModalStyles?.youPill} /></span>}
+                          {message.is_from_host && (
+                            <>
+                              <span className="ml-1"><HostPill color={themeColors?.crownIcon || '#2dd4bf'} /></span>
+                              <Crown className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
+                            </>
+                          )}
+                          {isSpotlight && (
+                            <>
+                              <span className="ml-1"><SpotlightPill color={themeColors?.spotlightIcon || '#facc15'} /></span>
+                              <Spotlight className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.spotlightIcon || '#facc15' }} />
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   {/* Text content or gift card */}
                   {message.message_type === 'gift' ? (() => {
@@ -859,10 +880,10 @@ export default function MessageActionsModal({
                           ? themeGiftStyles?.cardForMe || 'bg-purple-950/50 border border-purple-500/50'
                           : themeGiftStyles?.card || 'bg-zinc-800/80 border border-zinc-700'
                       }`}>
-                        {message.is_gift_acknowledged && (
-                          <div className="absolute -top-1.5 -right-1.5 text-sm" title="Thanked">
-                            🤗
-                          </div>
+                        {price && (
+                          <span className={`absolute top-1.5 right-2 text-[8px] font-medium px-1 py-0.5 rounded-full ${
+                            themeGiftStyles?.priceBadge || 'bg-cyan-900/50 text-cyan-400'
+                          }`}>{price}</span>
                         )}
                         <div className={`text-xl flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center animate-gift-breath ${
                           themeGiftStyles?.emojiBox || 'bg-zinc-700/80'
@@ -872,11 +893,6 @@ export default function MessageActionsModal({
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className={`text-xs font-semibold ${themeGiftStyles?.nameText || 'text-white'}`}>{giftName}</span>
-                            {price && (
-                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                                themeGiftStyles?.priceBadge || 'bg-cyan-900/50 text-cyan-400'
-                              }`}>{price}</span>
-                            )}
                           </div>
                           {recipient && (
                             <div className={`text-[10px] ${themeGiftStyles?.toPrefix || themeGiftStyles?.recipientText || 'text-zinc-400'}`}>
@@ -1053,28 +1069,26 @@ export default function MessageActionsModal({
                         </button>
                       </div>
                     </div>
-                  ) : confirmingBan || confirmingUnban || confirmingMute || confirmingDelete ? (
+                  ) : confirmAction ? (
                     <div className="px-5 py-4 space-y-3">
                       <p className={`text-sm font-medium text-center ${themeModalStyles?.actionLabel || 'text-zinc-50'}`}>
-                        {confirmingDelete ? (
-                          <>Delete this message?</>
-                        ) : confirmingBan ? (
-                          <>Ban <span className="font-bold">{message.username}</span> from this chat?</>
-                        ) : confirmingMute ? (
-                          <>Mute <span className="font-bold">{message.username}</span>?</>
-                        ) : (
-                          <>Unban <span className="font-bold">{message.username}</span>?</>
-                        )}
+                        {confirmAction === 'delete' && <>Delete this message?</>}
+                        {confirmAction === 'ban' && <>Ban <span className="font-bold">{message.username}</span> from this chat?</>}
+                        {confirmAction === 'unban' && <>Unban <span className="font-bold">{message.username}</span>?</>}
+                        {confirmAction === 'mute' && <>Mute <span className="font-bold">{message.username}</span>?</>}
+                        {confirmAction === 'unpin' && <>Unpin this message?</>}
+                        {confirmAction === 'spotlight' && <>Spotlight this user? They&apos;ll appear in the Focus room.</>}
+                        {confirmAction === 'unspotlight' && <>Remove this user from the spotlight?</>}
+                        {confirmAction === 'highlight' && <>Add this message to the Star room?</>}
+                        {confirmAction === 'unhighlight' && <>Remove this message from the Star room?</>}
+                        {confirmAction === 'announce' && <>Pin this message to the top?</>}
+                        {confirmAction === 'unannounce' && <>Unpin this from the top?</>}
                       </p>
                       <div className="flex gap-3">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setConfirmingBan(false);
-                            setConfirmingUnban(false);
-                            setConfirmingMute(false);
-                            setConfirmingDelete(false);
-                            setMuteLockedHint(false);
+                            setConfirmAction(null);
                           }}
                           className={`flex-1 px-4 py-2.5 rounded-xl font-medium text-sm transition-all active:scale-95 cursor-pointer ${themeModalStyles?.secondaryButton || 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'}`}
                         >
@@ -1083,25 +1097,47 @@ export default function MessageActionsModal({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirmingDelete && onDelete) {
+                            if (confirmAction === 'delete' && onDelete) {
                               onDelete(message.id);
-                            } else if (confirmingBan && onBlock) {
+                            } else if (confirmAction === 'ban' && onBlock) {
                               onBlock(message.username);
-                            } else if (confirmingMute && onBlock) {
+                            } else if (confirmAction === 'mute' && onBlock) {
                               onBlock(message.username);
-                            } else if (confirmingUnban && onUnblock) {
+                            } else if (confirmAction === 'unban' && onUnblock) {
                               onUnblock(message.username);
+                            } else if (confirmAction === 'unpin' && onUnpin) {
+                              onUnpin(message.id);
+                            } else if (confirmAction === 'spotlight' && onSpotlightAdd) {
+                              onSpotlightAdd(message.username);
+                            } else if (confirmAction === 'unspotlight' && onSpotlightRemove) {
+                              onSpotlightRemove(message.username);
+                            } else if (confirmAction === 'highlight' && onToggleHighlight) {
+                              onToggleHighlight(message.id);
+                            } else if (confirmAction === 'unhighlight' && onToggleHighlight) {
+                              onToggleHighlight(message.id);
+                            } else if (confirmAction === 'announce' && onToggleBroadcast) {
+                              onToggleBroadcast(message.id);
+                            } else if (confirmAction === 'unannounce' && onToggleBroadcast) {
+                              onToggleBroadcast(message.id);
                             }
-                            setConfirmingBan(false);
-                            setConfirmingUnban(false);
-                            setConfirmingMute(false);
-                            setConfirmingDelete(false);
-                            setMuteLockedHint(false);
+                            setConfirmAction(null);
                             handleClose();
                           }}
                           className="flex-1 px-4 py-2.5 rounded-xl font-medium text-sm bg-red-500 text-white hover:bg-red-600 transition-all active:scale-95 cursor-pointer"
                         >
-                          {confirmingDelete ? 'Delete' : confirmingBan ? 'Ban' : confirmingMute ? 'Mute' : 'Unban'}
+                          {{
+                            delete: 'Delete',
+                            ban: 'Ban',
+                            unban: 'Unban',
+                            mute: 'Mute',
+                            unpin: 'Unpin',
+                            spotlight: 'Spotlight',
+                            unspotlight: 'Remove',
+                            highlight: 'Add',
+                            unhighlight: 'Remove',
+                            announce: 'Pin',
+                            unannounce: 'Unpin',
+                          }[confirmAction]}
                         </button>
                       </div>
                     </div>

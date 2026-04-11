@@ -9,7 +9,7 @@
 // bg-yellow-950/40 border-yellow-900/40 hover:bg-yellow-950/60
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin, Radio, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown, Ban, Star } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Radio, Heart, Star, Megaphone, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown, Ban, Spotlight } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
@@ -263,14 +263,16 @@ interface MainChatViewProps {
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
-  handleBroadcastMessage: (messageId: string) => Promise<boolean>;
+  handleHighlightMessage: (messageId: string) => Promise<boolean>;
+  handleToggleBroadcast?: (messageId: string) => void;
+  broadcastMessageId?: string | null;
   handleDeleteMessage: (messageId: string) => void;
   handleUnpinMessage?: (messageId: string) => void;
   handleReactionToggle: (messageId: string, emoji: string) => void;
   messageReactions: Record<string, ReactionSummary[]>;
   loadingOlder?: boolean;
   filterLoading?: boolean;
-  filterMode?: 'all' | 'focus' | 'gifts' | 'broadcast';
+  filterMode?: 'all' | 'focus' | 'gifts' | 'highlight';
   filterLoadingText?: string;
   onStickyHeightChange?: (height: number) => void;
   onStickyHiddenChange?: (hidden: boolean) => void;
@@ -315,7 +317,9 @@ function MainChatView({
   handleTipUser,
   handleSendGift,
   handleThankGift,
-  handleBroadcastMessage,
+  handleHighlightMessage,
+  handleToggleBroadcast,
+  broadcastMessageId,
   handleDeleteMessage,
   handleUnpinMessage,
   handleReactionToggle,
@@ -354,6 +358,7 @@ function MainChatView({
     badgeIcon: getIconColor(currentDesign.badgeIconColor) || '#3b82f6',
     crownIcon: getIconColor(currentDesign.crownIconColor) || '#2dd4bf',
     pinIcon: getIconColor(currentDesign.pinIconColor) || '#fbbf24',
+    spotlightIcon: getIconColor(currentDesign.spotlightIconColor) || '#facc15',
     hostUsername: getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff',
     pinnedUsername: getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff',
     myUsername: getTextColor(currentDesign.myUsername) || '#ef4444',
@@ -487,10 +492,12 @@ function MainChatView({
         handleTipUser={handleTipUser}
         handleSendGift={handleSendGift}
         handleThankGift={handleThankGift}
-        handleBroadcastMessage={handleBroadcastMessage}
+        handleHighlightMessage={handleHighlightMessage}
+        handleToggleBroadcast={handleToggleBroadcast}
+        broadcastMessageId={broadcastMessageId}
         handleDeleteMessage={handleDeleteMessage}
         handleUnpinMessage={handleUnpinMessage}
-        handleReactionToggle={handleReactionToggle}
+                                handleReactionToggle={handleReactionToggle}
         stickyToggleRef={stickyToggleRef}
         pendingToggleRef={pendingToggleRef}
         savedDistFromBottomRef={savedDistFromBottomRef}
@@ -545,13 +552,13 @@ function MainChatView({
             <div className={`flex items-center gap-1.5 ${currentDesign.uiStyles?.emptyStateText || 'text-zinc-600'}`}>
               {filterMode === 'gifts'
                 ? <><Gift size={96} /><Frown size={96} /></>
-                : filterMode === 'broadcast'
+                : filterMode === 'highlight'
                 ? <><Radio size={96} /><Frown size={96} /></>
                 : <><Eye size={96} /><Frown size={96} /></>
               }
             </div>
             <span className={`text-sm ${currentDesign.uiStyles?.emptyStateSubtext || 'text-zinc-500'}`}>
-              {filterMode === 'gifts' ? 'No gifts yet' : filterMode === 'broadcast' ? 'No broadcasts yet' : 'Nothing in focus yet'}
+              {filterMode === 'gifts' ? 'No gifts yet' : filterMode === 'highlight' ? 'No highlights yet' : 'Nothing in focus yet'}
             </span>
           </div>
         )}
@@ -643,7 +650,7 @@ function MainChatView({
                         <Crown size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
                       )}
                       {!isHostMessage && spotlightUsernames?.has(message.username) && (
-                        <Star size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15', transform: 'rotate(-15deg)' }} />
+                        <Spotlight size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                       )}
                       {message.username_is_reserved && (
                         <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
@@ -689,10 +696,12 @@ function MainChatView({
                   onTip={handleTipUser}
                   onSendGift={handleSendGift}
                   onThankGift={handleThankGift}
-                  onBroadcast={handleBroadcastMessage}
+                  onToggleHighlight={handleHighlightMessage}
+                  onToggleBroadcast={handleToggleBroadcast}
+                  broadcastMessageId={broadcastMessageId}
                   onDelete={handleDeleteMessage}
                   onUnpin={handleUnpinMessage}
-                  onReact={handleReactionToggle}
+                                                                        onReact={handleReactionToggle}
                   onHighlight={highlightMessage}
                   reactions={messageReactions[message.id] || message.reactions || []}
                 >
@@ -726,7 +735,7 @@ function MainChatView({
                         {spotlightUsernames?.has(message.username) && (
                           <>
                             <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
-                            <Star size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
+                            <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                           </>
                         )}
                         {message.is_banned && <BannedPill />}
@@ -790,7 +799,7 @@ function MainChatView({
                         {spotlightUsernames?.has(message.username) && (
                           <>
                             <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
-                            <Star size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
+                            <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                           </>
                         )}
                         {message.is_banned && <BannedPill />}
@@ -816,19 +825,26 @@ function MainChatView({
                             ? 'bg-purple-950/50 border border-purple-500/50'
                             : currentDesign.giftStyles?.cardBg || 'bg-zinc-800/80 border border-zinc-700'
                         }`}>
-                          {(message.is_pinned || message.is_gift_acknowledged || message.is_broadcast) && (
+                          {(message.is_pinned || message.is_gift_acknowledged || message.is_highlight || message.id === broadcastMessageId) && (
                             <div className="absolute -top-2.5 -right-2 z-10 flex flex-row-reverse items-center gap-0.5">
                               {message.is_pinned && (
                                 <span className="animate-wobble-b drop-shadow-md">
-                                  <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                                  <Pin size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                                 </span>
                               )}
                               {message.is_gift_acknowledged && (
-                                <span className="text-sm animate-wobble-a drop-shadow-md" title="Thanked">🤗</span>
+                                <span className="animate-wobble-a drop-shadow-md" title="Thanked">
+                                  <Heart size={14} fill="currentColor" style={{ color: '#ef4444' }} />
+                                </span>
                               )}
-                              {message.is_broadcast && (
+                              {message.is_highlight && (
                                 <span className="animate-wobble-a drop-shadow-md">
-                                  <Radio size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.broadcastIconColor) || '#60a5fa' }} />
+                                  <Star size={14} fill="currentColor" style={{ color: '#facc15' }} />
+                                </span>
+                              )}
+                              {message.id === broadcastMessageId && (
+                                <span className="animate-wobble-a drop-shadow-md">
+                                  <Megaphone size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.highlightIconColor) || '#60a5fa' }} />
                                 </span>
                               )}
                             </div>
@@ -885,20 +901,25 @@ function MainChatView({
                       const hasCaption = message.content && message.content.trim().length > 0;
                       const isMediaOnly = hasMedia && !hasCaption;
                       const base = isMediaOnly ? `${selectedStyle} mt-2` : selectedStyle;
-                      return (message.is_pinned || message.is_broadcast) ? `${base} relative` : base;
+                      return (message.is_pinned || message.is_highlight || message.id === broadcastMessageId) ? `${base} relative` : base;
                     })()}
                   >
-                    {/* Pin icon on corner of pinned messages */}
-                    {(message.is_pinned || message.is_broadcast) && (
+                    {/* Status icons on corner of messages */}
+                    {(message.is_pinned || message.is_highlight || message.id === broadcastMessageId) && (
                       <div className="absolute -top-2 -right-2 z-10 flex flex-row-reverse items-center gap-0.5">
                         {message.is_pinned && (
                           <span className="animate-wobble-b drop-shadow-md">
-                            <Pin size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                            <Pin size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                           </span>
                         )}
-                        {message.is_broadcast && (
+                        {message.is_highlight && (
                           <span className="animate-wobble-a drop-shadow-md">
-                            <Radio size={14} strokeWidth={2.5} style={{ color: getIconColor(currentDesign.broadcastIconColor) || '#60a5fa' }} />
+                            <Star size={14} fill="currentColor" style={{ color: '#facc15' }} />
+                          </span>
+                        )}
+                        {message.id === broadcastMessageId && (
+                          <span className="animate-wobble-a drop-shadow-md">
+                            <Megaphone size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.highlightIconColor) || '#60a5fa' }} />
                           </span>
                         )}
                       </div>
@@ -943,10 +964,7 @@ function MainChatView({
                             <Crown size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                           )}
                           {!message.reply_to_message.is_from_host && spotlightUsernames?.has(message.reply_to_message.username) && (
-                            <Star size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
-                          )}
-                          {message.reply_to_message.is_pinned && !message.reply_to_message.is_from_host && (
-                            <Pin size={12} className="flex-shrink-0" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                            <Spotlight size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                           )}
                         </div>
                         {(() => {

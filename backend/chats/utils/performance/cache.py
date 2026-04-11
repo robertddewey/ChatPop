@@ -46,7 +46,7 @@ class MessageCache:
     FOCUS_INDEX_KEY = "room:{room_id}:idx:focus:{username}"
     GIFTS_INDEX_KEY = "room:{room_id}:idx:gifts"
     GIFTS_USER_INDEX_KEY = "room:{room_id}:idx:gifts:{username}"
-    BROADCAST_INDEX_KEY = "room:{room_id}:idx:broadcast"
+    HIGHLIGHT_INDEX_KEY = "room:{room_id}:idx:highlight"
 
     # Legacy key (kept for migration/cleanup reference)
     MESSAGES_KEY = "room:{room_id}:messages"
@@ -163,7 +163,7 @@ class MessageCache:
             "is_deleted": message.is_deleted,
             "gift_recipient": message.gift_recipient,
             "is_gift_acknowledged": message.is_gift_acknowledged,
-            "is_broadcast": message.is_broadcast,
+            "is_highlight": message.is_highlight,
         }
 
     @classmethod
@@ -252,11 +252,11 @@ class MessageCache:
                         parent_score = message.reply_to.created_at.timestamp()
                         pipe.zadd(parent_focus_key, {parent_msg_id: parent_score})
 
-            # Broadcast index
-            if message.is_broadcast:
-                broadcast_key = cls.BROADCAST_INDEX_KEY.format(room_id=room_id)
-                pipe.zadd(broadcast_key, {message_id: score})
-                pipe.expire(broadcast_key, ttl_seconds)
+            # Highlight index
+            if message.is_highlight:
+                highlight_key = cls.HIGHLIGHT_INDEX_KEY.format(room_id=room_id)
+                pipe.zadd(highlight_key, {message_id: score})
+                pipe.expire(highlight_key, ttl_seconds)
 
             # Gift indexes
             if message.message_type == 'gift':
@@ -524,50 +524,50 @@ class MessageCache:
             return []
 
     @classmethod
-    def add_to_broadcast_index(cls, message) -> bool:
-        """Add a message to the broadcast index (appears in all users' Focus view)."""
+    def add_to_highlight_index(cls, message) -> bool:
+        """Add a message to the highlight index (appears in all users' Focus view)."""
         try:
             redis_client = cls._get_redis_client()
             room_id = str(message.chat_room_id)
             message_id = str(message.id)
             score = message.created_at.timestamp()
             ttl_seconds = cls._get_ttl_hours() * 3600
-            broadcast_key = cls.BROADCAST_INDEX_KEY.format(room_id=room_id)
-            redis_client.zadd(broadcast_key, {message_id: score})
-            redis_client.expire(broadcast_key, ttl_seconds)
+            highlight_key = cls.HIGHLIGHT_INDEX_KEY.format(room_id=room_id)
+            redis_client.zadd(highlight_key, {message_id: score})
+            redis_client.expire(highlight_key, ttl_seconds)
             return True
         except Exception as e:
-            print(f"Redis cache error (add_to_broadcast_index): {e}")
+            print(f"Redis cache error (add_to_highlight_index): {e}")
             return False
 
     @classmethod
-    def remove_from_broadcast_index(cls, room_id: Union[str, UUID], message_id: str) -> bool:
-        """Remove a message from the broadcast index."""
+    def remove_from_highlight_index(cls, room_id: Union[str, UUID], message_id: str) -> bool:
+        """Remove a message from the highlight index."""
         try:
             redis_client = cls._get_redis_client()
-            broadcast_key = cls.BROADCAST_INDEX_KEY.format(room_id=str(room_id))
-            redis_client.zrem(broadcast_key, message_id)
+            highlight_key = cls.HIGHLIGHT_INDEX_KEY.format(room_id=str(room_id))
+            redis_client.zrem(highlight_key, message_id)
             return True
         except Exception as e:
-            print(f"Redis cache error (remove_from_broadcast_index): {e}")
+            print(f"Redis cache error (remove_from_highlight_index): {e}")
             return False
 
     @classmethod
-    def get_broadcast_messages(cls, room_id: Union[str, UUID],
+    def get_highlight_messages(cls, room_id: Union[str, UUID],
                                 limit: int = 50, before_timestamp: float = None) -> List[Dict[str, Any]]:
-        """Get broadcast messages for a room."""
+        """Get highlight messages for a room."""
         start_time = time.time()
         room_id_str = str(room_id)
         try:
             redis_client = cls._get_redis_client()
-            broadcast_key = cls.BROADCAST_INDEX_KEY.format(room_id=room_id_str)
+            highlight_key = cls.HIGHLIGHT_INDEX_KEY.format(room_id=room_id_str)
 
             if before_timestamp:
                 max_score = f'({before_timestamp}'
             else:
                 max_score = '+inf'
 
-            results = redis_client.zrangebyscore(broadcast_key, '-inf', max_score, withscores=True)
+            results = redis_client.zrangebyscore(highlight_key, '-inf', max_score, withscores=True)
 
             # Sort by timestamp, take last N
             sorted_ids = sorted(
@@ -584,7 +584,7 @@ class MessageCache:
             return messages
 
         except Exception as e:
-            print(f"Redis cache error (get_broadcast_messages): {e}")
+            print(f"Redis cache error (get_highlight_messages): {e}")
             duration_ms = (time.time() - start_time) * 1000
             monitor.log_cache_read(room_id_str, hit=False, count=0,
                                    duration_ms=duration_ms, source='redis')
