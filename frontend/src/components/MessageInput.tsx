@@ -29,6 +29,7 @@ interface MessageInputProps {
   hasReservedUsername?: boolean;
   disabled?: boolean;
   disabledMessage?: string;
+  spotlightUsernames?: Set<string>;
   design: {
     inputArea: string;
     inputField: string;
@@ -39,6 +40,15 @@ interface MessageInputProps {
     replyPreviewCloseButton?: string;
     replyPreviewCloseIcon?: string;
     inputStyles?: Record<string, string>;
+    // Username colors for reply preview (pre-computed hex from theme)
+    hostUsernameColor?: string;
+    myUsernameColor?: string;
+    pinnedUsernameColor?: string;
+    regularUsernameColor?: string;
+    crownIconColor?: string;
+    spotlightIconColor?: string;
+    badgeIconColor?: string;
+    badgeIconBg?: string;
   };
 }
 
@@ -63,6 +73,7 @@ const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(
   hasReservedUsername = false,
   disabled = false,
   disabledMessage,
+  spotlightUsernames,
   design,
 }, ref) {
   const inputStyles = design.inputStyles;
@@ -196,8 +207,35 @@ const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Reply className={design.replyPreviewIcon} />
             <div className="flex-1 min-w-0">
-              <div className={design.replyPreviewUsername}>
-                Replying to {replyingTo.username}
+              <div className="flex items-center gap-1">
+                <span className={design.replyPreviewUsername?.replace(/text-zinc-\d+/g, '') || 'text-xs font-semibold'}>
+                  {(() => {
+                    const isReplyToMe = replyingTo.username.toLowerCase() === username?.toLowerCase();
+                    const isReplyToHost = replyingTo.is_from_host;
+                    const isReplyToSpotlight = !isReplyToHost && spotlightUsernames?.has(replyingTo.username);
+                    const isReplyToPinned = replyingTo.is_pinned;
+                    const color = isReplyToMe
+                      ? (design.myUsernameColor || '#ef4444')
+                      : (isReplyToHost || isReplyToSpotlight)
+                        ? (design.hostUsernameColor || '#fbbf24')
+                        : isReplyToPinned
+                          ? (design.pinnedUsernameColor || '#c084fc')
+                          : (design.regularUsernameColor || '#ffffff');
+                    return <span style={{ color }}>{replyingTo.username}</span>;
+                  })()}
+                </span>
+                {replyingTo.username_is_reserved && (
+                  <BadgeCheck size={10} style={{ color: design.badgeIconColor || '#3b82f6' }} />
+                )}
+                {replyingTo.is_from_host && (
+                  <Crown size={10} fill="currentColor" style={{ color: design.crownIconColor || '#2dd4bf' }} />
+                )}
+                {!replyingTo.is_from_host && spotlightUsernames?.has(replyingTo.username) && (
+                  <Spotlight size={10} fill="currentColor" style={{ color: design.spotlightIconColor || '#facc15' }} />
+                )}
+                {replyingTo.is_banned && (
+                  <span className="text-[8px] font-medium px-1 py-0.5 rounded-full leading-none inline-flex items-center gap-0.5" style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}>banned</span>
+                )}
               </div>
               <div className={design.replyPreviewContent}>
                 {replyingTo.content}

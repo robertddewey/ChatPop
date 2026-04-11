@@ -2539,20 +2539,49 @@ export default function ChatPage() {
   }, [participationTheme, chatRoom?.theme]);
 
   // Memoized design prop for MessageInput to prevent re-renders
-  const messageInputDesign = useMemo(() => ({
-    inputArea: currentDesign.inputArea as string,
-    inputField: currentDesign.inputField as string,
-    replyPreviewContainer: currentDesign.replyPreviewContainer as string,
-    replyPreviewIcon: currentDesign.replyPreviewIcon as string,
-    replyPreviewUsername: currentDesign.replyPreviewUsername as string,
-    replyPreviewContent: currentDesign.replyPreviewContent as string,
-    replyPreviewCloseButton: currentDesign.replyPreviewCloseButton as string,
-    replyPreviewCloseIcon: currentDesign.replyPreviewCloseIcon as string,
-    inputStyles: {
-      ...(currentDesign.inputStyles as Record<string, string> | undefined),
-      crownIconColor: ({ 'text-teal-400': '#2dd4bf', 'text-amber-400': '#fbbf24', 'text-cyan-400': '#22d3ee', 'text-emerald-400': '#34d399', 'text-purple-400': '#c084fc', 'text-yellow-400': '#facc15' } as Record<string, string>)[(currentDesign.crownIconColor as string)?.trim()] || '#2dd4bf',
-    },
-  }), [currentDesign]);
+  const messageInputDesign = useMemo(() => {
+    // Tailwind class → hex lookup (same table as MainChatView)
+    const tw: Record<string, string> = {
+      'text-amber-400': '#fbbf24', 'text-teal-400': '#2dd4bf', 'text-emerald-400': '#34d399',
+      'text-cyan-400': '#22d3ee', 'text-blue-500': '#3b82f6', 'text-yellow-400': '#facc15',
+      'text-white': '#ffffff', 'text-red-500': '#ef4444', 'text-purple-400': '#c084fc',
+    };
+    const resolveColor = (field: unknown, fallback: string): string => {
+      if (!field || typeof field !== 'string') return fallback;
+      // Check for direct hex in the class string
+      const hexMatch = field.match(/#[0-9a-fA-F]{3,8}/);
+      if (hexMatch) return hexMatch[0];
+      // Check Tailwind color classes
+      for (const [cls, hex] of Object.entries(tw)) {
+        if (field.includes(cls)) return hex;
+      }
+      return fallback;
+    };
+
+    return {
+      inputArea: currentDesign.inputArea as string,
+      inputField: currentDesign.inputField as string,
+      replyPreviewContainer: currentDesign.replyPreviewContainer as string,
+      replyPreviewIcon: currentDesign.replyPreviewIcon as string,
+      replyPreviewUsername: currentDesign.replyPreviewUsername as string,
+      replyPreviewContent: currentDesign.replyPreviewContent as string,
+      replyPreviewCloseButton: currentDesign.replyPreviewCloseButton as string,
+      replyPreviewCloseIcon: currentDesign.replyPreviewCloseIcon as string,
+      // Pre-computed username/icon colors from theme (used in reply preview)
+      hostUsernameColor: resolveColor(currentDesign.hostUsername, resolveColor(currentDesign.hostText, '#fbbf24')),
+      myUsernameColor: resolveColor(currentDesign.myUsername, '#ef4444'),
+      pinnedUsernameColor: resolveColor(currentDesign.pinnedUsername, resolveColor(currentDesign.pinnedText, '#c084fc')),
+      regularUsernameColor: resolveColor(currentDesign.regularUsername, '#ffffff'),
+      crownIconColor: resolveColor(currentDesign.crownIconColor, '#2dd4bf'),
+      spotlightIconColor: resolveColor(currentDesign.spotlightIconColor, '#facc15'),
+      badgeIconColor: resolveColor(currentDesign.badgeIconColor, '#3b82f6'),
+      badgeIconBg: (currentDesign.uiStyles as Record<string, string> | undefined)?.badgeIconBg || '#18181b',
+      inputStyles: {
+        ...(currentDesign.inputStyles as Record<string, string> | undefined),
+        crownIconColor: tw[(currentDesign.crownIconColor as string)?.trim()] || '#2dd4bf',
+      },
+    };
+  }, [currentDesign]);
 
   // Update theme-color meta tags when theme changes
   useEffect(() => {
@@ -2949,6 +2978,7 @@ export default function ChatPage() {
             onVideoSelected={handleVideoSelected}
             disabled={currentRoom === 'gifts'}
             disabledMessage="Viewing gift history"
+            spotlightUsernames={spotlightUsernames}
             design={messageInputDesign}
           />
           {!hasJoined && (
