@@ -616,9 +616,16 @@ function StickySection({
                     </div>
                   );
                 })() : (
-                  <p className={`text-sm ${textClass} truncate`}>
-                    {message.content}
-                  </p>
+                  <div className="flex items-baseline gap-1 min-w-0">
+                    <p className={`text-sm ${textClass} truncate min-w-0 flex-1`}>
+                      {message.content}
+                    </p>
+                    {message.reply_to_message && (
+                      <span className={`text-[10px] ${textClass} opacity-40 flex-shrink-0 whitespace-nowrap`}>
+                        in reply to {message.reply_to_message.username}
+                      </span>
+                    )}
+                  </div>
                 )}
                   </div>
                 </div>
@@ -753,9 +760,16 @@ function StickySection({
                     </div>
                   );
                 })() : (
-                  <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
-                    {stickyPinnedMessage.content}
-                  </p>
+                  <div className="flex items-baseline gap-1 min-w-0">
+                    <p className={`text-sm ${currentDesign.pinnedText} truncate min-w-0 flex-1`}>
+                      {stickyPinnedMessage.content}
+                    </p>
+                    {stickyPinnedMessage.reply_to_message && (
+                      <span className={`text-[10px] ${currentDesign.pinnedText} opacity-40 flex-shrink-0 whitespace-nowrap`}>
+                        in reply to {stickyPinnedMessage.reply_to_message.username}
+                      </span>
+                    )}
+                  </div>
                 )}
                   </div>
                 </div>

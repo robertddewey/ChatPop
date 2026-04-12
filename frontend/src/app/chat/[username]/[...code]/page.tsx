@@ -1014,14 +1014,13 @@ export default function ChatPage() {
     }
   }, [code, roomUsername]);
 
-  // Show intro overlay when current user gets spotlighted (first time only)
+  // Show intro overlay when current user gets spotlighted (every time)
   useEffect(() => {
     if (!username) return;
     if (!hasJoined) return;
     if (!spotlightUsernames.has(username)) return;
-    if (seenIntros.spotlight_first_time) return;
     setShowFeatureIntro('spotlight_first_time');
-  }, [spotlightUsernames, username, hasJoined, seenIntros]);
+  }, [spotlightUsernames, username, hasJoined]);
 
   const handleSpotlightRemove = useCallback(async (targetUsername: string) => {
     try {
