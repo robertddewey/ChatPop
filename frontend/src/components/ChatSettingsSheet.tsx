@@ -795,14 +795,20 @@ export default function ChatSettingsSheet({
 
               {/* Add user input */}
               <div className="space-y-2">
-                <label className={`text-xs font-medium uppercase tracking-wide ${styles.subtext}`}>
+                <label className={`text-xs font-medium tracking-wide ${styles.subtext}`}>
                   Add user to spotlight
                 </label>
                 <input
-                  type="text"
+                  type="search"
+                  name="spotlight-search"
                   value={spotlightQuery}
                   onChange={(e) => { setSpotlightQuery(e.target.value); setSelectedSuggestion(null); }}
-                  placeholder="Type a username..."
+                  placeholder="Search for a user..."
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  data-form-type="other"
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${styles.input}`}
                 />
 

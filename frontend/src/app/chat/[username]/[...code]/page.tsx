@@ -17,7 +17,7 @@ import FeatureIntroModal from '@/components/FeatureIntroModal';
 import LoginModal, { LoginFormContent } from '@/components/LoginModal';
 import RegisterModal, { RegisterFormContent } from '@/components/RegisterModal';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
-import MessageInput from '@/components/MessageInput';
+import MessageInput, { type MessageInputHandle } from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
@@ -462,6 +462,7 @@ export default function ChatPage() {
   const headerTouchStartYRef = useRef<number | null>(null);
 
   // Message input state (message text is managed locally in MessageInput component)
+  const messageInputRef = useRef<MessageInputHandle>(null);
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
@@ -517,6 +518,32 @@ export default function ChatPage() {
     } else {
       stickyZeroTimerRef.current = setTimeout(() => setStickyHeight(0), 1500);
     }
+  }, []);
+
+  // FAB: disable pointer events while keyboard is open + closing to prevent
+  // Android Chrome from routing taps to icons that slide into position during
+  // the keyboard close animation.
+  const [fabPointerEvents, setFabPointerEvents] = useState(true);
+  const fabBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const handleFocus = (e: FocusEvent) => {
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
+        if (fabBlurTimerRef.current) clearTimeout(fabBlurTimerRef.current);
+        setFabPointerEvents(false);
+      }
+    };
+    const handleBlur = (e: FocusEvent) => {
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
+        fabBlurTimerRef.current = setTimeout(() => setFabPointerEvents(true), 400);
+      }
+    };
+    document.addEventListener('focusin', handleFocus);
+    document.addEventListener('focusout', handleBlur);
+    return () => {
+      document.removeEventListener('focusin', handleFocus);
+      document.removeEventListener('focusout', handleBlur);
+      if (fabBlurTimerRef.current) clearTimeout(fabBlurTimerRef.current);
+    };
   }, []);
 
   // FAB scroll strip fade indicators
@@ -1054,8 +1081,20 @@ export default function ChatPage() {
 
   useEffect(() => {
     document.body.classList.add('chat-layout');
+    // Inject a <style> tag to override the root layout's html background color.
+    // React controls <html style={{ backgroundColor: '#0a0a0a' }}> and re-applies
+    // it on hydration/re-renders, overwriting any document.documentElement.style
+    // changes. A <style> tag in <head> with !important persists independently
+    // of React and ensures iOS Safari's toolbar areas match the chat background.
+    // Inject a <style> tag for dynamic body background updates from the theme.
+    // The CSS file (chat-layout.css) sets a default #18181b. This tag allows
+    // the theme useEffect to update it when the actual theme color loads.
+    const styleEl = document.createElement('style');
+    styleEl.id = 'chat-bg-override';
+    document.head.appendChild(styleEl);
     return () => {
       document.body.classList.remove('chat-layout');
+      styleEl.remove();
     };
   }, []);
 
@@ -2078,7 +2117,14 @@ export default function ChatPage() {
   }, [code, roomUsername]);
 
   const handleReply = useCallback((message: Message) => {
-        setReplyingTo(message);
+    // flushSync forces React to commit the state update synchronously,
+    // keeping everything within the original tap's call stack. iOS Safari
+    // only honors .focus() (opening the keyboard) if it's called
+    // synchronously within a user gesture handler. Without flushSync,
+    // React's async re-render breaks the gesture chain and iOS ignores
+    // the focus. Android Chrome is more permissive and works either way.
+    flushSync(() => setReplyingTo(message));
+    messageInputRef.current?.focus();
   }, []);
 
   const handleCancelReply = useCallback(() => {
@@ -2531,24 +2577,52 @@ export default function ChatPage() {
   }, [participationTheme, chatRoom?.theme]);
 
   // Memoized design prop for MessageInput to prevent re-renders
-  const messageInputDesign = useMemo(() => ({
-    inputArea: currentDesign.inputArea as string,
-    inputField: currentDesign.inputField as string,
-    replyPreviewContainer: currentDesign.replyPreviewContainer as string,
-    replyPreviewIcon: currentDesign.replyPreviewIcon as string,
-    replyPreviewUsername: currentDesign.replyPreviewUsername as string,
-    replyPreviewContent: currentDesign.replyPreviewContent as string,
-    replyPreviewCloseButton: currentDesign.replyPreviewCloseButton as string,
-    replyPreviewCloseIcon: currentDesign.replyPreviewCloseIcon as string,
-    inputStyles: {
-      ...(currentDesign.inputStyles as Record<string, string> | undefined),
-      crownIconColor: ({ 'text-teal-400': '#2dd4bf', 'text-amber-400': '#fbbf24', 'text-cyan-400': '#22d3ee', 'text-emerald-400': '#34d399', 'text-purple-400': '#c084fc', 'text-yellow-400': '#facc15' } as Record<string, string>)[(currentDesign.crownIconColor as string)?.trim()] || '#2dd4bf',
-    },
-  }), [currentDesign]);
+  const messageInputDesign = useMemo(() => {
+    // Tailwind class → hex lookup (same table as MainChatView)
+    const tw: Record<string, string> = {
+      'text-amber-400': '#fbbf24', 'text-teal-400': '#2dd4bf', 'text-emerald-400': '#34d399',
+      'text-cyan-400': '#22d3ee', 'text-blue-500': '#3b82f6', 'text-yellow-400': '#facc15',
+      'text-white': '#ffffff', 'text-red-500': '#ef4444', 'text-purple-400': '#c084fc',
+    };
+    const resolveColor = (field: unknown, fallback: string): string => {
+      if (!field || typeof field !== 'string') return fallback;
+      // Check for direct hex in the class string
+      const hexMatch = field.match(/#[0-9a-fA-F]{3,8}/);
+      if (hexMatch) return hexMatch[0];
+      // Check Tailwind color classes
+      for (const [cls, hex] of Object.entries(tw)) {
+        if (field.includes(cls)) return hex;
+      }
+      return fallback;
+    };
 
-  // Update theme-color meta tags when theme changes
+    return {
+      inputArea: currentDesign.inputArea as string,
+      inputField: currentDesign.inputField as string,
+      replyPreviewContainer: currentDesign.replyPreviewContainer as string,
+      replyPreviewIcon: currentDesign.replyPreviewIcon as string,
+      replyPreviewUsername: currentDesign.replyPreviewUsername as string,
+      replyPreviewContent: currentDesign.replyPreviewContent as string,
+      replyPreviewCloseButton: currentDesign.replyPreviewCloseButton as string,
+      replyPreviewCloseIcon: currentDesign.replyPreviewCloseIcon as string,
+      // Pre-computed username/icon colors from theme (used in reply preview)
+      hostUsernameColor: resolveColor(currentDesign.hostUsername, resolveColor(currentDesign.hostText, '#fbbf24')),
+      myUsernameColor: resolveColor(currentDesign.myUsername, '#ef4444'),
+      pinnedUsernameColor: resolveColor(currentDesign.pinnedUsername, resolveColor(currentDesign.pinnedText, '#c084fc')),
+      regularUsernameColor: resolveColor(currentDesign.regularUsername, '#ffffff'),
+      crownIconColor: resolveColor(currentDesign.crownIconColor, '#2dd4bf'),
+      spotlightIconColor: resolveColor(currentDesign.spotlightIconColor, '#facc15'),
+      badgeIconColor: resolveColor(currentDesign.badgeIconColor, '#3b82f6'),
+      badgeIconBg: (currentDesign.uiStyles as Record<string, string> | undefined)?.badgeIconBg || '#18181b',
+      inputStyles: {
+        ...(currentDesign.inputStyles as Record<string, string> | undefined),
+        crownIconColor: tw[(currentDesign.crownIconColor as string)?.trim()] || '#2dd4bf',
+      },
+    };
+  }, [currentDesign]);
+
+  // Update body background when theme changes (for iOS Safari safe areas)
   useEffect(() => {
-    // Use participation theme if available, otherwise fall back to chat room theme
     if (!activeTheme) return;
 
     const themeColor = activeTheme.theme_color;
@@ -2556,47 +2630,13 @@ export default function ChatPage() {
     // Store theme colors in localStorage for layout.tsx to use on next load
     localStorage.setItem('chat_theme_color', JSON.stringify(themeColor));
 
-    // Detect system color scheme preference
+    // Update the body background to match the current theme color.
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const currentColor = prefersDark ? themeColor.dark : themeColor.light;
-
-    // Update default meta tag
-    let defaultMeta = document.querySelector('meta[name="theme-color"]:not([media])');
-    if (defaultMeta) {
-      defaultMeta.setAttribute('content', currentColor);
-    } else {
-      defaultMeta = document.createElement('meta');
-      defaultMeta.setAttribute('name', 'theme-color');
-      defaultMeta.setAttribute('content', currentColor);
-      document.head.appendChild(defaultMeta);
+    const styleEl = document.getElementById('chat-bg-override');
+    if (styleEl) {
+      styleEl.textContent = `body { background-color: ${currentColor} !important; }`;
     }
-
-    // Update light mode meta tag
-    let lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
-    if (lightMeta) {
-      lightMeta.setAttribute('content', themeColor.light);
-    } else {
-      lightMeta = document.createElement('meta');
-      lightMeta.setAttribute('name', 'theme-color');
-      lightMeta.setAttribute('media', '(prefers-color-scheme: light)');
-      lightMeta.setAttribute('content', themeColor.light);
-      document.head.appendChild(lightMeta);
-    }
-
-    // Update dark mode meta tag
-    let darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
-    if (darkMeta) {
-      darkMeta.setAttribute('content', themeColor.dark);
-    } else {
-      darkMeta = document.createElement('meta');
-      darkMeta.setAttribute('name', 'theme-color');
-      darkMeta.setAttribute('media', '(prefers-color-scheme: dark)');
-      darkMeta.setAttribute('content', themeColor.dark);
-      document.head.appendChild(darkMeta);
-    }
-
-    // Also update body background to match theme
-    document.body.style.backgroundColor = currentColor;
   }, [participationTheme, chatRoom?.theme]);
 
   // Note: Scroll-based visibility tracking for sticky host messages was removed.
@@ -2607,7 +2647,9 @@ export default function ChatPage() {
 
   if (loading) {
     return (
-      <div className={`${currentDesign.container} flex items-center justify-center`}>
+      <div className={`${currentDesign.container} flex items-center justify-center`}
+        style={{ backgroundColor: 'transparent' }}
+      >
         <div className="text-gray-600 dark:text-gray-400">Loading chat...</div>
       </div>
     );
@@ -2615,7 +2657,7 @@ export default function ChatPage() {
 
   if (error) {
     return (
-      <div className={currentDesign.container}>
+      <div className={currentDesign.container} style={{ backgroundColor: 'transparent' }}>
         <Header />
         <div className="container mx-auto px-4 py-12 max-w-2xl">
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-red-600 dark:text-red-400">
@@ -2658,6 +2700,7 @@ export default function ChatPage() {
       <div
         className={`${currentDesign.container}`}
         style={{
+          backgroundColor: 'transparent',
           WebkitUserSelect: 'none',
           userSelect: 'none',
           WebkitTouchCallout: 'none',
@@ -2838,6 +2881,10 @@ export default function ChatPage() {
                 : 'translate3d(0, 0, 0)',
               transition: 'transform 200ms ease-out',
               willChange: 'transform',
+              // Disable pointer events while keyboard is open + closing to prevent
+              // Android Chrome from routing taps to icons that slide into position
+              // during the keyboard close animation.
+              pointerEvents: fabPointerEvents ? 'auto' : 'none',
             }}
           >
             {/* Top fade — matches page background, icons dissolve into it */}
@@ -2920,30 +2967,34 @@ export default function ChatPage() {
       {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms) */}
       {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && (
         <div className="relative">
-          <MessageInput
-            chatRoom={chatRoom}
-            isHost={previewIsHost ?? isHost}
-            isSpotlight={(() => {
-              const effectiveName = previewUsername ?? username;
-              return !!effectiveName && spotlightUsernames.has(effectiveName);
-            })()}
-            hasJoined={hasJoined}
-            sending={sending}
-            username={previewUsername ?? username}
-            avatarUrl={previewAvatarUrl !== undefined ? previewAvatarUrl : userAvatarUrl}
-            hasReservedUsername={previewHasReservedUsername ?? hasReservedUsername}
-            replyingTo={replyingTo}
-            onCancelReply={handleCancelReply}
-            onSubmitText={handleSubmitText}
-            onVoiceRecording={handleVoiceRecording}
-            onPhotoSelected={handlePhotoSelected}
-            onVideoSelected={handleVideoSelected}
-            disabled={currentRoom === 'gifts'}
-            disabledMessage="Viewing gift history"
-            design={messageInputDesign}
-          />
+          <div className={!hasJoined ? 'opacity-50' : ''}>
+            <MessageInput
+              ref={messageInputRef}
+              chatRoom={chatRoom}
+              isHost={previewIsHost ?? isHost}
+              isSpotlight={(() => {
+                const effectiveName = previewUsername ?? username;
+                return !!effectiveName && spotlightUsernames.has(effectiveName);
+              })()}
+              hasJoined={hasJoined}
+              sending={sending}
+              username={previewUsername ?? username}
+              avatarUrl={previewAvatarUrl !== undefined ? previewAvatarUrl : userAvatarUrl}
+              hasReservedUsername={previewHasReservedUsername ?? hasReservedUsername}
+              replyingTo={replyingTo}
+              onCancelReply={handleCancelReply}
+              onSubmitText={handleSubmitText}
+              onVoiceRecording={handleVoiceRecording}
+              onPhotoSelected={handlePhotoSelected}
+              onVideoSelected={handleVideoSelected}
+              disabled={currentRoom === 'gifts'}
+              disabledMessage="Viewing gift history"
+              spotlightUsernames={spotlightUsernames}
+              design={messageInputDesign}
+            />
+          </div>
           {!hasJoined && (
-            <div className="absolute inset-0 bg-black/40 pointer-events-auto" />
+            <div className="absolute inset-0 pointer-events-auto" />
           )}
         </div>
       )}

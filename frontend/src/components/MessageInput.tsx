@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, memo, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, memo, useMemo, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown, Spotlight, Trash2 } from 'lucide-react';
 import type { Message, ChatRoom } from '@/lib/api';
 import VoiceRecorder, { type VoicePreview } from './VoiceRecorder';
@@ -29,6 +29,7 @@ interface MessageInputProps {
   hasReservedUsername?: boolean;
   disabled?: boolean;
   disabledMessage?: string;
+  spotlightUsernames?: Set<string>;
   design: {
     inputArea: string;
     inputField: string;
@@ -39,10 +40,23 @@ interface MessageInputProps {
     replyPreviewCloseButton?: string;
     replyPreviewCloseIcon?: string;
     inputStyles?: Record<string, string>;
+    // Username colors for reply preview (pre-computed hex from theme)
+    hostUsernameColor?: string;
+    myUsernameColor?: string;
+    pinnedUsernameColor?: string;
+    regularUsernameColor?: string;
+    crownIconColor?: string;
+    spotlightIconColor?: string;
+    badgeIconColor?: string;
+    badgeIconBg?: string;
   };
 }
 
-function MessageInputComponent({
+export interface MessageInputHandle {
+  focus: () => void;
+}
+
+const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(function MessageInputComponent({
   chatRoom,
   isHost,
   isSpotlight = false,
@@ -59,8 +73,9 @@ function MessageInputComponent({
   hasReservedUsername = false,
   disabled = false,
   disabledMessage,
+  spotlightUsernames,
   design,
-}: MessageInputProps) {
+}, ref) {
   const inputStyles = design.inputStyles;
   const [message, setMessage] = useState('');
   const [hasVoiceRecording, setHasVoiceRecording] = useState(false);
@@ -91,6 +106,12 @@ function MessageInputComponent({
       textarea.style.height = '';
     }
   }, [message, isExpanded]);
+
+  // Expose focus method to parent via ref (for iOS Safari which requires
+  // focus to be called within the user gesture event handler chain)
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus(),
+  }), []);
 
   // Handle focus - expand the input and move cursor to end
   const handleFocus = useCallback(() => {
@@ -170,7 +191,7 @@ function MessageInputComponent({
 
   if (disabled) {
     return (
-      <div className={design.inputArea} style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))` }}>
+      <div className={design.inputArea} style={{ paddingBottom: `calc(0.2rem + env(safe-area-inset-bottom, 0px))` }}>
         <div className={`flex items-center justify-center h-9 rounded-lg ${inputStyles?.disabledBg || 'bg-zinc-800/60 border border-zinc-700/50'}`}>
           <span className={`text-sm ${inputStyles?.disabledText || 'text-zinc-500'}`}>{disabledMessage || 'Messaging disabled'}</span>
         </div>
@@ -179,15 +200,42 @@ function MessageInputComponent({
   }
 
   return (
-    <div className={design.inputArea} style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))` }}>
+    <div className={design.inputArea} style={{ paddingBottom: `calc(0.2rem + env(safe-area-inset-bottom, 0px))` }}>
       {/* Reply Preview Bar */}
       {replyingTo && (
         <div className={design.replyPreviewContainer}>
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Reply className={design.replyPreviewIcon} />
             <div className="flex-1 min-w-0">
-              <div className={design.replyPreviewUsername}>
-                Replying to {replyingTo.username}
+              <div className="flex items-center gap-1">
+                <span className={design.replyPreviewUsername?.replace(/text-zinc-\d+/g, '') || 'text-xs font-semibold'}>
+                  {(() => {
+                    const isReplyToMe = replyingTo.username.toLowerCase() === username?.toLowerCase();
+                    const isReplyToHost = replyingTo.is_from_host;
+                    const isReplyToSpotlight = !isReplyToHost && spotlightUsernames?.has(replyingTo.username);
+                    const isReplyToPinned = replyingTo.is_pinned;
+                    const color = isReplyToMe
+                      ? (design.myUsernameColor || '#ef4444')
+                      : (isReplyToHost || isReplyToSpotlight)
+                        ? (design.hostUsernameColor || '#fbbf24')
+                        : isReplyToPinned
+                          ? (design.pinnedUsernameColor || '#c084fc')
+                          : (design.regularUsernameColor || '#ffffff');
+                    return <span style={{ color }}>{replyingTo.username}</span>;
+                  })()}
+                </span>
+                {replyingTo.username_is_reserved && (
+                  <BadgeCheck size={10} style={{ color: design.badgeIconColor || '#3b82f6' }} />
+                )}
+                {replyingTo.is_from_host && (
+                  <Crown size={10} fill="currentColor" style={{ color: design.crownIconColor || '#2dd4bf' }} />
+                )}
+                {!replyingTo.is_from_host && spotlightUsernames?.has(replyingTo.username) && (
+                  <Spotlight size={10} fill="currentColor" style={{ color: design.spotlightIconColor || '#facc15' }} />
+                )}
+                {replyingTo.is_banned && (
+                  <span className="text-[8px] font-medium px-1 py-0.5 rounded-full leading-none inline-flex items-center gap-0.5" style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}>banned</span>
+                )}
               </div>
               <div className={design.replyPreviewContent}>
                 {replyingTo.content}
@@ -330,20 +378,6 @@ function MessageInputComponent({
         </div>
       )}
 
-      {/* Username indicator */}
-      {username && (
-        <div className={`flex items-center gap-1 ${replyingTo || mediaPreview || voicePreview ? 'mt-0.5' : '-mt-2'} mb-0.5 px-1`}>
-          <span className={`text-[10px] ${inputStyles?.chattingAsText || 'text-zinc-600'} flex items-center gap-0.5`}>
-            You are <span className="font-medium">@{username}</span>
-            {isHost ? (
-              <Crown size={10} fill="currentColor" style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />
-            ) : isSpotlight && (
-              <Spotlight size={10} fill="currentColor" style={{ color: inputStyles?.spotlightIconColor || '#facc15' }} />
-            )}
-          </span>
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className={`flex items-center gap-2 ${replyingTo && !mediaPreview ? 'mt-2' : ''}`}>
         {/* Text input container */}
         <div className="relative flex-1 min-w-0 flex items-center">
@@ -460,8 +494,23 @@ function MessageInputComponent({
           Send
         </button>
       </form>
+
+      {/* Username indicator — positioned after the form so reply/media/voice
+          previews above don't shift it. Always in the same position. */}
+      {username && (
+        <div className="flex items-center gap-1 mt-0.5 px-1">
+          <span className={`text-[10px] ${inputStyles?.chattingAsText || 'text-zinc-600'} flex items-center gap-0.5`}>
+            You are <span className="font-medium">@{username}</span>
+            {isHost ? (
+              <Crown size={10} fill="currentColor" style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />
+            ) : isSpotlight && (
+              <Spotlight size={10} fill="currentColor" style={{ color: inputStyles?.spotlightIconColor || '#facc15' }} />
+            )}
+          </span>
+        </div>
+      )}
     </div>
   );
-}
+});
 
 export default memo(MessageInputComponent);
