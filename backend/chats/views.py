@@ -960,10 +960,17 @@ class MessageListView(APIView):
             except Exception:
                 pass
 
+        # Room notification indicators from Redis (O(1) per room, no SQL)
+        room_notifications = {}
+        if not filter_mode and request.user and request.user.is_authenticated:
+            from .utils.performance.cache import RoomNotificationCache
+            room_notifications = RoomNotificationCache.has_unseen(str(chat_room.id), request.user.id)
+
         return Response({
             'messages': messages,
             'pinned_messages': pinned_messages,
             'broadcast_message': broadcast_sticky_data,
+            'room_notifications': room_notifications,
             'source': source,  # Shows where data came from (redis/postgresql/postgresql_fallback)
             'cache_enabled': cache_enabled,
             'count': len(messages),
@@ -1712,6 +1719,9 @@ class MessageHighlightView(APIView):
         MessageCache.update_message(message)
         if message.is_highlight:
             MessageCache.add_to_highlight_index(message)
+            # Notify all users (except actor) about new highlight content
+            from .utils.performance.cache import RoomNotificationCache
+            RoomNotificationCache.mark_new_content(str(chat_room.id), 'highlight', actor_user_id=user_id)
         else:
             MessageCache.remove_from_highlight_index(chat_room.id, str(message.id))
 
@@ -2098,6 +2108,20 @@ class DismissIntroView(APIView):
                 return Response({'success': True})
 
         return Response({'success': False, 'error': 'No participation found'}, status=400)
+
+
+class MarkRoomReadView(APIView):
+    """Mark a room as read (Redis SET-based notification indicators)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, code, username=None):
+        from .utils.performance.cache import RoomNotificationCache
+        chat_room = get_chat_room_by_url(code, username)
+        room = request.data.get('room')
+        if room not in RoomNotificationCache.VALID_ROOMS:
+            return Response({'error': 'Invalid room'}, status=status.HTTP_400_BAD_REQUEST)
+        RoomNotificationCache.mark_seen(str(chat_room.id), room, request.user.id)
+        return Response({'success': True})
 
 
 class UpdateMyThemeView(APIView):
@@ -5463,6 +5487,12 @@ class SendGiftView(APIView):
                 'gift': gift_notification_data,
             }
         )
+
+        # Room notifications for gift
+        from .utils.performance.cache import RoomNotificationCache
+        actor_id = request.user.id if request.user.is_authenticated else None
+        RoomNotificationCache.mark_new_content(str(chat_room.id), 'gifts', actor_user_id=actor_id)
+        RoomNotificationCache.mark_new_content(str(chat_room.id), 'messages', actor_user_id=actor_id)
 
         return Response({
             'success': True,

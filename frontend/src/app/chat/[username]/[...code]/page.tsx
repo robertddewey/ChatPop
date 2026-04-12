@@ -475,6 +475,8 @@ export default function ChatPage() {
   const [currentRoom, setCurrentRoom] = useState<Room>('main');
   const [previousRoom, setPreviousRoom] = useState<Room>('main');
   const [roomLoading, setRoomLoading] = useState(false);
+  const currentRoomRef = useRef<Room>(currentRoom);
+  useEffect(() => { currentRoomRef.current = currentRoom; }, [currentRoom]);
 
   // Feature intro tracking
   const [seenIntros, setSeenIntros] = useState<Record<string, boolean>>({});
@@ -603,6 +605,13 @@ export default function ChatPage() {
 
   // Spotlight state — host-curated featured users (visible to all)
   const [spotlightUsernames, setSpotlightUsernames] = useState<Set<string>>(new Set());
+  const spotlightUsernamesRef = useRef<Set<string>>(spotlightUsernames);
+  useEffect(() => { spotlightUsernamesRef.current = spotlightUsernames; }, [spotlightUsernames]);
+
+  // Room notification indicators (has new messages since last viewed)
+  const [roomNotifications, setRoomNotifications] = useState<Record<string, boolean>>({
+    highlight: false, focus: false, gifts: false
+  });
 
   // Shared mute-filter helper matching the rules in filteredMessages.applyMute.
   // Returns the message if it should render, or null if it should be hidden.
@@ -688,13 +697,23 @@ export default function ChatPage() {
     setReplyingTo(null);
     window.history.replaceState({ room: target }, '', window.location.href);
 
+    // Clear notification for target room and mark as read on server (fire-and-forget)
+    if (target !== 'main' && target !== 'backroom') {
+      setRoomNotifications(prev => ({ ...prev, [target]: false }));
+      messageApi.markRoomRead(code, target, roomUsername).catch(() => {});
+    }
+
     const filterParam = getRoomFilter(target);
     const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
 
     if (target === 'main') {
       // Main room: fetch fresh (no firehose caching)
       try {
-        const { messages: msgs, pinnedMessages } = await messageApi.getMessages(code, roomUsername, sessionToken || undefined, undefined, undefined);
+        const { messages: msgs, pinnedMessages, roomNotifications: notifs } = await messageApi.getMessages(code, roomUsername, sessionToken || undefined, undefined, undefined);
+        // Update room notification indicators from server
+        if (notifs && Object.keys(notifs).length > 0) {
+          setRoomNotifications(prev => ({ ...prev, ...notifs }));
+        }
         const pinnedMap = new Map(pinnedMessages.map(pm => [pm.id, pm]));
         const updatedMessages = msgs.map(msg => {
           const pinnedVersion = pinnedMap.get(msg.id);
@@ -798,6 +817,25 @@ export default function ChatPage() {
     // Play receive sound only when someone replies to YOUR message (not their own)
     if (message.reply_to_message?.username === username && message.username !== username) {
       playReceiveMessageSound();
+    }
+
+    // Update room notification indicators for non-active rooms (skip own messages)
+    if (message.username !== username) {
+      const room = currentRoomRef.current;
+      if (room !== 'highlight' && message.is_highlight) {
+        setRoomNotifications(prev => prev.highlight ? prev : { ...prev, highlight: true });
+      }
+      if (room !== 'gifts' && message.message_type === 'gift' &&
+          message.gift_recipient?.toLowerCase() === username?.toLowerCase()) {
+        setRoomNotifications(prev => prev.gifts ? prev : { ...prev, gifts: true });
+      }
+      if (room !== 'focus') {
+        if (message.is_from_host ||
+            message.reply_to_message?.username?.toLowerCase() === username?.toLowerCase() ||
+            spotlightUsernamesRef.current.has(message.username)) {
+          setRoomNotifications(prev => prev.focus ? prev : { ...prev, focus: true });
+        }
+      }
     }
   }, [username]);
 
@@ -913,6 +951,10 @@ export default function ChatPage() {
           ? { ...msg, is_highlight: isHighlight }
           : msg
       ));
+    }
+    // Update notification for highlight room (skip if I'm the host — I caused the action)
+    if (isHighlight && currentRoomRef.current !== 'highlight' && !isHostRef.current) {
+      setRoomNotifications(prev => prev.highlight ? prev : { ...prev, highlight: true });
     }
     // NOTE: highlight no longer touches sticky — broadcast is independent
   }, []);
@@ -1516,7 +1558,12 @@ export default function ChatPage() {
       // Pass filter params when in focus/gifts room
       const filterParam = getRoomFilter(currentRoom);
       const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
-      const { messages: msgs, pinnedMessages, broadcastMessage } = await messageApi.getMessages(code, roomUsername, currentSessionToken, filterParam, filterUser);
+      const { messages: msgs, pinnedMessages, broadcastMessage, roomNotifications: notifs } = await messageApi.getMessages(code, roomUsername, currentSessionToken, filterParam, filterUser);
+
+      // Update room notification indicators from server (only on main room / initial load)
+      if (notifs && Object.keys(notifs).length > 0) {
+        setRoomNotifications(prev => ({ ...prev, ...notifs }));
+      }
 
       // Create a map of pinned messages for quick lookup
       const pinnedMap = new Map(pinnedMessages.map(pm => [pm.id, pm]));
@@ -2440,6 +2487,8 @@ export default function ChatPage() {
   const isHost = useMemo(() => {
     return !!(currentUserId && chatRoom && chatRoom.host.id === currentUserId);
   }, [currentUserId, chatRoom]);
+  const isHostRef = useRef(isHost);
+  useEffect(() => { isHostRef.current = isHost; }, [isHost]);
 
   // Auto-remove expired pins from sticky section
   useEffect(() => {
@@ -2920,6 +2969,7 @@ export default function ChatPage() {
                 icon={Star}
                 onClick={() => switchRoom(currentRoom === 'highlight' ? 'main' : 'highlight')}
                 isToggled={currentRoom === 'highlight'}
+                hasNotification={roomNotifications.highlight}
                 ariaLabel="Star Room"
                 design={'dark-mode'}
               />
@@ -2929,6 +2979,7 @@ export default function ChatPage() {
                 icon={Eye}
                 onClick={() => switchRoom(currentRoom === 'focus' ? 'main' : 'focus')}
                 isToggled={currentRoom === 'focus'}
+                hasNotification={roomNotifications.focus}
                 ariaLabel="Focus Mode"
                 design={'dark-mode'}
               />
@@ -2938,6 +2989,7 @@ export default function ChatPage() {
                 icon={Gift}
                 onClick={() => switchRoom(currentRoom === 'gifts' ? 'main' : 'gifts')}
                 isToggled={currentRoom === 'gifts'}
+                hasNotification={roomNotifications.gifts}
                 ariaLabel="Filter Gifts"
                 design={'dark-mode'}
               />

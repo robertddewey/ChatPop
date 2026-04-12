@@ -1515,3 +1515,81 @@ class UnacknowledgedGiftCache:
         except Exception as e:
             print(f"Redis cache error (acknowledge_all): {e}")
             return 0
+
+
+class RoomNotificationCache:
+    """
+    Redis SET-based room notification indicators.
+
+    Per room type, stores a SET of user_ids who have SEEN the latest content.
+    If user_id is in the set → no notification. If not → notification.
+
+    Keys: room:{room_id}:seen:{room_type}
+    TTL: 7 days (content older than that doesn't need notification)
+    """
+    # FAB-linked notification types
+    FAB_ROOMS = ('highlight', 'focus', 'gifts')
+    # General-purpose notification types (not tied to FABs — for future use: push notifs, chat list badges, etc.)
+    GENERAL_TYPES = ('messages', 'verified')
+    # All valid types
+    VALID_ROOMS = FAB_ROOMS + GENERAL_TYPES
+    TTL_SECONDS = 7 * 24 * 3600  # 7 days
+
+    @classmethod
+    def _key(cls, room_id, room_type):
+        return f'room:{room_id}:seen:{room_type}'
+
+    @classmethod
+    def _get_redis_client(cls):
+        return cache.client.get_client()
+
+    @classmethod
+    def mark_new_content(cls, room_id, room_type, actor_user_id=None):
+        """New content arrived — clear set, add actor (they don't need notification)."""
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls._key(room_id, room_type)
+            pipe = redis_client.pipeline()
+            pipe.delete(key)
+            if actor_user_id:
+                pipe.sadd(key, str(actor_user_id))
+            pipe.expire(key, cls.TTL_SECONDS)
+            pipe.execute()
+        except Exception as e:
+            print(f"Redis cache error (mark_new_content): {e}")
+
+    @classmethod
+    def mark_seen(cls, room_id, room_type, user_id):
+        """User opened this room — they've seen the content."""
+        try:
+            redis_client = cls._get_redis_client()
+            key = cls._key(room_id, room_type)
+            redis_client.sadd(key, str(user_id))
+            redis_client.expire(key, cls.TTL_SECONDS)
+        except Exception as e:
+            print(f"Redis cache error (mark_seen): {e}")
+
+    @classmethod
+    def has_unseen(cls, room_id, user_id, room_types=None):
+        """Check rooms for unseen content — returns dict of booleans.
+        room_types defaults to FAB_ROOMS. Pass VALID_ROOMS to include general types."""
+        if room_types is None:
+            room_types = cls.FAB_ROOMS
+        try:
+            redis_client = cls._get_redis_client()
+            pipe = redis_client.pipeline()
+            for room_type in room_types:
+                key = cls._key(room_id, room_type)
+                pipe.exists(key)
+                pipe.sismember(key, str(user_id))
+            results = pipe.execute()
+
+            notifications = {}
+            for i, room_type in enumerate(room_types):
+                key_exists = results[i * 2]
+                is_member = results[i * 2 + 1]
+                notifications[room_type] = bool(key_exists and not is_member)
+            return notifications
+        except Exception as e:
+            print(f"Redis cache error (has_unseen): {e}")
+            return {rt: False for rt in room_types}

@@ -133,7 +133,6 @@ export default function FloatingActionButton({
         ${styles.baseClasses}
         ${colorClasses}
         ${styles.shadow}
-        ${hasNotification && !isToggled ? 'animate-pulse' : ''}
         ${className}
       `}
       aria-label={currentAriaLabel}
@@ -144,11 +143,12 @@ export default function FloatingActionButton({
           50% { transform: scale(1.15); }
         }
       `}</style>
-      {hasNotification && !isToggled && (
-        <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-md animate-pulse" />
-      )}
-
-      <CurrentIcon className="w-8 h-8 stroke-[1.5]" />
+      <div className="relative">
+        {hasNotification && !isToggled && (
+          <div className="absolute -top-3 -left-3 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md z-10" />
+        )}
+        <CurrentIcon className="w-8 h-8 stroke-[1.5]" />
+      </div>
     </button>
   );
 }
