@@ -2902,45 +2902,37 @@ export default function ChatPage() {
               <FloatingActionButton
                 inline
                 icon={Star}
-                toggledIcon={MessageSquare}
                 onClick={() => switchRoom(currentRoom === 'highlight' ? 'main' : 'highlight')}
                 isToggled={currentRoom === 'highlight'}
                 ariaLabel="Star Room"
-                toggledAriaLabel="Show All Messages"
                 design={'dark-mode'}
               />
               {/* Focus Filter */}
               <FloatingActionButton
                 inline
                 icon={Eye}
-                toggledIcon={MessageSquare}
                 onClick={() => switchRoom(currentRoom === 'focus' ? 'main' : 'focus')}
                 isToggled={currentRoom === 'focus'}
                 ariaLabel="Focus Mode"
-                toggledAriaLabel="Show All Messages"
                 design={'dark-mode'}
               />
               {/* Gift Filter */}
               <FloatingActionButton
                 inline
                 icon={Gift}
-                toggledIcon={MessageSquare}
                 onClick={() => switchRoom(currentRoom === 'gifts' ? 'main' : 'gifts')}
                 isToggled={currentRoom === 'gifts'}
                 ariaLabel="Filter Gifts"
-                toggledAriaLabel="Show All Messages"
                 design={'dark-mode'}
               />
               {/* Game Room Tab */}
               <FloatingActionButton
                 inline
                 icon={Gamepad2}
-                toggledIcon={MessageSquare}
                 onClick={() => switchRoom(currentRoom === 'backroom' ? 'main' : 'backroom')}
                 isToggled={currentRoom === 'backroom'}
                 hasNotification={false}
                 ariaLabel="Open Game Room"
-                toggledAriaLabel="Return to Main Chat"
                 design={'dark-mode'}
               />
               {/* Settings Button */}

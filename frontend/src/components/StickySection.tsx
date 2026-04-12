@@ -698,7 +698,7 @@ function StickySection({
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
                     currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'
                   }`}>
-                    <Pin size={12} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                    <Pin size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                     <span className={`text-xs font-medium ${currentDesign.pinnedText}`}>
                       ${stickyPinnedMessage.current_pin_amount}
                     </span>

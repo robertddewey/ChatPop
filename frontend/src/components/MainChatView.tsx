@@ -6,6 +6,7 @@
 // bg-gradient-to-t from-purple-500 to-blue-500
 // bg-zinc-900/95 bg-zinc-900/90 border-purple-500/30
 // bg-[#2a1f05] border-[#3d2e0a]
+// bg-[#1a1025] border-purple-800/40
 // bg-yellow-950/40 border-yellow-900/40 hover:bg-yellow-950/60
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
