@@ -520,6 +520,32 @@ export default function ChatPage() {
     }
   }, []);
 
+  // FAB: disable pointer events while keyboard is open + closing to prevent
+  // Android Chrome from routing taps to icons that slide into position during
+  // the keyboard close animation.
+  const [fabPointerEvents, setFabPointerEvents] = useState(true);
+  const fabBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const handleFocus = (e: FocusEvent) => {
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
+        if (fabBlurTimerRef.current) clearTimeout(fabBlurTimerRef.current);
+        setFabPointerEvents(false);
+      }
+    };
+    const handleBlur = (e: FocusEvent) => {
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
+        fabBlurTimerRef.current = setTimeout(() => setFabPointerEvents(true), 400);
+      }
+    };
+    document.addEventListener('focusin', handleFocus);
+    document.addEventListener('focusout', handleBlur);
+    return () => {
+      document.removeEventListener('focusin', handleFocus);
+      document.removeEventListener('focusout', handleBlur);
+      if (fabBlurTimerRef.current) clearTimeout(fabBlurTimerRef.current);
+    };
+  }, []);
+
   // FAB scroll strip fade indicators
   const fabStripRef = useRef<HTMLDivElement>(null);
   const [fabCanScrollUp, setFabCanScrollUp] = useState(false);
@@ -1055,8 +1081,20 @@ export default function ChatPage() {
 
   useEffect(() => {
     document.body.classList.add('chat-layout');
+    // Inject a <style> tag to override the root layout's html background color.
+    // React controls <html style={{ backgroundColor: '#0a0a0a' }}> and re-applies
+    // it on hydration/re-renders, overwriting any document.documentElement.style
+    // changes. A <style> tag in <head> with !important persists independently
+    // of React and ensures iOS Safari's toolbar areas match the chat background.
+    // Inject a <style> tag for dynamic body background updates from the theme.
+    // The CSS file (chat-layout.css) sets a default #18181b. This tag allows
+    // the theme useEffect to update it when the actual theme color loads.
+    const styleEl = document.createElement('style');
+    styleEl.id = 'chat-bg-override';
+    document.head.appendChild(styleEl);
     return () => {
       document.body.classList.remove('chat-layout');
+      styleEl.remove();
     };
   }, []);
 
@@ -2583,9 +2621,8 @@ export default function ChatPage() {
     };
   }, [currentDesign]);
 
-  // Update theme-color meta tags when theme changes
+  // Update body background when theme changes (for iOS Safari safe areas)
   useEffect(() => {
-    // Use participation theme if available, otherwise fall back to chat room theme
     if (!activeTheme) return;
 
     const themeColor = activeTheme.theme_color;
@@ -2593,47 +2630,13 @@ export default function ChatPage() {
     // Store theme colors in localStorage for layout.tsx to use on next load
     localStorage.setItem('chat_theme_color', JSON.stringify(themeColor));
 
-    // Detect system color scheme preference
+    // Update the body background to match the current theme color.
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const currentColor = prefersDark ? themeColor.dark : themeColor.light;
-
-    // Update default meta tag
-    let defaultMeta = document.querySelector('meta[name="theme-color"]:not([media])');
-    if (defaultMeta) {
-      defaultMeta.setAttribute('content', currentColor);
-    } else {
-      defaultMeta = document.createElement('meta');
-      defaultMeta.setAttribute('name', 'theme-color');
-      defaultMeta.setAttribute('content', currentColor);
-      document.head.appendChild(defaultMeta);
+    const styleEl = document.getElementById('chat-bg-override');
+    if (styleEl) {
+      styleEl.textContent = `body { background-color: ${currentColor} !important; }`;
     }
-
-    // Update light mode meta tag
-    let lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
-    if (lightMeta) {
-      lightMeta.setAttribute('content', themeColor.light);
-    } else {
-      lightMeta = document.createElement('meta');
-      lightMeta.setAttribute('name', 'theme-color');
-      lightMeta.setAttribute('media', '(prefers-color-scheme: light)');
-      lightMeta.setAttribute('content', themeColor.light);
-      document.head.appendChild(lightMeta);
-    }
-
-    // Update dark mode meta tag
-    let darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
-    if (darkMeta) {
-      darkMeta.setAttribute('content', themeColor.dark);
-    } else {
-      darkMeta = document.createElement('meta');
-      darkMeta.setAttribute('name', 'theme-color');
-      darkMeta.setAttribute('media', '(prefers-color-scheme: dark)');
-      darkMeta.setAttribute('content', themeColor.dark);
-      document.head.appendChild(darkMeta);
-    }
-
-    // Also update body background to match theme
-    document.body.style.backgroundColor = currentColor;
   }, [participationTheme, chatRoom?.theme]);
 
   // Note: Scroll-based visibility tracking for sticky host messages was removed.
@@ -2644,7 +2647,9 @@ export default function ChatPage() {
 
   if (loading) {
     return (
-      <div className={`${currentDesign.container} flex items-center justify-center`}>
+      <div className={`${currentDesign.container} flex items-center justify-center`}
+        style={{ backgroundColor: 'transparent' }}
+      >
         <div className="text-gray-600 dark:text-gray-400">Loading chat...</div>
       </div>
     );
@@ -2652,7 +2657,7 @@ export default function ChatPage() {
 
   if (error) {
     return (
-      <div className={currentDesign.container}>
+      <div className={currentDesign.container} style={{ backgroundColor: 'transparent' }}>
         <Header />
         <div className="container mx-auto px-4 py-12 max-w-2xl">
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-red-600 dark:text-red-400">
@@ -2695,6 +2700,7 @@ export default function ChatPage() {
       <div
         className={`${currentDesign.container}`}
         style={{
+          backgroundColor: 'transparent',
           WebkitUserSelect: 'none',
           userSelect: 'none',
           WebkitTouchCallout: 'none',
@@ -2875,6 +2881,10 @@ export default function ChatPage() {
                 : 'translate3d(0, 0, 0)',
               transition: 'transform 200ms ease-out',
               willChange: 'transform',
+              // Disable pointer events while keyboard is open + closing to prevent
+              // Android Chrome from routing taps to icons that slide into position
+              // during the keyboard close animation.
+              pointerEvents: fabPointerEvents ? 'auto' : 'none',
             }}
           >
             {/* Top fade — matches page background, icons dissolve into it */}

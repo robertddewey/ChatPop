@@ -25,7 +25,7 @@ export function generateViewport() {
   return {
     width: 'device-width',
     initialScale: 1,
-    themeColor: "#0a0a0a", // gray-900 to match gradient header
+    themeColor: "#18181b",
   };
 }
 
@@ -35,9 +35,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" style={{ backgroundColor: '#0a0a0a' }}>
+    <html lang="en" style={{ backgroundColor: '#18181b' }}>
       <body
-        style={{ backgroundColor: '#0a0a0a' }}
+        style={{ backgroundColor: '#18181b' }}
         className={`${figtree.className} antialiased`}
         suppressHydrationWarning
       >

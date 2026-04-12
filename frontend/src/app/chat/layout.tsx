@@ -12,8 +12,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  viewportFit: 'cover', // iOS Safari needs this for theme-color to work properly
-  // Note: no interactiveWidget — body uses position:fixed which handles keyboard differently
+  viewportFit: 'cover', // Required so position:fixed body with inset:0 extends into safe areas
 };
 
 // Note: Layout doesn't receive params in Next.js App Router
@@ -31,88 +30,35 @@ export default function ChatLayout({
       <Script id="theme-bg-init" strategy="beforeInteractive">
         {`
           (function() {
-            // Default to white for light mode, dark for dark mode
-            let bgColor = '#ffffff';
+            // Default to zinc-900 (#18181b) which is the Dark Mode theme background.
+            // This ensures the html/body background matches the chat UI from the start,
+            // preventing a black gap in iOS Safari's toolbar areas (which derive their
+            // color from the page background).
+            let bgColor = '#09090b';
 
             try {
-              // Try to get theme from localStorage (set by page.tsx)
-              const storedTheme = localStorage.getItem('chat_theme_color');
+              var storedTheme = localStorage.getItem('chat_theme_color');
               if (storedTheme) {
-                const parsed = JSON.parse(storedTheme);
-                // Detect system color scheme preference
-                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                var parsed = JSON.parse(storedTheme);
+                var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
                 bgColor = prefersDark ? (parsed.dark || '#09090b') : (parsed.light || '#ffffff');
               }
             } catch (e) {
-              // Fallback to white background
-              bgColor = '#ffffff';
+              bgColor = '#09090b';
             }
 
             // Inject style tag to set body and all page containers immediately
             // This targets body, Next.js root, and any divs with height/flex classes (the main container)
             const style = document.createElement('style');
-            style.innerHTML = 'html, body { background-color: ' + bgColor + ' !important; } #__next, #__next > div, [class*="h-\\\\[100dvh\\\\]"], [class*="flex-col"] { background: ' + bgColor + ' !important; background-image: none !important; }';
+            style.innerHTML = 'html, body { background-color: ' + bgColor + ' !important; }';
             document.head.appendChild(style);
           })();
         `}
       </Script>
 
-      {/* Set theme-color meta tags after DOM is ready */}
-      <Script id="theme-color-init" strategy="beforeInteractive">
-        {`
-          (function() {
-            // Check if there's a stored theme in localStorage for this chat
-            let themeColor = '#18181b';  // Default to zinc-900 (dark theme)
-
-            try {
-              // Try to get theme from localStorage (set by page.tsx and ChatSettingsSheet)
-              const storedTheme = localStorage.getItem('chat_theme_color');
-              if (storedTheme) {
-                const parsed = JSON.parse(storedTheme);
-                // Use the 'light' property as the forced theme color
-                // Both light and dark meta tags get the same value to override system preference
-                themeColor = parsed.light || themeColor;
-              }
-            } catch (e) {
-              console.warn('Failed to parse stored theme color:', e);
-            }
-
-            // Force BOTH light and dark meta tags to the same color (override system preference)
-            // This ensures the browser chrome matches our theme, not the OS setting
-
-            // Update default meta tag
-            let existingMeta = document.querySelector('meta[name="theme-color"]:not([media])');
-            if (existingMeta) {
-              existingMeta.setAttribute('content', themeColor);
-            } else {
-              const defaultMeta = document.createElement('meta');
-              defaultMeta.name = 'theme-color';
-              defaultMeta.content = themeColor;
-              document.head.appendChild(defaultMeta);
-            }
-
-            // Update light mode meta tag (use theme color)
-            let lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
-            if (!lightMeta) {
-              lightMeta = document.createElement('meta');
-              lightMeta.setAttribute('name', 'theme-color');
-              lightMeta.setAttribute('media', '(prefers-color-scheme: light)');
-              document.head.appendChild(lightMeta);
-            }
-            lightMeta.setAttribute('content', themeColor);
-
-            // Update dark mode meta tag (ALSO use theme color - same as light)
-            let darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
-            if (!darkMeta) {
-              darkMeta = document.createElement('meta');
-              darkMeta.setAttribute('name', 'theme-color');
-              darkMeta.setAttribute('media', '(prefers-color-scheme: dark)');
-              document.head.appendChild(darkMeta);
-            }
-            darkMeta.setAttribute('content', themeColor);
-          })();
-        `}
-      </Script>
+      {/* theme-color meta tags removed — let browsers auto-detect from page content.
+          Android Chrome samples the top background for the toolbar color.
+          iOS Safari uses the page background for safe area tinting. */}
       <div className={figtree.className}>
         {children}
       </div>

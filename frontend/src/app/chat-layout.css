@@ -9,23 +9,38 @@ body.chat-layout {
   overflow: hidden;
   width: 100%;
   max-width: 100vw;
-  height: 100vh;
-  height: 100dvh;
   position: fixed;
-  top: 0;
+  /* Extend body BEYOND safe area boundaries into status bar and toolbar areas.
+     position:fixed inset:0 only reaches the safe area edge. Negative insets
+     using env(safe-area-inset-*) push the body behind the browser chrome. */
+  top: calc(-1 * env(safe-area-inset-top, 0px));
+  right: 0;
+  bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
   left: 0;
-  touch-action: none;
-  overscroll-behavior: none;
-  -webkit-overflow-scrolling: auto;
-  /* Background will be set dynamically by JavaScript after user joins */
-  /* Keep transparent/default before joining to show JoinChatModal properly */
+  /* Default gradient for safe areas: chat bg fading to black at edges.
+     Updated dynamically by page.tsx when the theme loads. */
+  /* Solid color for iOS Safari safe areas. Matches the header/input area color.
+     Updated dynamically by the layout's beforeInteractive script (from localStorage)
+     and by page.tsx when the theme loads from the API. */
+  background-color: #18181b !important;
+}
+
+/* Force containers to be transparent so the body gradient shows through
+   in iOS Safari safe areas. !important needed to beat Tailwind's bg-* classes
+   which may use @layer with higher priority in Tailwind v4. */
+body.chat-layout > * > * {
+  background-color: transparent !important;
+  background-image: none !important;
 }
 
 html:has(body.chat-layout) {
   overflow: hidden;
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
+  /* No explicit height — let html naturally cover the full viewport
+     including safe areas (behind status bar and toolbar). Setting
+     height: 100dvh here constrained html to the safe area only,
+     causing iOS Safari's safe areas to show black instead of the
+     html background/gradient. */
   touch-action: none;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: auto;
