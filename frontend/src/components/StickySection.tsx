@@ -617,7 +617,7 @@ function StickySection({
                   );
                 })() : (
                   <div className="flex items-baseline gap-1 min-w-0">
-                    <p className={`text-sm ${textClass} truncate min-w-0 flex-1`}>
+                    <p className={`text-sm ${textClass} truncate min-w-0`}>
                       {message.content}
                     </p>
                     {message.reply_to_message && (
@@ -761,7 +761,7 @@ function StickySection({
                   );
                 })() : (
                   <div className="flex items-baseline gap-1 min-w-0">
-                    <p className={`text-sm ${currentDesign.pinnedText} truncate min-w-0 flex-1`}>
+                    <p className={`text-sm ${currentDesign.pinnedText} truncate min-w-0`}>
                       {stickyPinnedMessage.content}
                     </p>
                     {stickyPinnedMessage.reply_to_message && (
