@@ -181,33 +181,33 @@ function YouPill({ className }: { className?: string }) {
   );
 }
 
-// "host" pill shown next to host usernames
+// "host" pill shown next to host usernames (hidden on small screens)
 function HostPill({ color }: { color?: string }) {
   const c = color || '#2dd4bf';
   return (
     <span
-      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      className="hidden sm:inline text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
       style={{ backgroundColor: `${c}20`, color: c }}
     >host</span>
   );
 }
 
-// "spotlight" pill shown next to spotlighted users' usernames
+// "spotlight" pill shown next to spotlighted users' usernames (hidden on small screens)
 function SpotlightPill({ color }: { color?: string }) {
   const c = color || '#facc15';
   return (
     <span
-      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      className="hidden sm:inline text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
       style={{ backgroundColor: `${c}20`, color: c }}
     >spotlight</span>
   );
 }
 
-// "banned" pill shown next to banned users' usernames
+// "banned" pill shown next to banned users' usernames (hidden on small screens)
 function BannedPill() {
   return (
     <span
-      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none inline-flex items-center gap-0.5"
+      className="hidden sm:inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none items-center gap-0.5"
       style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
     ><Ban size={9} />banned</span>
   );

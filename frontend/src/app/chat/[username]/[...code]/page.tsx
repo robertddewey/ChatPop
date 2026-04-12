@@ -770,11 +770,15 @@ export default function ChatPage() {
   const handleDismissIntro = useCallback((key: string) => {
     setShowFeatureIntro(null);
     setSeenIntros(prev => ({ ...prev, [key]: true }));
+    // Mark spotlight intro as seen in localStorage
+    if (key === 'spotlight_first_time' && username) {
+      localStorage.setItem(`spotlight_seen:${code}:${username}`, 'true');
+    }
     // Inline API call to avoid webpack chunk caching issues with chatApi.dismissIntro
-    const username = roomUsername || 'discover';
-    api.post(`/api/chats/${username}/${code}/intros/${key}/dismiss/`, { fingerprint })
+    const uname = roomUsername || 'discover';
+    api.post(`/api/chats/${uname}/${code}/intros/${key}/dismiss/`, { fingerprint })
       .catch(err => console.error('[FeatureIntro] Dismiss failed:', err));
-  }, [code, fingerprint, roomUsername]);
+  }, [code, fingerprint, roomUsername, username]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -966,7 +970,17 @@ export default function ChatPage() {
         else next.delete(spotlightUsername);
         return next;
       });
-    }, []),
+      if (spotlightUsername.toLowerCase() === username?.toLowerCase()) {
+        const key = `spotlight_seen:${code}:${username}`;
+        if (action === 'add') {
+          localStorage.setItem(key, 'false');
+          setShowFeatureIntro('spotlight_first_time');
+        } else {
+          // Clear so re-spotlighting triggers the modal again
+          localStorage.removeItem(key);
+        }
+      }
+    }, [username, code]),
     onVisibilityChange: handleVisibilityChange,
     enabled: hasJoined || (!!chatRoom && chatRoom.access_mode === 'public'),
   });
@@ -993,12 +1007,22 @@ export default function ChatPage() {
     messageApi
       .getSpotlightUsers(code, roomUsername)
       .then((data) => {
-        setSpotlightUsernames(new Set(data.spotlight_users.map((u) => u.username)));
+        const usernames = new Set(data.spotlight_users.map((u) => u.username));
+        setSpotlightUsernames(usernames);
+        // Show intro if user was spotlighted while offline (hasn't seen it yet)
+        // Only after joining — not on the join page
+        if (hasJoined && username && usernames.has(username)) {
+          const key = `spotlight_seen:${code}:${username}`;
+          if (localStorage.getItem(key) !== 'true') {
+            localStorage.setItem(key, 'false');
+            setShowFeatureIntro('spotlight_first_time');
+          }
+        }
       })
       .catch((err) => {
         console.error('Failed to load spotlight users', err);
       });
-  }, [chatRoom, code, roomUsername]);
+  }, [chatRoom, code, roomUsername, username, hasJoined]);
 
   // Spotlight handlers (host only)
   const handleSpotlightAdd = useCallback(async (targetUsername: string) => {
@@ -1014,13 +1038,6 @@ export default function ChatPage() {
     }
   }, [code, roomUsername]);
 
-  // Show intro overlay when current user gets spotlighted (every time)
-  useEffect(() => {
-    if (!username) return;
-    if (!hasJoined) return;
-    if (!spotlightUsernames.has(username)) return;
-    setShowFeatureIntro('spotlight_first_time');
-  }, [spotlightUsernames, username, hasJoined]);
 
   const handleSpotlightRemove = useCallback(async (targetUsername: string) => {
     try {
