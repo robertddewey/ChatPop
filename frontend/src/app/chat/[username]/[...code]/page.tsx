@@ -714,9 +714,13 @@ export default function ChatPage() {
     const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
 
     if (target === 'main') {
-      // Main room: fetch fresh (no firehose caching)
+      // Main room: fetch fresh with minimum loading delay
+      const minDelay = new Promise(resolve => setTimeout(resolve, 500));
       try {
-        const { messages: msgs, pinnedMessages, roomNotifications: notifs } = await messageApi.getMessages(code, roomUsername, sessionToken || undefined, undefined, undefined);
+        const [, { messages: msgs, pinnedMessages, roomNotifications: notifs }] = await Promise.all([
+          minDelay,
+          messageApi.getMessages(code, roomUsername, sessionToken || undefined, undefined, undefined)
+        ]);
         // Update room notification indicators from server
         if (notifs && Object.keys(notifs).length > 0) {
           setRoomNotifications(prev => ({ ...prev, ...notifs }));
@@ -1513,18 +1517,21 @@ export default function ChatPage() {
       if (messageActionsOpen) {
         window.dispatchEvent(new Event('close-message-actions'));
         setMessageActionsOpen(false);
+        window.history.pushState({ joined: true }, '', window.location.href);
         return;
       }
 
       // If settings sheet is open, close it (settings uses pushState)
       if (showSettingsSheet) {
         setShowSettingsSheet(false);
+        window.history.pushState({ joined: true }, '', window.location.href);
         return;
       }
 
       // If in a sub-room, back returns to main (don't exit chat)
       if (currentRoom !== 'main') {
         switchRoom('main');
+        window.history.pushState({ joined: true }, '', window.location.href);
         return;
       }
 
