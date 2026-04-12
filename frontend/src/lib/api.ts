@@ -833,7 +833,8 @@ export const messageApi = {
 
   // ===== Room Notifications =====
   markRoomRead: async (code: string, room: string, roomUsername?: string): Promise<void> => {
-    await api.post(`${buildChatUrl(code, roomUsername)}/mark-room-read/`, { room });
+    const sessionToken = typeof window !== 'undefined' ? localStorage.getItem(`chat_session_${code}`) : null;
+    await api.post(`${buildChatUrl(code, roomUsername)}/mark-room-read/`, { room, session_token: sessionToken });
   },
 
   // ===== Spotlight =====

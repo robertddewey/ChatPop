@@ -962,9 +962,10 @@ class MessageListView(APIView):
 
         # Room notification indicators from Redis (O(1) per room, no SQL)
         room_notifications = {}
-        if not filter_mode and request.user and request.user.is_authenticated:
+        notif_identity = current_user_id or current_session_key
+        if not filter_mode and notif_identity:
             from .utils.performance.cache import RoomNotificationCache
-            room_notifications = RoomNotificationCache.has_unseen(str(chat_room.id), request.user.id)
+            room_notifications = RoomNotificationCache.has_unseen(str(chat_room.id), notif_identity)
 
         return Response({
             'messages': messages,
@@ -2112,7 +2113,7 @@ class DismissIntroView(APIView):
 
 class MarkRoomReadView(APIView):
     """Mark a room as read (Redis SET-based notification indicators)"""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request, code, username=None):
         from .utils.performance.cache import RoomNotificationCache
@@ -2120,7 +2121,22 @@ class MarkRoomReadView(APIView):
         room = request.data.get('room')
         if room not in RoomNotificationCache.VALID_ROOMS:
             return Response({'error': 'Invalid room'}, status=status.HTTP_400_BAD_REQUEST)
-        RoomNotificationCache.mark_seen(str(chat_room.id), room, request.user.id)
+
+        # Identify user: user_id for registered, session_key for anonymous
+        session_token = request.data.get('session_token')
+        identity = None
+        if request.user and request.user.is_authenticated:
+            identity = request.user.id
+        elif session_token:
+            try:
+                session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+                identity = session_data.get('user_id') or session_data.get('session_key')
+            except Exception:
+                pass
+        if not identity:
+            return Response({'error': 'No identity'}, status=status.HTTP_400_BAD_REQUEST)
+
+        RoomNotificationCache.mark_seen(str(chat_room.id), room, identity)
         return Response({'success': True})
 
 

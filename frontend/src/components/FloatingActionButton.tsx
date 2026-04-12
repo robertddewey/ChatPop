@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, type ReactNode } from 'react';
-import { LucideIcon } from 'lucide-react';
+import { LucideIcon, MessageCircleWarning } from 'lucide-react';
 
 export interface FloatingActionButtonProps {
   /** Icon component from lucide-react */
@@ -145,7 +145,7 @@ export default function FloatingActionButton({
       `}</style>
       <div className="relative">
         {hasNotification && !isToggled && (
-          <div className="absolute -top-3 -left-3 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md z-10" />
+          <MessageCircleWarning size={16} className="absolute z-10 text-red-500 fill-red-950" style={{ top: '-15px', left: '-15px' }} />
         )}
         <CurrentIcon className="w-8 h-8 stroke-[1.5]" />
       </div>

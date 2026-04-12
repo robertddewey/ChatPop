@@ -49,6 +49,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             session_data = await self.validate_session(session_token, self.chat_code)
             self.username = session_data['username']
             self.user_id = session_data.get('user_id')
+            self.session_key = session_data.get('session_key')
             self.session_token = session_token
         except Exception as e:
             # Invalid session - reject connection
@@ -177,14 +178,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
             # Room notification indicators (Redis SET-based, non-blocking)
+            # Use user_id for registered users, session_key for anonymous
+            actor_identity = self.user_id or self.session_key
             if self.chat_room_id:
                 try:
-                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'messages', actor_user_id=self.user_id)
-                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'focus', actor_user_id=self.user_id)
+                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'messages', actor_user_id=actor_identity)
+                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'focus', actor_user_id=actor_identity)
                     if message_data.get('username_is_reserved'):
-                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'verified', actor_user_id=self.user_id)
+                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'verified', actor_user_id=actor_identity)
                     if message_data.get('message_type') == 'gift':
-                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'gifts', actor_user_id=self.user_id)
+                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'gifts', actor_user_id=actor_identity)
                 except Exception:
                     pass  # Non-critical
 
