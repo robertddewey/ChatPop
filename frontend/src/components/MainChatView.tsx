@@ -653,9 +653,6 @@ function MainChatView({
                       {!isHostMessage && spotlightUsernames?.has(message.username) && (
                         <Spotlight size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                       )}
-                      {message.username_is_reserved && (
-                        <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
-                      )}
                     </div>
                   ) : (
                     /* Invisible spacer to maintain alignment */
@@ -739,6 +736,9 @@ function MainChatView({
                             <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                           </>
                         )}
+                        {message.username_is_reserved && (
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
+                        )}
                         {message.is_banned && <BannedPill />}
                       </div>
                     </div>
@@ -765,6 +765,9 @@ function MainChatView({
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
                         <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
                         <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                        {message.username_is_reserved && (
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
+                        )}
                         {message.is_banned && <BannedPill />}
                       </div>
                     </div>
@@ -802,6 +805,9 @@ function MainChatView({
                             <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
                             <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                           </>
+                        )}
+                        {message.username_is_reserved && (
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
                         )}
                         {message.is_banned && <BannedPill />}
                       </div>
