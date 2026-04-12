@@ -191,7 +191,7 @@ const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(
 
   if (disabled) {
     return (
-      <div className={design.inputArea} style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))` }}>
+      <div className={design.inputArea} style={{ paddingBottom: `calc(0.2rem + env(safe-area-inset-bottom, 0px))` }}>
         <div className={`flex items-center justify-center h-9 rounded-lg ${inputStyles?.disabledBg || 'bg-zinc-800/60 border border-zinc-700/50'}`}>
           <span className={`text-sm ${inputStyles?.disabledText || 'text-zinc-500'}`}>{disabledMessage || 'Messaging disabled'}</span>
         </div>
@@ -200,7 +200,7 @@ const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(
   }
 
   return (
-    <div className={design.inputArea} style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom, 0px))` }}>
+    <div className={design.inputArea} style={{ paddingBottom: `calc(0.2rem + env(safe-area-inset-bottom, 0px))` }}>
       {/* Reply Preview Bar */}
       {replyingTo && (
         <div className={design.replyPreviewContainer}>

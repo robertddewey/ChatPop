@@ -25,6 +25,15 @@ body.chat-layout {
   background-color: #18181b !important;
 }
 
+/* iOS Safari only: reduce header top padding by 5px so content sits
+   closer to the status bar safe area. Uses -webkit-touch-callout detection
+   which only matches iOS Safari. */
+@supports (-webkit-touch-callout: none) {
+  body.chat-layout [data-chat-header] {
+    padding-top: 0px !important;
+  }
+}
+
 /* Force containers to be transparent so the body gradient shows through
    in iOS Safari safe areas. !important needed to beat Tailwind's bg-* classes
    which may use @layer with higher priority in Tailwind v4. */

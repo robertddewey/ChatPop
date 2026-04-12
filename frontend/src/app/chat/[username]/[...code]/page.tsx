@@ -2967,32 +2967,34 @@ export default function ChatPage() {
       {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms) */}
       {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && (
         <div className="relative">
-          <MessageInput
-            ref={messageInputRef}
-            chatRoom={chatRoom}
-            isHost={previewIsHost ?? isHost}
-            isSpotlight={(() => {
-              const effectiveName = previewUsername ?? username;
-              return !!effectiveName && spotlightUsernames.has(effectiveName);
-            })()}
-            hasJoined={hasJoined}
-            sending={sending}
-            username={previewUsername ?? username}
-            avatarUrl={previewAvatarUrl !== undefined ? previewAvatarUrl : userAvatarUrl}
-            hasReservedUsername={previewHasReservedUsername ?? hasReservedUsername}
-            replyingTo={replyingTo}
-            onCancelReply={handleCancelReply}
-            onSubmitText={handleSubmitText}
-            onVoiceRecording={handleVoiceRecording}
-            onPhotoSelected={handlePhotoSelected}
-            onVideoSelected={handleVideoSelected}
-            disabled={currentRoom === 'gifts'}
-            disabledMessage="Viewing gift history"
-            spotlightUsernames={spotlightUsernames}
-            design={messageInputDesign}
-          />
+          <div className={!hasJoined ? 'opacity-50' : ''}>
+            <MessageInput
+              ref={messageInputRef}
+              chatRoom={chatRoom}
+              isHost={previewIsHost ?? isHost}
+              isSpotlight={(() => {
+                const effectiveName = previewUsername ?? username;
+                return !!effectiveName && spotlightUsernames.has(effectiveName);
+              })()}
+              hasJoined={hasJoined}
+              sending={sending}
+              username={previewUsername ?? username}
+              avatarUrl={previewAvatarUrl !== undefined ? previewAvatarUrl : userAvatarUrl}
+              hasReservedUsername={previewHasReservedUsername ?? hasReservedUsername}
+              replyingTo={replyingTo}
+              onCancelReply={handleCancelReply}
+              onSubmitText={handleSubmitText}
+              onVoiceRecording={handleVoiceRecording}
+              onPhotoSelected={handlePhotoSelected}
+              onVideoSelected={handleVideoSelected}
+              disabled={currentRoom === 'gifts'}
+              disabledMessage="Viewing gift history"
+              spotlightUsernames={spotlightUsernames}
+              design={messageInputDesign}
+            />
+          </div>
           {!hasJoined && (
-            <div className="absolute inset-0 bg-black/40 pointer-events-auto" />
+            <div className="absolute inset-0 pointer-events-auto" />
           )}
         </div>
       )}
