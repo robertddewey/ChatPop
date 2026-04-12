@@ -282,6 +282,7 @@ interface MainChatViewProps {
   onScrollToBottom?: () => void;
   expandStickySignal?: number;
   hiddenMode?: boolean;
+  onMessageActionsOpenChange?: (open: boolean) => void;
 }
 
 function MainChatView({
@@ -336,6 +337,7 @@ function MainChatView({
   onScrollToBottom,
   expandStickySignal,
   hiddenMode = false,
+  onMessageActionsOpenChange,
 }: MainChatViewProps) {
   // Local stickyHeight for paddingTop — updated via callback from StickySection
   const [stickyHeight, setStickyHeight] = useState(0);
@@ -703,6 +705,7 @@ function MainChatView({
                                                                         onReact={handleReactionToggle}
                   onHighlight={highlightMessage}
                   reactions={messageReactions[message.id] || message.reactions || []}
+                  onOpenChange={onMessageActionsOpenChange}
                 >
                   {/* Username header for first regular message in thread */}
                   {isRegularMessage && isFirstInGroup && (

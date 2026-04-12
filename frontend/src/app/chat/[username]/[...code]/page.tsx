@@ -655,6 +655,7 @@ export default function ChatPage() {
 
   // Settings sheet state
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [messageActionsOpen, setMessageActionsOpen] = useState(false);
 
   // Gift notification state
   const [giftQueue, setGiftQueue] = useState<GiftNotification[]>([]);
@@ -695,7 +696,13 @@ export default function ChatPage() {
     setCurrentRoom(target);
     setHasMoreMessages(true);
     setReplyingTo(null);
-    window.history.replaceState({ room: target }, '', window.location.href);
+
+    // Push history for sub-rooms so back button returns to main
+    if (target !== 'main') {
+      window.history.pushState({ room: target }, '', window.location.href);
+    } else {
+      window.history.replaceState({ room: 'main' }, '', window.location.href);
+    }
 
     // Clear notification for target room and mark as read on server (fire-and-forget)
     if (target !== 'main' && target !== 'backroom') {
@@ -801,6 +808,24 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Track message actions modal open/close for back button handling
+  const messageActionsOpenRef = useRef(false);
+  const handleMessageActionsOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      messageActionsOpenRef.current = true;
+      setMessageActionsOpen(true);
+      window.history.pushState({ modal: 'message-actions' }, '', window.location.href);
+    } else if (messageActionsOpenRef.current) {
+      messageActionsOpenRef.current = false;
+      setMessageActionsOpen(false);
+      // Pop the history entry (unless back button already did it)
+      // Check if current state is our modal entry
+      if (window.history.state?.modal === 'message-actions') {
+        window.history.back();
+      }
+    }
+  }, []);
 
   // Handle incoming WebSocket messages
   const handleWebSocketMessage = useCallback((message: Message) => {
@@ -1145,7 +1170,7 @@ export default function ChatPage() {
     // changes. A <style> tag in <head> with !important persists independently
     // of React and ensures iOS Safari's toolbar areas match the chat background.
     // Inject a <style> tag for dynamic body background updates from the theme.
-    // The CSS file (chat-layout.css) sets a default #18181b. This tag allows
+    // The CSS file (chat-layout.css) sets a default #1a1025. This tag allows
     // the theme useEffect to update it when the actual theme color loads.
     const styleEl = document.createElement('style');
     styleEl.id = 'chat-bg-override';
@@ -1470,9 +1495,8 @@ export default function ChatPage() {
   // Listen for back button to handle auth, settings overlay, and chat exit
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      const path = window.location.pathname;
 
-      // Auth navigation: going back/forward between /login, /signup, and base chat URL
+      const path = window.location.pathname;
       if (path.endsWith('/login')) {
         setAuthModeState('login');
         return;
@@ -1485,16 +1509,23 @@ export default function ChatPage() {
         return;
       }
 
+      // If message actions modal is open, close it
+      if (messageActionsOpen) {
+        window.dispatchEvent(new Event('close-message-actions'));
+        setMessageActionsOpen(false);
+        return;
+      }
+
       // If settings sheet is open, close it (settings uses pushState)
       if (showSettingsSheet) {
         setShowSettingsSheet(false);
         return;
       }
 
-      // Back button exits chat entirely (rooms use replaceState, no unwinding needed)
-      // Reset to main room as part of exit
+      // If in a sub-room, back returns to main (don't exit chat)
       if (currentRoom !== 'main') {
-        setCurrentRoom('main');
+        switchRoom('main');
+        return;
       }
 
       if (hasJoined) {
@@ -1519,7 +1550,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations]);
+  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations, messageActionsOpen, switchRoom]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -2889,6 +2920,7 @@ export default function ChatPage() {
                 showScrollToBottom={showScrollToBottom}
                 onScrollToBottom={handleScrollToBottom}
                 expandStickySignal={expandStickySignal}
+                onMessageActionsOpenChange={handleMessageActionsOpenChange}
               />
 
             {/* Join Modal - inline overlay within messages area */}

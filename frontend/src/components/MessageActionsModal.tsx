@@ -106,6 +106,7 @@ interface MessageActionsModalProps {
   emojiPickerStyles?: Record<string, string>;
   giftStyles?: Record<string, string>;
   videoPlayerStyles?: Record<string, string>;
+  onOpenChange?: (isOpen: boolean) => void;
   // Legacy props (deprecated, will be removed)
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
@@ -268,6 +269,7 @@ export default function MessageActionsModal({
   emojiPickerStyles: themeEmojiPickerStyles,
   giftStyles: themeGiftStyles,
   videoPlayerStyles: themeVideoPlayerStyles,
+  onOpenChange,
   // Legacy props
   onPinSelf,
   onPinOther,
@@ -370,8 +372,18 @@ export default function MessageActionsModal({
     }
   }, [isOpen]);
 
+  // Listen for external close requests (e.g., from back button handler in page.tsx)
+  useEffect(() => {
+    const handleForceClose = () => {
+      if (isOpen) handleClose();
+    };
+    window.addEventListener('close-message-actions', handleForceClose);
+    return () => window.removeEventListener('close-message-actions', handleForceClose);
+  }, [isOpen]);
+
   const handleOpen = () => {
     setIsOpen(true);
+    onOpenChange?.(true);
     setDragOffset(0);
     setIsClosing(false);
     setSlideIn(false);
@@ -399,6 +411,7 @@ export default function MessageActionsModal({
     setIsDragging(false);
     setConfirmAction(null);
     setMuteLockedHint(false);
+    onOpenChange?.(false);
 
     // Wait for transition to complete before removing from DOM
     setTimeout(() => {
