@@ -2853,19 +2853,21 @@ export default function ChatPage() {
                   >
                     <ArrowLeft size={18} />
                   </button>
-                  <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
                     <img
                       src={chatRoom.host.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(roomUsername)}&size=80`}
                       alt={roomUsername}
-                      className="w-6 h-6 rounded-full bg-zinc-700 flex-shrink-0"
+                      className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-zinc-700 flex-shrink-0"
                     />
-                    <span className="inline-flex items-center gap-0.5 bg-purple-900/80 rounded-full pl-2.5 pr-1.5 py-0.5 text-sm font-medium text-purple-200 flex-shrink-0 cursor-pointer">
+                    <span className="inline-flex items-center gap-0.5 bg-purple-900/80 rounded-full pl-2 pr-1 sm:pl-2.5 sm:pr-1.5 py-0.5 text-xs sm:text-sm font-medium text-purple-200 flex-shrink-0 cursor-pointer">
                       {chatRoom.host.reserved_username || roomUsername}
-                      <ChevronRight size={14} className="opacity-60" />
+                      <ChevronRight size={12} className="opacity-60 sm:hidden" />
+                      <ChevronRight size={14} className="opacity-60 hidden sm:block" />
                     </span>
-                    <span className="inline-flex items-center gap-0.5 bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-full pl-2.5 pr-1.5 py-0.5 text-sm font-medium text-zinc-100 cursor-pointer min-w-0">
+                    <span className="inline-flex items-center gap-0.5 bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-full pl-2 pr-1 sm:pl-2.5 sm:pr-1.5 py-0.5 text-xs sm:text-sm font-medium text-zinc-100 cursor-pointer min-w-0">
                       <span className="truncate">{chatRoom.name.replace(/\s+/g, '')}</span>
-                      <ChevronRight size={14} className="opacity-60 flex-shrink-0" />
+                      <ChevronRight size={12} className="opacity-60 flex-shrink-0 sm:hidden" />
+                      <ChevronRight size={14} className="opacity-60 flex-shrink-0 hidden sm:block" />
                     </span>
                   </div>
                 </div>
