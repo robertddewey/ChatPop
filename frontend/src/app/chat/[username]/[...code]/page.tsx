@@ -815,6 +815,7 @@ export default function ChatPage() {
 
   // Track message actions modal open/close for back button handling
   const messageActionsOpenRef = useRef(false);
+  const ignoringModalPopRef = useRef(false);
   const handleMessageActionsOpenChange = useCallback((open: boolean) => {
     if (open) {
       messageActionsOpenRef.current = true;
@@ -826,6 +827,7 @@ export default function ChatPage() {
       // Pop the history entry (unless back button already did it)
       // Check if current state is our modal entry
       if (window.history.state?.modal === 'message-actions') {
+        ignoringModalPopRef.current = true;
         window.history.back();
       }
     }
@@ -1499,6 +1501,11 @@ export default function ChatPage() {
   // Listen for back button to handle auth, settings overlay, and chat exit
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
+      // Ignore popstate triggered by modal's programmatic history.back()
+      if (ignoringModalPopRef.current) {
+        ignoringModalPopRef.current = false;
+        return;
+      }
 
       const path = window.location.pathname;
       if (path.endsWith('/login')) {
@@ -1514,8 +1521,9 @@ export default function ChatPage() {
       }
 
       // If message actions modal is open, close it
-      if (messageActionsOpen) {
+      if (messageActionsOpenRef.current) {
         window.dispatchEvent(new Event('close-message-actions'));
+        messageActionsOpenRef.current = false;
         setMessageActionsOpen(false);
         window.history.pushState({ joined: true }, '', window.location.href);
         return;
@@ -1557,7 +1565,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations, messageActionsOpen, switchRoom]);
+  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations, switchRoom]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -2846,7 +2854,7 @@ export default function ChatPage() {
                     <ArrowLeft size={18} />
                   </button>
                   <h1 className={`${currentDesign.headerTitle} truncate text-base`}>
-                    <span className="text-sm opacity-50 relative -top-px">@{roomUsername}&apos;s</span> #{chatRoom.name.replace(/\s+/g, '')}
+                    #{chatRoom.name.replace(/\s+/g, '')}
                   </h1>
                 </div>
                 <button
@@ -3064,7 +3072,7 @@ export default function ChatPage() {
       </div>
 
       {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms) */}
-      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && (
+      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && currentRoom !== 'gifts' && (
         <div className="relative">
           <div className={!hasJoined ? 'opacity-50' : ''}>
             <MessageInput
@@ -3086,8 +3094,6 @@ export default function ChatPage() {
               onVoiceRecording={handleVoiceRecording}
               onPhotoSelected={handlePhotoSelected}
               onVideoSelected={handleVideoSelected}
-              disabled={currentRoom === 'gifts'}
-              disabledMessage="Viewing gift history"
               spotlightUsernames={spotlightUsernames}
               design={messageInputDesign}
             />
