@@ -451,10 +451,16 @@ export default function ChatPage() {
   const [joinError, setJoinError] = useState('');
 
   // Preview state for identity chooser — keeps source-of-truth untouched
-  const [previewUsername, setPreviewUsername] = useState<string | null>(null);
-  const [previewAvatarUrl, setPreviewAvatarUrl] = useState<string | null | undefined>(undefined);
-  const [previewHasReservedUsername, setPreviewHasReservedUsername] = useState<boolean | null>(null);
-  const [previewIsHost, setPreviewIsHost] = useState<boolean | null>(null);
+  const [previewIdentity, setPreviewIdentity] = useState<{
+    username: string | null;
+    avatarUrl: string | null | undefined;
+    hasReservedUsername: boolean | null;
+    isHost: boolean | null;
+  }>({ username: null, avatarUrl: undefined, hasReservedUsername: null, isHost: null });
+  const previewUsername = previewIdentity.username;
+  const previewAvatarUrl = previewIdentity.avatarUrl;
+  const previewHasReservedUsername = previewIdentity.hasReservedUsername;
+  const previewIsHost = previewIdentity.isHost;
 
   // Scroll-to-bottom indicator
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -1552,10 +1558,7 @@ export default function ChatPage() {
         setStickyPinnedMsg(null);
         setJoinModalKey(prev => prev + 1);
         // Reset preview state so source-of-truth values are used
-        setPreviewUsername(null);
-        setPreviewAvatarUrl(undefined);
-        setPreviewHasReservedUsername(null);
-        setPreviewIsHost(null);
+        setPreviewIdentity({ username: null, avatarUrl: undefined, hasReservedUsername: null, isHost: null });
         window.history.pushState({ modal: true }, '', window.location.href);
       } else {
         markChatVisited(code);
@@ -2536,6 +2539,16 @@ export default function ChatPage() {
   const isHostRef = useRef(isHost);
   useEffect(() => { isHostRef.current = isHost; }, [isHost]);
 
+  // Identity change handler for join modal (batched into single state update)
+  const handleIdentityChange = useCallback((identity: { username: string; avatarUrl: string | null; hasReservedUsername: boolean }) => {
+    setPreviewIdentity({
+      username: identity.username,
+      avatarUrl: identity.avatarUrl,
+      hasReservedUsername: identity.hasReservedUsername,
+      isHost: identity.hasReservedUsername ? isHost : false,
+    });
+  }, [isHost]);
+
   // Auto-remove expired pins from sticky section
   useEffect(() => {
     if (!stickyPinnedMsg?.sticky_until) return;
@@ -2969,12 +2982,7 @@ export default function ChatPage() {
                   spotlightUsernames={spotlightUsernames}
                   registeredAvatarUrl={registeredAvatarUrl}
                   onAvatarChange={setUserAvatarUrl}
-                  onIdentityChange={(identity) => {
-                    setPreviewUsername(identity.username);
-                    setPreviewAvatarUrl(identity.avatarUrl);
-                    setPreviewHasReservedUsername(identity.hasReservedUsername);
-                    setPreviewIsHost(identity.hasReservedUsername ? isHost : false);
-                  }}
+                  onIdentityChange={handleIdentityChange}
                   onJoin={handleJoinChat}
                   onLogin={() => openAuth('login')}
                   onSignup={() => openAuth('signup')}

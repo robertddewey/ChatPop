@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Crown, Pin, Megaphone, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban, Spotlight } from 'lucide-react';
+import { BadgeCheck, Crown, Pin, Megaphone, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban, Spotlight, HatGlasses } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import { ChatRoom, Message, ReactionSummary } from '@/lib/api';
 
@@ -546,8 +546,10 @@ function StickySection({
                     {isSpotlightMsg && (
                       <Spotlight size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                     )}
-                    {message.username_is_reserved && (
+                    {message.username_is_reserved ? (
                       <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
+                    ) : (
+                      <HatGlasses size={12} className="absolute -bottom-0.5 -right-0.5" style={{ color: '#ef4444' }} />
                     )}
                   </div>
                   {/* Content */}
@@ -686,8 +688,10 @@ function StickySection({
                     {stickyPinnedMessage.username.toLowerCase() === chatRoom?.host?.reserved_username?.toLowerCase() && (
                       <Crown size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
                     )}
-                    {stickyPinnedMessage.username_is_reserved && (
+                    {stickyPinnedMessage.username_is_reserved ? (
                       <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
+                    ) : (
+                      <HatGlasses size={12} className="absolute -bottom-0.5 -right-0.5" style={{ color: '#ef4444' }} />
                     )}
                   </div>
                   {/* Content */}

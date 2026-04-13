@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, memo, useMemo, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown, Spotlight, Trash2 } from 'lucide-react';
+import { BadgeCheck, Reply, X, MessageSquare, ChevronLeft, Play, Pause, Volume2, VolumeOff, Crown, Spotlight, Trash2, HatGlasses } from 'lucide-react';
 import type { Message, ChatRoom } from '@/lib/api';
 import VoiceRecorder, { type VoicePreview } from './VoiceRecorder';
 import MediaPicker from './MediaPicker';
@@ -224,8 +224,10 @@ const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(
                     return <span style={{ color }}>{replyingTo.username}</span>;
                   })()}
                 </span>
-                {replyingTo.username_is_reserved && (
+                {replyingTo.username_is_reserved ? (
                   <BadgeCheck size={10} style={{ color: design.badgeIconColor || '#3b82f6' }} />
+                ) : (
+                  <HatGlasses size={10} style={{ color: '#ef4444' }} />
                 )}
                 {replyingTo.is_from_host && (
                   <Crown size={10} fill="currentColor" style={{ color: design.crownIconColor || '#2dd4bf' }} />
@@ -393,8 +395,10 @@ const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(
               ) : (
                 <div className={`w-6 h-6 rounded-full ${inputStyles?.avatarFallbackBg || 'bg-zinc-700'}`} />
               )}
-              {hasReservedUsername && (
+              {hasReservedUsername ? (
                 <BadgeCheck size={10} className="absolute -bottom-0.5 -right-0.5 text-blue-500 bg-zinc-900 rounded-full" />
+              ) : (
+                <HatGlasses size={10} className="absolute -bottom-0.5 -right-0.5" style={{ color: '#ef4444' }} />
               )}
             </div>
           </div>
@@ -501,6 +505,11 @@ const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(
         <div className="flex items-center gap-1 mt-0.5 px-1">
           <span className={`text-[10px] ${inputStyles?.chattingAsText || 'text-zinc-600'} flex items-center gap-0.5`}>
             You are <span className="font-normal text-zinc-500">{username}</span>
+            {hasReservedUsername ? (
+              <BadgeCheck size={10} style={{ color: inputStyles?.badgeIconColor || '#3b82f6' }} />
+            ) : (
+              <HatGlasses size={10} style={{ color: '#ef4444' }} />
+            )}
             {isHost ? (
               <Crown size={10} fill="currentColor" style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />
             ) : isSpotlight && (

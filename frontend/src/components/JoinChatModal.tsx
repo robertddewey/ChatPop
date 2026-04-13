@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Crown, Dices, RotateCcw, Spotlight } from 'lucide-react';
+import { BadgeCheck, Ban, ChevronDown, ChevronLeft, ChevronRight, Crown, Dices, RotateCcw, Spotlight, HatGlasses } from 'lucide-react';
 import type { ChatRoom, AnonymousParticipationInfo } from '@/lib/api';
 import { chatApi, api } from '@/lib/api';
 import { validateUsername } from '@/lib/validation';
@@ -133,7 +133,7 @@ export default function JoinChatModal({
         hasReservedUsername: hasReservedUsername,
       });
     }
-  }, [selectedIdentity, showIdentityChooser]);
+  }, [selectedIdentity, showIdentityChooser, onIdentityChange, anonList, currentUserDisplayName, registeredAvatarUrl, userAvatarUrl, hasReservedUsername]);
 
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const drawerScrollRef = useRef<HTMLDivElement>(null);
@@ -211,7 +211,7 @@ export default function JoinChatModal({
     if (showAvatarChevrons) {
       onAvatarChange?.(getDiceBearUrl(avatarSeeds[avatarIndex]));
     }
-  }, [avatarSeeds, avatarIndex, showAvatarChevrons]);
+  }, [avatarSeeds, avatarIndex, showAvatarChevrons, onAvatarChange]);
 
   // Check if reset button should be enabled (username differs from reserved)
   const isResetEnabled = hasReservedUsername && username.toLowerCase() !== currentUserDisplayName.toLowerCase();
@@ -413,8 +413,10 @@ export default function JoinChatModal({
       <span>Come join us,</span>
       <span className="inline-flex items-center gap-1 whitespace-nowrap">
         {currentUserDisplayName}
-        {hasReservedUsername && (
+        {hasReservedUsername ? (
           <BadgeCheck className="text-blue-500 flex-shrink-0" size={20} />
+        ) : (
+          <HatGlasses className="flex-shrink-0" size={20} style={{ color: '#ef4444' }} />
         )}
       </span>
     </>
@@ -486,7 +488,7 @@ export default function JoinChatModal({
                   key={anon.participation_id || `${anon.username}-${idx}`}
                   type="button"
                   onClick={() => setSelectedIdentity(key)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer ${
                     isSelected
                       ? 'border-cyan-500 bg-cyan-500/10'
                       : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-500'
@@ -505,11 +507,15 @@ export default function JoinChatModal({
                         className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
                       />
                     )}
+                    <HatGlasses size={12} className="absolute -bottom-0.5 -right-0.5" style={{ color: '#ef4444' }} />
                   </div>
                   <div className="text-left min-w-0">
-                    <p className={`font-semibold ${modalStyles.title} truncate`}>
-                      {anon.username}
-                    </p>
+                    <div className="flex items-center gap-1">
+                      <p className={`font-semibold ${modalStyles.title} truncate`}>
+                        {anon.username}
+                      </p>
+                      <HatGlasses className="flex-shrink-0" size={14} style={{ color: '#ef4444' }} />
+                    </div>
                     <p className={`text-xs ${modalStyles.subtitle}`}>
                       Continue anonymously
                     </p>
@@ -527,7 +533,7 @@ export default function JoinChatModal({
             <button
               type="button"
               onClick={() => setSelectedIdentity('registered')}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer ${
                 selectedIdentity === 'registered'
                   ? 'border-cyan-500 bg-cyan-500/10'
                   : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-500'
@@ -548,14 +554,17 @@ export default function JoinChatModal({
                     className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
                   />
                 )}
+                <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: '#3b82f6', backgroundColor: '#18181b' }} />
               </div>
               <div className="text-left min-w-0">
                 <div className="flex items-center gap-1">
                   <p className={`font-semibold ${modalStyles.title} truncate`}>
                     {currentUserDisplayName}
                   </p>
-                  {hasReservedUsername && (
+                  {hasReservedUsername ? (
                     <BadgeCheck className="text-blue-500 flex-shrink-0" size={16} />
+                  ) : (
+                    <HatGlasses className="flex-shrink-0" size={16} style={{ color: '#ef4444' }} />
                   )}
                 </div>
                 <p className={`text-xs ${modalStyles.subtitle}`}>
@@ -574,8 +583,10 @@ export default function JoinChatModal({
           <div className="text-center mb-8">
             <div className="flex items-center justify-center gap-1">
               <p className={`text-sm ${modalStyles.subtitle}`}>You&apos;ll join as: <span className={`font-semibold ${modalStyles.title}`}>{currentUserDisplayName}</span></p>
-              {hasReservedUsername && (
+              {hasReservedUsername ? (
                 <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
+              ) : (
+                <HatGlasses className="flex-shrink-0" size={18} style={{ color: '#ef4444' }} />
               )}
             </div>
           </div>
@@ -635,8 +646,10 @@ export default function JoinChatModal({
               <p className={`text-sm ${modalStyles.subtitle}`}>
                 Rejoining as: <span className={`font-semibold ${modalStyles.title}`}>{username}</span>
               </p>
-              {hasReservedUsername && (
+              {hasReservedUsername ? (
                 <BadgeCheck className="text-blue-500 flex-shrink-0" size={18} />
+              ) : (
+                <HatGlasses className="flex-shrink-0" size={18} style={{ color: '#ef4444' }} />
               )}
             </div>
           </div>
