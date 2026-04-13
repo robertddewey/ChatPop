@@ -186,7 +186,7 @@ function HostPill({ color }: { color?: string }) {
   const c = color || '#2dd4bf';
   return (
     <span
-      className="hidden sm:inline text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
       style={{ backgroundColor: `${c}20`, color: c }}
     >host</span>
   );

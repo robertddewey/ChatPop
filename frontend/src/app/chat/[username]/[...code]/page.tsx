@@ -21,7 +21,7 @@ import MessageInput, { type MessageInputHandle } from '@/components/MessageInput
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Star, Bell, Spotlight } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Star, Bell, Spotlight, ChevronRight } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
@@ -204,7 +204,7 @@ const defaultTheme: ChatTheme = {
   sticky_section: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
   messages_area: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
   messages_area_bg: "",
-  messages_area_container: "bg-zinc-900",
+  messages_area_container: "bg-[#1b1b1f]",
   host_message: "max-w-[calc(100%-2.5%-5rem+5px)] rounded pb-1 font-medium transition-all duration-300",
   sticky_host_message: "w-full rounded-xl px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-zinc-800 font-medium transition-all duration-300",
   host_text: "text-sm text-white",
@@ -2853,9 +2853,21 @@ export default function ChatPage() {
                   >
                     <ArrowLeft size={18} />
                   </button>
-                  <h1 className={`${currentDesign.headerTitle} truncate text-base`}>
-                    #{chatRoom.name.replace(/\s+/g, '')}
-                  </h1>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <img
+                      src={chatRoom.host.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(roomUsername)}&size=80`}
+                      alt={roomUsername}
+                      className="w-6 h-6 rounded-full bg-zinc-700 flex-shrink-0"
+                    />
+                    <span className="inline-flex items-center gap-0.5 bg-purple-900/80 rounded-full pl-2.5 pr-1.5 py-0.5 text-sm font-medium text-purple-200 flex-shrink-0 cursor-pointer">
+                      {chatRoom.host.reserved_username || roomUsername}
+                      <ChevronRight size={14} className="opacity-60" />
+                    </span>
+                    <span className="inline-flex items-center gap-0.5 bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-full pl-2.5 pr-1.5 py-0.5 text-sm font-medium text-zinc-100 cursor-pointer min-w-0">
+                      <span className="truncate">{chatRoom.name.replace(/\s+/g, '')}</span>
+                      <ChevronRight size={14} className="opacity-60 flex-shrink-0" />
+                    </span>
+                  </div>
                 </div>
                 <button
                   className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}

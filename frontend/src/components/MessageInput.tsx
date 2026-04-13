@@ -500,7 +500,7 @@ const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(
       {username && (
         <div className="flex items-center gap-1 mt-0.5 px-1">
           <span className={`text-[10px] ${inputStyles?.chattingAsText || 'text-zinc-600'} flex items-center gap-0.5`}>
-            You are <span className="font-medium">@{username}</span>
+            You are <span className="font-normal text-zinc-500">{username}</span>
             {isHost ? (
               <Crown size={10} fill="currentColor" style={{ color: inputStyles?.crownIconColor || '#2dd4bf' }} />
             ) : isSpotlight && (
