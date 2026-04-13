@@ -767,7 +767,7 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                        <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
+                        {message.username.toLowerCase() !== username.toLowerCase() && <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />}
                         <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
                         {message.username_is_reserved && (
                           <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
