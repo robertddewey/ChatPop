@@ -15,6 +15,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.session_token = None
         self.user_id = None
         self.chat_room_id = None  # UUID, resolved at connect for Redis notification keys
+        self.participation_id = None  # Stable identity for notification tracking
         self.read_only = False
         self.blocked_usernames = set()  # In-memory set for O(1) lookup
 
@@ -76,6 +77,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             else:
                 await self.close(code=4403)  # 4403 = Chat ban
             return
+
+        # Resolve stable participation ID for notification tracking
+        self.participation_id = await self.resolve_participation_id(
+            self.chat_code, self.username, self.user_id, self.session_key
+        )
 
         # Load blocked usernames for registered users
         if self.user_id:
@@ -178,16 +184,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
             # Room notification indicators (Redis SET-based, non-blocking)
-            # Use user_id for registered users, session_key for anonymous
-            actor_identity = self.user_id or self.session_key
-            if self.chat_room_id:
+            # Use participation_id as stable identity (survives session refreshes)
+            if self.chat_room_id and self.participation_id:
                 try:
-                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'messages', actor_user_id=actor_identity)
-                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'focus', actor_user_id=actor_identity)
+                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'messages', actor_user_id=self.participation_id)
+                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'focus', actor_user_id=self.participation_id)
                     if message_data.get('username_is_reserved'):
-                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'verified', actor_user_id=actor_identity)
+                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'verified', actor_user_id=self.participation_id)
                     if message_data.get('message_type') == 'gift':
-                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'gifts', actor_user_id=actor_identity)
+                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'gifts', actor_user_id=self.participation_id)
                 except Exception:
                     pass  # Non-critical
 
@@ -359,6 +364,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'type': 'gift_acknowledged',
             'message_ids': event['message_ids'],
         }))
+
+    @database_sync_to_async
+    def resolve_participation_id(self, chat_code, username, user_id, session_key):
+        """Resolve stable participation ID for notification tracking."""
+        try:
+            from chats.models import ChatParticipation
+            chat_room = ChatRoom.objects.get(code=chat_code)
+            return RoomNotificationCache.resolve_participation_id(
+                chat_room, username=username, user_id=user_id, session_key=session_key
+            )
+        except Exception:
+            return None
 
     @database_sync_to_async
     def resolve_room_id(self, chat_code):

@@ -1521,8 +1521,13 @@ class RoomNotificationCache:
     """
     Redis SET-based room notification indicators.
 
-    Per room type, stores a SET of user_ids who have SEEN the latest content.
-    If user_id is in the set → no notification. If not → notification.
+    Per room type, stores a SET of participation_ids who have SEEN the latest content.
+    If participation_id is in the set → no notification. If not → notification.
+
+    Uses ChatParticipation.id (UUID) as the stable identity — unlike session_key
+    (which can change across page refreshes for anonymous users) or user_id
+    (which is None for anonymous identities), participation_id is stable and
+    unique per identity per chat room.
 
     Keys: room:{room_id}:seen:{room_type}
     TTL: 7 days (content older than that doesn't need notification)
@@ -1542,6 +1547,37 @@ class RoomNotificationCache:
     @classmethod
     def _get_redis_client(cls):
         return cache.client.get_client()
+
+    @classmethod
+    def resolve_participation_id(cls, chat_room, username=None, user_id=None, session_key=None):
+        """Look up the ChatParticipation.id for a user in a room.
+
+        Uses username (most specific), then user_id + is_anonymous_identity=False,
+        then session_key as fallback. Returns str(participation_id) or None.
+        """
+        from chats.models import ChatParticipation
+        try:
+            if username and chat_room:
+                part = ChatParticipation.objects.filter(
+                    chat_room=chat_room, username__iexact=username
+                ).values_list('id', flat=True).first()
+                if part:
+                    return str(part)
+            if user_id and chat_room:
+                part = ChatParticipation.objects.filter(
+                    chat_room=chat_room, user_id=user_id, is_anonymous_identity=False
+                ).values_list('id', flat=True).first()
+                if part:
+                    return str(part)
+            if session_key and chat_room:
+                part = ChatParticipation.objects.filter(
+                    chat_room=chat_room, session_key=session_key
+                ).values_list('id', flat=True).first()
+                if part:
+                    return str(part)
+        except Exception:
+            pass
+        return None
 
     @classmethod
     def mark_new_content(cls, room_id, room_type, actor_user_id=None):

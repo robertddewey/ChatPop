@@ -725,7 +725,7 @@ export default function ChatPage() {
       try {
         const [, { messages: msgs, pinnedMessages, roomNotifications: notifs }] = await Promise.all([
           minDelay,
-          messageApi.getMessages(code, roomUsername, sessionToken || undefined, undefined, undefined)
+          messageApi.getMessages(code, roomUsername, localStorage.getItem(`chat_session_${code}`) || undefined, undefined, undefined)
         ]);
         // Update room notification indicators from server
         if (notifs && Object.keys(notifs).length > 0) {
@@ -764,7 +764,7 @@ export default function ChatPage() {
       try {
         const [, { messages: filtered, pinnedMessages }] = await Promise.all([
           minDelay,
-          messageApi.getMessages(code, roomUsername, sessionToken || undefined, filterParam, filterUser)
+          messageApi.getMessages(code, roomUsername, localStorage.getItem(`chat_session_${code}`) || undefined, filterParam, filterUser)
         ]);
         const pinnedMap = new Map(pinnedMessages.map(pm => [pm.id, pm]));
         const updatedMessages = filtered.map(msg => {
@@ -800,7 +800,7 @@ export default function ChatPage() {
         if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
       });
     });
-  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
+  }, [currentRoom, code, roomUsername, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
 
   // Dismiss a feature intro
   const handleDismissIntro = useCallback((key: string) => {
@@ -821,7 +821,6 @@ export default function ChatPage() {
 
   // Track message actions modal open/close for back button handling
   const messageActionsOpenRef = useRef(false);
-  const ignoringModalPopRef = useRef(false);
   const handleMessageActionsOpenChange = useCallback((open: boolean) => {
     if (open) {
       messageActionsOpenRef.current = true;
@@ -830,11 +829,14 @@ export default function ChatPage() {
     } else if (messageActionsOpenRef.current) {
       messageActionsOpenRef.current = false;
       setMessageActionsOpen(false);
-      // Pop the history entry (unless back button already did it)
-      // Check if current state is our modal entry
+      // Pop the history entry (unless back button already did it).
+      // Use replaceState instead of history.back() — back() scrolls the page
+      // to the saved position from the previous history entry, which on iOS
+      // Safari interferes with keyboard animations triggered in the same
+      // gesture (e.g., Reply action that focuses the input). replaceState
+      // removes the modal marker without triggering navigation or scroll.
       if (window.history.state?.modal === 'message-actions') {
-        ignoringModalPopRef.current = true;
-        window.history.back();
+        window.history.replaceState({ joined: true }, '', window.location.href);
       }
     }
   }, []);
@@ -1507,12 +1509,6 @@ export default function ChatPage() {
   // Listen for back button to handle auth, settings overlay, and chat exit
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      // Ignore popstate triggered by modal's programmatic history.back()
-      if (ignoringModalPopRef.current) {
-        ignoringModalPopRef.current = false;
-        return;
-      }
-
       const path = window.location.pathname;
       if (path.endsWith('/login')) {
         setAuthModeState('login');
@@ -2949,6 +2945,7 @@ export default function ChatPage() {
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
                 handleThankGift={handleThankGift}
+                isHost={previewIsHost ?? isHost}
                 handleHighlightMessage={handleHighlightMessage}
                 handleToggleBroadcast={handleToggleBroadcast}
                 broadcastMessageId={stickyHostMessage?.id || null}

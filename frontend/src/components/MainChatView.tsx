@@ -265,6 +265,7 @@ interface MainChatViewProps {
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
+  isHost: boolean;
   handleHighlightMessage: (messageId: string) => Promise<boolean>;
   handleToggleBroadcast?: (messageId: string) => void;
   broadcastMessageId?: string | null;
@@ -320,6 +321,7 @@ function MainChatView({
   handleTipUser,
   handleSendGift,
   handleThankGift,
+  isHost: isHostProp,
   handleHighlightMessage,
   handleToggleBroadcast,
   broadcastMessageId,
@@ -496,6 +498,7 @@ function MainChatView({
         handleTipUser={handleTipUser}
         handleSendGift={handleSendGift}
         handleThankGift={handleThankGift}
+        isHost={isHostProp}
         handleHighlightMessage={handleHighlightMessage}
         handleToggleBroadcast={handleToggleBroadcast}
         broadcastMessageId={broadcastMessageId}
@@ -656,11 +659,6 @@ function MainChatView({
                       {!isHostMessage && spotlightUsernames?.has(message.username) && (
                         <Spotlight size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                       )}
-                      {message.username_is_reserved ? (
-                        <BadgeCheck size={12} className="absolute -bottom-1 -right-1" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                      ) : (
-                        <HatGlasses size={12} className="absolute -bottom-1 -right-1" style={{ color: '#ef4444' }} />
-                      )}
                     </div>
                   ) : (
                     /* Invisible spacer to maintain alignment */
@@ -673,7 +671,7 @@ function MainChatView({
                   <MessageActionsModal
                   message={message}
                   currentUsername={username}
-                  isHost={chatRoom?.host.id === currentUserId}
+                  isHost={isHostProp}
                   themeIsDarkMode={themeIsDarkMode}
                   sessionToken={sessionToken}
                   themeColors={modalThemeColors}

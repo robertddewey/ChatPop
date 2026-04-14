@@ -395,11 +395,6 @@ const MessageInputComponent = forwardRef<MessageInputHandle, MessageInputProps>(
               ) : (
                 <div className={`w-6 h-6 rounded-full ${inputStyles?.avatarFallbackBg || 'bg-zinc-700'}`} />
               )}
-              {hasReservedUsername ? (
-                <BadgeCheck size={10} className="absolute -bottom-0.5 -right-0.5 text-blue-500 bg-zinc-900 rounded-full" />
-              ) : (
-                <HatGlasses size={10} className="absolute -bottom-0.5 -right-0.5" style={{ color: '#ef4444' }} />
-              )}
             </div>
           </div>
 

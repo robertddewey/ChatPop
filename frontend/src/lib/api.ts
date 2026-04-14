@@ -1394,6 +1394,16 @@ export function isTokenMissingSessionKey(code: string): boolean {
   } catch { return false; }
 }
 
+/** Check if the current session token is for an anonymous identity (no user_id). */
+export function isSessionAnonymous(code: string): boolean {
+  const token = localStorage.getItem(`chat_session_${code}`);
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return !payload.user_id;
+  } catch { return true; }
+}
+
 export const devApi = {
   // Get recent photos for dev photo picker
   getRecentPhotos: async (): Promise<DevRecentPhoto[]> => {

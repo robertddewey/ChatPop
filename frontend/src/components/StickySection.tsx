@@ -169,6 +169,7 @@ interface StickySectionProps {
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
+  isHost: boolean;
   handleHighlightMessage: (messageId: string) => Promise<boolean>;
   handleToggleBroadcast?: (messageId: string) => void;
   broadcastMessageId?: string | null;
@@ -210,6 +211,7 @@ function StickySection({
   handleTipUser,
   handleSendGift,
   handleThankGift,
+  isHost: isHostProp,
   handleHighlightMessage,
   handleToggleBroadcast,
   broadcastMessageId,
@@ -472,7 +474,7 @@ function StickySection({
               key={`sticky-${message.id}`}
               message={message}
               currentUsername={username}
-              isHost={chatRoom?.host.id === currentUserId}
+              isHost={isHostProp}
               themeIsDarkMode={themeIsDarkMode}
               sessionToken={sessionToken}
               themeColors={modalThemeColors}
@@ -642,7 +644,7 @@ function StickySection({
             <MessageActionsModal
               message={stickyPinnedMessage}
               currentUsername={username}
-              isHost={chatRoom?.host.id === currentUserId}
+              isHost={isHostProp}
               themeIsDarkMode={themeIsDarkMode}
               sessionToken={sessionToken}
               themeColors={modalThemeColors}

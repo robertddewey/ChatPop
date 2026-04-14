@@ -507,7 +507,6 @@ export default function JoinChatModal({
                         className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
                       />
                     )}
-                    <HatGlasses size={12} className="absolute -bottom-0.5 -right-0.5" style={{ color: '#ef4444' }} />
                   </div>
                   <div className="text-left min-w-0">
                     <div className="flex items-center gap-1">
@@ -554,7 +553,6 @@ export default function JoinChatModal({
                     className={`absolute -top-1.5 -left-1 ${chatRoom.theme?.spotlight_icon_color || 'text-yellow-400'}`}
                   />
                 )}
-                <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: '#3b82f6', backgroundColor: '#18181b' }} />
               </div>
               <div className="text-left min-w-0">
                 <div className="flex items-center gap-1">

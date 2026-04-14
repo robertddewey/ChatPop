@@ -738,11 +738,13 @@ class MessageListView(APIView):
         # Extract current user's identity from session token (for has_reacted)
         current_session_key = None
         current_user_id = None
+        current_username = None
         if session_token:
             try:
                 session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
                 current_session_key = session_data.get('session_key')
                 current_user_id = session_data.get('user_id')
+                current_username = session_data.get('username')
             except Exception:
                 pass  # Invalid token - just proceed without has_reacted
 
@@ -911,15 +913,18 @@ class MessageListView(APIView):
 
             # Filter messages in Python
             if blocked_usernames:
-                current_username = None
+                # Registered participation username used ONLY for block-filtering logic
+                # (gift-to-me check). Do not use for notification identity — that comes
+                # from the session token's username, which may be an anonymous identity.
+                filter_username = None
                 participation = ChatParticipation.objects.filter(
                     chat_room=chat_room, user=request.user, is_anonymous_identity=False
                 ).first()
                 if participation:
-                    current_username = participation.username
+                    filter_username = participation.username
 
                 blocked_lower = {u.lower() for u in blocked_usernames}
-                current_lower = (current_username or '').lower()
+                current_lower = (filter_username or '').lower()
 
                 def should_show_full(msg):
                     author = msg.get('username', '') or ''
@@ -962,10 +967,13 @@ class MessageListView(APIView):
 
         # Room notification indicators from Redis (O(1) per room, no SQL)
         room_notifications = {}
-        notif_identity = current_user_id or current_session_key
-        if not filter_mode and notif_identity:
+        if not filter_mode and (current_username or current_user_id or current_session_key):
             from .utils.performance.cache import RoomNotificationCache
-            room_notifications = RoomNotificationCache.has_unseen(str(chat_room.id), notif_identity)
+            notif_identity = RoomNotificationCache.resolve_participation_id(
+                chat_room, username=current_username, user_id=current_user_id, session_key=current_session_key
+            )
+            if notif_identity:
+                room_notifications = RoomNotificationCache.has_unseen(str(chat_room.id), notif_identity)
 
         return Response({
             'messages': messages,
@@ -1722,7 +1730,10 @@ class MessageHighlightView(APIView):
             MessageCache.add_to_highlight_index(message)
             # Notify all users (except actor) about new highlight content
             from .utils.performance.cache import RoomNotificationCache
-            RoomNotificationCache.mark_new_content(str(chat_room.id), 'highlight', actor_user_id=user_id)
+            actor_participation_id = RoomNotificationCache.resolve_participation_id(
+                chat_room, username=session_data.get('username'), user_id=user_id
+            )
+            RoomNotificationCache.mark_new_content(str(chat_room.id), 'highlight', actor_user_id=actor_participation_id)
         else:
             MessageCache.remove_from_highlight_index(chat_room.id, str(message.id))
 
@@ -2122,15 +2133,18 @@ class MarkRoomReadView(APIView):
         if room not in RoomNotificationCache.VALID_ROOMS:
             return Response({'error': 'Invalid room'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Identify user: user_id for registered, session_key for anonymous
+        # Identify user by participation ID (stable across session refreshes)
         session_token = request.data.get('session_token')
         identity = None
-        if request.user and request.user.is_authenticated:
-            identity = request.user.id
-        elif session_token:
+        if session_token:
             try:
                 session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
-                identity = session_data.get('user_id') or session_data.get('session_key')
+                identity = RoomNotificationCache.resolve_participation_id(
+                    chat_room,
+                    username=session_data.get('username'),
+                    user_id=session_data.get('user_id'),
+                    session_key=session_data.get('session_key'),
+                )
             except Exception:
                 pass
         if not identity:
@@ -5506,9 +5520,11 @@ class SendGiftView(APIView):
 
         # Room notifications for gift
         from .utils.performance.cache import RoomNotificationCache
-        actor_id = request.user.id if request.user.is_authenticated else None
-        RoomNotificationCache.mark_new_content(str(chat_room.id), 'gifts', actor_user_id=actor_id)
-        RoomNotificationCache.mark_new_content(str(chat_room.id), 'messages', actor_user_id=actor_id)
+        actor_participation_id = RoomNotificationCache.resolve_participation_id(
+            chat_room, username=sender_username, user_id=sender_user_id
+        )
+        RoomNotificationCache.mark_new_content(str(chat_room.id), 'gifts', actor_user_id=actor_participation_id)
+        RoomNotificationCache.mark_new_content(str(chat_room.id), 'messages', actor_user_id=actor_participation_id)
 
         return Response({
             'success': True,

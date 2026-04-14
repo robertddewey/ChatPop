@@ -838,11 +838,6 @@ export default function MessageActionsModal({
                       alt={message.username}
                       className={`w-10 h-10 rounded-full ${themeModalStyles?.avatarFallbackBg || 'bg-zinc-700'}`}
                     />
-                    {message.username_is_reserved ? (
-                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: themeColors?.badgeIcon || '#3b82f6', backgroundColor: themeModalStyles?.badgeIconBg || '#18181b' }} />
-                    ) : (
-                      <HatGlasses size={12} className="absolute -bottom-0.5 -right-0.5" style={{ color: '#ef4444' }} />
-                    )}
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -876,6 +871,11 @@ export default function MessageActionsModal({
                               <span className="ml-1"><SpotlightPill color={themeColors?.spotlightIcon || '#facc15'} /></span>
                               <Spotlight className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.spotlightIcon || '#facc15' }} />
                             </>
+                          )}
+                          {message.username_is_reserved ? (
+                            <BadgeCheck className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.badgeIcon || '#3b82f6' }} />
+                          ) : (
+                            <HatGlasses className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: '#ef4444' }} />
                           )}
                         </>
                       );
