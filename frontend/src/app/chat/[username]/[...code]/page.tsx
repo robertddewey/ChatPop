@@ -666,6 +666,22 @@ export default function ChatPage() {
   // Gift notification state
   const [giftQueue, setGiftQueue] = useState<GiftNotification[]>([]);
 
+  // Clear all per-identity state so switching identities doesn't leak
+  // gifts, notifications, reactions, mutes, reply state, or previous room.
+  // Room-wide state (spotlight, chatRoom, etc.) and registered-account data
+  // (anonymousParticipations, registeredDisplayName) are preserved.
+  const resetIdentityState = useCallback(() => {
+    setGiftQueue([]);
+    setRoomNotifications({ highlight: false, focus: false, gifts: false });
+    setMutedUsernames(new Set());
+    setMessageReactions({});
+    setReplyingTo(null);
+    setMessages([]);
+    setStickyHostMessage(null);
+    setStickyPinnedMsg(null);
+    setCurrentRoom('main');
+  }, []);
+
   // WebSocket state
   const [sessionToken, setSessionToken] = useState<string | null>(null);
 
@@ -1549,9 +1565,8 @@ export default function ChatPage() {
         setHasJoined(false);
         // If user has both identities, show identity chooser again (not "Welcome back")
         setHasJoinedBefore(anonymousParticipations.length > 0 ? false : true);
-        setMessages([]);
-        setStickyHostMessage(null);
-        setStickyPinnedMsg(null);
+        // Clear all per-identity state so the next identity starts fresh
+        resetIdentityState();
         setJoinModalKey(prev => prev + 1);
         // Reset preview state so source-of-truth values are used
         setPreviewIdentity({ username: null, avatarUrl: undefined, hasReservedUsername: null, isHost: null });
@@ -1564,7 +1579,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations, switchRoom]);
+  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations, switchRoom, resetIdentityState]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -1732,6 +1747,11 @@ export default function ChatPage() {
   // Join handler for modal
   const handleJoinChat = async (username: string, accessCode?: string, avatarSeed?: string): Promise<{ error?: string } | void> => {
     try {
+      // Clear any state from a previous identity before joining with this one.
+      // Prevents gift popups, notifications, reactions, etc. from leaking when
+      // switching between registered and anonymous identities on the same device.
+      resetIdentityState();
+
       // Get fingerprint
       let fingerprint: string | undefined;
       try {
@@ -3167,16 +3187,18 @@ export default function ChatPage() {
         </ChatSettingsSheet>
       )}
 
-      {/* Gift Received Popup */}
-      <GiftReceivedPopup
-        gifts={giftQueue}
-        themeIsDarkMode={themeIsDarkMode}
-        onSkipOne={handleDismissGift}
-        onThankOne={handleThankGiftPopup}
-        onSkipAll={handleDismissAllGifts}
-        onThankAll={handleThankAllGifts}
-        onClose={() => setGiftQueue([])}
-      />
+      {/* Gift Received Popup — only when user has joined the chat */}
+      {hasJoined && (
+        <GiftReceivedPopup
+          gifts={giftQueue}
+          themeIsDarkMode={themeIsDarkMode}
+          onSkipOne={handleDismissGift}
+          onThankOne={handleThankGiftPopup}
+          onSkipAll={handleDismissAllGifts}
+          onThankAll={handleThankAllGifts}
+          onClose={() => setGiftQueue([])}
+        />
+      )}
 
       {/* Feature Intro Modals */}
       {showFeatureIntro === 'focus' && (
