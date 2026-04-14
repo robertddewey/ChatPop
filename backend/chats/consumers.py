@@ -2,7 +2,7 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from .utils.security.auth import ChatSessionValidator
-from .utils.performance.cache import MessageCache, UnacknowledgedGiftCache
+from .utils.performance.cache import MessageCache, UnacknowledgedGiftCache, RoomNotificationCache
 from .models import ChatRoom, Message, ChatParticipation, ChatBlock
 from urllib.parse import parse_qs
 
@@ -14,6 +14,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.username = None
         self.session_token = None
         self.user_id = None
+        self.chat_room_id = None  # UUID, resolved at connect for Redis notification keys
+        self.participation_id = None  # Stable identity for notification tracking
         self.read_only = False
         self.blocked_usernames = set()  # In-memory set for O(1) lookup
 
@@ -40,11 +42,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Authenticated connection — full read-write access
         self.read_only = False
 
+        # Resolve chat room ID for notification cache keys
+        self.chat_room_id = await self.resolve_room_id(self.chat_code)
+
         # Validate session token
         try:
             session_data = await self.validate_session(session_token, self.chat_code)
             self.username = session_data['username']
             self.user_id = session_data.get('user_id')
+            self.session_key = session_data.get('session_key')
             self.session_token = session_token
         except Exception as e:
             # Invalid session - reject connection
@@ -71,6 +77,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             else:
                 await self.close(code=4403)  # 4403 = Chat ban
             return
+
+        # Resolve stable participation ID for notification tracking
+        self.participation_id = await self.resolve_participation_id(
+            self.chat_code, self.username, self.user_id, self.session_key
+        )
 
         # Load blocked usernames for registered users
         if self.user_id:
@@ -171,6 +182,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'message_data': message_data,
                 }
             )
+
+            # Room notification indicators (Redis SET-based, non-blocking)
+            # Use participation_id as stable identity (survives session refreshes)
+            if self.chat_room_id and self.participation_id:
+                try:
+                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'messages', actor_user_id=self.participation_id)
+                    RoomNotificationCache.mark_new_content(self.chat_room_id, 'focus', actor_user_id=self.participation_id)
+                    if message_data.get('username_is_reserved'):
+                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'verified', actor_user_id=self.participation_id)
+                    if message_data.get('message_type') == 'gift':
+                        RoomNotificationCache.mark_new_content(self.chat_room_id, 'gifts', actor_user_id=self.participation_id)
+                except Exception:
+                    pass  # Non-critical
 
         except Exception as e:
             error_msg = f"Error saving/broadcasting message: {type(e).__name__}: {str(e)}"
@@ -342,10 +366,31 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }))
 
     @database_sync_to_async
+    def resolve_participation_id(self, chat_code, username, user_id, session_key):
+        """Resolve stable participation ID for notification tracking."""
+        try:
+            from chats.models import ChatParticipation
+            chat_room = ChatRoom.objects.get(code=chat_code)
+            return RoomNotificationCache.resolve_participation_id(
+                chat_room, username=username, user_id=user_id, session_key=session_key
+            )
+        except Exception:
+            return None
+
+    @database_sync_to_async
+    def resolve_room_id(self, chat_code):
+        """Resolve chat code to room UUID for Redis notification keys."""
+        try:
+            return str(ChatRoom.objects.values_list('id', flat=True).get(code=chat_code))
+        except ChatRoom.DoesNotExist:
+            return None
+
+    @database_sync_to_async
     def is_public_chat(self, chat_code):
-        """Check if a chat room is public."""
+        """Check if a chat room is public. Also stores room_id for notification cache."""
         try:
             room = ChatRoom.objects.get(code=chat_code)
+            self.chat_room_id = str(room.id)
             return room.access_mode == ChatRoom.ACCESS_PUBLIC
         except ChatRoom.DoesNotExist:
             return False

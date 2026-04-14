@@ -34,7 +34,7 @@ export default function ChatLayout({
             // This ensures the html/body background matches the chat UI from the start,
             // preventing a black gap in iOS Safari's toolbar areas (which derive their
             // color from the page background).
-            let bgColor = '#09090b';
+            let bgColor = '#18181b';
 
             try {
               var storedTheme = localStorage.getItem('chat_theme_color');
@@ -52,6 +52,36 @@ export default function ChatLayout({
             const style = document.createElement('style');
             style.innerHTML = 'html, body { background-color: ' + bgColor + ' !important; }';
             document.head.appendChild(style);
+
+          })();
+        `}
+      </Script>
+
+      {/* iOS Safari: detect URL bar position and adjust header padding */}
+      <Script id="ios-header-padding" strategy="afterInteractive">
+        {`
+          (function() {
+            function updateHeaderPadding() {
+              var header = document.querySelector('[data-chat-header]');
+              if (!header) return;
+              var chromeHeight = screen.height - window.innerHeight;
+              // Small chrome = URL bar at bottom → add top padding for status bar clearance
+              var topPad = chromeHeight < 120 ? '12px' : '0px';
+              header.style.setProperty('padding-top', topPad, 'important');
+            }
+
+            // Run after DOM is ready and on resize
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', updateHeaderPadding);
+            } else {
+              updateHeaderPadding();
+            }
+            window.addEventListener('resize', updateHeaderPadding);
+            // Also observe for the header appearing (SPA navigation)
+            var observer = new MutationObserver(function() {
+              if (document.querySelector('[data-chat-header]')) updateHeaderPadding();
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
           })();
         `}
       </Script>

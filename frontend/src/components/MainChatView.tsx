@@ -6,10 +6,12 @@
 // bg-gradient-to-t from-purple-500 to-blue-500
 // bg-zinc-900/95 bg-zinc-900/90 border-purple-500/30
 // bg-[#2a1f05] border-[#3d2e0a]
+// bg-[#1a1025] border-purple-800/40
+// pr-[calc(1%+3rem)]
 // bg-yellow-950/40 border-yellow-900/40 hover:bg-yellow-950/60
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Reply, Crown, Pin, Radio, Heart, Star, Megaphone, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown, Ban, Spotlight } from 'lucide-react';
+import { BadgeCheck, Reply, Crown, Pin, Radio, Heart, Star, Megaphone, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown, Ban, Spotlight, HatGlasses } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
@@ -179,7 +181,7 @@ function YouPill({ className }: { className?: string }) {
   );
 }
 
-// "host" pill shown next to host usernames
+// "host" pill shown next to host usernames (hidden on small screens)
 function HostPill({ color }: { color?: string }) {
   const c = color || '#2dd4bf';
   return (
@@ -190,22 +192,22 @@ function HostPill({ color }: { color?: string }) {
   );
 }
 
-// "spotlight" pill shown next to spotlighted users' usernames
+// "spotlight" pill shown next to spotlighted users' usernames (hidden on small screens)
 function SpotlightPill({ color }: { color?: string }) {
   const c = color || '#facc15';
   return (
     <span
-      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      className="hidden sm:inline text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
       style={{ backgroundColor: `${c}20`, color: c }}
     >spotlight</span>
   );
 }
 
-// "banned" pill shown next to banned users' usernames
+// "banned" pill shown next to banned users' usernames (hidden on small screens)
 function BannedPill() {
   return (
     <span
-      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none inline-flex items-center gap-0.5"
+      className="hidden sm:inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none items-center gap-0.5"
       style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
     ><Ban size={9} />banned</span>
   );
@@ -263,6 +265,7 @@ interface MainChatViewProps {
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
+  isHost: boolean;
   handleHighlightMessage: (messageId: string) => Promise<boolean>;
   handleToggleBroadcast?: (messageId: string) => void;
   broadcastMessageId?: string | null;
@@ -280,6 +283,7 @@ interface MainChatViewProps {
   onScrollToBottom?: () => void;
   expandStickySignal?: number;
   hiddenMode?: boolean;
+  onMessageActionsOpenChange?: (open: boolean) => void;
 }
 
 function MainChatView({
@@ -317,6 +321,7 @@ function MainChatView({
   handleTipUser,
   handleSendGift,
   handleThankGift,
+  isHost: isHostProp,
   handleHighlightMessage,
   handleToggleBroadcast,
   broadcastMessageId,
@@ -334,6 +339,7 @@ function MainChatView({
   onScrollToBottom,
   expandStickySignal,
   hiddenMode = false,
+  onMessageActionsOpenChange,
 }: MainChatViewProps) {
   // Local stickyHeight for paddingTop — updated via callback from StickySection
   const [stickyHeight, setStickyHeight] = useState(0);
@@ -492,6 +498,7 @@ function MainChatView({
         handleTipUser={handleTipUser}
         handleSendGift={handleSendGift}
         handleThankGift={handleThankGift}
+        isHost={isHostProp}
         handleHighlightMessage={handleHighlightMessage}
         handleToggleBroadcast={handleToggleBroadcast}
         broadcastMessageId={broadcastMessageId}
@@ -652,9 +659,6 @@ function MainChatView({
                       {!isHostMessage && spotlightUsernames?.has(message.username) && (
                         <Spotlight size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                       )}
-                      {message.username_is_reserved && (
-                        <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
-                      )}
                     </div>
                   ) : (
                     /* Invisible spacer to maintain alignment */
@@ -667,7 +671,7 @@ function MainChatView({
                   <MessageActionsModal
                   message={message}
                   currentUsername={username}
-                  isHost={chatRoom?.host.id === currentUserId}
+                  isHost={isHostProp}
                   themeIsDarkMode={themeIsDarkMode}
                   sessionToken={sessionToken}
                   themeColors={modalThemeColors}
@@ -704,6 +708,7 @@ function MainChatView({
                                                                         onReact={handleReactionToggle}
                   onHighlight={highlightMessage}
                   reactions={messageReactions[message.id] || message.reactions || []}
+                  onOpenChange={onMessageActionsOpenChange}
                 >
                   {/* Username header for first regular message in thread */}
                   {isRegularMessage && isFirstInGroup && (
@@ -738,6 +743,11 @@ function MainChatView({
                             <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                           </>
                         )}
+                        {message.username_is_reserved ? (
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
+                        ) : (
+                          <HatGlasses size={14} style={{ color: '#ef4444' }} />
+                        )}
                         {message.is_banned && <BannedPill />}
                       </div>
                     </div>
@@ -762,8 +772,13 @@ function MainChatView({
                           {message.username}
                         </span>
                         {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                        <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />
+                        {message.username.toLowerCase() !== username.toLowerCase() && <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />}
                         <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
+                        {message.username_is_reserved ? (
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
+                        ) : (
+                          <HatGlasses size={14} style={{ color: '#ef4444' }} />
+                        )}
                         {message.is_banned && <BannedPill />}
                       </div>
                     </div>
@@ -801,6 +816,11 @@ function MainChatView({
                             <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
                             <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                           </>
+                        )}
+                        {message.username_is_reserved ? (
+                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
+                        ) : (
+                          <HatGlasses size={14} style={{ color: '#ef4444' }} />
                         )}
                         {message.is_banned && <BannedPill />}
                       </div>
@@ -957,8 +977,10 @@ function MainChatView({
                           >
                             {message.reply_to_message.username}
                           </span>
-                          {message.reply_to_message.username_is_reserved && (
+                          {message.reply_to_message.username_is_reserved ? (
                             <BadgeCheck size={12} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
+                          ) : (
+                            <HatGlasses size={12} style={{ color: '#ef4444' }} />
                           )}
                           {message.reply_to_message.is_from_host && (
                             <Crown size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />

@@ -553,7 +553,7 @@ export const chatApi = {
 };
 
 export const messageApi = {
-  getMessages: async (code: string, roomUsername?: string, sessionToken?: string, filter?: string, filterUsername?: string): Promise<{ messages: Message[], pinnedMessages: Message[], broadcastMessage: Message | null }> => {
+  getMessages: async (code: string, roomUsername?: string, sessionToken?: string, filter?: string, filterUsername?: string): Promise<{ messages: Message[], pinnedMessages: Message[], broadcastMessage: Message | null, roomNotifications: Record<string, boolean> }> => {
     const params: Record<string, string> = {};
     if (sessionToken) {
       params.session_token = sessionToken;
@@ -571,7 +571,8 @@ export const messageApi = {
     const messages = response.data.messages || response.data.results || response.data;
     const pinnedMessages = response.data.pinned_messages || [];
     const broadcastMessage = response.data.broadcast_message || null;
-    return { messages, pinnedMessages, broadcastMessage };
+    const roomNotifications = response.data.room_notifications || {};
+    return { messages, pinnedMessages, broadcastMessage, roomNotifications };
   },
 
   getMessagesBefore: async (code: string, beforeTimestamp: number, limit: number = 50, roomUsername?: string, filter?: string, filterUsername?: string): Promise<{ messages: Message[], hasMore: boolean }> => {
@@ -828,6 +829,12 @@ export const messageApi = {
   }> => {
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/muted-users/`);
     return response.data;
+  },
+
+  // ===== Room Notifications =====
+  markRoomRead: async (code: string, room: string, roomUsername?: string): Promise<void> => {
+    const sessionToken = typeof window !== 'undefined' ? localStorage.getItem(`chat_session_${code}`) : null;
+    await api.post(`${buildChatUrl(code, roomUsername)}/mark-room-read/`, { room, session_token: sessionToken });
   },
 
   // ===== Spotlight =====
@@ -1385,6 +1392,16 @@ export function isTokenMissingSessionKey(code: string): boolean {
     const payload = JSON.parse(atob(token.split('.')[1]));
     return !payload.session_key && !payload.user_id;
   } catch { return false; }
+}
+
+/** Check if the current session token is for an anonymous identity (no user_id). */
+export function isSessionAnonymous(code: string): boolean {
+  const token = localStorage.getItem(`chat_session_${code}`);
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return !payload.user_id;
+  } catch { return true; }
 }
 
 export const devApi = {

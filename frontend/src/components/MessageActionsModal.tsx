@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Message, ReactionSummary } from '@/lib/api';
-import { Pin, Gift, Ban, ShieldCheck, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Star, Radio, Megaphone, Spotlight } from 'lucide-react';
+import { Pin, Gift, Ban, ShieldCheck, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Star, Radio, Megaphone, Spotlight, HatGlasses } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import ReactionBar from './ReactionBar';
 import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
@@ -106,6 +106,7 @@ interface MessageActionsModalProps {
   emojiPickerStyles?: Record<string, string>;
   giftStyles?: Record<string, string>;
   videoPlayerStyles?: Record<string, string>;
+  onOpenChange?: (isOpen: boolean) => void;
   // Legacy props (deprecated, will be removed)
   onPinSelf?: (messageId: string) => void;
   onPinOther?: (messageId: string) => void;
@@ -268,6 +269,7 @@ export default function MessageActionsModal({
   emojiPickerStyles: themeEmojiPickerStyles,
   giftStyles: themeGiftStyles,
   videoPlayerStyles: themeVideoPlayerStyles,
+  onOpenChange,
   // Legacy props
   onPinSelf,
   onPinOther,
@@ -370,8 +372,18 @@ export default function MessageActionsModal({
     }
   }, [isOpen]);
 
+  // Listen for external close requests (e.g., from back button handler in page.tsx)
+  useEffect(() => {
+    const handleForceClose = () => {
+      if (isOpen) handleClose();
+    };
+    window.addEventListener('close-message-actions', handleForceClose);
+    return () => window.removeEventListener('close-message-actions', handleForceClose);
+  }, [isOpen]);
+
   const handleOpen = () => {
     setIsOpen(true);
+    onOpenChange?.(true);
     setDragOffset(0);
     setIsClosing(false);
     setSlideIn(false);
@@ -399,6 +411,7 @@ export default function MessageActionsModal({
     setIsDragging(false);
     setConfirmAction(null);
     setMuteLockedHint(false);
+    onOpenChange?.(false);
 
     // Wait for transition to complete before removing from DOM
     setTimeout(() => {
@@ -825,9 +838,6 @@ export default function MessageActionsModal({
                       alt={message.username}
                       className={`w-10 h-10 rounded-full ${themeModalStyles?.avatarFallbackBg || 'bg-zinc-700'}`}
                     />
-                    {message.username_is_reserved && (
-                      <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: themeColors?.badgeIcon || '#3b82f6', backgroundColor: themeModalStyles?.badgeIconBg || '#18181b' }} />
-                    )}
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -861,6 +871,11 @@ export default function MessageActionsModal({
                               <span className="ml-1"><SpotlightPill color={themeColors?.spotlightIcon || '#facc15'} /></span>
                               <Spotlight className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.spotlightIcon || '#facc15' }} />
                             </>
+                          )}
+                          {message.username_is_reserved ? (
+                            <BadgeCheck className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.badgeIcon || '#3b82f6' }} />
+                          ) : (
+                            <HatGlasses className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: '#ef4444' }} />
                           )}
                         </>
                       );

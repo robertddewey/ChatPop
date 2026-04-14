@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
-import { BadgeCheck, Crown, Pin, Megaphone, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban, Spotlight } from 'lucide-react';
+import { BadgeCheck, Crown, Pin, Megaphone, Mic, ImageIcon, Video, ChevronUp, CornerDownRight, Ban, Spotlight, HatGlasses } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
 import { ChatRoom, Message, ReactionSummary } from '@/lib/api';
 
@@ -169,6 +169,7 @@ interface StickySectionProps {
   handleTipUser: (username: string) => void;
   handleSendGift: (giftId: string, recipientUsername: string) => Promise<boolean>;
   handleThankGift: (messageId: string) => Promise<boolean>;
+  isHost: boolean;
   handleHighlightMessage: (messageId: string) => Promise<boolean>;
   handleToggleBroadcast?: (messageId: string) => void;
   broadcastMessageId?: string | null;
@@ -210,6 +211,7 @@ function StickySection({
   handleTipUser,
   handleSendGift,
   handleThankGift,
+  isHost: isHostProp,
   handleHighlightMessage,
   handleToggleBroadcast,
   broadcastMessageId,
@@ -472,7 +474,7 @@ function StickySection({
               key={`sticky-${message.id}`}
               message={message}
               currentUsername={username}
-              isHost={chatRoom?.host.id === currentUserId}
+              isHost={isHostProp}
               themeIsDarkMode={themeIsDarkMode}
               sessionToken={sessionToken}
               themeColors={modalThemeColors}
@@ -546,8 +548,10 @@ function StickySection({
                     {isSpotlightMsg && (
                       <Spotlight size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
                     )}
-                    {message.username_is_reserved && (
+                    {message.username_is_reserved ? (
                       <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
+                    ) : (
+                      <HatGlasses size={12} className="absolute -bottom-0.5 -right-0.5" style={{ color: '#ef4444' }} />
                     )}
                   </div>
                   {/* Content */}
@@ -616,9 +620,16 @@ function StickySection({
                     </div>
                   );
                 })() : (
-                  <p className={`text-sm ${textClass} truncate`}>
-                    {message.content}
-                  </p>
+                  <div className="flex items-baseline gap-1 min-w-0">
+                    <p className={`text-sm ${textClass} truncate min-w-0`}>
+                      {message.content}
+                    </p>
+                    {message.reply_to_message && (
+                      <span className={`text-[10px] ${textClass} opacity-40 flex-shrink-0 whitespace-nowrap`}>
+                        in reply to {message.reply_to_message.username}
+                      </span>
+                    )}
+                  </div>
                 )}
                   </div>
                 </div>
@@ -633,7 +644,7 @@ function StickySection({
             <MessageActionsModal
               message={stickyPinnedMessage}
               currentUsername={username}
-              isHost={chatRoom?.host.id === currentUserId}
+              isHost={isHostProp}
               themeIsDarkMode={themeIsDarkMode}
               sessionToken={sessionToken}
               themeColors={modalThemeColors}
@@ -679,8 +690,10 @@ function StickySection({
                     {stickyPinnedMessage.username.toLowerCase() === chatRoom?.host?.reserved_username?.toLowerCase() && (
                       <Crown size={14} fill="currentColor" className="absolute -top-1.5 -left-1" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf', transform: 'rotate(-30deg)' }} />
                     )}
-                    {stickyPinnedMessage.username_is_reserved && (
+                    {stickyPinnedMessage.username_is_reserved ? (
                       <BadgeCheck size={12} className="absolute -bottom-0.5 -right-0.5 rounded-full" style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6', backgroundColor: currentDesign.uiStyles?.badgeIconBg || '#18181b' }} />
+                    ) : (
+                      <HatGlasses size={12} className="absolute -bottom-0.5 -right-0.5" style={{ color: '#ef4444' }} />
                     )}
                   </div>
                   {/* Content */}
@@ -698,7 +711,7 @@ function StickySection({
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${
                     currentDesign.uiStyles?.pinBadgeBg || 'bg-white/10'
                   }`}>
-                    <Pin size={12} style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
+                    <Pin size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
                     <span className={`text-xs font-medium ${currentDesign.pinnedText}`}>
                       ${stickyPinnedMessage.current_pin_amount}
                     </span>
@@ -753,9 +766,16 @@ function StickySection({
                     </div>
                   );
                 })() : (
-                  <p className={`text-sm ${currentDesign.pinnedText} truncate`}>
-                    {stickyPinnedMessage.content}
-                  </p>
+                  <div className="flex items-baseline gap-1 min-w-0">
+                    <p className={`text-sm ${currentDesign.pinnedText} truncate min-w-0`}>
+                      {stickyPinnedMessage.content}
+                    </p>
+                    {stickyPinnedMessage.reply_to_message && (
+                      <span className={`text-[10px] ${currentDesign.pinnedText} opacity-40 flex-shrink-0 whitespace-nowrap`}>
+                        in reply to {stickyPinnedMessage.reply_to_message.username}
+                      </span>
+                    )}
+                  </div>
                 )}
                   </div>
                 </div>

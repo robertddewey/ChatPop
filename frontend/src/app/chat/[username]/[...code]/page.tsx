@@ -21,7 +21,7 @@ import MessageInput, { type MessageInputHandle } from '@/components/MessageInput
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Star, Bell, Spotlight } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Star, Bell, Spotlight, ChevronRight } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
@@ -204,7 +204,7 @@ const defaultTheme: ChatTheme = {
   sticky_section: "absolute top-0 left-0 right-0 z-20 border-b border-zinc-800 bg-zinc-900/90 px-4 py-2 space-y-2 shadow-lg",
   messages_area: "absolute inset-0 overflow-y-auto px-4 py-4 space-y-2",
   messages_area_bg: "",
-  messages_area_container: "bg-zinc-900",
+  messages_area_container: "bg-[#1b1b1f]",
   host_message: "max-w-[calc(100%-2.5%-5rem+5px)] rounded pb-1 font-medium transition-all duration-300",
   sticky_host_message: "w-full rounded-xl px-3 py-2 pr-[calc(2.5%+5rem-5px)] bg-zinc-800 font-medium transition-all duration-300",
   host_text: "text-sm text-white",
@@ -451,10 +451,16 @@ export default function ChatPage() {
   const [joinError, setJoinError] = useState('');
 
   // Preview state for identity chooser — keeps source-of-truth untouched
-  const [previewUsername, setPreviewUsername] = useState<string | null>(null);
-  const [previewAvatarUrl, setPreviewAvatarUrl] = useState<string | null | undefined>(undefined);
-  const [previewHasReservedUsername, setPreviewHasReservedUsername] = useState<boolean | null>(null);
-  const [previewIsHost, setPreviewIsHost] = useState<boolean | null>(null);
+  const [previewIdentity, setPreviewIdentity] = useState<{
+    username: string | null;
+    avatarUrl: string | null | undefined;
+    hasReservedUsername: boolean | null;
+    isHost: boolean | null;
+  }>({ username: null, avatarUrl: undefined, hasReservedUsername: null, isHost: null });
+  const previewUsername = previewIdentity.username;
+  const previewAvatarUrl = previewIdentity.avatarUrl;
+  const previewHasReservedUsername = previewIdentity.hasReservedUsername;
+  const previewIsHost = previewIdentity.isHost;
 
   // Scroll-to-bottom indicator
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -475,6 +481,8 @@ export default function ChatPage() {
   const [currentRoom, setCurrentRoom] = useState<Room>('main');
   const [previousRoom, setPreviousRoom] = useState<Room>('main');
   const [roomLoading, setRoomLoading] = useState(false);
+  const currentRoomRef = useRef<Room>(currentRoom);
+  useEffect(() => { currentRoomRef.current = currentRoom; }, [currentRoom]);
 
   // Feature intro tracking
   const [seenIntros, setSeenIntros] = useState<Record<string, boolean>>({});
@@ -603,6 +611,13 @@ export default function ChatPage() {
 
   // Spotlight state — host-curated featured users (visible to all)
   const [spotlightUsernames, setSpotlightUsernames] = useState<Set<string>>(new Set());
+  const spotlightUsernamesRef = useRef<Set<string>>(spotlightUsernames);
+  useEffect(() => { spotlightUsernamesRef.current = spotlightUsernames; }, [spotlightUsernames]);
+
+  // Room notification indicators (has new messages since last viewed)
+  const [roomNotifications, setRoomNotifications] = useState<Record<string, boolean>>({
+    highlight: false, focus: false, gifts: false
+  });
 
   // Shared mute-filter helper matching the rules in filteredMessages.applyMute.
   // Returns the message if it should render, or null if it should be hidden.
@@ -646,9 +661,26 @@ export default function ChatPage() {
 
   // Settings sheet state
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [messageActionsOpen, setMessageActionsOpen] = useState(false);
 
   // Gift notification state
   const [giftQueue, setGiftQueue] = useState<GiftNotification[]>([]);
+
+  // Clear all per-identity state so switching identities doesn't leak
+  // gifts, notifications, reactions, mutes, reply state, or previous room.
+  // Room-wide state (spotlight, chatRoom, etc.) and registered-account data
+  // (anonymousParticipations, registeredDisplayName) are preserved.
+  const resetIdentityState = useCallback(() => {
+    setGiftQueue([]);
+    setRoomNotifications({ highlight: false, focus: false, gifts: false });
+    setMutedUsernames(new Set());
+    setMessageReactions({});
+    setReplyingTo(null);
+    setMessages([]);
+    setStickyHostMessage(null);
+    setStickyPinnedMsg(null);
+    setCurrentRoom('main');
+  }, []);
 
   // WebSocket state
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -686,15 +718,35 @@ export default function ChatPage() {
     setCurrentRoom(target);
     setHasMoreMessages(true);
     setReplyingTo(null);
-    window.history.replaceState({ room: target }, '', window.location.href);
+
+    // Push history for sub-rooms so back button returns to main
+    if (target !== 'main') {
+      window.history.pushState({ room: target }, '', window.location.href);
+    } else {
+      window.history.replaceState({ room: 'main' }, '', window.location.href);
+    }
+
+    // Clear notification for target room and mark as read on server (fire-and-forget)
+    if (target !== 'main' && target !== 'backroom') {
+      setRoomNotifications(prev => ({ ...prev, [target]: false }));
+      messageApi.markRoomRead(code, target, roomUsername).catch(() => {});
+    }
 
     const filterParam = getRoomFilter(target);
     const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
 
     if (target === 'main') {
-      // Main room: fetch fresh (no firehose caching)
+      // Main room: fetch fresh with minimum loading delay
+      const minDelay = new Promise(resolve => setTimeout(resolve, 500));
       try {
-        const { messages: msgs, pinnedMessages } = await messageApi.getMessages(code, roomUsername, sessionToken || undefined, undefined, undefined);
+        const [, { messages: msgs, pinnedMessages, roomNotifications: notifs }] = await Promise.all([
+          minDelay,
+          messageApi.getMessages(code, roomUsername, localStorage.getItem(`chat_session_${code}`) || undefined, undefined, undefined)
+        ]);
+        // Update room notification indicators from server
+        if (notifs && Object.keys(notifs).length > 0) {
+          setRoomNotifications(prev => ({ ...prev, ...notifs }));
+        }
         const pinnedMap = new Map(pinnedMessages.map(pm => [pm.id, pm]));
         const updatedMessages = msgs.map(msg => {
           const pinnedVersion = pinnedMap.get(msg.id);
@@ -728,7 +780,7 @@ export default function ChatPage() {
       try {
         const [, { messages: filtered, pinnedMessages }] = await Promise.all([
           minDelay,
-          messageApi.getMessages(code, roomUsername, sessionToken || undefined, filterParam, filterUser)
+          messageApi.getMessages(code, roomUsername, localStorage.getItem(`chat_session_${code}`) || undefined, filterParam, filterUser)
         ]);
         const pinnedMap = new Map(pinnedMessages.map(pm => [pm.id, pm]));
         const updatedMessages = filtered.map(msg => {
@@ -764,20 +816,46 @@ export default function ChatPage() {
         if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
       });
     });
-  }, [currentRoom, code, roomUsername, sessionToken, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
+  }, [currentRoom, code, roomUsername, username, getRoomFilter, isSeparateViewRoom, seenIntros]);
 
   // Dismiss a feature intro
   const handleDismissIntro = useCallback((key: string) => {
     setShowFeatureIntro(null);
     setSeenIntros(prev => ({ ...prev, [key]: true }));
+    // Mark spotlight intro as seen in localStorage
+    if (key === 'spotlight_first_time' && username) {
+      localStorage.setItem(`spotlight_seen:${code}:${username}`, 'true');
+    }
     // Inline API call to avoid webpack chunk caching issues with chatApi.dismissIntro
-    const username = roomUsername || 'discover';
-    api.post(`/api/chats/${username}/${code}/intros/${key}/dismiss/`, { fingerprint })
+    const uname = roomUsername || 'discover';
+    api.post(`/api/chats/${uname}/${code}/intros/${key}/dismiss/`, { fingerprint })
       .catch(err => console.error('[FeatureIntro] Dismiss failed:', err));
-  }, [code, fingerprint, roomUsername]);
+  }, [code, fingerprint, roomUsername, username]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Track message actions modal open/close for back button handling
+  const messageActionsOpenRef = useRef(false);
+  const handleMessageActionsOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      messageActionsOpenRef.current = true;
+      setMessageActionsOpen(true);
+      window.history.pushState({ modal: 'message-actions' }, '', window.location.href);
+    } else if (messageActionsOpenRef.current) {
+      messageActionsOpenRef.current = false;
+      setMessageActionsOpen(false);
+      // Pop the history entry (unless back button already did it).
+      // Use replaceState instead of history.back() — back() scrolls the page
+      // to the saved position from the previous history entry, which on iOS
+      // Safari interferes with keyboard animations triggered in the same
+      // gesture (e.g., Reply action that focuses the input). replaceState
+      // removes the modal marker without triggering navigation or scroll.
+      if (window.history.state?.modal === 'message-actions') {
+        window.history.replaceState({ joined: true }, '', window.location.href);
+      }
+    }
+  }, []);
 
   // Handle incoming WebSocket messages
   const handleWebSocketMessage = useCallback((message: Message) => {
@@ -794,6 +872,25 @@ export default function ChatPage() {
     // Play receive sound only when someone replies to YOUR message (not their own)
     if (message.reply_to_message?.username === username && message.username !== username) {
       playReceiveMessageSound();
+    }
+
+    // Update room notification indicators for non-active rooms (skip own messages)
+    if (message.username !== username) {
+      const room = currentRoomRef.current;
+      if (room !== 'highlight' && message.is_highlight) {
+        setRoomNotifications(prev => prev.highlight ? prev : { ...prev, highlight: true });
+      }
+      if (room !== 'gifts' && message.message_type === 'gift' &&
+          message.gift_recipient?.toLowerCase() === username?.toLowerCase()) {
+        setRoomNotifications(prev => prev.gifts ? prev : { ...prev, gifts: true });
+      }
+      if (room !== 'focus') {
+        if (message.is_from_host ||
+            message.reply_to_message?.username?.toLowerCase() === username?.toLowerCase() ||
+            spotlightUsernamesRef.current.has(message.username)) {
+          setRoomNotifications(prev => prev.focus ? prev : { ...prev, focus: true });
+        }
+      }
     }
   }, [username]);
 
@@ -910,6 +1007,10 @@ export default function ChatPage() {
           : msg
       ));
     }
+    // Update notification for highlight room (skip if I'm the host — I caused the action)
+    if (isHighlight && currentRoomRef.current !== 'highlight' && !isHostRef.current) {
+      setRoomNotifications(prev => prev.highlight ? prev : { ...prev, highlight: true });
+    }
     // NOTE: highlight no longer touches sticky — broadcast is independent
   }, []);
 
@@ -966,7 +1067,17 @@ export default function ChatPage() {
         else next.delete(spotlightUsername);
         return next;
       });
-    }, []),
+      if (spotlightUsername.toLowerCase() === username?.toLowerCase()) {
+        const key = `spotlight_seen:${code}:${username}`;
+        if (action === 'add') {
+          localStorage.setItem(key, 'false');
+          setShowFeatureIntro('spotlight_first_time');
+        } else {
+          // Clear so re-spotlighting triggers the modal again
+          localStorage.removeItem(key);
+        }
+      }
+    }, [username, code]),
     onVisibilityChange: handleVisibilityChange,
     enabled: hasJoined || (!!chatRoom && chatRoom.access_mode === 'public'),
   });
@@ -993,12 +1104,22 @@ export default function ChatPage() {
     messageApi
       .getSpotlightUsers(code, roomUsername)
       .then((data) => {
-        setSpotlightUsernames(new Set(data.spotlight_users.map((u) => u.username)));
+        const usernames = new Set(data.spotlight_users.map((u) => u.username));
+        setSpotlightUsernames(usernames);
+        // Show intro if user was spotlighted while offline (hasn't seen it yet)
+        // Only after joining — not on the join page
+        if (hasJoined && username && usernames.has(username)) {
+          const key = `spotlight_seen:${code}:${username}`;
+          if (localStorage.getItem(key) !== 'true') {
+            localStorage.setItem(key, 'false');
+            setShowFeatureIntro('spotlight_first_time');
+          }
+        }
       })
       .catch((err) => {
         console.error('Failed to load spotlight users', err);
       });
-  }, [chatRoom, code, roomUsername]);
+  }, [chatRoom, code, roomUsername, username, hasJoined]);
 
   // Spotlight handlers (host only)
   const handleSpotlightAdd = useCallback(async (targetUsername: string) => {
@@ -1014,14 +1135,6 @@ export default function ChatPage() {
     }
   }, [code, roomUsername]);
 
-  // Show intro overlay when current user gets spotlighted (first time only)
-  useEffect(() => {
-    if (!username) return;
-    if (!hasJoined) return;
-    if (!spotlightUsernames.has(username)) return;
-    if (seenIntros.spotlight_first_time) return;
-    setShowFeatureIntro('spotlight_first_time');
-  }, [spotlightUsernames, username, hasJoined, seenIntros]);
 
   const handleSpotlightRemove = useCallback(async (targetUsername: string) => {
     try {
@@ -1087,7 +1200,7 @@ export default function ChatPage() {
     // changes. A <style> tag in <head> with !important persists independently
     // of React and ensures iOS Safari's toolbar areas match the chat background.
     // Inject a <style> tag for dynamic body background updates from the theme.
-    // The CSS file (chat-layout.css) sets a default #18181b. This tag allows
+    // The CSS file (chat-layout.css) sets a default #1a1025. This tag allows
     // the theme useEffect to update it when the actual theme color loads.
     const styleEl = document.createElement('style');
     styleEl.id = 'chat-bg-override';
@@ -1413,8 +1526,6 @@ export default function ChatPage() {
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       const path = window.location.pathname;
-
-      // Auth navigation: going back/forward between /login, /signup, and base chat URL
       if (path.endsWith('/login')) {
         setAuthModeState('login');
         return;
@@ -1427,31 +1538,38 @@ export default function ChatPage() {
         return;
       }
 
-      // If settings sheet is open, close it (settings uses pushState)
-      if (showSettingsSheet) {
-        setShowSettingsSheet(false);
+      // If message actions modal is open, close it
+      if (messageActionsOpenRef.current) {
+        window.dispatchEvent(new Event('close-message-actions'));
+        messageActionsOpenRef.current = false;
+        setMessageActionsOpen(false);
+        window.history.pushState({ joined: true }, '', window.location.href);
         return;
       }
 
-      // Back button exits chat entirely (rooms use replaceState, no unwinding needed)
-      // Reset to main room as part of exit
+      // If settings sheet is open, close it (settings uses pushState)
+      if (showSettingsSheet) {
+        setShowSettingsSheet(false);
+        window.history.pushState({ joined: true }, '', window.location.href);
+        return;
+      }
+
+      // If in a sub-room, back returns to main (don't exit chat)
       if (currentRoom !== 'main') {
-        setCurrentRoom('main');
+        switchRoom('main');
+        window.history.pushState({ joined: true }, '', window.location.href);
+        return;
       }
 
       if (hasJoined) {
         setHasJoined(false);
         // If user has both identities, show identity chooser again (not "Welcome back")
         setHasJoinedBefore(anonymousParticipations.length > 0 ? false : true);
-        setMessages([]);
-        setStickyHostMessage(null);
-        setStickyPinnedMsg(null);
+        // Clear all per-identity state so the next identity starts fresh
+        resetIdentityState();
         setJoinModalKey(prev => prev + 1);
         // Reset preview state so source-of-truth values are used
-        setPreviewUsername(null);
-        setPreviewAvatarUrl(undefined);
-        setPreviewHasReservedUsername(null);
-        setPreviewIsHost(null);
+        setPreviewIdentity({ username: null, avatarUrl: undefined, hasReservedUsername: null, isHost: null });
         window.history.pushState({ modal: true }, '', window.location.href);
       } else {
         markChatVisited(code);
@@ -1461,7 +1579,7 @@ export default function ChatPage() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations]);
+  }, [hasJoined, showSettingsSheet, currentRoom, router, code, authModeState, anonymousParticipations, switchRoom, resetIdentityState]);
 
   // No theme switching - body background set in layout.tsx
 
@@ -1500,7 +1618,12 @@ export default function ChatPage() {
       // Pass filter params when in focus/gifts room
       const filterParam = getRoomFilter(currentRoom);
       const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
-      const { messages: msgs, pinnedMessages, broadcastMessage } = await messageApi.getMessages(code, roomUsername, currentSessionToken, filterParam, filterUser);
+      const { messages: msgs, pinnedMessages, broadcastMessage, roomNotifications: notifs } = await messageApi.getMessages(code, roomUsername, currentSessionToken, filterParam, filterUser);
+
+      // Update room notification indicators from server (only on main room / initial load)
+      if (notifs && Object.keys(notifs).length > 0) {
+        setRoomNotifications(prev => ({ ...prev, ...notifs }));
+      }
 
       // Create a map of pinned messages for quick lookup
       const pinnedMap = new Map(pinnedMessages.map(pm => [pm.id, pm]));
@@ -1624,6 +1747,11 @@ export default function ChatPage() {
   // Join handler for modal
   const handleJoinChat = async (username: string, accessCode?: string, avatarSeed?: string): Promise<{ error?: string } | void> => {
     try {
+      // Clear any state from a previous identity before joining with this one.
+      // Prevents gift popups, notifications, reactions, etc. from leaking when
+      // switching between registered and anonymous identities on the same device.
+      resetIdentityState();
+
       // Get fingerprint
       let fingerprint: string | undefined;
       try {
@@ -2424,6 +2552,18 @@ export default function ChatPage() {
   const isHost = useMemo(() => {
     return !!(currentUserId && chatRoom && chatRoom.host.id === currentUserId);
   }, [currentUserId, chatRoom]);
+  const isHostRef = useRef(isHost);
+  useEffect(() => { isHostRef.current = isHost; }, [isHost]);
+
+  // Identity change handler for join modal (batched into single state update)
+  const handleIdentityChange = useCallback((identity: { username: string; avatarUrl: string | null; hasReservedUsername: boolean }) => {
+    setPreviewIdentity({
+      username: identity.username,
+      avatarUrl: identity.avatarUrl,
+      hasReservedUsername: identity.hasReservedUsername,
+      isHost: identity.hasReservedUsername ? isHost : false,
+    });
+  }, [isHost]);
 
   // Auto-remove expired pins from sticky section
   useEffect(() => {
@@ -2742,9 +2882,23 @@ export default function ChatPage() {
                   >
                     <ArrowLeft size={18} />
                   </button>
-                  <h1 className={`${currentDesign.headerTitle} truncate text-base`}>
-                    <span className="text-sm opacity-50 relative -top-px">@{roomUsername}&apos;s</span> #{chatRoom.name.replace(/\s+/g, '')}
-                  </h1>
+                  <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                    <img
+                      src={chatRoom.host.avatar_url || `https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(roomUsername)}&size=80`}
+                      alt={roomUsername}
+                      className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-zinc-700 flex-shrink-0"
+                    />
+                    <span className="inline-flex items-center gap-0.5 bg-purple-900/80 rounded-full pl-2 pr-1 sm:pl-2.5 sm:pr-1.5 py-0.5 text-xs sm:text-sm font-medium text-purple-200 flex-shrink-0 cursor-pointer">
+                      {chatRoom.host.reserved_username || roomUsername}
+                      <ChevronRight size={12} className="opacity-60 sm:hidden" />
+                      <ChevronRight size={14} className="opacity-60 hidden sm:block" />
+                    </span>
+                    <span className="inline-flex items-center gap-0.5 bg-zinc-800 hover:bg-zinc-700 transition-colors rounded-full pl-2 pr-1 sm:pl-2.5 sm:pr-1.5 py-0.5 text-xs sm:text-sm font-medium text-zinc-100 cursor-pointer min-w-0">
+                      <span className="truncate">{chatRoom.name.replace(/\s+/g, '')}</span>
+                      <ChevronRight size={12} className="opacity-60 flex-shrink-0 sm:hidden" />
+                      <ChevronRight size={14} className="opacity-60 flex-shrink-0 hidden sm:block" />
+                    </span>
+                  </div>
                 </div>
                 <button
                   className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle}`}
@@ -2811,6 +2965,7 @@ export default function ChatPage() {
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
                 handleThankGift={handleThankGift}
+                isHost={previewIsHost ?? isHost}
                 handleHighlightMessage={handleHighlightMessage}
                 handleToggleBroadcast={handleToggleBroadcast}
                 broadcastMessageId={stickyHostMessage?.id || null}
@@ -2824,6 +2979,7 @@ export default function ChatPage() {
                 showScrollToBottom={showScrollToBottom}
                 onScrollToBottom={handleScrollToBottom}
                 expandStickySignal={expandStickySignal}
+                onMessageActionsOpenChange={handleMessageActionsOpenChange}
               />
 
             {/* Join Modal - inline overlay within messages area */}
@@ -2843,12 +2999,7 @@ export default function ChatPage() {
                   spotlightUsernames={spotlightUsernames}
                   registeredAvatarUrl={registeredAvatarUrl}
                   onAvatarChange={setUserAvatarUrl}
-                  onIdentityChange={(identity) => {
-                    setPreviewUsername(identity.username);
-                    setPreviewAvatarUrl(identity.avatarUrl);
-                    setPreviewHasReservedUsername(identity.hasReservedUsername);
-                    setPreviewIsHost(identity.hasReservedUsername ? isHost : false);
-                  }}
+                  onIdentityChange={handleIdentityChange}
                   onJoin={handleJoinChat}
                   onLogin={() => openAuth('login')}
                   onSignup={() => openAuth('signup')}
@@ -2902,45 +3053,40 @@ export default function ChatPage() {
               <FloatingActionButton
                 inline
                 icon={Star}
-                toggledIcon={MessageSquare}
                 onClick={() => switchRoom(currentRoom === 'highlight' ? 'main' : 'highlight')}
                 isToggled={currentRoom === 'highlight'}
+                hasNotification={roomNotifications.highlight}
                 ariaLabel="Star Room"
-                toggledAriaLabel="Show All Messages"
                 design={'dark-mode'}
               />
               {/* Focus Filter */}
               <FloatingActionButton
                 inline
                 icon={Eye}
-                toggledIcon={MessageSquare}
                 onClick={() => switchRoom(currentRoom === 'focus' ? 'main' : 'focus')}
                 isToggled={currentRoom === 'focus'}
+                hasNotification={roomNotifications.focus}
                 ariaLabel="Focus Mode"
-                toggledAriaLabel="Show All Messages"
                 design={'dark-mode'}
               />
               {/* Gift Filter */}
               <FloatingActionButton
                 inline
                 icon={Gift}
-                toggledIcon={MessageSquare}
                 onClick={() => switchRoom(currentRoom === 'gifts' ? 'main' : 'gifts')}
                 isToggled={currentRoom === 'gifts'}
+                hasNotification={roomNotifications.gifts}
                 ariaLabel="Filter Gifts"
-                toggledAriaLabel="Show All Messages"
                 design={'dark-mode'}
               />
               {/* Game Room Tab */}
               <FloatingActionButton
                 inline
                 icon={Gamepad2}
-                toggledIcon={MessageSquare}
                 onClick={() => switchRoom(currentRoom === 'backroom' ? 'main' : 'backroom')}
                 isToggled={currentRoom === 'backroom'}
                 hasNotification={false}
                 ariaLabel="Open Game Room"
-                toggledAriaLabel="Return to Main Chat"
                 design={'dark-mode'}
               />
               {/* Settings Button */}
@@ -2965,7 +3111,7 @@ export default function ChatPage() {
       </div>
 
       {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms) */}
-      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && (
+      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && currentRoom !== 'gifts' && (
         <div className="relative">
           <div className={!hasJoined ? 'opacity-50' : ''}>
             <MessageInput
@@ -2987,8 +3133,6 @@ export default function ChatPage() {
               onVoiceRecording={handleVoiceRecording}
               onPhotoSelected={handlePhotoSelected}
               onVideoSelected={handleVideoSelected}
-              disabled={currentRoom === 'gifts'}
-              disabledMessage="Viewing gift history"
               spotlightUsernames={spotlightUsernames}
               design={messageInputDesign}
             />
@@ -3043,16 +3187,18 @@ export default function ChatPage() {
         </ChatSettingsSheet>
       )}
 
-      {/* Gift Received Popup */}
-      <GiftReceivedPopup
-        gifts={giftQueue}
-        themeIsDarkMode={themeIsDarkMode}
-        onSkipOne={handleDismissGift}
-        onThankOne={handleThankGiftPopup}
-        onSkipAll={handleDismissAllGifts}
-        onThankAll={handleThankAllGifts}
-        onClose={() => setGiftQueue([])}
-      />
+      {/* Gift Received Popup — only when user has joined the chat */}
+      {hasJoined && (
+        <GiftReceivedPopup
+          gifts={giftQueue}
+          themeIsDarkMode={themeIsDarkMode}
+          onSkipOne={handleDismissGift}
+          onThankOne={handleThankGiftPopup}
+          onSkipAll={handleDismissAllGifts}
+          onThankAll={handleThankAllGifts}
+          onClose={() => setGiftQueue([])}
+        />
+      )}
 
       {/* Feature Intro Modals */}
       {showFeatureIntro === 'focus' && (

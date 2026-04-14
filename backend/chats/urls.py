@@ -4,7 +4,7 @@ from .views import (
     ChatConfigView, NearbyDiscoverableChatsView,
     MessageListView, MessageCreateView, MessagePinView, AddToPinView, MessageHighlightView, BroadcastStickyView, MessageDeleteView, MessageUnpinView, PinTiersView,
     UsernameValidationView, MyParticipationView, UpdateMyThemeView, SuggestUsernameView,
-    DismissIntroView,
+    DismissIntroView, MarkRoomReadView,
     VoiceUploadView, VoiceStreamView, PhotoUploadView, VideoUploadView, UserAvatarView,
     MessageReactionToggleView, MessageReactionsListView,
     BlockUserView, UnblockUserView, BlockedUsersListView, MutedUsersInChatView,
@@ -89,6 +89,7 @@ urlpatterns = [
     path('discover/<str:code>/gifts/send/', SendGiftView.as_view(), name='gift-send-ai'),
     path('discover/<str:code>/gifts/acknowledge/', AcknowledgeGiftView.as_view(), name='gift-acknowledge-ai'),
     path('discover/<str:code>/intros/<str:key>/dismiss/', DismissIntroView.as_view(), name='dismiss-intro-ai'),
+    path('discover/<str:code>/mark-room-read/', MarkRoomReadView.as_view(), name='mark-room-read-ai'),
     path('discover/<str:code>/refresh-session/', RefreshSessionView.as_view(), name='refresh-session-ai'),
 
     # Manual Rooms (user-namespaced, /{username}/{code}/)
@@ -126,5 +127,6 @@ urlpatterns = [
     path('<str:username>/<str:code>/gifts/send/', SendGiftView.as_view(), name='gift-send'),
     path('<str:username>/<str:code>/gifts/acknowledge/', AcknowledgeGiftView.as_view(), name='gift-acknowledge'),
     path('<str:username>/<str:code>/intros/<str:key>/dismiss/', DismissIntroView.as_view(), name='dismiss-intro'),
+    path('<str:username>/<str:code>/mark-room-read/', MarkRoomReadView.as_view(), name='mark-room-read'),
     path('<str:username>/<str:code>/refresh-session/', RefreshSessionView.as_view(), name='refresh-session'),
 ]
