@@ -17,7 +17,7 @@ import FeatureIntroModal from '@/components/FeatureIntroModal';
 import LoginModal, { LoginFormContent } from '@/components/LoginModal';
 import RegisterModal, { RegisterFormContent } from '@/components/RegisterModal';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
-import MessagePreviewModal from '@/components/MessagePreviewModal';
+import FocusMessagePanel from '@/components/FocusMessagePanel';
 import { getIconColor as getThemeIconColor, getTextColor as getThemeTextColor } from '@/lib/themeColors';
 import MessageInput, { type MessageInputHandle } from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
@@ -490,16 +490,38 @@ export default function ChatPage() {
   const [seenIntros, setSeenIntros] = useState<Record<string, boolean>>({});
   const [showFeatureIntro, setShowFeatureIntro] = useState<string | null>(null);
 
-  // Message preview popup — used when the user taps a reply preview or a
-  // sticky message's jump button. Replaces the old "scroll to message" UX
-  // which silently failed when the target was outside the loaded window.
-  const [previewMessageId, setPreviewMessageId] = useState<string | null>(null);
+  // Focus message panel — unified docked panel that sits above the chat
+  // input and shows whatever message the user is currently focused on.
+  // Two modes derived from state:
+  //   - preview: focusStack populated, replyingTo null/different
+  //   - compose: focusStack populated, replyingTo matches top-of-stack
+  // The stack supports chain-walking through nested replies; back button
+  // pops one level, X clears everything (including any armed reply).
+  const [focusStack, setFocusStack] = useState<string[]>([]);
   const openMessagePreview = useCallback((messageId: string) => {
-    setPreviewMessageId(messageId);
+    setFocusStack([messageId]);
   }, []);
-  const closeMessagePreview = useCallback(() => {
-    setPreviewMessageId(null);
+  const focusChainWalk = useCallback((messageId: string) => {
+    setFocusStack(prev => [...prev, messageId]);
   }, []);
+  const focusBack = useCallback(() => {
+    setFocusStack(prev => prev.slice(0, -1));
+  }, []);
+  // Backdrop fade-in coordinated with the FocusMessagePanel's slide-up so they
+  // appear together. Without this the backdrop popped in instant while the
+  // panel took 200ms to slide — visually jarring. Double-RAF mirrors the
+  // panel's own slide-in pattern.
+  const [focusBackdropVisible, setFocusBackdropVisible] = useState(false);
+  useEffect(() => {
+    if (focusStack.length === 0) {
+      setFocusBackdropVisible(false);
+      return;
+    }
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setFocusBackdropVisible(true));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [focusStack.length]);
 
   // Sticky height from MainChatView (for FAB strip positioning)
   // Debounce drops to 0 — room switches briefly clear sticky content but it reappears.
@@ -555,11 +577,18 @@ export default function ChatPage() {
     };
     const handleBlur = (e: FocusEvent) => {
       if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
-        fabBlurTimerRef.current = setTimeout(() => setFabPointerEvents(true), 400);
+        // Was 400ms — overlapped Android Chrome's ~300ms keyboard close
+        // animation, so the FAB strip felt "stuck" disabled long after the
+        // keyboard finished animating. 120ms is enough to outlast the
+        // last few resize events without bleeding into post-animation idle.
+        fabBlurTimerRef.current = setTimeout(() => setFabPointerEvents(true), 120);
       }
     };
-    document.addEventListener('focusin', handleFocus);
-    document.addEventListener('focusout', handleBlur);
+    // passive:true lets the browser commit the focus gesture without
+    // waiting for our handler — meaningful on Android Chrome where the
+    // keyboard transition is GPU-bound.
+    document.addEventListener('focusin', handleFocus, { passive: true });
+    document.addEventListener('focusout', handleBlur, { passive: true });
     return () => {
       document.removeEventListener('focusin', handleFocus);
       document.removeEventListener('focusout', handleBlur);
@@ -696,6 +725,7 @@ export default function ChatPage() {
     setMutedUsernames(new Set());
     setMessageReactions({});
     setReplyingTo(null);
+    setFocusStack([]);
     setMessages([]);
     setStickyHostMessage(null);
     setStickyPinnedMsg(null);
@@ -726,6 +756,7 @@ export default function ChatPage() {
       setRoomLoading(true);
       setCurrentRoom(target);
       setReplyingTo(null);
+      setFocusStack([]);
       window.history.replaceState({ room: target }, '', window.location.href);
       await new Promise(resolve => setTimeout(resolve, 500));
       setRoomLoading(false);
@@ -738,6 +769,7 @@ export default function ChatPage() {
     setCurrentRoom(target);
     setHasMoreMessages(true);
     setReplyingTo(null);
+    setFocusStack([]);
 
     // Push history for sub-rooms so back button returns to main
     if (target !== 'main') {
@@ -1265,7 +1297,9 @@ export default function ChatPage() {
     const isLogin = authMode === 'login';
     let lastHeight = 0;
     let lastOffset = 0;
-    const update = () => {
+    let rafId: number | null = null;
+    const compute = () => {
+      rafId = null;
       const h = Math.round(vv.height);
       const t = isLogin ? 0 : Math.round(vv.offsetTop);
       if (h === lastHeight && t === lastOffset) return;
@@ -1280,10 +1314,21 @@ export default function ChatPage() {
         ...(isLogin ? { overflow: 'hidden' } : {}),
       });
     };
+    // Coalesce many rapid resize/scroll events into one rAF — Android Chrome
+    // fires visualViewport events 5–15× during the keyboard animation, and
+    // running setAuthStyle each time causes React to re-render mid-animation,
+    // making the keyboard feel sluggish.
+    const update = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(compute);
+    };
     update();
-    vv.addEventListener('resize', update);
-    if (!isLogin) vv.addEventListener('scroll', update);
+    // passive:true tells the browser it doesn't need to wait for our JS
+    // before continuing the gesture/animation.
+    vv.addEventListener('resize', update, { passive: true });
+    if (!isLogin) vv.addEventListener('scroll', update, { passive: true });
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       vv.removeEventListener('resize', update);
       if (!isLogin) vv.removeEventListener('scroll', update);
     };
@@ -1954,6 +1999,7 @@ export default function ChatPage() {
     } finally {
       setSending(false);
       setReplyingTo(null); // Clear reply state after sending (success or failure)
+      setFocusStack([]);   // Dismiss the focus panel
     }
   }, [sending, isConnected, wsSendMessage, replyingTo?.id, username, code, chatRoom, roomUsername, loadMessages]);
 
@@ -2014,6 +2060,7 @@ export default function ChatPage() {
     } finally {
       setSending(false);
       setReplyingTo(null); // Clear reply state after sending (success or failure)
+      setFocusStack([]);   // Dismiss the focus panel
     }
   }, [sending, username, code, chatRoom, roomUsername, replyingTo?.id, sendRawMessage]);
 
@@ -2068,6 +2115,7 @@ export default function ChatPage() {
     } finally {
       setSending(false);
       setReplyingTo(null);
+      setFocusStack([]);
     }
   }, [sending, username, code, chatRoom, roomUsername, replyingTo?.id, sendRawMessage]);
 
@@ -2125,6 +2173,7 @@ export default function ChatPage() {
     } finally {
       setSending(false);
       setReplyingTo(null);
+      setFocusStack([]);
     }
   }, [sending, username, code, chatRoom, roomUsername, replyingTo?.id, sendRawMessage]);
 
@@ -2301,11 +2350,28 @@ export default function ChatPage() {
     // synchronously within a user gesture handler. Without flushSync,
     // React's async re-render breaks the gesture chain and iOS ignores
     // the focus. Android Chrome is more permissive and works either way.
-    flushSync(() => setReplyingTo(message));
+    //
+    // Also push onto the focus stack so the docked panel shows the bubble
+    // the user is replying to. Replaces the old compact "Replying to..."
+    // bar inside MessageInput with the full bubble above the input.
+    flushSync(() => {
+      setReplyingTo(message);
+      setFocusStack([message.id]);
+    });
     messageInputRef.current?.focus();
   }, []);
 
   const handleCancelReply = useCallback(() => {
+    setReplyingTo(null);
+    // Don't clear focusStack here — cancelling the reply but keeping the
+    // panel open is meaningful (user wants to look but not reply). The
+    // panel's own X button is what clears everything.
+  }, []);
+
+  // Single dismissal path for the docked panel. Clears stack AND any armed
+  // reply target — the user is leaving this message context entirely.
+  const closeFocusPanel = useCallback(() => {
+    setFocusStack([]);
     setReplyingTo(null);
   }, []);
 
@@ -2780,9 +2846,8 @@ export default function ChatPage() {
 
   // Theme colors used by MessageActionsModal's long-press sheet (host icons,
   // crown, spotlight, etc.). Same set MainChatView computes internally; we
-  // also need it here to pass into MessagePreviewModal so the popup's
-  // long-press sheet matches the active theme. Recomputed only when the
-  // theme changes.
+  // also need it here to pass into FocusMessagePanel so its long-press sheet
+  // matches the active theme. Recomputed only when the theme changes.
   const modalThemeColors = useMemo(() => ({
     badgeIcon: getThemeIconColor(currentDesign.badgeIconColor) || '#3b82f6',
     crownIcon: getThemeIconColor(currentDesign.crownIconColor) || '#2dd4bf',
@@ -2991,6 +3056,30 @@ export default function ChatPage() {
 
       {/* Content Area Wrapper - View Router for Main Chat, Back Room, and future features */}
       <div className={`flex-1 relative overflow-hidden ${!hasJoined ? 'pointer-events-none' : ''}`}>
+        {/* Backdrop while the focus panel is open. Uses the same overlay
+            class every other modal pulls from the theme (modalStyles.overlay),
+            so blur/darkening is consistent across MessageActionsModal, the
+            join modal, etc. Tap-to-close. Sits inside the timeline container
+            so the panel + input below remain visible and interactive.
+            z-[60] sits above the FAB strip (z-50) so the action icons get
+            blurred/dimmed too.
+            HIDDEN when MessageActionsModal's long-press sheet is open —
+            otherwise we'd stack two backdrop-filter blur layers, which is
+            GPU-expensive on Android Chrome and makes the sheet feel laggy.
+            The action sheet has its own overlay covering the same area.
+            Opacity is driven by focusBackdropVisible so the fade-in matches
+            the panel's slide-up timing. */}
+        {focusStack.length > 0 && !messageActionsOpen && (
+          <div
+            onClick={closeFocusPanel}
+            className={`absolute inset-0 z-[60] ${currentDesign.modalStyles?.overlay || 'bg-black/60 backdrop-blur-md'}`}
+            style={{
+              opacity: focusBackdropVisible ? 1 : 0,
+              transition: 'opacity 200ms ease',
+            }}
+            aria-hidden="true"
+          />
+        )}
         {/* Page-level loading overlay for room transitions */}
         {roomLoading && isSeparateViewRoom(currentRoom) && (
           <div className={`absolute inset-0 z-40 flex items-center justify-center ${
@@ -3219,6 +3308,53 @@ export default function ChatPage() {
         )}
       </div>
 
+      {/* Focus message panel — docked above the input. Shows whichever
+          message the user is currently focused on (reply preview, sticky
+          jump, or compose target). Replaces both the old reply-popup
+          modal and the old compact reply-target bar inside MessageInput. */}
+      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && currentRoom !== 'gifts' && currentRoom !== 'photo' && currentRoom !== 'video' && currentRoom !== 'audio' && (
+        <FocusMessagePanel
+          focusStack={focusStack}
+          isComposing={replyingTo !== null && focusStack[focusStack.length - 1] === replyingTo.id}
+          chatCode={code}
+          roomUsername={roomUsername}
+          sessionToken={sessionToken || undefined}
+          username={username}
+          findInLoadedMessages={(id) => messages.find(m => m.id === id)}
+          onChainWalk={focusChainWalk}
+          onBack={focusBack}
+          onClose={closeFocusPanel}
+          currentDesign={currentDesign}
+          themeIsDarkMode={themeIsDarkMode}
+          modalThemeColors={modalThemeColors}
+          isHost={isHost}
+          spotlightUsernames={spotlightUsernames}
+          mutedUsernames={mutedUsernames}
+          broadcastMessageId={stickyHostMessage?.id || null}
+          chatRoom={chatRoom}
+          onReply={handleReply}
+          onPin={handlePin}
+          onAddToPin={handleAddToPin}
+          getPinRequirements={getPinRequirements}
+          onBlock={handleBlockUser}
+          onUnblock={handleUnblockUser}
+          onUnmute={handleUnmuteUser}
+          onSpotlightAdd={handleSpotlightAdd}
+          onSpotlightRemove={handleSpotlightRemove}
+          onRequestSignup={() => openAuth('signup')}
+          onTip={handleTipUser}
+          onSendGift={handleSendGift}
+          onThankGift={handleThankGift}
+          onToggleHighlight={handleHighlightMessage}
+          onToggleBroadcast={handleToggleBroadcast}
+          onDelete={handleDeleteMessage}
+          onUnpin={handleUnpinMessage}
+          onReact={handleReactionToggle}
+          messageReactions={messageReactions}
+          onMessageActionsOpenChange={handleMessageActionsOpenChange}
+        />
+      )}
+
       {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms) */}
       {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && currentRoom !== 'gifts' && currentRoom !== 'photo' && currentRoom !== 'video' && currentRoom !== 'audio' && (
         <div className="relative">
@@ -3236,7 +3372,10 @@ export default function ChatPage() {
               username={previewUsername ?? username}
               avatarUrl={previewAvatarUrl !== undefined ? previewAvatarUrl : userAvatarUrl}
               hasReservedUsername={previewHasReservedUsername ?? hasReservedUsername}
-              replyingTo={replyingTo}
+              // Suppress MessageInput's own compact reply-target bar when the
+              // FocusMessagePanel is showing the same message above. Page-level
+              // replyingTo is still the source of truth for sending.
+              replyingTo={focusStack.length > 0 ? null : replyingTo}
               onCancelReply={handleCancelReply}
               onSubmitText={handleSubmitText}
               onVoiceRecording={handleVoiceRecording}
@@ -3329,44 +3468,6 @@ export default function ChatPage() {
         />
       )}
 
-      {/* Reply / sticky preview popup — full bubble + long-press support */}
-      <MessagePreviewModal
-        isOpen={previewMessageId !== null}
-        initialMessageId={previewMessageId}
-        chatCode={code}
-        roomUsername={roomUsername}
-        sessionToken={sessionToken || undefined}
-        username={username}
-        findInLoadedMessages={(id) => messages.find(m => m.id === id)}
-        onClose={closeMessagePreview}
-        currentDesign={currentDesign}
-        themeIsDarkMode={themeIsDarkMode}
-        modalThemeColors={modalThemeColors}
-        isHost={isHost}
-        spotlightUsernames={spotlightUsernames}
-        mutedUsernames={mutedUsernames}
-        broadcastMessageId={stickyHostMessage?.id || null}
-        chatRoom={chatRoom}
-        onReply={handleReply}
-        onPin={handlePin}
-        onAddToPin={handleAddToPin}
-        getPinRequirements={getPinRequirements}
-        onBlock={handleBlockUser}
-        onUnblock={handleUnblockUser}
-        onUnmute={handleUnmuteUser}
-        onSpotlightAdd={handleSpotlightAdd}
-        onSpotlightRemove={handleSpotlightRemove}
-        onRequestSignup={() => openAuth('signup')}
-        onTip={handleTipUser}
-        onSendGift={handleSendGift}
-        onThankGift={handleThankGift}
-        onToggleHighlight={handleHighlightMessage}
-        onToggleBroadcast={handleToggleBroadcast}
-        onDelete={handleDeleteMessage}
-        onUnpin={handleUnpinMessage}
-        onReact={handleReactionToggle}
-        messageReactions={messageReactions}
-      />
     </>
   );
 }

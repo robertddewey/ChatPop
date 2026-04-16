@@ -53,10 +53,15 @@ export default function Header({ backgroundClass }: HeaderProps = {}) {
     }
   };
 
-  const headerClass = backgroundClass || "bg-white/90 dark:bg-gray-900/90";
+  // Was bg-*/90 + backdrop-blur-lg — backdrop-filter on a sticky header
+  // repaints on every WebSocket message arrival on Android Chrome, where
+  // backdrop-filter is GPU-expensive and not as well-optimized as iOS Safari.
+  // An opaque background looks ~identical and avoids the per-message
+  // recomposite cost.
+  const headerClass = backgroundClass || "bg-white dark:bg-gray-900";
 
   return (
-    <header className={`sticky top-0 z-50 border-b border-white/10 ${headerClass} backdrop-blur-lg`}>
+    <header className={`sticky top-0 z-50 border-b border-white/10 ${headerClass}`}>
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
         <Link href="/" className="text-3xl font-black text-white tracking-tighter" style={{ fontWeight: 900, WebkitTextStroke: '0.5px white' }}>
           ChatPop

@@ -2,7 +2,7 @@
  * Format a chat-message timestamp for display in the bubble's bottom row.
  * "Today 3:42 PM" / "Yesterday 8:15 AM" / "Tue 11:00 AM" / "3/14 9:23 PM".
  *
- * Shared by MainChatView, StickySection, and MessagePreviewModal so the
+ * Shared by MainChatView, StickySection, and FocusMessagePanel so the
  * timestamp formatting stays consistent across all message renderings.
  */
 export function formatTimestamp(dateString: string): string {

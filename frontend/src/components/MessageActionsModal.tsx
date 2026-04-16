@@ -395,17 +395,12 @@ export default function MessageActionsModal({
       });
     });
 
-    // Haptic feedback (Android only)
-    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-      try {
-        navigator.vibrate(50);
-      } catch (e) {
-        // Silent fail
-      }
-    }
+    // No explicit navigator.vibrate() here — Android Chrome fires its own
+    // native haptic when long-press is detected, so a second buzz from us
+    // makes the gesture feel noisy and laggy on Android.
   };
 
-  const handleClose = () => {
+  const handleClose = (instant = false) => {
     setIsClosing(true);
     setSlideIn(false);
     setIsDragging(false);
@@ -413,7 +408,11 @@ export default function MessageActionsModal({
     setMuteLockedHint(false);
     onOpenChange?.(false);
 
-    // Wait for transition to complete before removing from DOM
+    // Reset state. If `instant`, unmount immediately — used for actions like
+    // Reply where the user wants to type right away and the slide-out
+    // animation just delays the input becoming usable. Otherwise wait for
+    // the slide-out transition to finish before unmounting.
+    const unmountDelay = instant ? 0 : 300;
     setTimeout(() => {
       setIsOpen(false);
       setIsClosing(false);
@@ -428,7 +427,7 @@ export default function MessageActionsModal({
       setShowGiftConfirmation(false);
       setIsGiftSending(false);
       setContainerHeight(undefined);
-    }, 300);
+    }, unmountDelay);
   };
 
   // Handle opening the pin input step
@@ -613,7 +612,10 @@ export default function MessageActionsModal({
       label: 'Reply',
       action: () => {
         onReply(message);
-        handleClose();
+        // Instant close: skip the 200ms slide-out animation. The user wants
+        // to type immediately; the animation just delays the input becoming
+        // visible/usable behind the sheet.
+        handleClose(true);
       },
     });
   }
@@ -825,7 +827,7 @@ export default function MessageActionsModal({
                   ? 'translateY(0)'
                   : 'translateY(100%)',
               opacity: slideIn && !isClosing ? 1 : 0,
-              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease',
+              transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease',
             }}
           >
             {/* Floating Message Preview — docked above sheet, rendered like actual chat message */}

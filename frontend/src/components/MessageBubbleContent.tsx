@@ -8,7 +8,8 @@
  * so the reply-preview popup can render the exact same bubble.
  *
  * Wrap this in `<MessageActionsModal>` to get long-press behavior. The
- * timeline does this in MainChatView; the popup does it in MessagePreviewModal.
+ * timeline does this in MainChatView; the docked focus panel does it in
+ * FocusMessagePanel.
  *
  * This component is presentational. It does NOT manage scroll, pagination,
  * or modal state. Its only side effect is calling `openMessagePreview` when
