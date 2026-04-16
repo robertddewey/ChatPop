@@ -44,8 +44,14 @@ body.chat-layout {
 
 /* Force containers to be transparent so the body gradient shows through
    in iOS Safari safe areas. !important needed to beat Tailwind's bg-* classes
-   which may use @layer with higher priority in Tailwind v4. */
-body.chat-layout > * > * {
+   which may use @layer with higher priority in Tailwind v4.
+   Scoped to .chat-root and its direct children — the original selector
+   `body.chat-layout > * > *` also caught portaled modal overlays (which
+   render as direct children of body), forcing their backdrop dim transparent
+   and leaving only backdrop-blur visible. .chat-root is the explicit marker
+   on the page's outer container in page.tsx. */
+body.chat-layout .chat-root,
+body.chat-layout .chat-root > * {
   background-color: transparent !important;
   background-image: none !important;
 }

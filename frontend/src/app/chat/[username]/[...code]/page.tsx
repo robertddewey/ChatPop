@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { api, chatApi, messageApi, authApi, backRoomApi, giftApi, isTokenExpiringSoon, isTokenMissingSessionKey, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification, type AnonymousParticipationInfo } from '@/lib/api';
@@ -471,6 +471,12 @@ export default function ChatPage() {
 
   // Message input state (message text is managed locally in MessageInput component)
   const messageInputRef = useRef<MessageInputHandle>(null);
+  // Wrapper around MessageInput. Used as the positioning anchor for the
+  // FocusMessagePanel (which renders absolute above the input). A ResizeObserver
+  // writes the wrapper's current height to the `--input-height` CSS variable so
+  // the panel's offscreen translateY can start fully below the input edge —
+  // matching how the long-press sheet starts fully below the viewport edge.
+  const inputWrapperRef = useRef<HTMLDivElement>(null);
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
@@ -507,21 +513,90 @@ export default function ChatPage() {
   const focusBack = useCallback(() => {
     setFocusStack(prev => prev.slice(0, -1));
   }, []);
-  // Backdrop fade-in coordinated with the FocusMessagePanel's slide-up so they
-  // appear together. Without this the backdrop popped in instant while the
-  // panel took 200ms to slide — visually jarring. Double-RAF mirrors the
-  // panel's own slide-in pattern.
-  const [focusBackdropVisible, setFocusBackdropVisible] = useState(false);
+  // Single source of truth for the focus panel's slide-in animation. Drives
+  // BOTH the backdrop's opacity transition AND the panel's slide-up so they
+  // animate from the same React state in the same commit. Double-RAF ensures
+  // the off-screen/transparent initial state gets committed to the browser
+  // before the transition.
+  const [focusPanelSlideIn, setFocusPanelSlideIn] = useState(false);
   useEffect(() => {
     if (focusStack.length === 0) {
-      setFocusBackdropVisible(false);
+      setFocusPanelSlideIn(false);
       return;
     }
     const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => setFocusBackdropVisible(true));
+      requestAnimationFrame(() => setFocusPanelSlideIn(true));
     });
     return () => cancelAnimationFrame(raf);
   }, [focusStack.length]);
+
+  // Track the input wrapper's height so the panel can start fully below it
+  // (translateY(calc(100% + var(--input-height)))). Without this, translateY(100%)
+  // alone only shifts the panel by its own height, leaving it overlapping the
+  // input area — which made the slide visible OVER the input on first frame.
+  // Mirrors how the long-press sheet starts fully below the viewport edge.
+  useLayoutEffect(() => {
+    const el = inputWrapperRef.current;
+    if (!el) return;
+    const update = () => {
+      el.style.setProperty('--input-height', `${el.offsetHeight}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasJoined, currentRoom]);
+
+  // Expose the visual viewport height as a CSS variable on <html> so the
+  // FocusMessagePanel can cap its body height to fit ABOVE the soft keyboard.
+  // dvh (dynamic viewport height) on iOS Safari only accounts for browser
+  // chrome (URL bar) — it does NOT shrink when the soft keyboard opens. Without
+  // visualViewport tracking, the panel's max-height stays at full viewport when
+  // typing a reply, butting up against the URL bar / notch.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) {
+      // Pre-iOS-13 / very old browsers — fall back to innerHeight (no
+      // keyboard awareness, but at least respects window resizes).
+      document.documentElement.style.setProperty('--visible-height', `${window.innerHeight}px`);
+      return;
+    }
+    let raf: number | null = null;
+    const update = () => {
+      raf = null;
+      document.documentElement.style.setProperty('--visible-height', `${vv.height}px`);
+    };
+    const schedule = () => {
+      if (raf !== null) return;
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    vv.addEventListener('resize', schedule, { passive: true });
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      vv.removeEventListener('resize', schedule);
+    };
+  }, []);
+
+  // Track the chat header's height as a CSS variable on <html> so portaled
+  // overlays (like MessageActionsModal's backdrop) can start their dim/blur
+  // BELOW the header instead of covering it. Keeps the header visible and
+  // makes the visible portion of the backdrop appear uniformly dark — without
+  // it, backdrop-blur-md averages the bright header with the dark chat below
+  // and the overlay reads as lighter than the FocusMessagePanel's backdrop
+  // (which only covers the chat area). The header may resize on iOS Safari
+  // when the URL bar position changes (chat-layout.css adjusts padding).
+  useEffect(() => {
+    const el = document.querySelector('[data-chat-header]') as HTMLElement | null;
+    if (!el) return;
+    const update = () => {
+      document.documentElement.style.setProperty('--chat-header-height', `${el.offsetHeight}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasJoined, currentRoom]);
 
   // Sticky height from MainChatView (for FAB strip positioning)
   // Debounce drops to 0 — room switches briefly clear sticky content but it reappears.
@@ -2980,8 +3055,12 @@ export default function ChatPage() {
   return (
     <>
       {/* Main Chat Interface */}
+      {/* chat-root marker: chat-layout.css uses `body.chat-layout .chat-root > *`
+          to force its direct children transparent (so the body's solid bg shows
+          through the iOS safe-area). Scoped to .chat-root so portaled overlays
+          (MessageActionsModal backdrop, etc.) aren't accidentally caught. */}
       <div
-        className={`${currentDesign.container}`}
+        className={`chat-root ${currentDesign.container}`}
         style={{
           backgroundColor: 'transparent',
           WebkitUserSelect: 'none',
@@ -3056,26 +3135,28 @@ export default function ChatPage() {
 
       {/* Content Area Wrapper - View Router for Main Chat, Back Room, and future features */}
       <div className={`flex-1 relative overflow-hidden ${!hasJoined ? 'pointer-events-none' : ''}`}>
-        {/* Backdrop while the focus panel is open. Uses the same overlay
-            class every other modal pulls from the theme (modalStyles.overlay),
-            so blur/darkening is consistent across MessageActionsModal, the
-            join modal, etc. Tap-to-close. Sits inside the timeline container
-            so the panel + input below remain visible and interactive.
-            z-[60] sits above the FAB strip (z-50) so the action icons get
-            blurred/dimmed too.
-            HIDDEN when MessageActionsModal's long-press sheet is open —
-            otherwise we'd stack two backdrop-filter blur layers, which is
-            GPU-expensive on Android Chrome and makes the sheet feel laggy.
-            The action sheet has its own overlay covering the same area.
-            Opacity is driven by focusBackdropVisible so the fade-in matches
-            the panel's slide-up timing. */}
+        {/* Backdrop while the focus panel is open. Tap-to-close. Sits
+            inside the timeline container so the panel + input below remain
+            visible and interactive. z-[60] sits above the FAB strip (z-50)
+            so the action icons get dimmed/blurred too. Uses the theme's
+            shared overlay class (modalStyles.overlay) so the visual matches
+            the long-press sheet's backdrop exactly.
+            HIDDEN when MessageActionsModal's long-press sheet is open — the
+            action sheet has its own overlay covering the same area. */}
         {focusStack.length > 0 && !messageActionsOpen && (
           <div
             onClick={closeFocusPanel}
             className={`absolute inset-0 z-[60] ${currentDesign.modalStyles?.overlay || 'bg-black/60 backdrop-blur-md'}`}
+            // touchAction: 'none' — the backdrop covers the timeline area
+            // ABOVE the focus panel, including the gap between the panel's
+            // top edge and the safe area / URL bar. Without this, dragging
+            // anywhere in that gap inherits `pan-x pan-y` from chat-layout's
+            // universal selector and (with keyboard open) iOS Safari falls
+            // through to a visual viewport pan — sliding the entire UI.
             style={{
-              opacity: focusBackdropVisible ? 1 : 0,
+              opacity: focusPanelSlideIn ? 1 : 0,
               transition: 'opacity 200ms ease',
+              touchAction: 'none',
             }}
             aria-hidden="true"
           />
@@ -3308,56 +3389,61 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Focus message panel — docked above the input. Shows whichever
-          message the user is currently focused on (reply preview, sticky
-          jump, or compose target). Replaces both the old reply-popup
-          modal and the old compact reply-target bar inside MessageInput. */}
+      {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms).
+          The FocusMessagePanel renders INSIDE this wrapper so it can position
+          absolutely above the input (bottom: 100%) without causing layout
+          shift. Previously it was a flex sibling between timeline and input,
+          which reserved an empty slot the moment the panel mounted — visible
+          for ~220ms before the slide started. Anchoring on the input wrapper
+          mirrors how the long-press modal mounts: a fixed overlay that slides
+          in over content, no layout reshuffle. */}
       {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && currentRoom !== 'gifts' && currentRoom !== 'photo' && currentRoom !== 'video' && currentRoom !== 'audio' && (
-        <FocusMessagePanel
-          focusStack={focusStack}
-          isComposing={replyingTo !== null && focusStack[focusStack.length - 1] === replyingTo.id}
-          chatCode={code}
-          roomUsername={roomUsername}
-          sessionToken={sessionToken || undefined}
-          username={username}
-          findInLoadedMessages={(id) => messages.find(m => m.id === id)}
-          onChainWalk={focusChainWalk}
-          onBack={focusBack}
-          onClose={closeFocusPanel}
-          currentDesign={currentDesign}
-          themeIsDarkMode={themeIsDarkMode}
-          modalThemeColors={modalThemeColors}
-          isHost={isHost}
-          spotlightUsernames={spotlightUsernames}
-          mutedUsernames={mutedUsernames}
-          broadcastMessageId={stickyHostMessage?.id || null}
-          chatRoom={chatRoom}
-          onReply={handleReply}
-          onPin={handlePin}
-          onAddToPin={handleAddToPin}
-          getPinRequirements={getPinRequirements}
-          onBlock={handleBlockUser}
-          onUnblock={handleUnblockUser}
-          onUnmute={handleUnmuteUser}
-          onSpotlightAdd={handleSpotlightAdd}
-          onSpotlightRemove={handleSpotlightRemove}
-          onRequestSignup={() => openAuth('signup')}
-          onTip={handleTipUser}
-          onSendGift={handleSendGift}
-          onThankGift={handleThankGift}
-          onToggleHighlight={handleHighlightMessage}
-          onToggleBroadcast={handleToggleBroadcast}
-          onDelete={handleDeleteMessage}
-          onUnpin={handleUnpinMessage}
-          onReact={handleReactionToggle}
-          messageReactions={messageReactions}
-          onMessageActionsOpenChange={handleMessageActionsOpenChange}
-        />
-      )}
-
-      {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms) */}
-      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && currentRoom !== 'gifts' && currentRoom !== 'photo' && currentRoom !== 'video' && currentRoom !== 'audio' && (
-        <div className="relative">
+        <div className="relative" ref={inputWrapperRef}>
+          {/* Focus message panel — absolute above the input. Shows whichever
+              message the user is currently focused on (reply preview, sticky
+              jump, or compose target). Replaces both the old reply-popup
+              modal and the old compact reply-target bar inside MessageInput. */}
+          <FocusMessagePanel
+            focusStack={focusStack}
+            isComposing={replyingTo !== null && focusStack[focusStack.length - 1] === replyingTo.id}
+            chatCode={code}
+            roomUsername={roomUsername}
+            sessionToken={sessionToken || undefined}
+            username={username}
+            findInLoadedMessages={(id) => messages.find(m => m.id === id)}
+            onChainWalk={focusChainWalk}
+            onBack={focusBack}
+            onClose={closeFocusPanel}
+            currentDesign={currentDesign}
+            themeIsDarkMode={themeIsDarkMode}
+            modalThemeColors={modalThemeColors}
+            isHost={isHost}
+            spotlightUsernames={spotlightUsernames}
+            mutedUsernames={mutedUsernames}
+            broadcastMessageId={stickyHostMessage?.id || null}
+            chatRoom={chatRoom}
+            onReply={handleReply}
+            onPin={handlePin}
+            onAddToPin={handleAddToPin}
+            getPinRequirements={getPinRequirements}
+            onBlock={handleBlockUser}
+            onUnblock={handleUnblockUser}
+            onUnmute={handleUnmuteUser}
+            onSpotlightAdd={handleSpotlightAdd}
+            onSpotlightRemove={handleSpotlightRemove}
+            onRequestSignup={() => openAuth('signup')}
+            onTip={handleTipUser}
+            onSendGift={handleSendGift}
+            onThankGift={handleThankGift}
+            onToggleHighlight={handleHighlightMessage}
+            onToggleBroadcast={handleToggleBroadcast}
+            onDelete={handleDeleteMessage}
+            onUnpin={handleUnpinMessage}
+            onReact={handleReactionToggle}
+            messageReactions={messageReactions}
+            onMessageActionsOpenChange={handleMessageActionsOpenChange}
+            slideIn={focusPanelSlideIn}
+          />
           <div className={!hasJoined ? 'opacity-50' : ''}>
             <MessageInput
               ref={messageInputRef}

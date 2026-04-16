@@ -10,7 +10,7 @@
  *
  * Two modes:
  *   - preview: you tapped a reply preview / sticky jump. You can long-press,
- *     react, chain-walk, or dismiss. Header reads "Original message".
+ *     react, chain-walk, or dismiss. Header reads "Viewing message".
  *   - compose: a reply is armed (replyingTo is set on the parent). The chat
  *     input below will send to this message. Header reads "Replying to".
  *
@@ -97,6 +97,12 @@ interface FocusMessagePanelProps extends PassthroughActionProps {
   onBack: () => void;
   /** Close the panel entirely (X button). Should also cancel any armed reply. */
   onClose: () => void;
+  /** Drives the slide-up + fade-in animation. The parent owns this so the
+   *  backdrop (rendered separately by the parent) and the panel itself can
+   *  animate from the same single source of truth — no two-component RAF
+   *  drift on slow devices. Backdrop and panel animate together with the
+   *  same duration (no delay), matching the long-press sheet pattern. */
+  slideIn: boolean;
 }
 
 export default function FocusMessagePanel({
@@ -140,6 +146,7 @@ export default function FocusMessagePanel({
   onReact,
   messageReactions,
   onMessageActionsOpenChange,
+  slideIn,
 }: FocusMessagePanelProps) {
   // Local cache of fetched messages — keyed by ID. Populated on demand for
   // any focus-stack ID not in the in-memory list.
@@ -183,32 +190,21 @@ export default function FocusMessagePanel({
     onChainWalk(parentId);
   }, [focusStack.length, onChainWalk]);
 
-  // Slide-in animation. Mirrors MessageActionsModal: render initial off-screen
-  // state on the first frame, then RAF×2 to flip to the on-screen state so
-  // the browser commits the start position before applying the transition.
-  // Without the double-RAF, the browser may collapse start+end into a
-  // single layout pass and the transition won't actually animate.
-  const [slideIn, setSlideIn] = useState(false);
-  const visible = focusStack.length > 0;
-  useEffect(() => {
-    if (!visible) {
-      setSlideIn(false);
-      return;
-    }
-    const raf1 = requestAnimationFrame(() => {
-      requestAnimationFrame(() => setSlideIn(true));
-    });
-    return () => cancelAnimationFrame(raf1);
-  }, [visible]);
-
-  // Hide entirely when stack is empty.
-  if (!visible) return null;
+  // Hide entirely when stack is empty. slideIn is driven by the parent.
+  if (focusStack.length === 0) return null;
 
   const canGoBack = focusStack.length >= 2;
 
   return (
     <div
-      className="flex-shrink-0 border-t border-zinc-800 bg-zinc-900 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]"
+      // Position absolute above the input wrapper (parent has position:relative).
+      // bottom-full → panel's bottom edge sits at input's top edge, so the panel
+      // floats just above the input regardless of input height. No layout shift,
+      // mirroring how the long-press modal mounts.
+      // rounded-t-3xl + overflow-hidden + bg-zinc-900 → matches the long-press
+      // sheet visual treatment.
+      // z-[70] → above the backdrop (z-[60]) so the panel renders on top.
+      className="absolute left-0 right-0 bottom-full z-[70] bg-zinc-900 rounded-t-3xl overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.5)]"
       // touch-action:none on the panel frame itself swallows drag gestures so
       // they can't bubble up and pan the document / visual viewport. The body
       // explicitly re-enables pan-y for its own internal scrolling. Without
@@ -216,11 +212,23 @@ export default function FocusMessagePanel({
       // it) caused iOS Safari / Android Chrome to slide the panel because
       // the inherited `touch-action: pan-x pan-y` from body.chat-layout *
       // told the browser "this surface is pannable."
-      // transform/opacity: slide-up + fade-in on mount so the panel matches
-      // the long-press sheet's reveal pattern instead of popping in.
+      //
+      // Slide-up: starts fully BELOW the input edge (calc(100% + input height))
+      // and slides to translateY(0) above the input. Without the input-height
+      // offset, translateY(100%) alone leaves the panel overlapping the input
+      // area on first frame — visible as a gray flash before it slides up.
+      // The --input-height CSS variable is set by the parent's ResizeObserver.
+      //
+      // No transition delay: backdrop and panel animate together (200ms each),
+      // matching the long-press sheet's flawless feel. Earlier we tried a
+      // 220ms delay to enforce "backdrop first, then panel" — but that was
+      // chasing a different problem (GPU-deferred backdrop-blur paint), and
+      // the delay made the empty layout slot visible during the gap.
       style={{
         touchAction: 'none',
-        transform: slideIn ? 'translateY(0)' : 'translateY(100%)',
+        transform: slideIn
+          ? 'translateY(0)'
+          : 'translateY(calc(100% + var(--input-height, 80px)))',
         opacity: slideIn ? 1 : 0,
         transition: 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms ease',
       }}
@@ -231,19 +239,29 @@ export default function FocusMessagePanel({
           (icon-only, p-1.5 rounded-lg, currentDesign.headerTitle color)
           for consistency. Mode label uses the same font weight + color
           family as the chat header title, just one size down. */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/60">
+      <div
+        className="flex items-center justify-between px-4 py-2 border-b border-zinc-800/60"
+        // Block pan on the header — the chat-layout's universal selector
+        // (`body.chat-layout * { touch-action: pan-x pan-y }`) makes every
+        // descendant pannable by default, so dragging on the header would
+        // pan the iOS Safari visual viewport (URL bar, panel, keyboard all
+        // sliding together) when the keyboard is open. Inline style beats
+        // the universal selector's specificity.
+        style={{ touchAction: 'none' }}
+      >
         {canGoBack ? (
           <button
             onClick={onBack}
-            className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle || 'text-zinc-100'}`}
+            className={`flex-shrink-0 flex items-center gap-1.5 p-1.5 pr-2 rounded-lg transition-colors text-sm font-semibold ${currentDesign.headerTitle || 'text-zinc-100'}`}
             aria-label="Back to previous message"
           >
             <ArrowLeft size={18} />
+            <span>Back</span>
           </button>
         ) : (
           <span className={`flex items-center gap-1.5 text-sm font-semibold ${currentDesign.headerTitle || 'text-zinc-100'}`}>
             {isComposing && <Reply size={14} />}
-            <span>{isComposing ? 'Replying to' : 'Original message'}</span>
+            <span>{isComposing ? 'Replying to' : 'Viewing message'}</span>
           </span>
         )}
         <button
@@ -255,17 +273,42 @@ export default function FocusMessagePanel({
         </button>
       </div>
 
-      {/* Body. max-h uses dvh (dynamic viewport height) so the panel shrinks
-          when the mobile keyboard opens — vh would stay at the full viewport
-          and the panel would dominate the visible area above the keyboard.
-          Falls back to vh on browsers without dvh support (pre-iOS-15.4).
-          touch-action: pan-y re-enables vertical scroll inside the body
-          (the panel frame above sets touch-action: none). overscroll-contain
-          stops the body's bottom/top bounce from bubbling up. */}
+      {/* Body. max-height uses min() of two caps:
+          1) 50dvh — soft cap so the panel never dominates a tall viewport.
+          2) Available space above the input minus the top safe area minus
+             a breathing gap. Keeps the panel from butting up against the
+             browser URL bar / notch when the keyboard is open and the
+             message content is tall.
+          --visible-height: visualViewport.height set by page.tsx, in px.
+            Tracks the actual visible area ABOVE the soft keyboard. dvh on
+            iOS Safari only adjusts for browser chrome (URL bar) and does
+            NOT shrink when the keyboard opens, so dvh alone wouldn't leave
+            a gap when typing a reply.
+          --input-height: input wrapper's offsetHeight, set by ResizeObserver
+            in page.tsx.
+          56px buffer = ~32px header + 24px top gap.
+          touch-action: pan-y + overflow-y: auto — body scrolls internally
+          when the message is tall (long text, big photo). overscroll-contain
+          keeps the scroll from chaining to the page.
+          The inner wrapper's `min-height: calc(100% + 1px)` is the trick
+          that prevents the iOS visual-viewport-pan fallback when the
+          keyboard is open. iOS Safari interprets pan-y on a non-overflowing
+          element as "no scroll target" and falls through to panning the
+          visual viewport (URL bar / panel / keyboard slide together).
+          Forcing the body to always overflow by 1px guarantees pan-y always
+          has a scroll target — even when the message content fits naturally.
+          The 1px is invisible (no scrollbar shows since we hide them
+          globally) and never reaches the user via overscroll because of
+          overscrollBehavior: contain. */}
       <div
-        className="overflow-y-auto max-h-[40dvh] sm:max-h-[50dvh] px-3 py-3"
-        style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}
+        className="overflow-y-auto px-4 py-3"
+        style={{
+          touchAction: 'pan-y',
+          overscrollBehavior: 'contain',
+          maxHeight: 'min(50dvh, calc(var(--visible-height, 100dvh) - var(--input-height, 80px) - env(safe-area-inset-top, 0px) - 56px))',
+        }}
       >
+        <div style={{ minHeight: 'calc(100% + 1px)' }}>
         {loading && (
           <div className="flex items-center justify-center py-8 text-zinc-400">
             <Loader2 size={20} className="animate-spin" />
@@ -377,6 +420,7 @@ export default function FocusMessagePanel({
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

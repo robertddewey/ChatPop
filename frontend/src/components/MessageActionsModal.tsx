@@ -814,8 +814,17 @@ export default function MessageActionsModal({
             WebkitTouchCallout: 'none',
           }}
         >
-          {/* Backdrop with blur */}
-          <div className={`absolute inset-0 ${modalStyles.overlay}`} />
+          {/* Backdrop — starts BELOW the chat header so the header stays
+              visible. The outer click-catcher (above) still covers the entire
+              viewport at z-[9999], so tapping the back button (or anywhere
+              else outside the sheet) still closes the modal — the header is
+              visible, but the OUTER swallows clicks before they reach it.
+              Uses the same modalStyles.overlay class as every other modal
+              (and the FocusMessagePanel) so the dim level is consistent. */}
+          <div
+            className={`absolute left-0 right-0 bottom-0 ${modalStyles.overlay}`}
+            style={{ top: 'var(--chat-header-height, 0px)' }}
+          />
 
           {/* E4 Layout: Message docked above sheet, slides up as one unit */}
           <div
