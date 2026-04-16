@@ -689,6 +689,7 @@ function MainChatView({
                   currentUsername={username}
                   isHost={isHostProp}
                   themeIsDarkMode={themeIsDarkMode}
+                  currentDesign={currentDesign}
                   sessionToken={sessionToken}
                   themeColors={modalThemeColors}
                   modalStyles={currentDesign.modalStyles}

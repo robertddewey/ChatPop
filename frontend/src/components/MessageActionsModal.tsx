@@ -6,8 +6,11 @@ import { Message, ReactionSummary } from '@/lib/api';
 import { Pin, Gift, Ban, ShieldCheck, BadgeCheck, Reply, Trash2, Copy, Flag, Play, Pause, Mic, Crown, Heart, Star, Radio, Megaphone, Spotlight, HatGlasses } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import ReactionBar from './ReactionBar';
+import MessageBubbleContent from './MessageBubbleContent';
 import { GIFT_CATEGORIES, getGiftsByCategory, formatGiftPrice, type GiftItem, type GiftCategory } from '@/lib/gifts';
 import { getModalTheme } from '@/lib/modal-theme';
+import { formatTimestamp } from '@/lib/formatTimestamp';
+import { getTextColor } from '@/lib/themeColors';
 
 // "you" pill shown next to the current user's username
 function YouPill({ className }: { className?: string }) {
@@ -74,6 +77,13 @@ interface MessageActionsModalProps {
   currentUsername?: string;
   isHost?: boolean;
   themeIsDarkMode?: boolean;
+  /** Theme/design object (Tailwind class strings sourced from the database).
+   *  Required so the modal preview can render via the shared
+   *  `<MessageBubbleContent>` component — same renderer as the timeline and
+   *  the FocusMessagePanel — keeping the long-press preview visually
+   *  consistent with the other places a message bubble appears. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  currentDesign: Record<string, any>;
   isOutbid?: boolean;  // Message was pinned but outbid (has time remaining, not current sticky)
   children: React.ReactNode;
   onReply?: (message: Message) => void;
@@ -237,6 +247,7 @@ export default function MessageActionsModal({
   currentUsername,
   isHost = false,
   themeIsDarkMode = true,
+  currentDesign,
   isOutbid = false,
   children,
   onReply,
@@ -839,162 +850,88 @@ export default function MessageActionsModal({
               transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease',
             }}
           >
-            {/* Floating Message Preview — docked above sheet, rendered like actual chat message */}
-            <div className="px-4 pb-6">
-              <div className="flex">
-                <div className="w-10 flex-shrink-0 mr-3">
-                  <div className="relative w-10 h-10">
-                    <img
-                      src={message.avatar_url}
-                      alt={message.username}
-                      className={`w-10 h-10 rounded-full ${themeModalStyles?.avatarFallbackBg || 'bg-zinc-700'}`}
+            {/* Floating Message Preview — docked above sheet. Renders the
+                bubble via the shared <MessageBubbleContent> so the long-press
+                preview matches the timeline and the FocusMessagePanel
+                pixel-for-pixel. The bespoke ~150-line rendering this replaced
+                drifted from the timeline whenever theme fields or media
+                handling changed. */}
+            <div
+              className="px-4 pb-3 overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                touchAction: 'pan-y',
+                overscrollBehavior: 'contain',
+                // Cap the preview so a tall photo doesn't push the sheet
+                // off-screen. ~400px is a generous estimate of the action
+                // sheet's height (drag handle + emoji row + 3 rows of action
+                // buttons + bottom safe-area padding).
+                maxHeight: 'calc(var(--visible-height, 100dvh) - 400px - env(safe-area-inset-top, 0px))',
+              }}
+            >
+              <div style={{ minHeight: 'calc(100% + 1px)' }}>
+                <div className="flex">
+                  <div className="w-10 flex-shrink-0 mr-3">
+                    {message.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={message.avatar_url}
+                        alt={message.username}
+                        className={`w-10 h-10 rounded-full ${currentDesign.uiStyles?.avatarFallbackBg || 'bg-zinc-700'}`}
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-zinc-700" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <MessageBubbleContent
+                      message={message}
+                      username={currentUsername || ''}
+                      currentDesign={currentDesign}
+                      spotlightUsernames={spotlightUsernames}
+                      sessionToken={sessionToken ?? null}
+                      broadcastMessageId={broadcastMessageId}
+                      isHostMessage={!!message.is_from_host}
+                      isFirstInGroup={true}
+                      isRegularMessage={!message.is_from_host && !message.is_pinned}
+                      // No-op chain-walk inside the long-press preview — clicking
+                      // a nested reply preview here would compete with the modal's
+                      // own dismissal flow. Users can close the modal and chain-walk
+                      // from the FocusMessagePanel instead.
+                      openMessagePreview={() => {}}
+                      unconstrainedWidth
                     />
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="mb-1">
-                    {(() => {
-                      const isSpotlight = !message.is_from_host && spotlightUsernames?.has(message.username);
-                      const usernameColor = isOwnMessage
-                        ? (themeColors?.myUsername || '#ef4444')
-                        : (message.is_from_host || isSpotlight)
-                          ? (themeColors?.hostUsername || '#fbbf24')
-                          : message.is_pinned
-                            ? (themeColors?.pinnedUsername || '#c084fc')
-                            : (themeColors?.regularUsername || '#ffffff');
-                      return (
-                        <>
-                          <span
-                            className="text-sm font-bold"
-                            style={{ color: usernameColor }}
-                          >
-                            {message.username}
-                          </span>
-                          {isOwnMessage && <span className="ml-1"><YouPill className={themeModalStyles?.youPill} /></span>}
-                          {message.is_from_host && (
-                            <>
-                              <span className="ml-1"><HostPill color={themeColors?.crownIcon || '#2dd4bf'} /></span>
-                              <Crown className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.crownIcon || '#2dd4bf' }} />
-                            </>
-                          )}
-                          {isSpotlight && (
-                            <>
-                              <span className="ml-1"><SpotlightPill color={themeColors?.spotlightIcon || '#facc15'} /></span>
-                              <Spotlight className="inline-block ml-1 flex-shrink-0" size={14} fill="currentColor" style={{ color: themeColors?.spotlightIcon || '#facc15' }} />
-                            </>
-                          )}
-                          {message.username_is_reserved ? (
-                            <BadgeCheck className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: themeColors?.badgeIcon || '#3b82f6' }} />
-                          ) : (
-                            <HatGlasses className="inline-block ml-1 flex-shrink-0" size={14} style={{ color: '#ef4444' }} />
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                  {/* Text content or gift card */}
-                  {message.message_type === 'gift' ? (() => {
-                    const giftMatch = message.content.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
-                    const emoji = giftMatch ? giftMatch[1] : '🎁';
-                    const giftName = giftMatch ? giftMatch[2] : '';
-                    const price = giftMatch ? giftMatch[3] : '';
-                    const recipient = giftMatch ? giftMatch[4] : '';
-                    const isForMe = recipient.toLowerCase() === currentUsername?.toLowerCase();
-                    return (
-                      <div className={`relative rounded-xl px-2.5 py-2 flex items-center gap-2 max-w-[calc(100%-2.5%-5rem+5px)] ${
-                        isForMe
-                          ? themeGiftStyles?.cardForMe || 'bg-purple-950/50 border border-purple-500/50'
-                          : themeGiftStyles?.card || 'bg-zinc-800/80 border border-zinc-700'
-                      }`}>
-                        {price && (
-                          <span className={`absolute top-1.5 right-2 text-[8px] font-medium px-1 py-0.5 rounded-full ${
-                            themeGiftStyles?.priceBadge || 'bg-cyan-900/50 text-cyan-400'
-                          }`}>{price}</span>
-                        )}
-                        <div className={`text-xl flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center animate-gift-breath ${
-                          themeGiftStyles?.emojiBox || 'bg-zinc-700/80'
-                        }`}>
-                          {emoji}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className={`text-xs font-semibold ${themeGiftStyles?.nameText || 'text-white'}`}>{giftName}</span>
-                          </div>
-                          {recipient && (
-                            <div className={`text-[10px] ${themeGiftStyles?.toPrefix || themeGiftStyles?.recipientText || 'text-zinc-400'}`}>
-                              to <span className={`font-semibold ${
-                                isForMe
-                                  ? (themeGiftStyles?.recipientHighlight || 'text-purple-400')
-                                  : (themeGiftStyles?.recipientNormal || 'text-zinc-300')
-                              }`}>@{recipient}</span>
-                              {isForMe && <span className="ml-1"><YouPill className={themeGiftStyles?.youPill} /></span>}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })() : message.content && (
-                    <p className={`text-sm ${themeModalStyles?.messageText || 'text-white'}`}>
-                      {message.content}
-                    </p>
-                  )}
-                  {/* Photo — sized to fit available space above the sheet */}
-                  {message.photo_url && (() => {
-                    const imgW = message.photo_width || 300;
-                    const imgH = message.photo_height || 200;
-                    const aspect = imgW / imgH;
-
-                    // Available height: viewport minus sheet (~280px) minus preview chrome
-                    // (username ~24px, timestamp ~20px, padding ~48px = ~92px)
-                    const maxH = Math.max(120, (typeof window !== 'undefined' ? window.innerHeight : 800) - 280 - 92);
-                    const maxW = 240;
-
-                    let w = Math.min(maxW, imgW);
-                    let h = Math.round(w / aspect);
-
-                    // If height exceeds budget, scale down by height
-                    if (h > maxH) {
-                      h = maxH;
-                      w = Math.round(h * aspect);
-                    }
-
-                    return (
-                      <div
-                        className={`mt-1 rounded-lg overflow-hidden ${themeModalStyles?.photoThumbnailBg || 'bg-zinc-700'}`}
-                        style={{ width: w, height: h }}
-                        onClick={(e) => e.stopPropagation()}
+                    {/* Timestamp + reactions row — mirrors FocusMessagePanel. */}
+                    <div className={`flex items-center gap-2 h-6 ${
+                      message.message_type === 'gift' ? 'mt-1' : 'mt-0.5'
+                    }`}>
+                      <span
+                        className="text-[10px] opacity-60 whitespace-nowrap flex-shrink-0"
+                        style={{
+                          color: getTextColor(
+                            message.is_from_host
+                              ? currentDesign.hostTimestamp
+                              : message.is_pinned
+                              ? currentDesign.pinnedTimestamp
+                              : isOwnMessage
+                              ? currentDesign.myTimestamp
+                              : currentDesign.regularTimestamp
+                          ) || '#ffffff'
+                        }}
                       >
-                        <img src={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`} alt="Photo" className="w-full h-full object-cover rounded-lg" draggable={false} />
-                      </div>
-                    );
-                  })()}
-                  {/* Video player */}
-                  {message.video_url && (
-                    <ModalVideoPlayer
-                      videoUrl={`${message.video_url}${message.video_url.includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`}
-                      thumbnailUrl={`${message.video_thumbnail_url || ''}${(message.video_thumbnail_url || '').includes('?') ? '&' : '?'}session_token=${sessionToken || ''}`}
-                      duration={message.video_duration || 0}
-                      videoPlayerStyles={themeVideoPlayerStyles}
-                    />
-                  )}
-                  {/* Voice message */}
-                  {message.voice_url && !message.content && (
-                    <div className="flex items-center gap-2 mt-1" onClick={(e) => e.stopPropagation()}>
-                      <Mic className={`w-4 h-4 ${themeModalStyles?.voiceText || 'text-white/60'}`} />
-                      <span className={`text-sm ${themeModalStyles?.voiceText || 'text-white/60'}`}>
-                        Voice message{message.voice_duration ? ` (${Math.floor(message.voice_duration / 60)}:${String(Math.floor(message.voice_duration % 60)).padStart(2, '0')})` : ''}
+                        {formatTimestamp(message.created_at)}
                       </span>
+                      <ReactionBar
+                        reactions={localReactions}
+                        onReactionClick={(emoji) => onReact?.(message.id, emoji)}
+                        highlightTheme={currentDesign.reactionHighlightBg ? {
+                          reaction_highlight_bg: currentDesign.reactionHighlightBg,
+                          reaction_highlight_border: currentDesign.reactionHighlightBorder,
+                          reaction_highlight_text: currentDesign.reactionHighlightText,
+                        } : undefined}
+                        uiStyles={currentDesign.uiStyles}
+                      />
                     </div>
-                  )}
-                  {/* Timestamp + Reactions — min-h prevents layout shift when first reaction is added */}
-                  <div className="flex items-center gap-2 mt-1 min-h-[24px]">
-                    <span className={`text-[10px] flex-shrink-0 whitespace-nowrap ${themeModalStyles?.timestampText || 'text-white opacity-60'}`}>
-                      {new Date(message.created_at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                    <ReactionBar
-                      reactions={localReactions}
-                      maxVisible={20}
-                    />
                   </div>
                 </div>
               </div>

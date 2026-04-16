@@ -479,6 +479,7 @@ function StickySection({
               currentUsername={username}
               isHost={isHostProp}
               themeIsDarkMode={themeIsDarkMode}
+              currentDesign={currentDesign}
               sessionToken={sessionToken}
               themeColors={modalThemeColors}
               modalStyles={currentDesign.modalStyles}
@@ -649,6 +650,7 @@ function StickySection({
               currentUsername={username}
               isHost={isHostProp}
               themeIsDarkMode={themeIsDarkMode}
+              currentDesign={currentDesign}
               sessionToken={sessionToken}
               themeColors={modalThemeColors}
               modalStyles={currentDesign.modalStyles}

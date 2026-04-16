@@ -55,9 +55,54 @@ export default function PhotoMessage({
   };
 
   const openFullscreen = () => {
-    setIsFullscreen(true);
-    // Prevent body scroll when fullscreen is open
-    document.body.style.overflow = 'hidden';
+    const doOpen = () => {
+      setIsFullscreen(true);
+      // Prevent body scroll when fullscreen is open
+      document.body.style.overflow = 'hidden';
+    };
+
+    // Detect if the soft keyboard is currently open (visual viewport height
+    // significantly shorter than layout viewport). 150px threshold catches
+    // all major mobile keyboards without false-positiving on browser chrome.
+    const isKeyboardOpen =
+      typeof window !== 'undefined' &&
+      !!window.visualViewport &&
+      window.visualViewport.height < window.innerHeight - 150;
+
+    if (!isKeyboardOpen) {
+      doOpen();
+      return;
+    }
+
+    // Keyboard is up — blur the active input to dismiss it, then wait for
+    // the dismiss animation to finish before opening the viewer. Without this:
+    //   - iOS Safari pre-dismisses on tap-outside, so it gets here with the
+    //     keyboard already closed and just opens immediately. (No-op branch.)
+    //   - Android Chrome fires the click while the keyboard is still up; if
+    //     we open the viewer right away the viewport keeps resizing and the
+    //     photo visibly jumps mid-animation.
+    // Listen for visualViewport resize and open as soon as it returns to
+    // ~full height. setTimeout fallback in case resize never fires (e.g., the
+    // user re-focused another input).
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    const vv = window.visualViewport!;
+    let opened = false;
+    const open = () => {
+      if (opened) return;
+      opened = true;
+      vv.removeEventListener('resize', onResize);
+      doOpen();
+    };
+    const onResize = () => {
+      if (vv.height >= window.innerHeight - 50) open();
+    };
+    vv.addEventListener('resize', onResize);
+    // Safety net: 500ms is past the keyboard dismiss animation on every
+    // mobile browser we care about. If the viewport still hasn't restored,
+    // give up — the user probably refocused something else.
+    setTimeout(open, 500);
   };
 
   const closeFullscreen = () => {
@@ -149,7 +194,7 @@ function FullscreenViewer({ photoUrl, onClose }: { photoUrl: string; onClose: ()
 
   return (
     <div
-      className="fixed inset-0 z-[60] bg-black flex items-center justify-center"
+      className="fixed inset-0 z-[10000] bg-black flex items-center justify-center"
       style={{ touchAction: 'none' }}
       onClick={onClose}
       onTouchStart={handleTouchStart}

@@ -27,7 +27,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, X, Loader2, Reply } from 'lucide-react';
+import { ArrowLeft, X, Loader2 } from 'lucide-react';
 import { ChatRoom, Message, ReactionSummary, messageApi } from '@/lib/api';
 import MessageActionsModal from './MessageActionsModal';
 import MessageBubbleContent from './MessageBubbleContent';
@@ -201,29 +201,25 @@ export default function FocusMessagePanel({
       // bottom-full → panel's bottom edge sits at input's top edge, so the panel
       // floats just above the input regardless of input height. No layout shift,
       // mirroring how the long-press modal mounts.
-      // rounded-t-3xl + overflow-hidden + bg-zinc-900 → matches the long-press
-      // sheet visual treatment.
+      // No drawer chrome: the message bubble floats freely above the input on
+      // the dimmed/blurred backdrop, just like the long-press preview floats
+      // above the action sheet. Mode + close + back live in a small floating
+      // pill above the message — keeps the "Replying to @user" status hint
+      // without the heavy full-width drawer header.
       // z-[70] → above the backdrop (z-[60]) so the panel renders on top.
-      className="absolute left-0 right-0 bottom-full z-[70] bg-zinc-900 rounded-t-3xl overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.5)]"
+      className="absolute left-0 right-0 bottom-full z-[70]"
       // touch-action:none on the panel frame itself swallows drag gestures so
       // they can't bubble up and pan the document / visual viewport. The body
-      // explicitly re-enables pan-y for its own internal scrolling. Without
-      // this, dragging the panel header (which has no scrollable target under
-      // it) caused iOS Safari / Android Chrome to slide the panel because
-      // the inherited `touch-action: pan-x pan-y` from body.chat-layout *
-      // told the browser "this surface is pannable."
+      // explicitly re-enables pan-y for its own internal scrolling.
       //
       // Slide-up: starts fully BELOW the input edge (calc(100% + input height))
       // and slides to translateY(0) above the input. Without the input-height
       // offset, translateY(100%) alone leaves the panel overlapping the input
-      // area on first frame — visible as a gray flash before it slides up.
+      // area on first frame.
       // The --input-height CSS variable is set by the parent's ResizeObserver.
       //
       // No transition delay: backdrop and panel animate together (200ms each),
-      // matching the long-press sheet's flawless feel. Earlier we tried a
-      // 220ms delay to enforce "backdrop first, then panel" — but that was
-      // chasing a different problem (GPU-deferred backdrop-blur paint), and
-      // the delay made the empty layout slot visible during the gap.
+      // matching the long-press sheet's flawless feel.
       style={{
         touchAction: 'none',
         transform: slideIn
@@ -233,52 +229,41 @@ export default function FocusMessagePanel({
         transition: 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms ease',
       }}
     >
-      {/* Header: back / mode label / close. Compose mode gets a Reply icon
-          so it's visually distinct from preview mode.
-          Back button styling matches the chat header's back button
-          (icon-only, p-1.5 rounded-lg, currentDesign.headerTitle color)
-          for consistency. Mode label uses the same font weight + color
-          family as the chat header title, just one size down. */}
-      <div
-        className="flex items-center justify-between px-4 py-2 border-b border-zinc-800/60"
-        // Block pan on the header — the chat-layout's universal selector
-        // (`body.chat-layout * { touch-action: pan-x pan-y }`) makes every
-        // descendant pannable by default, so dragging on the header would
-        // pan the iOS Safari visual viewport (URL bar, panel, keyboard all
-        // sliding together) when the keyboard is open. Inline style beats
-        // the universal selector's specificity.
-        style={{ touchAction: 'none' }}
-      >
-        {canGoBack ? (
+      {/* Floating mode pill: Back? + mode label + Close, centered above the
+          message. rounded-full bg with backdrop-blur so it reads as a soft
+          floating chip rather than a full-width header bar. The chip itself
+          has touch-action: none to block the iOS visual-viewport-pan
+          fallback that body.chat-layout *'s `pan-x pan-y` would otherwise
+          allow on its descendants. */}
+      <div className="flex justify-center pb-2 px-4" style={{ touchAction: 'none' }}>
+        <div className="flex items-center gap-1 rounded-full bg-zinc-800/95 backdrop-blur-sm shadow-lg pl-1 pr-1 py-1 text-sm font-semibold text-zinc-100 max-w-full">
+          {canGoBack && (
+            <button
+              onClick={onBack}
+              className="flex-shrink-0 p-1 rounded-full hover:bg-zinc-700/60 transition-colors"
+              aria-label="Back to previous message"
+            >
+              <ArrowLeft size={16} />
+            </button>
+          )}
+          <span className="px-2 truncate">Replying to message</span>
           <button
-            onClick={onBack}
-            className={`flex-shrink-0 flex items-center gap-1.5 p-1.5 pr-2 rounded-lg transition-colors text-sm font-semibold ${currentDesign.headerTitle || 'text-zinc-100'}`}
-            aria-label="Back to previous message"
+            onClick={onClose}
+            className="flex-shrink-0 p-1 rounded-full hover:bg-zinc-700/60 transition-colors"
+            aria-label={isComposing ? 'Cancel reply' : 'Close'}
           >
-            <ArrowLeft size={18} />
-            <span>Back</span>
+            <X size={16} />
           </button>
-        ) : (
-          <span className={`flex items-center gap-1.5 text-sm font-semibold ${currentDesign.headerTitle || 'text-zinc-100'}`}>
-            {isComposing && <Reply size={14} />}
-            <span>{isComposing ? 'Replying to' : 'Viewing message'}</span>
-          </span>
-        )}
-        <button
-          onClick={onClose}
-          className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${currentDesign.headerTitle || 'text-zinc-100'}`}
-          aria-label={isComposing ? 'Cancel reply' : 'Close'}
-        >
-          <X size={18} />
-        </button>
+        </div>
       </div>
 
-      {/* Body. max-height uses min() of two caps:
-          1) 50dvh — soft cap so the panel never dominates a tall viewport.
-          2) Available space above the input minus the top safe area minus
-             a breathing gap. Keeps the panel from butting up against the
-             browser URL bar / notch when the keyboard is open and the
-             message content is tall.
+      {/* Body. max-height = available space above the input minus the top
+          safe area minus a breathing gap. Lets tall content (long text, big
+          media) use as much vertical room as the chat area can spare while
+          still leaving a gap below the URL bar / notch and above the input.
+          The body still shrinks to fit short content (max-height isn't a
+          forced height). Previously had a 50dvh soft cap, removed so the
+          panel can use the full available space when content needs it.
           --visible-height: visualViewport.height set by page.tsx, in px.
             Tracks the actual visible area ABOVE the soft keyboard. dvh on
             iOS Safari only adjusts for browser chrome (URL bar) and does
@@ -286,7 +271,7 @@ export default function FocusMessagePanel({
             a gap when typing a reply.
           --input-height: input wrapper's offsetHeight, set by ResizeObserver
             in page.tsx.
-          56px buffer = ~32px header + 24px top gap.
+          64px buffer = 24px top gap + 32px pill + 8px pill-to-body gap.
           touch-action: pan-y + overflow-y: auto — body scrolls internally
           when the message is tall (long text, big photo). overscroll-contain
           keeps the scroll from chaining to the page.
@@ -305,7 +290,7 @@ export default function FocusMessagePanel({
         style={{
           touchAction: 'pan-y',
           overscrollBehavior: 'contain',
-          maxHeight: 'min(50dvh, calc(var(--visible-height, 100dvh) - var(--input-height, 80px) - env(safe-area-inset-top, 0px) - 56px))',
+          maxHeight: 'calc(var(--visible-height, 100dvh) - var(--input-height, 80px) - env(safe-area-inset-top, 0px) - 64px)',
         }}
       >
         <div style={{ minHeight: 'calc(100% + 1px)' }}>
@@ -339,6 +324,7 @@ export default function FocusMessagePanel({
                 currentUsername={username}
                 isHost={isHost}
                 themeIsDarkMode={themeIsDarkMode}
+                currentDesign={currentDesign}
                 sessionToken={sessionToken ?? null}
                 themeColors={modalThemeColors}
                 modalStyles={currentDesign.modalStyles}
