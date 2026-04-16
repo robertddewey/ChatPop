@@ -3071,7 +3071,7 @@ export default function ChatPage() {
         {/* Chat Header */}
         <div
           data-chat-header
-          className={currentDesign.header}
+          className={`${currentDesign.header} relative`}
           onTouchStart={(e) => {
             headerTouchStartYRef.current = e.touches[0].clientY;
           }}
@@ -3131,6 +3131,19 @@ export default function ChatPage() {
               </>
             )}
           </div>
+          {/* Tap-to-close overlay over the chat header while the focus panel
+              is open. Mirrors the long-press modal's behavior — clicking the
+              header (back button or anywhere) dismisses the panel rather than
+              triggering the header's own controls. Last child of the header
+              + absolute inset-0 means it paints on top of the back button and
+              other header content; click goes here, swallowed by closeFocusPanel. */}
+          {focusStack.length > 0 && (
+            <div
+              className="absolute inset-0"
+              onClick={closeFocusPanel}
+              aria-hidden="true"
+            />
+          )}
         </div>
 
       {/* Content Area Wrapper - View Router for Main Chat, Back Room, and future features */}
