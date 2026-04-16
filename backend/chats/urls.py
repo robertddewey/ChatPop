@@ -7,6 +7,7 @@ from .views import (
     DismissIntroView, MarkRoomReadView,
     VoiceUploadView, VoiceStreamView, PhotoUploadView, VideoUploadView, UserAvatarView,
     MessageReactionToggleView, MessageReactionsListView,
+    MessageDetailView,
     BlockUserView, UnblockUserView, BlockedUsersListView, MutedUsersInChatView,
     SpotlightListView, SpotlightAddView, SpotlightRemoveView, ParticipantSearchView,
     UserBlockView, UserUnblockView, UserBlockListView,
@@ -69,6 +70,7 @@ urlpatterns = [
     path('discover/<str:code>/messages/<uuid:message_id>/unpin/', MessageUnpinView.as_view(), name='message-unpin-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/react/', MessageReactionToggleView.as_view(), name='message-react-ai'),
     path('discover/<str:code>/messages/<uuid:message_id>/reactions/', MessageReactionsListView.as_view(), name='message-reactions-list-ai'),
+    path('discover/<str:code>/messages/<uuid:message_id>/', MessageDetailView.as_view(), name='message-detail-ai'),
 
     path('discover/<str:code>/validate-username/', UsernameValidationView.as_view(), name='validate-username-ai'),
     path('discover/<str:code>/suggest-username/', SuggestUsernameView.as_view(), name='suggest-username-ai'),
@@ -107,6 +109,7 @@ urlpatterns = [
     path('<str:username>/<str:code>/messages/<uuid:message_id>/unpin/', MessageUnpinView.as_view(), name='message-unpin'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/react/', MessageReactionToggleView.as_view(), name='message-react'),
     path('<str:username>/<str:code>/messages/<uuid:message_id>/reactions/', MessageReactionsListView.as_view(), name='message-reactions-list'),
+    path('<str:username>/<str:code>/messages/<uuid:message_id>/', MessageDetailView.as_view(), name='message-detail'),
 
     path('<str:username>/<str:code>/validate-username/', UsernameValidationView.as_view(), name='validate-username'),
     path('<str:username>/<str:code>/suggest-username/', SuggestUsernameView.as_view(), name='suggest-username'),

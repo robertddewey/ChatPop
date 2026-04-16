@@ -13,6 +13,7 @@
 import React, { useMemo, useRef, useState, useLayoutEffect, useEffect, memo } from 'react';
 import { BadgeCheck, Reply, Crown, Pin, Radio, Heart, Star, Megaphone, Mic, ImageIcon, Video, Gift, Frown, Eye, ChevronDown, Ban, Spotlight, HatGlasses } from 'lucide-react';
 import MessageActionsModal from './MessageActionsModal';
+import MessageBubbleContent from './MessageBubbleContent';
 import VoiceMessagePlayer from './VoiceMessagePlayer';
 import PhotoMessage from './PhotoMessage';
 import VideoMessage from './VideoMessage';
@@ -234,6 +235,8 @@ interface MainChatViewProps {
   themeIsDarkMode?: boolean;
   handleScroll: () => void;
   scrollToMessage: (messageId: string) => void;
+  /** Open the reply / sticky preview popup for a message ID. */
+  openMessagePreview: (messageId: string) => void;
   cancelScrollAnimation?: () => void;
   highlightMessage?: (messageId: string) => void;
   handleReply: (message: Message) => void;
@@ -301,6 +304,7 @@ function MainChatView({
   themeIsDarkMode = true,
   handleScroll,
   scrollToMessage,
+  openMessagePreview,
   cancelScrollAnimation,
   highlightMessage,
   handleReply,
@@ -477,6 +481,7 @@ function MainChatView({
         themeIsDarkMode={themeIsDarkMode}
         messagesContainerRef={messagesContainerRef}
         scrollToMessage={scrollToMessage}
+        openMessagePreview={openMessagePreview}
         cancelScrollAnimation={cancelScrollAnimation}
         highlightMessage={highlightMessage}
         expandStickySignal={expandStickySignal}
@@ -721,423 +726,20 @@ function MainChatView({
                   reactions={messageReactions[message.id] || message.reactions || []}
                   onOpenChange={onMessageActionsOpenChange}
                 >
-                  {/* Username header for first regular message in thread */}
-                  {isRegularMessage && isFirstInGroup && (
-                    <div className="mb-1">
-                      <div className="flex items-center gap-1">
-                        <span
-                          className={(() => {
-                            const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                            const isSpotlight = !isMyMessage && spotlightUsernames?.has(message.username);
-                            return isMyMessage
-                              ? currentDesign.myUsername
-                              : isSpotlight
-                              ? (currentDesign.hostUsername || 'text-sm font-semibold')
-                              : currentDesign.regularUsername;
-                          })() || 'text-sm font-semibold'}
-                          style={{
-                            color: (() => {
-                              const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                              const isSpotlight = !isMyMessage && spotlightUsernames?.has(message.username);
-                              if (isMyMessage) return getTextColor(currentDesign.myUsername) || '#ffffff';
-                              if (isSpotlight) return getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff';
-                              return getTextColor(currentDesign.regularUsername) || '#ffffff';
-                            })()
-                          }}
-                        >
-                          {message.username}
-                        </span>
-                        {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                        {spotlightUsernames?.has(message.username) && (
-                          <>
-                            <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
-                            <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
-                          </>
-                        )}
-                        {message.username_is_reserved ? (
-                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                        ) : (
-                          <HatGlasses size={14} style={{ color: '#ef4444' }} />
-                        )}
-                        {message.is_banned && <BannedPill />}
-                      </div>
-                    </div>
-                  )}
-                  {/* Host message header - OUTSIDE bubble */}
-                  {isHostMessage && (
-                    <div className="mb-1">
-                      <div className="flex items-center gap-1">
-                        <span
-                          className={(() => {
-                            const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                            return isMyMessage
-                              ? (currentDesign.myHostUsername || currentDesign.hostUsername || 'text-sm font-semibold')
-                              : (currentDesign.hostUsername || 'text-sm font-semibold');
-                          })()}
-                          style={{
-                            color: message.username.toLowerCase() === username.toLowerCase()
-                              ? getTextColor(currentDesign.myHostUsername) || '#ef4444'  // Your own host messages
-                              : getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff'
-                          }}
-                        >
-                          {message.username}
-                        </span>
-                        {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                        {message.username.toLowerCase() !== username.toLowerCase() && <HostPill color={getIconColor(currentDesign.crownIconColor) || '#2dd4bf'} />}
-                        <Crown size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                        {message.username_is_reserved ? (
-                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                        ) : (
-                          <HatGlasses size={14} style={{ color: '#ef4444' }} />
-                        )}
-                        {message.is_banned && <BannedPill />}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Pinned message header - OUTSIDE bubble */}
-                  {message.is_pinned && !isHostMessage && (
-                    <div className="mb-1">
-                      <div className="flex items-center gap-1">
-                        <span
-                          className={(() => {
-                            const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                            const isSpotlight = !isMyMessage && spotlightUsernames?.has(message.username);
-                            return isMyMessage
-                              ? currentDesign.myUsername
-                              : isSpotlight
-                              ? (currentDesign.hostUsername || 'text-sm font-semibold')
-                              : currentDesign.pinnedUsername;
-                          })() || 'text-sm font-semibold'}
-                          style={{
-                            color: (() => {
-                              const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                              const isSpotlight = !isMyMessage && spotlightUsernames?.has(message.username);
-                              if (isMyMessage) return getTextColor(currentDesign.myUsername) || '#ffffff';
-                              if (isSpotlight) return getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff';
-                              return getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff';
-                            })()
-                          }}
-                        >
-                          {message.username}
-                        </span>
-                        {message.username.toLowerCase() === username.toLowerCase() && <YouPill className={currentDesign.inputStyles?.youPill} />}
-                        {spotlightUsernames?.has(message.username) && (
-                          <>
-                            <SpotlightPill color={getIconColor(currentDesign.spotlightIconColor) || '#facc15'} />
-                            <Spotlight size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
-                          </>
-                        )}
-                        {message.username_is_reserved ? (
-                          <BadgeCheck size={14} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                        ) : (
-                          <HatGlasses size={14} style={{ color: '#ef4444' }} />
-                        )}
-                        {message.is_banned && <BannedPill />}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Gift message card - special rendering */}
-                  {message.message_type === 'gift' ? (
-                    (() => {
-                      // Parse "sent ☕ Coffee ($1) to @user"
-                      const giftMatch = message.content.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
-                      const emoji = giftMatch ? giftMatch[1] : '🎁';
-                      const giftName = giftMatch ? giftMatch[2] : '';
-                      const price = giftMatch ? giftMatch[3] : '';
-                      const recipient = giftMatch ? giftMatch[4] : '';
-                      const isForMe = recipient.toLowerCase() === username.toLowerCase();
-                      return (
-                        <div className={`relative rounded-xl px-3 py-2.5 flex items-center gap-2.5 max-w-[calc(100%-2.5%-5rem+5px)] ${
-                          isForMe
-                            ? currentDesign.giftStyles?.cardBgForMe || 'bg-purple-950/50 border border-purple-500/50'
-                            : message.is_pinned
-                            ? 'bg-purple-950/50 border border-purple-500/50'
-                            : currentDesign.giftStyles?.cardBg || 'bg-zinc-800/80 border border-zinc-700'
-                        }`}>
-                          {(message.is_pinned || message.is_gift_acknowledged || message.is_highlight || message.id === broadcastMessageId) && (
-                            <div className="absolute -top-2.5 -right-2 z-10 flex flex-row-reverse items-center gap-0.5">
-                              {message.is_pinned && (
-                                <span className="animate-wobble-b drop-shadow-md">
-                                  <Pin size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
-                                </span>
-                              )}
-                              {message.is_gift_acknowledged && (
-                                <span className="animate-wobble-a drop-shadow-md" title="Thanked">
-                                  <Heart size={14} fill="currentColor" style={{ color: '#ef4444' }} />
-                                </span>
-                              )}
-                              {message.is_highlight && (
-                                <span className="animate-wobble-a drop-shadow-md">
-                                  <Star size={14} fill="currentColor" style={{ color: '#facc15' }} />
-                                </span>
-                              )}
-                              {message.id === broadcastMessageId && (
-                                <span className="animate-wobble-a drop-shadow-md">
-                                  <Megaphone size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.highlightIconColor) || '#60a5fa' }} />
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {price && (
-                            <span className={`absolute top-1.5 right-2 text-[8px] font-medium px-1 py-0.5 rounded-full ${
-                              currentDesign.giftStyles?.priceBadge || 'bg-cyan-900/50 text-cyan-400'
-                            }`}>{price}</span>
-                          )}
-                          <div className={`text-3xl flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center animate-gift-breath ${
-                            currentDesign.giftStyles?.emojiContainer || 'bg-zinc-700/80'
-                          }`}>
-                            {emoji}
-                          </div>
-                          <div className="min-w-0 -mt-0.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-base font-semibold leading-tight ${currentDesign.giftStyles?.nameText || 'text-white'}`}>{giftName || message.content}</span>
-                            </div>
-                            {recipient && (
-                              <div className={`text-xs mt-0.5 ${currentDesign.giftStyles?.toPrefix || 'text-zinc-400'}`}>
-                                to <span className={`font-semibold ${
-                                  isForMe
-                                    ? (currentDesign.giftStyles?.recipientTextForMe || 'text-purple-400')
-                                    : (currentDesign.giftStyles?.recipientText || 'text-zinc-300')
-                                }`}>@{recipient}</span>
-                                {isForMe && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()
-                  ) : (
-                  /* Message bubble */
-                  <div
-                    className={(() => {
-                      const isMyMessage = message.username.toLowerCase() === username.toLowerCase();
-                      const isSpotlightBubble =
-                        !isHostMessage &&
-                        !message.is_pinned &&
-                        spotlightUsernames?.has(message.username);
-                      const selectedStyle = isHostMessage
-                        ? currentDesign.hostMessage + ' flex-1'
-                        : message.is_pinned
-                        ? currentDesign.pinnedMessage
-                        : isSpotlightBubble
-                        ? currentDesign.spotlightMessage
-                        : isMyMessage
-                        ? currentDesign.myMessage
-                        : currentDesign.regularMessage;
-
-                      // Add extra margin for media-only messages (no text caption)
-                      const hasMedia = message.voice_url || message.photo_url || message.video_url;
-                      const hasCaption = message.content && message.content.trim().length > 0;
-                      const isMediaOnly = hasMedia && !hasCaption;
-                      const base = isMediaOnly ? `${selectedStyle} mt-2` : selectedStyle;
-                      return (message.is_pinned || message.is_highlight || message.id === broadcastMessageId) ? `${base} relative` : base;
-                    })()}
-                  >
-                    {/* Status icons on corner of messages */}
-                    {(message.is_pinned || message.is_highlight || message.id === broadcastMessageId) && (
-                      <div className="absolute -top-2 -right-2 z-10 flex flex-row-reverse items-center gap-0.5">
-                        {message.is_pinned && (
-                          <span className="animate-wobble-b drop-shadow-md">
-                            <Pin size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.pinIconColor) || '#fbbf24' }} />
-                          </span>
-                        )}
-                        {message.is_highlight && (
-                          <span className="animate-wobble-a drop-shadow-md">
-                            <Star size={14} fill="currentColor" style={{ color: '#facc15' }} />
-                          </span>
-                        )}
-                        {message.id === broadcastMessageId && (
-                          <span className="animate-wobble-a drop-shadow-md">
-                            <Megaphone size={14} fill="currentColor" style={{ color: getIconColor(currentDesign.highlightIconColor) || '#60a5fa' }} />
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Reply context preview */}
-                    {message.reply_to_message && (
-                      <div
-                        className={`mb-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                          message.is_pinned
-                            ? currentDesign.uiStyles?.replyContextPinned || 'bg-white/10 border border-purple-500/30 hover:bg-white/15'
-                            : (isHostMessage || (!isHostMessage && spotlightUsernames?.has(message.username)))
-                            ? currentDesign.uiStyles?.replyContextHighlighted || 'bg-yellow-950/40 border border-yellow-900/40 hover:bg-yellow-950/60'
-                            : message.username.toLowerCase() === username.toLowerCase()
-                            ? currentDesign.uiStyles?.replyContextOwn || 'bg-white/10 border border-white/10 hover:bg-white/15'
-                            : currentDesign.uiStyles?.replyContextOther || 'bg-white/10 border border-zinc-600 hover:bg-white/15'
-                        }`}
-                        onClick={() => scrollToMessage(message.reply_to_message!.id)}
-                      >
-                        <div className="flex items-center gap-1 mb-0.5">
-                          <Reply className={`w-3 h-3 flex-shrink-0 ${currentDesign.uiStyles?.replyIconColor || 'text-gray-300'}`} />
-                          <span
-                            className="text-xs font-semibold"
-                            style={{
-                              color: message.reply_to_message.username.toLowerCase() === username.toLowerCase()
-                                ? (getTextColor(currentDesign.myUsername) || '#ef4444')
-                                : message.reply_to_message.is_from_host
-                                  ? (getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff')
-                                  : spotlightUsernames?.has(message.reply_to_message.username)
-                                    ? (getTextColor(currentDesign.hostUsername) || getTextColor(currentDesign.hostText) || '#ffffff')
-                                    : message.reply_to_message.is_pinned
-                                      ? (getTextColor(currentDesign.pinnedUsername) || getTextColor(currentDesign.pinnedText) || '#ffffff')
-                                      : (getTextColor(currentDesign.regularUsername) || '#ffffff')
-                            }}
-                          >
-                            {message.reply_to_message.username}
-                          </span>
-                          {message.reply_to_message.username_is_reserved ? (
-                            <BadgeCheck size={12} style={{ color: getIconColor(currentDesign.badgeIconColor) || '#3b82f6' }} />
-                          ) : (
-                            <HatGlasses size={12} style={{ color: '#ef4444' }} />
-                          )}
-                          {message.reply_to_message.is_from_host && (
-                            <Crown size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.crownIconColor) || '#2dd4bf' }} />
-                          )}
-                          {!message.reply_to_message.is_from_host && spotlightUsernames?.has(message.reply_to_message.username) && (
-                            <Spotlight size={12} fill="currentColor" style={{ color: getIconColor(currentDesign.spotlightIconColor) || '#facc15' }} />
-                          )}
-                        </div>
-                        {(() => {
-                          const c = message.reply_to_message!.content;
-                          const isGift = message.reply_to_message!.message_type === 'gift' || c.match(/^sent\s+\S+\s+.+?\s+\(\$[\d,.]+\)\s+to\s+@/);
-                          if (isGift) {
-                            const m = c.match(/sent\s+(\S+)\s+(.+?)\s+\((\$[\d,.]+)\)\s+to\s+@(\S+)/);
-                            const emoji = m ? m[1] : '🎁';
-                            const recipient = m ? m[4] : '';
-                            return (
-                              <div className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 mt-1 text-xs ${currentDesign.uiStyles?.replyGiftBadge || 'bg-zinc-700/60 border border-zinc-600/50'}`}>
-                                <span className={currentDesign.uiStyles?.replyGiftText || 'text-zinc-300'}>
-                                  sent {emoji} to <span className="font-semibold">@{recipient}</span>
-                                  {recipient.toLowerCase() === username.toLowerCase() && <span className="ml-1"><YouPill className={currentDesign.inputStyles?.youPill} /></span>}
-                                </span>
-                              </div>
-                            );
-                          }
-                          return (
-                            <p className={`text-xs truncate ${currentDesign.uiStyles?.replyPreviewText || 'text-gray-300'}`}>
-                              {c || '[Voice message]'}
-                            </p>
-                          );
-                        })()}
-                      </div>
-                    )}
-
-                    {/* Caption text - shown above media when message has both */}
-                    {message.content && (message.voice_url || message.photo_url || message.video_url) && (
-                      <p className={`mb-2 ${
-                        isHostMessage
-                          ? currentDesign.hostText
-                          : message.is_pinned
-                          ? currentDesign.pinnedText
-                          : message.username.toLowerCase() === username.toLowerCase()
-                          ? currentDesign.myText
-                          : currentDesign.regularText
-                      }`}>
-                        {message.content}
-                      </p>
-                    )}
-
-                    {/* Message content + floating reaction pill */}
-                    <div className="relative w-fit max-w-full">
-                    {message.voice_url ? (
-                      <VoiceMessagePlayer
-                        voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                        duration={message.voice_duration || 0}
-                        waveformData={message.voice_waveform || []}
-                        isMyMessage={message.username.toLowerCase() === username.toLowerCase()}
-                        voiceContainerBg={
-                          isHostMessage
-                            ? currentDesign.hostVoiceMessageStyles?.containerBg
-                            : message.is_pinned
-                            ? currentDesign.pinnedVoiceMessageStyles?.containerBg
-                            : message.username.toLowerCase() === username.toLowerCase()
-                            ? currentDesign.myVoiceMessageStyles?.containerBg
-                            : currentDesign.voiceMessageStyles?.containerBg
-                        }
-                        voicePlayButton={
-                          isHostMessage
-                            ? currentDesign.hostVoiceMessageStyles?.playButton
-                            : message.is_pinned
-                            ? currentDesign.pinnedVoiceMessageStyles?.playButton
-                            : message.username.toLowerCase() === username.toLowerCase()
-                            ? currentDesign.myVoiceMessageStyles?.playButton
-                            : currentDesign.voiceMessageStyles?.playButton
-                        }
-                        voicePlayIconColor={
-                          isHostMessage
-                            ? currentDesign.hostVoiceMessageStyles?.playIconColor
-                            : message.is_pinned
-                            ? currentDesign.pinnedVoiceMessageStyles?.playIconColor
-                            : message.username.toLowerCase() === username.toLowerCase()
-                            ? currentDesign.myVoiceMessageStyles?.playIconColor
-                            : currentDesign.voiceMessageStyles?.playIconColor
-                        }
-                        voiceWaveformActive={
-                          isHostMessage
-                            ? currentDesign.hostVoiceMessageStyles?.waveformActive
-                            : message.is_pinned
-                            ? currentDesign.pinnedVoiceMessageStyles?.waveformActive
-                            : message.username.toLowerCase() === username.toLowerCase()
-                            ? currentDesign.myVoiceMessageStyles?.waveformActive
-                            : currentDesign.voiceMessageStyles?.waveformActive
-                        }
-                        voiceWaveformInactive={
-                          isHostMessage
-                            ? currentDesign.hostVoiceMessageStyles?.waveformInactive
-                            : message.is_pinned
-                            ? currentDesign.pinnedVoiceMessageStyles?.waveformInactive
-                            : message.username.toLowerCase() === username.toLowerCase()
-                            ? currentDesign.myVoiceMessageStyles?.waveformInactive
-                            : currentDesign.voiceMessageStyles?.waveformInactive
-                        }
-                        durationTextColor={
-                          isHostMessage
-                            ? currentDesign.hostVoiceMessageStyles?.durationTextColor
-                            : message.is_pinned
-                            ? currentDesign.pinnedVoiceMessageStyles?.durationTextColor
-                            : message.username.toLowerCase() === username.toLowerCase()
-                            ? currentDesign.myVoiceMessageStyles?.durationTextColor
-                            : currentDesign.voiceMessageStyles?.durationTextColor
-                        }
-                      />
-                    ) : message.photo_url ? (
-                      <PhotoMessage
-                        photoUrl={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                        width={message.photo_width || 300}
-                        height={message.photo_height || 200}
-                        maxDisplayHeight={viewportHeight ? Math.min(320, Math.round(viewportHeight * 0.4)) : 320}
-                      />
-                    ) : message.video_url ? (
-                      <VideoMessage
-                        videoUrl={`${message.video_url}${message.video_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-                        thumbnailUrl={message.video_thumbnail_url ? `${message.video_thumbnail_url}${message.video_thumbnail_url.includes('?') ? '&' : '?'}session_token=${sessionToken}` : ''}
-                        duration={message.video_duration || 0}
-                        width={message.video_width}
-                        height={message.video_height}
-                      />
-                    ) : message.content ? (
-                      <p className={
-                        isHostMessage
-                          ? currentDesign.hostText
-                          : message.is_pinned
-                          ? currentDesign.pinnedText
-                          : message.username.toLowerCase() === username.toLowerCase()
-                          ? currentDesign.myText
-                          : currentDesign.regularText
-                      }>
-                        {message.content}
-                      </p>
-                    ) : (
-                      <p className={`text-sm italic ${currentDesign.uiStyles?.mediaLoadingText || 'text-gray-500'}`}>
-                        [Media message - loading...]
-                      </p>
-                    )}
-                    </div>
-                  </div>
-                  )}
+                  <MessageBubbleContent
+                    message={message}
+                    username={username}
+                    currentDesign={currentDesign}
+                    spotlightUsernames={spotlightUsernames}
+                    sessionToken={sessionToken}
+                    broadcastMessageId={broadcastMessageId}
+                    viewportHeight={viewportHeight}
+                    isHostMessage={isHostMessage}
+                    isFirstInGroup={isFirstInGroup}
+                    isRegularMessage={isRegularMessage}
+                    openMessagePreview={openMessagePreview}
+                  />
+                
                 </MessageActionsModal>
                 {/* Timestamp + Reaction pills row — outside MessageActionsModal so touch scroll works */}
                 <div className={`flex items-center gap-2 h-6 pr-14 ${

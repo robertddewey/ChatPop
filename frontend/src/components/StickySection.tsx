@@ -134,6 +134,8 @@ interface StickySectionProps {
   themeIsDarkMode: boolean;
   messagesContainerRef: React.RefObject<HTMLDivElement | null>;
   scrollToMessage: (messageId: string) => void;
+  /** Open the reply / sticky preview popup for a message ID. */
+  openMessagePreview: (messageId: string) => void;
   cancelScrollAnimation?: () => void;
   highlightMessage?: (messageId: string) => void;
   expandStickySignal?: number;
@@ -190,6 +192,7 @@ function StickySection({
   themeIsDarkMode,
   messagesContainerRef,
   scrollToMessage,
+  openMessagePreview,
   cancelScrollAnimation,
   highlightMessage,
   expandStickySignal,
@@ -579,7 +582,7 @@ function StickySection({
                     {formatTimestamp(message.created_at)}
                   </span>
                   <button
-                    onClick={(e) => { e.stopPropagation(); scrollToMessage(message.id); }}
+                    onClick={(e) => { e.stopPropagation(); openMessagePreview(message.id); }}
                     className="p-1 rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity"
                     aria-label="Go to message"
                   >
@@ -725,7 +728,7 @@ function StickySection({
                     {formatTimestamp(stickyPinnedMessage.created_at)}
                   </span>
                   <button
-                    onClick={(e) => { e.stopPropagation(); scrollToMessage(stickyPinnedMessage.id); }}
+                    onClick={(e) => { e.stopPropagation(); openMessagePreview(stickyPinnedMessage.id); }}
                     className="p-1 rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity"
                     aria-label="Go to message"
                   >

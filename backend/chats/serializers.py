@@ -355,6 +355,9 @@ class MessageSerializer(serializers.ModelSerializer):
                 obj.reply_to.user.reserved_username and
                 obj.reply_to.username.lower() == obj.reply_to.user.reserved_username.lower()
             )
+            # Media flags so reply previews can render the right icon + label
+            # (Photo / Video / Voice) instead of a generic '[Voice message]'
+            # fallback. Booleans only — the preview doesn't need the URLs.
             return {
                 'id': str(obj.reply_to.id),
                 'username': obj.reply_to.username,
@@ -363,6 +366,9 @@ class MessageSerializer(serializers.ModelSerializer):
                 'is_from_host': obj.reply_to.is_from_host,
                 'username_is_reserved': bool(reply_username_is_reserved),
                 'is_pinned': obj.reply_to.is_pinned,
+                'has_photo': bool(obj.reply_to.photo_url),
+                'has_video': bool(obj.reply_to.video_url),
+                'has_voice': bool(obj.reply_to.voice_url),
             }
         return None
 

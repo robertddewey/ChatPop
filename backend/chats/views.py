@@ -2688,6 +2688,88 @@ class MessageReactionToggleView(APIView):
         }, status=status.HTTP_201_CREATED if action == 'added' else status.HTTP_200_OK)
 
 
+class MessageDetailView(APIView):
+    """Fetch a single message by ID.
+
+    Powers the reply-preview popup: clicking a reply preview (or chain-walking
+    through nested replies) needs the parent message data without paginating
+    through the timeline. Cache-first; falls back to PostgreSQL.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, code, message_id, username=None):
+        chat_room = get_chat_room_by_url(code, username)
+        session_token = request.query_params.get('session_token')
+
+        # Identity (for has_reacted)
+        current_session_key = None
+        current_user_id = None
+        if session_token:
+            try:
+                session_data = ChatSessionValidator.validate_session_token(session_token, chat_code=code)
+                current_session_key = session_data.get('session_key')
+                current_user_id = session_data.get('user_id')
+            except Exception:
+                pass  # Invalid token — proceed without has_reacted
+
+        # Cache-first
+        msg_dict = MessageCache.get_message_by_id(chat_room.id, str(message_id))
+        source = 'redis'
+
+        if msg_dict is None:
+            # Cache miss: fall back to PostgreSQL via the canonical serializer
+            try:
+                msg = Message.objects.select_related('user', 'reply_to', 'chat_room').get(
+                    id=message_id, chat_room=chat_room, is_deleted=False,
+                )
+            except Message.DoesNotExist:
+                return Response({'detail': 'Message not found'}, status=status.HTTP_404_NOT_FOUND)
+            username_is_reserved = MessageCache._compute_username_is_reserved(msg)
+            msg_dict = MessageCache._serialize_message(msg, username_is_reserved)
+            source = 'postgresql'
+        else:
+            # Defensive: cache hit may include a soft-deleted message if
+            # eviction hasn't caught up. Don't surface deleted messages.
+            if msg_dict.get('is_deleted'):
+                return Response({'detail': 'Message not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Convert relative voice URL to absolute
+        if msg_dict.get('voice_url') and request:
+            msg_dict['voice_url'] = request.build_absolute_uri(msg_dict['voice_url'])
+
+        # Attach reactions + has_reacted (same logic as MessageListView)
+        reactions = MessageCache.batch_get_reactions(chat_room.id, [msg_dict['id']]).get(msg_dict['id'], [])
+        if current_session_key or current_user_id:
+            q_filter = Q()
+            if current_session_key:
+                q_filter |= Q(session_key=current_session_key)
+            if current_user_id:
+                q_filter |= Q(user_id=current_user_id)
+            user_emojis = set(
+                MessageReaction.objects.filter(
+                    Q(message_id=msg_dict['id']) & q_filter
+                ).values_list('emoji', flat=True)
+            )
+            for r in reactions:
+                r['has_reacted'] = r['emoji'] in user_emojis
+        else:
+            for r in reactions:
+                r['has_reacted'] = False
+        msg_dict['reactions'] = reactions
+
+        # is_banned + is_spotlight (same logic as the list view)
+        author_lower = msg_dict.get('username', '').lower()
+        from django.utils import timezone as tz
+        msg_dict['is_banned'] = ChatBlock.objects.filter(
+            chat_room=chat_room, blocked_username=author_lower,
+        ).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=tz.now())).exists()
+        msg_dict['is_spotlight'] = ChatParticipation.objects.filter(
+            chat_room=chat_room, is_spotlight=True, username=msg_dict.get('username', ''),
+        ).exists()
+
+        return Response({'message': msg_dict, 'source': source})
+
+
 class MessageReactionsListView(APIView):
     """Get all reactions for a specific message"""
     permission_classes = [permissions.AllowAny]

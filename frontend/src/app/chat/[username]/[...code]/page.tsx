@@ -17,6 +17,8 @@ import FeatureIntroModal from '@/components/FeatureIntroModal';
 import LoginModal, { LoginFormContent } from '@/components/LoginModal';
 import RegisterModal, { RegisterFormContent } from '@/components/RegisterModal';
 import VoiceMessagePlayer from '@/components/VoiceMessagePlayer';
+import MessagePreviewModal from '@/components/MessagePreviewModal';
+import { getIconColor as getThemeIconColor, getTextColor as getThemeTextColor } from '@/lib/themeColors';
 import MessageInput, { type MessageInputHandle } from '@/components/MessageInput';
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
@@ -487,6 +489,17 @@ export default function ChatPage() {
   // Feature intro tracking
   const [seenIntros, setSeenIntros] = useState<Record<string, boolean>>({});
   const [showFeatureIntro, setShowFeatureIntro] = useState<string | null>(null);
+
+  // Message preview popup — used when the user taps a reply preview or a
+  // sticky message's jump button. Replaces the old "scroll to message" UX
+  // which silently failed when the target was outside the loaded window.
+  const [previewMessageId, setPreviewMessageId] = useState<string | null>(null);
+  const openMessagePreview = useCallback((messageId: string) => {
+    setPreviewMessageId(messageId);
+  }, []);
+  const closeMessagePreview = useCallback(() => {
+    setPreviewMessageId(null);
+  }, []);
 
   // Sticky height from MainChatView (for FAB strip positioning)
   // Debounce drops to 0 — room switches briefly clear sticky content but it reappears.
@@ -2765,6 +2778,22 @@ export default function ChatPage() {
     return convertThemeToCamelCase(participationTheme || chatRoom?.theme || defaultTheme);
   }, [participationTheme, chatRoom?.theme]);
 
+  // Theme colors used by MessageActionsModal's long-press sheet (host icons,
+  // crown, spotlight, etc.). Same set MainChatView computes internally; we
+  // also need it here to pass into MessagePreviewModal so the popup's
+  // long-press sheet matches the active theme. Recomputed only when the
+  // theme changes.
+  const modalThemeColors = useMemo(() => ({
+    badgeIcon: getThemeIconColor(currentDesign.badgeIconColor) || '#3b82f6',
+    crownIcon: getThemeIconColor(currentDesign.crownIconColor) || '#2dd4bf',
+    pinIcon: getThemeIconColor(currentDesign.pinIconColor) || '#fbbf24',
+    spotlightIcon: getThemeIconColor(currentDesign.spotlightIconColor) || '#facc15',
+    hostUsername: getThemeTextColor(currentDesign.hostUsername) || getThemeTextColor(currentDesign.hostText) || '#ffffff',
+    pinnedUsername: getThemeTextColor(currentDesign.pinnedUsername) || getThemeTextColor(currentDesign.pinnedText) || '#ffffff',
+    myUsername: getThemeTextColor(currentDesign.myUsername) || '#ef4444',
+    regularUsername: getThemeTextColor(currentDesign.regularUsername) || '#ffffff',
+  }), [currentDesign]);
+
   // Memoized design prop for MessageInput to prevent re-renders
   const messageInputDesign = useMemo(() => {
     // Tailwind class → hex lookup (same table as MainChatView)
@@ -2993,6 +3022,7 @@ export default function ChatPage() {
                 themeIsDarkMode={themeIsDarkMode}
                 handleScroll={handleScroll}
                 scrollToMessage={scrollToMessage}
+                openMessagePreview={openMessagePreview}
                 cancelScrollAnimation={cancelScrollAnimation}
                 highlightMessage={highlightMessage}
                 handleReply={handleReply}
@@ -3298,6 +3328,45 @@ export default function ChatPage() {
           onDismiss={() => handleDismissIntro('spotlight_first_time')}
         />
       )}
+
+      {/* Reply / sticky preview popup — full bubble + long-press support */}
+      <MessagePreviewModal
+        isOpen={previewMessageId !== null}
+        initialMessageId={previewMessageId}
+        chatCode={code}
+        roomUsername={roomUsername}
+        sessionToken={sessionToken || undefined}
+        username={username}
+        findInLoadedMessages={(id) => messages.find(m => m.id === id)}
+        onClose={closeMessagePreview}
+        currentDesign={currentDesign}
+        themeIsDarkMode={themeIsDarkMode}
+        modalThemeColors={modalThemeColors}
+        isHost={isHost}
+        spotlightUsernames={spotlightUsernames}
+        mutedUsernames={mutedUsernames}
+        broadcastMessageId={stickyHostMessage?.id || null}
+        chatRoom={chatRoom}
+        onReply={handleReply}
+        onPin={handlePin}
+        onAddToPin={handleAddToPin}
+        getPinRequirements={getPinRequirements}
+        onBlock={handleBlockUser}
+        onUnblock={handleUnblockUser}
+        onUnmute={handleUnmuteUser}
+        onSpotlightAdd={handleSpotlightAdd}
+        onSpotlightRemove={handleSpotlightRemove}
+        onRequestSignup={() => openAuth('signup')}
+        onTip={handleTipUser}
+        onSendGift={handleSendGift}
+        onThankGift={handleThankGift}
+        onToggleHighlight={handleHighlightMessage}
+        onToggleBroadcast={handleToggleBroadcast}
+        onDelete={handleDeleteMessage}
+        onUnpin={handleUnpinMessage}
+        onReact={handleReactionToggle}
+        messageReactions={messageReactions}
+      />
     </>
   );
 }

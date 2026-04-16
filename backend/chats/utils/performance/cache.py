@@ -167,7 +167,10 @@ class MessageCache:
 
         Includes username_is_reserved flag for frontend badge display.
         """
-        # Build reply_to_message object if there's a reply
+        # Build reply_to_message object if there's a reply.
+        # has_photo / has_video / has_voice flags let the reply preview render
+        # the right icon + label (Photo / Video / Voice) instead of falling
+        # back to a generic '[Voice message]' string for any media-only parent.
         reply_to_message = None
         if message.reply_to:
             reply_username_is_reserved = cls._compute_username_is_reserved(message.reply_to)
@@ -179,6 +182,9 @@ class MessageCache:
                 "is_from_host": message.reply_to.is_from_host,
                 "username_is_reserved": reply_username_is_reserved,
                 "is_pinned": message.reply_to.is_pinned,
+                "has_photo": bool(message.reply_to.photo_url),
+                "has_video": bool(message.reply_to.video_url),
+                "has_voice": bool(message.reply_to.voice_url),
             }
 
         # Get avatar_url if not provided
@@ -563,6 +569,28 @@ class MessageCache:
                 e.__class__.__name__,
             )
             return False
+
+    @classmethod
+    def get_message_by_id(cls, room_id: Union[str, UUID], message_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a single message by ID. Cache-first; returns None on miss.
+
+        Used by the message-detail endpoint that powers the reply-preview popup.
+        Caller is responsible for falling back to PostgreSQL on miss.
+        """
+        try:
+            redis_client = cls._get_redis_client()
+            data_key = cls.MSG_DATA_KEY.format(room_id=str(room_id))
+            raw = redis_client.hget(data_key, str(message_id))
+            if raw is None:
+                return None
+            return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+        except Exception:
+            logger.exception(
+                "MessageCache.get_message_by_id failed for room=%s message=%s",
+                room_id, message_id,
+            )
+            return None
 
     @classmethod
     def _fetch_by_ids(cls, redis_client, room_id: str, message_ids: list) -> List[Dict[str, Any]]:

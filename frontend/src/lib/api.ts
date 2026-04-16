@@ -226,6 +226,10 @@ export interface ReplyToMessage {
   is_from_host: boolean;
   username_is_reserved: boolean;
   is_pinned: boolean;
+  // Media flags for reply preview rendering (Photo / Video / Voice icon + label)
+  has_photo?: boolean;
+  has_video?: boolean;
+  has_voice?: boolean;
 }
 
 export interface MessageReaction {
@@ -780,6 +784,26 @@ export const messageApi = {
       params.session_token = sessionToken;
     }
     const response = await api.get(`${buildChatUrl(code, roomUsername)}/messages/${messageId}/reactions/`, { params });
+    return response.data;
+  },
+
+  // Fetch a single message by ID — used by the reply-preview popup so the
+  // user can see (and chain-walk) parent messages that may be outside the
+  // currently-loaded pagination window.
+  getMessage: async (
+    code: string,
+    messageId: string,
+    roomUsername?: string,
+    sessionToken?: string,
+  ): Promise<{ message: Message; source: string }> => {
+    const params: Record<string, string> = {};
+    if (sessionToken) {
+      params.session_token = sessionToken;
+    }
+    const response = await api.get(
+      `${buildChatUrl(code, roomUsername)}/messages/${messageId}/`,
+      { params },
+    );
     return response.data;
   },
 
