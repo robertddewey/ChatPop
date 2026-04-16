@@ -88,7 +88,38 @@ room:{room_id}:idx:host             → Host messages
 room:{room_id}:idx:focus:{username}  → Per-user focus view (own messages + replies to them + host messages they triggered)
 room:{room_id}:idx:gifts             → All gift messages
 room:{room_id}:idx:gifts:{username}  → Per-user gifts (sent + received)
+room:{room_id}:idx:highlight         → Host-highlighted messages
+room:{room_id}:idx:photo             → Non-gift messages with photo_url (Photo Room)
+room:{room_id}:idx:video             → Non-gift messages with video_url (Video Room)
+room:{room_id}:idx:audio             → Non-gift messages with voice_url (Audio Room)
 ```
+
+**Protected SET (Eviction Optimization):**
+```
+Key: room:{room_id}:protected
+Type: Set (SADD)
+Members: message_ids of protected messages
+TTL: 24 hours
+```
+Records which messages are exempt from normal eviction (highlights, gifts, photos, videos, voice). Eviction reads this once via SMEMBERS instead of re-deriving protection by HGET + JSON-parse for every candidate. Maintained by `add_message`, `update_message`, `_evict_messages`, and `remove_message`.
+
+**Index Registry SET (Eviction Optimization):**
+```
+Key: room:{room_id}:idx_keys
+Type: Set (SADD)
+Members: full index key names (e.g. "room:{id}:idx:photo", "room:{id}:idx:focus:alice")
+TTL: 24 hours
+```
+Lists every `idx:*` key the room has touched. Eviction reads this with SMEMBERS instead of `scan_iter`-walking the keyspace. Deterministic and skips unrelated keys.
+
+**Hydration Flag:**
+```
+Key: room:{room_id}:idx:{media_type}:hydrated
+Type: String (SET)
+Value: "1"
+TTL: 24 hours
+```
+Set once per room/media-type after the cold-start Postgres scan that seeds the media index + msg_data. Prevents re-hydration on subsequent reads.
 
 **Pinned Messages:**
 ```
@@ -128,8 +159,17 @@ Messages in Redis include all fields needed by the frontend, including badge sta
   "current_pin_amount": "0.00",
   "avatar_url": "https://...",
   "voice_url": null,
+  "voice_duration": null,
+  "voice_waveform": null,
   "photo_url": null,
+  "photo_width": null,
+  "photo_height": null,
   "video_url": null,
+  "video_duration": null,
+  "video_thumbnail_url": null,
+  "video_width": null,
+  "video_height": null,
+  "is_highlight": false,
   "gift_recipient": null,
   "is_gift_acknowledged": false,
   "created_at": "2025-01-04T12:34:56.789Z",
@@ -137,19 +177,38 @@ Messages in Redis include all fields needed by the frontend, including badge sta
 }
 ```
 
+**Important:** Decimal-typed model fields (`voice_duration`, `video_duration`, `pin_amount_paid`, `current_pin_amount`) must be JSON-coerced (cast to `float` or `str`) inside `_serialize_message`. The cache layer's `add_message` swallows serialization failures silently and falls back to "PostgreSQL is the source of truth" — but unhandled Decimal values will fail every write. ERROR-level logging in `add_message` surfaces these regressions; a dedicated regression test (`tests_cache_regressions.test_voice_message_round_trips_through_cache`) guards against them.
+
+**Both code paths use the same serializer.** `MessageListView._fetch_from_db` (the PostgreSQL fallback) calls `MessageCache._serialize_message` so cache-hit and cache-miss responses have identical field shapes. The fallback only adds `is_banned`, `is_spotlight`, and `reactions` (fields that aren't part of the cached message proper).
+
 ### Cache Retention Policy
 
-**Hybrid Retention:** Keep last **500 messages** OR **24 hours**, whichever is larger.
+**Hybrid Retention:** Keep last **5000 messages** OR **24 hours**, whichever is larger.
 
 **Implementation:**
-- On each new message, trim old messages if count exceeds 500
-- Redis key TTL set to 24 hours (refreshed on each message)
-- Expired messages automatically removed by Redis
+- Cap is `REDIS_CACHE_MAX_COUNT` (Constance, default 5000)
+- Eviction is **batched** — trim only fires when timeline exceeds `cap + EVICTION_BATCH_SIZE` (100), then evicts back down to cap. Effective ceiling is `cap + EVICTION_BATCH_SIZE`.
+- Eviction is **protection-aware** — messages in the protected SET (highlights, gifts, photos, videos, voice) are skipped during normal eviction. Only force-evicted when the eviction scan window (`overflow + EVICTION_SCAN_LIMIT = 100`) is fully saturated with protected messages.
+- Redis key TTL set to 24 hours (refreshed on each message via `EXPIRE`).
+- Expired messages automatically removed by Redis.
 
 **Benefits:**
-- Active chats: Last 500 messages always available (even if >24h old)
-- Inactive chats: Auto-cleanup after 24h to free memory
-- No manual cleanup jobs needed
+- Active chats: Last 5000 messages always available (even if >24h old).
+- Inactive chats: Auto-cleanup after 24h to free memory.
+- Protected media (photo/video/audio/gift/highlight) survives text floods of moderate ratio.
+- Trim cost amortized 100× — one trim per ~100 writes instead of per write.
+
+### Cold-Start Hydration
+
+When a filter room (Photo / Video / Audio) is opened for the first time on a freshly-flushed cache, `_hydrate_media_index` runs once per room/type:
+
+1. Check `room:{id}:idx:{type}:hydrated` flag → if present, no-op.
+2. Query PostgreSQL for all matching messages (capped at `REDIS_CACHE_MAX_COUNT`).
+3. Queue every message's writes onto a **single Redis pipeline** (msg_data HSET, timeline ZADD, all index ZADDs, protected SADD if applicable, registry SADD).
+4. Execute the pipeline — one round-trip regardless of message count.
+5. Set the hydration flag.
+
+This avoids both a per-message Redis round-trip cliff (would be 5000+ RTTs) and the older bug where hydration scanned only the bounded `msg_data` hash and missed older messages that had aged out.
 
 ### Pinned Message Handling
 

@@ -279,6 +279,7 @@ export interface Message {
   gift_recipient?: string | null;
   is_gift_acknowledged?: boolean;
   is_highlight?: boolean;
+  highlighted_at?: string | null;
   reactions?: ReactionSummary[]; // Top 3 reactions for display
 }
 

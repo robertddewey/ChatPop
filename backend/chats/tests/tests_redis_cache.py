@@ -228,8 +228,14 @@ class RedisMessageCacheTests(TransactionTestCase):
     @allure.description("Test that cache trims to REDIS_CACHE_MAX_COUNT (500 by default)")
     @allure.severity(allure.severity_level.NORMAL)
     def test_cache_retention_max_count(self):
-        """Test that cache trims to REDIS_CACHE_MAX_COUNT (500 by default)"""
+        """Test that cache trims to REDIS_CACHE_MAX_COUNT.
+
+        Uses strict_cap_eviction so the test exercises strict per-message
+        trim behavior. Production runs with batched eviction (cap+batch_size
+        ceiling); see tests_batch_eviction.py for batched-semantics coverage.
+        """
         from constance import config
+        from chats.tests import cache_helpers
 
         # Store original setting
         original_max = config.REDIS_CACHE_MAX_COUNT
@@ -238,15 +244,16 @@ class RedisMessageCacheTests(TransactionTestCase):
         config.REDIS_CACHE_MAX_COUNT = 10
 
         try:
-            # Create 15 messages (exceeds limit)
-            for i in range(15):
-                message = Message.objects.create(
-                    chat_room=self.chat_room,
-                    username='TestUser',
-                    user=self.user,
-                    content=f'Message {i}'
-                )
-                MessageCache.add_message(message)
+            with cache_helpers.strict_cap_eviction():
+                # Create 15 messages (exceeds limit)
+                for i in range(15):
+                    message = Message.objects.create(
+                        chat_room=self.chat_room,
+                        username='TestUser',
+                        user=self.user,
+                        content=f'Message {i}'
+                    )
+                    MessageCache.add_message(message)
 
             # Should only keep last 10
             messages = MessageCache.get_messages(self.chat_room.id, limit=20)

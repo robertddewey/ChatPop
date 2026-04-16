@@ -290,8 +290,8 @@ CONSTANCE_CONFIG = {
         bool
     ),
     'REDIS_CACHE_MAX_COUNT': (
-        500,
-        'Maximum messages cached per chat in Redis. Recommended: 100-200 for memory efficiency.',
+        5000,
+        'Maximum messages cached per chat in Redis (hard cap, includes protected messages). Higher values give deeper scroll-back coverage before PostgreSQL fallback but increase memory usage (~2 KB per message).',
         int
     ),
     'REDIS_CACHE_TTL_HOURS': (

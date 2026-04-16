@@ -60,7 +60,7 @@
   "pk": 38,
   "fields": {
     "key": "REDIS_CACHE_MAX_COUNT",
-    "value": "{\"__type__\": \"default\", \"__value__\": 500}"
+    "value": "{\"__type__\": \"default\", \"__value__\": 5000}"
   }
 },
 {

@@ -193,6 +193,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         RoomNotificationCache.mark_new_content(self.chat_room_id, 'verified', actor_user_id=self.participation_id)
                     if message_data.get('message_type') == 'gift':
                         RoomNotificationCache.mark_new_content(self.chat_room_id, 'gifts', actor_user_id=self.participation_id)
+                    else:
+                        # Media rooms — only non-gift messages with media fields populated
+                        if message_data.get('photo_url'):
+                            RoomNotificationCache.mark_new_content(self.chat_room_id, 'photo', actor_user_id=self.participation_id)
+                        if message_data.get('video_url'):
+                            RoomNotificationCache.mark_new_content(self.chat_room_id, 'video', actor_user_id=self.participation_id)
+                        if message_data.get('voice_url'):
+                            RoomNotificationCache.mark_new_content(self.chat_room_id, 'audio', actor_user_id=self.participation_id)
                 except Exception:
                     pass  # Non-critical
 

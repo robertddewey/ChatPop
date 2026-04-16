@@ -23,6 +23,7 @@ manual rooms with same code owned by different users.
 """
 
 import json
+import logging
 import time
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Union
@@ -31,6 +32,8 @@ from django.core.cache import cache
 from django.conf import settings
 from chats.models import Message, ChatParticipation
 from .monitoring import monitor
+
+logger = logging.getLogger(__name__)
 
 
 class MessageCache:
@@ -47,6 +50,20 @@ class MessageCache:
     GIFTS_INDEX_KEY = "room:{room_id}:idx:gifts"
     GIFTS_USER_INDEX_KEY = "room:{room_id}:idx:gifts:{username}"
     HIGHLIGHT_INDEX_KEY = "room:{room_id}:idx:highlight"
+    # Media indexes — membership based on media field presence, gifts excluded
+    PHOTO_INDEX_KEY = "room:{room_id}:idx:photo"
+    VIDEO_INDEX_KEY = "room:{room_id}:idx:video"
+    AUDIO_INDEX_KEY = "room:{room_id}:idx:audio"
+    # Hydration flag — set once per room/type after scan of MSG_DATA_KEY
+    MEDIA_HYDRATED_KEY = "room:{room_id}:idx:{media_type}:hydrated"
+    # Protected message set — membership = "protected from normal eviction".
+    # Updated at write time (and on highlight toggle) so eviction does not need
+    # to HGET + JSON-parse every candidate. SMEMBERS is one O(N) op vs. N HGETs.
+    PROTECTED_SET_KEY = "room:{room_id}:protected"
+    # Index registry — Redis SET listing every idx:* key add_message has touched
+    # for this room. Eviction reads this instead of `scan_iter` on the keyspace,
+    # which is non-deterministic and walks unrelated keys.
+    IDX_KEYS_REGISTRY = "room:{room_id}:idx_keys"
 
     # Legacy key (kept for migration/cleanup reference)
     MESSAGES_KEY = "room:{room_id}:messages"
@@ -56,6 +73,17 @@ class MessageCache:
     PINNED_ORDER_KEY = "room:{room_id}:pinned_order"
     REACTIONS_KEY = "room:{room_id}:reactions:{message_id}"
 
+    # Eviction: how many oldest candidates to inspect for "protected" status
+    # before giving up and force-evicting. Higher = more tolerance for
+    # protected-dense chats; lower = faster eviction but less density benefit.
+    EVICTION_SCAN_LIMIT = 100
+
+    # Eviction batching: don't trim until we're this many messages OVER the cap,
+    # then evict this many at once. Amortizes eviction cost ~Nx — at 5 msg/sec
+    # post-cap with batch=100, trim fires every ~20s instead of every 200ms.
+    # Effective ceiling is `cap + EVICTION_BATCH_SIZE`. Approved 2026-04-15.
+    EVICTION_BATCH_SIZE = 100
+
     @classmethod
     def _get_max_messages(cls) -> int:
         """Get max messages from Constance (dynamic) or fallback to settings (static)"""
@@ -63,7 +91,33 @@ class MessageCache:
             from constance import config
             return config.REDIS_CACHE_MAX_COUNT
         except:
-            return getattr(settings, 'MESSAGE_CACHE_MAX_COUNT', 500)
+            return getattr(settings, 'MESSAGE_CACHE_MAX_COUNT', 5000)
+
+    @classmethod
+    def _is_protected(cls, msg_data: Dict[str, Any]) -> bool:
+        """Check if a message should be retained longer than plain messages.
+
+        Protected messages are those featured in dedicated filter rooms:
+        - Highlighted (starred)
+        - Has a photo (Photo Room)
+        - Has a video (Video Room)
+        - Has a voice/audio message (Audio Room)
+        - Is a gift (Gift Room — monetary value, important for history)
+
+        Protected messages are skipped during normal eviction until the
+        EVICTION_SCAN_LIMIT is exhausted, at which point force-eviction kicks in.
+        """
+        if msg_data.get('is_highlight'):
+            return True
+        if msg_data.get('message_type') == 'gift':
+            return True
+        if msg_data.get('photo_url'):
+            return True
+        if msg_data.get('video_url'):
+            return True
+        if msg_data.get('voice_url'):
+            return True
+        return False
 
     @classmethod
     def _get_ttl_hours(cls) -> int:
@@ -141,7 +195,7 @@ class MessageCache:
             "is_from_host": message.is_from_host,
             "content": message.content,
             "voice_url": message.voice_url,
-            "voice_duration": message.voice_duration,
+            "voice_duration": float(message.voice_duration) if message.voice_duration else None,
             "voice_waveform": message.voice_waveform,
             "photo_url": message.photo_url,
             "photo_width": message.photo_width,
@@ -164,6 +218,7 @@ class MessageCache:
             "gift_recipient": message.gift_recipient,
             "is_gift_acknowledged": message.is_gift_acknowledged,
             "is_highlight": message.is_highlight,
+            "highlighted_at": message.highlighted_at.isoformat() if message.highlighted_at else None,
         }
 
     @classmethod
@@ -178,6 +233,115 @@ class MessageCache:
 
         # Case-insensitive match
         return message.username.lower() == message.user.reserved_username.lower()
+
+    @classmethod
+    def _queue_message_to_pipeline(cls, pipe, message: Message, ttl_seconds: int):
+        """Queue all Redis writes for a single message onto an existing pipeline.
+
+        Adds: msg_data HSET, timeline ZADD, all relevant filter index ZADDs.
+        Does NOT add: protected-SET SADD or registry SADD — those are deferred
+        so callers (single-message vs bulk hydration) can batch them efficiently.
+
+        Returns:
+            (touched_indexes: List[str], message_data: Dict, message_id: str)
+            — `touched_indexes` is the list of every idx:* key written to;
+            `message_data` is the serialized dict (caller checks _is_protected);
+            `message_id` is the str-uuid of the message.
+        """
+        room_id = str(message.chat_room.id)
+        message_id = str(message.id)
+        score = message.created_at.timestamp()
+
+        # Serialize
+        username_is_reserved = cls._compute_username_is_reserved(message)
+        message_data = cls._serialize_message(message, username_is_reserved)
+        message_json = json.dumps(message_data)
+
+        # 1. msg_data HSET
+        data_key = cls.MSG_DATA_KEY.format(room_id=room_id)
+        pipe.hset(data_key, message_id, message_json)
+        pipe.expire(data_key, ttl_seconds)
+
+        # 2. Timeline ZADD
+        timeline_key = cls.TIMELINE_KEY.format(room_id=room_id)
+        pipe.zadd(timeline_key, {message_id: score})
+        pipe.expire(timeline_key, ttl_seconds)
+
+        # 3. Filter indexes
+        sender_username = message.username.lower()
+        touched_indexes: List[str] = []
+
+        if message.is_from_host:
+            host_key = cls.HOST_INDEX_KEY.format(room_id=room_id)
+            pipe.zadd(host_key, {message_id: score})
+            pipe.expire(host_key, ttl_seconds)
+            touched_indexes.append(host_key)
+
+        focus_key = cls.FOCUS_INDEX_KEY.format(room_id=room_id, username=sender_username)
+        pipe.zadd(focus_key, {message_id: score})
+        pipe.expire(focus_key, ttl_seconds)
+        touched_indexes.append(focus_key)
+
+        if message.reply_to:
+            parent_username = message.reply_to.username.lower()
+            if parent_username != sender_username:
+                parent_focus_key = cls.FOCUS_INDEX_KEY.format(room_id=room_id, username=parent_username)
+                pipe.zadd(parent_focus_key, {message_id: score})
+                pipe.expire(parent_focus_key, ttl_seconds)
+                touched_indexes.append(parent_focus_key)
+
+                if message.is_from_host:
+                    parent_msg_id = str(message.reply_to.id)
+                    parent_score = message.reply_to.created_at.timestamp()
+                    pipe.zadd(parent_focus_key, {parent_msg_id: parent_score})
+
+        if message.is_highlight:
+            highlight_key = cls.HIGHLIGHT_INDEX_KEY.format(room_id=room_id)
+            # Score by highlighted_at so the Highlight Room is ordered by when
+            # the host starred the message, not when the message was sent.
+            # Fall back to created_at for legacy rows without highlighted_at.
+            highlight_score = (message.highlighted_at or message.created_at).timestamp()
+            pipe.zadd(highlight_key, {message_id: highlight_score})
+            pipe.expire(highlight_key, ttl_seconds)
+            touched_indexes.append(highlight_key)
+
+        if message.message_type == 'gift':
+            gifts_key = cls.GIFTS_INDEX_KEY.format(room_id=room_id)
+            pipe.zadd(gifts_key, {message_id: score})
+            pipe.expire(gifts_key, ttl_seconds)
+            touched_indexes.append(gifts_key)
+
+            gifts_sender_key = cls.GIFTS_USER_INDEX_KEY.format(room_id=room_id, username=sender_username)
+            pipe.zadd(gifts_sender_key, {message_id: score})
+            pipe.expire(gifts_sender_key, ttl_seconds)
+            touched_indexes.append(gifts_sender_key)
+
+            if message.gift_recipient:
+                recipient_username = message.gift_recipient.lower()
+                if recipient_username != sender_username:
+                    gifts_recipient_key = cls.GIFTS_USER_INDEX_KEY.format(room_id=room_id, username=recipient_username)
+                    pipe.zadd(gifts_recipient_key, {message_id: score})
+                    pipe.expire(gifts_recipient_key, ttl_seconds)
+                    touched_indexes.append(gifts_recipient_key)
+
+        if message.message_type != 'gift':
+            if message.photo_url:
+                photo_key = cls.PHOTO_INDEX_KEY.format(room_id=room_id)
+                pipe.zadd(photo_key, {message_id: score})
+                pipe.expire(photo_key, ttl_seconds)
+                touched_indexes.append(photo_key)
+            if message.video_url:
+                video_key = cls.VIDEO_INDEX_KEY.format(room_id=room_id)
+                pipe.zadd(video_key, {message_id: score})
+                pipe.expire(video_key, ttl_seconds)
+                touched_indexes.append(video_key)
+            if message.voice_url:
+                audio_key = cls.AUDIO_INDEX_KEY.format(room_id=room_id)
+                pipe.zadd(audio_key, {message_id: score})
+                pipe.expire(audio_key, ttl_seconds)
+                touched_indexes.append(audio_key)
+
+        return touched_indexes, message_data, message_id
 
     @classmethod
     def add_message(cls, message: Message) -> bool:
@@ -201,92 +365,98 @@ class MessageCache:
         try:
             redis_client = cls._get_redis_client()
             room_id = str(message.chat_room.id)
-            message_id = str(message.id)
-            score = message.created_at.timestamp()
             ttl_seconds = cls._get_ttl_hours() * 3600
-
-            # Compute badge status and serialize
-            username_is_reserved = cls._compute_username_is_reserved(message)
-            message_data = cls._serialize_message(message, username_is_reserved)
-            message_json = json.dumps(message_data)
-
-            # Build pipeline for atomic write
-            pipe = redis_client.pipeline()
-
-            # 1. HSET message data to hash
-            data_key = cls.MSG_DATA_KEY.format(room_id=room_id)
-            pipe.hset(data_key, message_id, message_json)
-            pipe.expire(data_key, ttl_seconds)
-
-            # 2. ZADD to timeline
             timeline_key = cls.TIMELINE_KEY.format(room_id=room_id)
-            pipe.zadd(timeline_key, {message_id: score})
-            pipe.expire(timeline_key, ttl_seconds)
 
-            # 3. Route to filter indexes
-            sender_username = message.username.lower()
+            # Build the pipeline using the shared helper.
+            pipe = redis_client.pipeline()
+            touched_indexes, message_data, message_id = cls._queue_message_to_pipeline(
+                pipe, message, ttl_seconds
+            )
 
-            # Host index
-            if message.is_from_host:
-                host_key = cls.HOST_INDEX_KEY.format(room_id=room_id)
-                pipe.zadd(host_key, {message_id: score})
-                pipe.expire(host_key, ttl_seconds)
+            # Register touched indexes so eviction can SREM members from them
+            # without scanning the whole Redis keyspace.
+            registry_key = cls.IDX_KEYS_REGISTRY.format(room_id=room_id)
+            if touched_indexes:
+                pipe.sadd(registry_key, *touched_indexes)
+                pipe.expire(registry_key, ttl_seconds)
 
-            # Focus index: sender always sees own messages
-            focus_key = cls.FOCUS_INDEX_KEY.format(room_id=room_id, username=sender_username)
-            pipe.zadd(focus_key, {message_id: score})
-            pipe.expire(focus_key, ttl_seconds)
-
-            # Focus index: if reply, add to parent author's focus
-            if message.reply_to:
-                parent_username = message.reply_to.username.lower()
-                if parent_username != sender_username:
-                    parent_focus_key = cls.FOCUS_INDEX_KEY.format(room_id=room_id, username=parent_username)
-                    pipe.zadd(parent_focus_key, {message_id: score})
-                    pipe.expire(parent_focus_key, ttl_seconds)
-
-                    # If host replied to someone, also add the PARENT message to that user's focus
-                    # so they see the context of what the host replied to
-                    if message.is_from_host:
-                        parent_msg_id = str(message.reply_to.id)
-                        parent_score = message.reply_to.created_at.timestamp()
-                        pipe.zadd(parent_focus_key, {parent_msg_id: parent_score})
-
-            # Highlight index
-            if message.is_highlight:
-                highlight_key = cls.HIGHLIGHT_INDEX_KEY.format(room_id=room_id)
-                pipe.zadd(highlight_key, {message_id: score})
-                pipe.expire(highlight_key, ttl_seconds)
-
-            # Gift indexes
-            if message.message_type == 'gift':
-                gifts_key = cls.GIFTS_INDEX_KEY.format(room_id=room_id)
-                pipe.zadd(gifts_key, {message_id: score})
-                pipe.expire(gifts_key, ttl_seconds)
-
-                # Per-user gift index: sender
-                gifts_sender_key = cls.GIFTS_USER_INDEX_KEY.format(room_id=room_id, username=sender_username)
-                pipe.zadd(gifts_sender_key, {message_id: score})
-                pipe.expire(gifts_sender_key, ttl_seconds)
-
-                # Per-user gift index: recipient
-                if message.gift_recipient:
-                    recipient_username = message.gift_recipient.lower()
-                    if recipient_username != sender_username:
-                        gifts_recipient_key = cls.GIFTS_USER_INDEX_KEY.format(room_id=room_id, username=recipient_username)
-                        pipe.zadd(gifts_recipient_key, {message_id: score})
-                        pipe.expire(gifts_recipient_key, ttl_seconds)
+            # Protected SET — eviction reads this once per trim (SMEMBERS) instead
+            # of HGET+JSON-parse per candidate. Stay in sync with _is_protected.
+            if cls._is_protected(message_data):
+                protected_key = cls.PROTECTED_SET_KEY.format(room_id=room_id)
+                pipe.sadd(protected_key, message_id)
+                pipe.expire(protected_key, ttl_seconds)
 
             pipe.execute()
 
-            # Trim timeline to max (separate operation)
+            # Trim timeline to max, with "protected message" awareness.
+            # Protected messages (highlights, gifts, media) are skipped during
+            # normal eviction so the filter-room indexes stay dense in Redis.
+            #
+            # Batching: we don't trim until we're EVICTION_BATCH_SIZE over the
+            # cap, then we evict the whole batch at once. This amortizes the
+            # eviction cost ~Nx — at sustained 5 msg/sec post-cap with batch=100,
+            # one trim per 20s instead of one per write. Effective ceiling is
+            # `max_messages + EVICTION_BATCH_SIZE`.
+            #
+            # Performance: protection status is read from the PROTECTED_SET in
+            # one O(N) SMEMBERS call instead of N HGETs + JSON parses.
             max_messages = cls._get_max_messages()
+            trim_threshold = max_messages + cls.EVICTION_BATCH_SIZE
             total_messages = redis_client.zcard(timeline_key)
-            if total_messages > max_messages:
-                # Get IDs being removed so we can clean hash + indexes
+            if total_messages > trim_threshold:
+                evict_start = time.time()
+                # Aim to bring the cache back down to max_messages exactly.
                 overflow = total_messages - max_messages
-                removed_ids = redis_client.zrange(timeline_key, 0, overflow - 1)
-                cls._evict_messages(redis_client, room_id, removed_ids)
+                # Scan more candidates than needed so we can skip protected ones.
+                scan_count = min(total_messages, overflow + cls.EVICTION_SCAN_LIMIT)
+                candidate_ids = redis_client.zrange(timeline_key, 0, scan_count - 1)
+
+                # One SMEMBERS instead of N HGETs.
+                protected_key = cls.PROTECTED_SET_KEY.format(room_id=room_id)
+                protected_raw = redis_client.smembers(protected_key)
+                protected_ids = {
+                    (m.decode() if isinstance(m, bytes) else m)
+                    for m in protected_raw
+                }
+
+                # Walk from oldest, evicting unprotected until overflow resolved
+                to_evict = []
+                skipped = []  # Oldest-first, used for force-evict fallback
+                for cid in candidate_ids:
+                    if len(to_evict) >= overflow:
+                        break
+                    cid_str = cid.decode() if isinstance(cid, bytes) else cid
+                    if cid_str in protected_ids:
+                        skipped.append(cid_str)
+                    else:
+                        to_evict.append(cid_str)
+
+                # If we couldn't find enough unprotected candidates within the
+                # scan window, force-evict the oldest (even if protected) to
+                # prevent unbounded growth. This only kicks in for chats where
+                # the oldest EVICTION_SCAN_LIMIT messages are ALL protected.
+                normal_evicted = len(to_evict)
+                force_evicted = 0
+                if len(to_evict) < overflow:
+                    for cid_str in skipped:
+                        if len(to_evict) >= overflow:
+                            break
+                        to_evict.append(cid_str)
+                        force_evicted += 1
+
+                if to_evict:
+                    cls._evict_messages(redis_client, room_id, to_evict)
+
+                evict_ms = (time.time() - evict_start) * 1000
+                monitor.log_eviction(
+                    chat_code=room_id,
+                    evicted=normal_evicted,
+                    protected_skipped=len(skipped) - force_evicted,
+                    force_evicted=force_evicted,
+                    duration_ms=evict_ms,
+                )
 
             # Monitor: Cache write
             duration_ms = (time.time() - start_time) * 1000
@@ -295,27 +465,41 @@ class MessageCache:
             return True
 
         except Exception as e:
-            # Log error but don't crash (PostgreSQL has the data)
-            print(f"Redis cache error (add_message): {e}")
+            # Surface at ERROR with stack trace so silent serialization regressions
+            # (e.g. the voice_duration Decimal bug) cannot hide. PostgreSQL still
+            # has the data, so we don't re-raise.
+            logger.exception(
+                "MessageCache.add_message failed for room=%s message=%s: %s",
+                getattr(message.chat_room, 'id', '?'),
+                getattr(message, 'id', '?'),
+                e.__class__.__name__,
+            )
             return False
 
     @classmethod
     def _evict_messages(cls, redis_client, room_id: str, message_ids: list):
-        """Remove evicted messages from hash, timeline, and all filter indexes."""
+        """Remove evicted messages from hash, timeline, all filter indexes,
+        and the protected SET."""
         if not message_ids:
             return
         pipe = redis_client.pipeline()
         data_key = cls.MSG_DATA_KEY.format(room_id=room_id)
         timeline_key = cls.TIMELINE_KEY.format(room_id=room_id)
+        protected_key = cls.PROTECTED_SET_KEY.format(room_id=room_id)
 
         for mid_bytes in message_ids:
             mid = mid_bytes.decode() if isinstance(mid_bytes, bytes) else mid_bytes
             pipe.hdel(data_key, mid)
             pipe.zrem(timeline_key, mid)
+            pipe.srem(protected_key, mid)
 
-        # Clean all index keys for this room
-        idx_pattern = f"room:{room_id}:idx:*"
-        for idx_key in redis_client.scan_iter(match=idx_pattern, count=100):
+        # Clean all index keys for this room. Read the registry once instead of
+        # walking the entire keyspace with scan_iter — deterministic and skips
+        # unrelated keys.
+        registry_key = cls.IDX_KEYS_REGISTRY.format(room_id=room_id)
+        registered = redis_client.smembers(registry_key)
+        for idx_key_raw in registered:
+            idx_key = idx_key_raw.decode() if isinstance(idx_key_raw, bytes) else idx_key_raw
             for mid_bytes in message_ids:
                 mid = mid_bytes.decode() if isinstance(mid_bytes, bytes) else mid_bytes
                 pipe.zrem(idx_key, mid)
@@ -354,13 +538,30 @@ class MessageCache:
             message_data = cls._serialize_message(message, username_is_reserved)
             message_json = json.dumps(message_data)
 
-            # O(1) overwrite in hash
-            redis_client.hset(data_key, message_id, message_json)
+            # O(1) overwrite in hash + re-sync protected SET. update_message is
+            # the path highlight-toggle goes through, so we re-evaluate
+            # _is_protected here and SADD/SREM accordingly. Untouched if the
+            # message's protection status hasn't changed.
+            protected_key = cls.PROTECTED_SET_KEY.format(room_id=room_id)
+            ttl_seconds = cls._get_ttl_hours() * 3600
+            pipe = redis_client.pipeline()
+            pipe.hset(data_key, message_id, message_json)
+            if cls._is_protected(message_data):
+                pipe.sadd(protected_key, message_id)
+                pipe.expire(protected_key, ttl_seconds)
+            else:
+                pipe.srem(protected_key, message_id)
+            pipe.execute()
 
             return True
 
         except Exception as e:
-            print(f"Redis cache error (update_message): {e}")
+            logger.exception(
+                "MessageCache.update_message failed for room=%s message=%s: %s",
+                getattr(message.chat_room, 'id', '?'),
+                getattr(message, 'id', '?'),
+                e.__class__.__name__,
+            )
             return False
 
     @classmethod
@@ -525,19 +726,34 @@ class MessageCache:
 
     @classmethod
     def add_to_highlight_index(cls, message) -> bool:
-        """Add a message to the highlight index (appears in all users' Focus view)."""
+        """Add a message to the highlight index (appears in all users' Focus view).
+
+        Uses highlighted_at as the score so the Highlight Room is ordered by
+        when the host starred the message, not when the message was sent.
+        Re-highlighting a previously-evicted message updates the score in place.
+        """
         try:
             redis_client = cls._get_redis_client()
             room_id = str(message.chat_room_id)
             message_id = str(message.id)
-            score = message.created_at.timestamp()
+            # Score by highlighted_at; fall back to created_at for legacy rows.
+            score = (message.highlighted_at or message.created_at).timestamp()
             ttl_seconds = cls._get_ttl_hours() * 3600
             highlight_key = cls.HIGHLIGHT_INDEX_KEY.format(room_id=room_id)
-            redis_client.zadd(highlight_key, {message_id: score})
-            redis_client.expire(highlight_key, ttl_seconds)
+            registry_key = cls.IDX_KEYS_REGISTRY.format(room_id=room_id)
+            pipe = redis_client.pipeline()
+            pipe.zadd(highlight_key, {message_id: score})
+            pipe.expire(highlight_key, ttl_seconds)
+            # Register so eviction sees this index without scan_iter.
+            pipe.sadd(registry_key, highlight_key)
+            pipe.expire(registry_key, ttl_seconds)
+            pipe.execute()
             return True
-        except Exception as e:
-            print(f"Redis cache error (add_to_highlight_index): {e}")
+        except Exception:
+            logger.exception(
+                "MessageCache.add_to_highlight_index failed for message=%s",
+                getattr(message, 'id', '?'),
+            )
             return False
 
     @classmethod
@@ -553,6 +769,87 @@ class MessageCache:
             return False
 
     @classmethod
+    def _hydrate_highlight_index(cls, redis_client, room_id_str: str) -> None:
+        """Seed the highlight index (and msg_data) from PostgreSQL, once per room.
+
+        Mirrors `_hydrate_media_index` but for `is_highlight=True` messages.
+        Messages are queued onto a single bulk pipeline (one Redis round-trip
+        regardless of count). Capped at REDIS_CACHE_MAX_COUNT — same shared
+        cache budget as the main timeline. Guarded by a hydration flag.
+
+        Without this, an empty highlight index recovers via the general
+        cache-miss + backfill path which is limited to one query of `limit`
+        per request — fine for chats with ≤50 highlights, but slow for chats
+        with many curated highlights when scrolling back from a cold cache.
+        """
+        hydrated_key = cls.MEDIA_HYDRATED_KEY.format(
+            room_id=room_id_str, media_type='highlight'
+        )
+        if redis_client.exists(hydrated_key):
+            return
+
+        start_time = time.time()
+        from chats.models import Message
+        ttl_seconds = cls._get_ttl_hours() * 3600
+        cap = cls._get_max_messages()
+
+        qs = (Message.objects
+              .filter(chat_room_id=room_id_str, is_deleted=False, is_highlight=True)
+              .select_related('user', 'reply_to', 'chat_room')
+              .order_by('-highlighted_at', '-created_at')[:cap])
+
+        # Bulk-pipelined hydration: queue every message's writes onto a single
+        # pipeline and execute once.
+        pipe = redis_client.pipeline()
+        all_touched: set = set()
+        protected_ids: List[str] = []
+        hydrated_count = 0
+
+        for msg in qs:
+            try:
+                touched, message_data, message_id = cls._queue_message_to_pipeline(
+                    pipe, msg, ttl_seconds
+                )
+                all_touched.update(touched)
+                if cls._is_protected(message_data):
+                    protected_ids.append(message_id)
+                hydrated_count += 1
+            except Exception:
+                logger.exception(
+                    "Highlight hydration queue failed for room=%s message=%s",
+                    room_id_str, msg.id,
+                )
+
+        registry_key = cls.IDX_KEYS_REGISTRY.format(room_id=room_id_str)
+        if all_touched:
+            pipe.sadd(registry_key, *all_touched)
+            pipe.expire(registry_key, ttl_seconds)
+
+        protected_key = cls.PROTECTED_SET_KEY.format(room_id=room_id_str)
+        if protected_ids:
+            pipe.sadd(protected_key, *protected_ids)
+            pipe.expire(protected_key, ttl_seconds)
+
+        pipe.set(hydrated_key, '1', ex=ttl_seconds)
+
+        try:
+            pipe.execute()
+        except Exception:
+            logger.exception(
+                "Highlight hydration pipeline.execute failed for room=%s (queued=%d)",
+                room_id_str, hydrated_count,
+            )
+            hydrated_count = 0
+
+        duration_ms = (time.time() - start_time) * 1000
+        monitor.log_hydration(
+            chat_code=room_id_str,
+            media_type='highlight',
+            count=hydrated_count,
+            duration_ms=duration_ms,
+        )
+
+    @classmethod
     def get_highlight_messages(cls, room_id: Union[str, UUID],
                                 limit: int = 50, before_timestamp: float = None) -> List[Dict[str, Any]]:
         """Get highlight messages for a room."""
@@ -561,6 +858,8 @@ class MessageCache:
         try:
             redis_client = cls._get_redis_client()
             highlight_key = cls.HIGHLIGHT_INDEX_KEY.format(room_id=room_id_str)
+
+            cls._hydrate_highlight_index(redis_client, room_id_str)
 
             if before_timestamp:
                 max_score = f'({before_timestamp}'
@@ -589,6 +888,146 @@ class MessageCache:
             monitor.log_cache_read(room_id_str, hit=False, count=0,
                                    duration_ms=duration_ms, source='redis')
             return []
+
+    @classmethod
+    def _hydrate_media_index(cls, redis_client, room_id_str: str, media_field: str,
+                              media_type: str) -> None:
+        """Seed the media index (and msg_data) from PostgreSQL, once per room/type.
+
+        Media indexes are populated by add_message() going forward, but messages
+        that existed before the feature shipped — or that have aged out of the
+        recent-message window — are missing from both the index and the bounded
+        MSG_DATA_KEY hash. This loads every matching message from PostgreSQL and
+        runs it through add_message(), which atomically writes msg_data, the
+        timeline, and all relevant indexes. Guarded by a hydration flag.
+        Capped at REDIS_CACHE_MAX_COUNT to bound memory in large chats.
+        """
+        hydrated_key = cls.MEDIA_HYDRATED_KEY.format(room_id=room_id_str, media_type=media_type)
+        if redis_client.exists(hydrated_key):
+            return
+
+        start_time = time.time()
+        from chats.models import Message
+        ttl_seconds = cls._get_ttl_hours() * 3600
+        cap = cls._get_max_messages()
+
+        field_filter = {f"{media_field}__isnull": False}
+        qs = (Message.objects
+              .filter(chat_room_id=room_id_str, is_deleted=False, **field_filter)
+              .exclude(**{media_field: ''})
+              .exclude(message_type='gift')
+              .select_related('user', 'reply_to', 'chat_room')
+              .order_by('-created_at')[:cap])
+
+        # Bulk-pipelined hydration: queue every message's writes onto a single
+        # pipeline and execute once. For 5000 messages this is one round-trip
+        # instead of 5000 — turns a multi-second cliff into a sub-200ms warmup.
+        pipe = redis_client.pipeline()
+        all_touched: set = set()
+        protected_ids: List[str] = []
+        hydrated_count = 0
+
+        for msg in qs:
+            try:
+                touched, message_data, message_id = cls._queue_message_to_pipeline(
+                    pipe, msg, ttl_seconds
+                )
+                all_touched.update(touched)
+                if cls._is_protected(message_data):
+                    protected_ids.append(message_id)
+                hydrated_count += 1
+            except Exception:
+                logger.exception(
+                    "Hydration queue failed for room=%s message=%s type=%s",
+                    room_id_str, msg.id, media_type,
+                )
+
+        # Bulk-register every index touched + every protected ID, in the same
+        # pipeline as the message writes.
+        registry_key = cls.IDX_KEYS_REGISTRY.format(room_id=room_id_str)
+        if all_touched:
+            pipe.sadd(registry_key, *all_touched)
+            pipe.expire(registry_key, ttl_seconds)
+
+        protected_key = cls.PROTECTED_SET_KEY.format(room_id=room_id_str)
+        if protected_ids:
+            pipe.sadd(protected_key, *protected_ids)
+            pipe.expire(protected_key, ttl_seconds)
+
+        # Mark the hydration flag in the same execute() so the whole operation
+        # is one atomic round-trip.
+        pipe.set(hydrated_key, '1', ex=ttl_seconds)
+
+        try:
+            pipe.execute()
+        except Exception:
+            logger.exception(
+                "Hydration pipeline.execute failed for room=%s type=%s (queued=%d)",
+                room_id_str, media_type, hydrated_count,
+            )
+            hydrated_count = 0
+
+        duration_ms = (time.time() - start_time) * 1000
+        monitor.log_hydration(
+            chat_code=room_id_str,
+            media_type=media_type,
+            count=hydrated_count,
+            duration_ms=duration_ms,
+        )
+
+    @classmethod
+    def _get_media_messages(cls, room_id: Union[str, UUID], index_key_template: str,
+                             media_field: str, media_type: str,
+                             limit: int = 50, before_timestamp: Optional[float] = None) -> List[Dict[str, Any]]:
+        """Shared helper for photo/video/audio message retrieval."""
+        start_time = time.time()
+        room_id_str = str(room_id)
+        try:
+            redis_client = cls._get_redis_client()
+            index_key = index_key_template.format(room_id=room_id_str)
+
+            cls._hydrate_media_index(redis_client, room_id_str, media_field, media_type)
+
+            if before_timestamp:
+                max_score = f'({before_timestamp}'
+            else:
+                max_score = '+inf'
+
+            results = redis_client.zrangebyscore(index_key, '-inf', max_score, withscores=True)
+
+            sorted_ids = sorted(
+                [(mid.decode() if isinstance(mid, bytes) else mid, score) for mid, score in results],
+                key=lambda x: x[1]
+            )[-limit:]
+
+            ordered_ids = [mid for mid, _ in sorted_ids]
+            messages = cls._fetch_by_ids(redis_client, room_id_str, ordered_ids)
+
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_read(room_id_str, hit=len(messages) > 0,
+                                   count=len(messages), duration_ms=duration_ms, source='redis')
+            return messages
+        except Exception as e:
+            print(f"Redis cache error (_get_media_messages): {e}")
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_read(room_id_str, hit=False, count=0,
+                                   duration_ms=duration_ms, source='redis')
+            return []
+
+    @classmethod
+    def get_photo_messages(cls, room_id, limit=50, before_timestamp=None):
+        """Get photo messages for a room (messages with photo_url, excluding gifts)."""
+        return cls._get_media_messages(room_id, cls.PHOTO_INDEX_KEY, 'photo_url', 'photo', limit, before_timestamp)
+
+    @classmethod
+    def get_video_messages(cls, room_id, limit=50, before_timestamp=None):
+        """Get video messages for a room (messages with video_url, excluding gifts)."""
+        return cls._get_media_messages(room_id, cls.VIDEO_INDEX_KEY, 'video_url', 'video', limit, before_timestamp)
+
+    @classmethod
+    def get_audio_messages(cls, room_id, limit=50, before_timestamp=None):
+        """Get audio (voice) messages for a room (messages with voice_url, excluding gifts)."""
+        return cls._get_media_messages(room_id, cls.AUDIO_INDEX_KEY, 'voice_url', 'audio', limit, before_timestamp)
 
     @classmethod
     def get_focus_messages(cls, room_id: Union[str, UUID], username: str,
@@ -1131,17 +1570,21 @@ class MessageCache:
 
             data_key = cls.MSG_DATA_KEY.format(room_id=room_id_str)
             timeline_key = cls.TIMELINE_KEY.format(room_id=room_id_str)
+            protected_key = cls.PROTECTED_SET_KEY.format(room_id=room_id_str)
 
             # Check if message exists in hash
             removed = redis_client.hdel(data_key, message_id) > 0
 
-            # Remove from timeline
+            # Remove from timeline + protected set
             pipe = redis_client.pipeline()
             pipe.zrem(timeline_key, message_id)
+            pipe.srem(protected_key, message_id)
 
-            # Remove from all filter indexes (scan for idx:* keys)
-            idx_pattern = f"room:{room_id_str}:idx:*"
-            for idx_key in redis_client.scan_iter(match=idx_pattern, count=100):
+            # Remove from all filter indexes via the registry (no scan_iter).
+            registry_key = cls.IDX_KEYS_REGISTRY.format(room_id=room_id_str)
+            registered = redis_client.smembers(registry_key)
+            for idx_key_raw in registered:
+                idx_key = idx_key_raw.decode() if isinstance(idx_key_raw, bytes) else idx_key_raw
                 pipe.zrem(idx_key, message_id)
 
             # Remove reactions cache
@@ -1533,7 +1976,7 @@ class RoomNotificationCache:
     TTL: 7 days (content older than that doesn't need notification)
     """
     # FAB-linked notification types
-    FAB_ROOMS = ('highlight', 'focus', 'gifts')
+    FAB_ROOMS = ('highlight', 'focus', 'gifts', 'photo', 'video', 'audio')
     # General-purpose notification types (not tied to FABs — for future use: push notifs, chat list badges, etc.)
     GENERAL_TYPES = ('messages', 'verified')
     # All valid types

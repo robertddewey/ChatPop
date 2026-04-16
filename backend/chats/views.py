@@ -767,6 +767,21 @@ class MessageListView(APIView):
                     chat_room.id, limit=limit,
                     before_timestamp=float(before_timestamp) if before_timestamp else None
                 )
+            elif filter_mode == 'photo':
+                messages = MessageCache.get_photo_messages(
+                    chat_room.id, limit=limit,
+                    before_timestamp=float(before_timestamp) if before_timestamp else None
+                )
+            elif filter_mode == 'video':
+                messages = MessageCache.get_video_messages(
+                    chat_room.id, limit=limit,
+                    before_timestamp=float(before_timestamp) if before_timestamp else None
+                )
+            elif filter_mode == 'audio':
+                messages = MessageCache.get_audio_messages(
+                    chat_room.id, limit=limit,
+                    before_timestamp=float(before_timestamp) if before_timestamp else None
+                )
             elif filter_mode and filter_username:
                 if filter_mode == 'focus':
                     # If any spotlight users exist, bypass cache for focus mode
@@ -802,7 +817,20 @@ class MessageListView(APIView):
                 if len(messages) < limit and not before_timestamp:
                     # Partial cache hit on initial load - fetch remaining messages from database
                     from datetime import datetime
-                    oldest_cached_timestamp = datetime.fromisoformat(messages[0]['created_at']).timestamp()
+
+                    # Boundary timestamp = the score field used by THIS filter's index.
+                    # Highlight room is sorted by highlighted_at (since 2026-04-15);
+                    # other rooms are sorted by created_at. Mismatching score and
+                    # boundary causes the DB query to return messages that are
+                    # already in the cache (duplicate IDs in the response).
+                    if filter_mode == 'highlight' and messages[0].get('highlighted_at'):
+                        oldest_cached_timestamp = datetime.fromisoformat(
+                            messages[0]['highlighted_at']
+                        ).timestamp()
+                    else:
+                        oldest_cached_timestamp = datetime.fromisoformat(
+                            messages[0]['created_at']
+                        ).timestamp()
                     remaining_limit = limit - len(messages)
 
                     # Fetch older messages from database
@@ -822,6 +850,11 @@ class MessageListView(APIView):
                     self._backfill_cache(chat_room, older_messages)
 
                     # Prepend older messages (they come chronologically before cached ones)
+                    # Dedup as a safety net: any future score-vs-boundary mismatch
+                    # would otherwise leak duplicate IDs to the frontend and cause
+                    # React "duplicate key" warnings in MainChatView.
+                    cached_ids = {m['id'] for m in messages}
+                    older_messages = [m for m in older_messages if m['id'] not in cached_ids]
                     messages = older_messages + messages
                     source = 'hybrid_redis_postgresql'
                 else:
@@ -1005,6 +1038,13 @@ class MessageListView(APIView):
         # Apply filter mode
         if filter_mode == 'highlight':
             queryset = queryset.filter(is_highlight=True)
+        elif filter_mode == 'photo':
+            # Non-gift messages with a populated photo_url
+            queryset = queryset.exclude(message_type='gift').filter(photo_url__isnull=False).exclude(photo_url='')
+        elif filter_mode == 'video':
+            queryset = queryset.exclude(message_type='gift').filter(video_url__isnull=False).exclude(video_url='')
+        elif filter_mode == 'audio':
+            queryset = queryset.exclude(message_type='gift').filter(voice_url__isnull=False).exclude(voice_url='')
         elif filter_mode and filter_username:
             if filter_mode == 'focus':
                 spotlight_usernames_in_chat = list(
@@ -1026,14 +1066,22 @@ class MessageListView(APIView):
                     )
                 )
 
-        # Filter by timestamp if paginating
+        # Filter by timestamp if paginating. For highlight mode, the boundary
+        # is highlighted_at (matches the cache index score). For everything
+        # else it is created_at. Mismatching these introduces duplicates in
+        # the partial-hit response (older_messages overlaps cached messages).
         if before_timestamp:
-            from datetime import datetime
-            before_dt = datetime.fromtimestamp(float(before_timestamp))
-            queryset = queryset.filter(created_at__lt=before_dt)
+            from datetime import datetime, timezone as dt_timezone
+            before_dt = datetime.fromtimestamp(float(before_timestamp), tz=dt_timezone.utc)
+            if filter_mode == 'highlight':
+                queryset = queryset.filter(highlighted_at__lt=before_dt)
+            else:
+                queryset = queryset.filter(created_at__lt=before_dt)
 
-        # Order and limit (newest first to get last N messages)
-        messages = queryset.order_by('-created_at')[:limit]
+        # Order and limit (newest first to get last N messages). Highlight room
+        # is ordered by highlighted_at to match its cache index score.
+        order_field = '-highlighted_at' if filter_mode == 'highlight' else '-created_at'
+        messages = queryset.order_by(order_field)[:limit]
 
         # Force query execution for accurate timing
         message_count = len(messages)
@@ -1156,32 +1204,16 @@ class MessageListView(APIView):
                 if user_emoji not in top_emojis:
                     top_reactions.append({'emoji': user_emoji, 'count': 1, 'has_reacted': True})
 
-            serialized.append({
-                'id': str(msg.id),
-                'chat_code': msg.chat_room.code,
-                'username': msg.username,
-                'username_is_reserved': username_is_reserved,
-                'user_id': msg.user.id if msg.user else None,
-                'message_type': msg.message_type,
-                'is_from_host': msg.is_from_host,
-                'content': msg.content,
-                'voice_url': voice_url,
-                'voice_duration': float(msg.voice_duration) if msg.voice_duration else None,
-                'voice_waveform': msg.voice_waveform,
-                'reply_to_id': str(msg.reply_to.id) if msg.reply_to else None,
-                'reply_to_message': reply_to_message,
-                'is_pinned': msg.is_pinned,
-                'pinned_at': msg.pinned_at.isoformat() if msg.pinned_at else None,
-                'sticky_until': msg.sticky_until.isoformat() if msg.sticky_until else None,
-                'pin_amount_paid': str(msg.pin_amount_paid) if msg.pin_amount_paid else "0.00",
-                'current_pin_amount': str(msg.current_pin_amount) if msg.current_pin_amount else "0.00",
-                'avatar_url': avatar_url,
-                'created_at': msg.created_at.isoformat(),
-                'is_deleted': msg.is_deleted,
-                'is_banned': msg.username.lower() in banned_usernames_db,
-                'is_spotlight': msg.username in spotlight_usernames_db,
-                'reactions': top_reactions,
-            })
+            # Use the canonical cache serializer so fields stay consistent with the
+            # Redis path (photo_url, video_url, is_highlight, gift_recipient, etc.).
+            msg_dict = MessageCache._serialize_message(msg, username_is_reserved, avatar_url)
+            # Override voice_url with the absolute-URL version computed above
+            msg_dict['voice_url'] = voice_url
+            # Fields this path adds on top (not part of the cached serialization)
+            msg_dict['is_banned'] = msg.username.lower() in banned_usernames_db
+            msg_dict['is_spotlight'] = msg.username in spotlight_usernames_db
+            msg_dict['reactions'] = top_reactions
+            serialized.append(msg_dict)
 
         # Reverse to chronological order (oldest first) to match Redis behavior
         serialized.reverse()

@@ -414,8 +414,11 @@ cd backend
 - **Rate Limiting (12 tests)** - API abuse prevention, per-user/per-chat limits
 - **Dual Sessions (16 tests)** - Anonymous + logged-in coexistence, IP limits
 - **Redis Cache (49 tests)** - Hybrid storage, performance validation
+- **Cache Performance Suite (78 tests)** - Factories, regression guards, protected-SET, index registry, batch eviction, bulk hydration. See `chats/tests/tests_factories.py`, `tests_cache_regressions.py`, `tests_protected_set.py`, `tests_index_registry.py`, `tests_batch_eviction.py`, `tests_bulk_hydration.py`.
+- **Cache Load Suite (8 tests, `@tag('slow')`)** - 5000-message stress tests; excluded from default `manage.py test`. Run with `--tag=slow`.
 
 **For complete test documentation, see [docs/TESTING.md](docs/TESTING.md)**
+**For cache architecture details, see [docs/CACHING.md](docs/CACHING.md) and [docs/CACHE_PERFORMANCE_PLAN.md](docs/CACHE_PERFORMANCE_PLAN.md)**
 
 ## Theme Development
 

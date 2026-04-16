@@ -275,7 +275,7 @@ interface MainChatViewProps {
   messageReactions: Record<string, ReactionSummary[]>;
   loadingOlder?: boolean;
   filterLoading?: boolean;
-  filterMode?: 'all' | 'focus' | 'gifts' | 'highlight';
+  filterMode?: 'all' | 'focus' | 'gifts' | 'highlight' | 'photo' | 'video' | 'audio';
   filterLoadingText?: string;
   onStickyHeightChange?: (height: number) => void;
   onStickyHiddenChange?: (hidden: boolean) => void;
@@ -560,12 +560,23 @@ function MainChatView({
               {filterMode === 'gifts'
                 ? <><Gift size={96} /><Frown size={96} /></>
                 : filterMode === 'highlight'
-                ? <><Radio size={96} /><Frown size={96} /></>
+                ? <><Star size={96} /><Frown size={96} /></>
+                : filterMode === 'photo'
+                ? <><ImageIcon size={96} /><Frown size={96} /></>
+                : filterMode === 'video'
+                ? <><Video size={96} /><Frown size={96} /></>
+                : filterMode === 'audio'
+                ? <><Mic size={96} /><Frown size={96} /></>
                 : <><Eye size={96} /><Frown size={96} /></>
               }
             </div>
             <span className={`text-sm ${currentDesign.uiStyles?.emptyStateSubtext || 'text-zinc-500'}`}>
-              {filterMode === 'gifts' ? 'No gifts yet' : filterMode === 'highlight' ? 'No highlights yet' : 'Nothing in focus yet'}
+              {filterMode === 'gifts' ? "Well that's a shame"
+                : filterMode === 'highlight' ? 'No stars born yet'
+                : filterMode === 'photo' ? 'The dark room is empty'
+                : filterMode === 'video' ? 'The theater is dark'
+                : filterMode === 'audio' ? 'Did you hear something?'
+                : 'Nothing in focus yet'}
             </span>
           </div>
         )}

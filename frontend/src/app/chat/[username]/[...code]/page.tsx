@@ -21,7 +21,7 @@ import MessageInput, { type MessageInputHandle } from '@/components/MessageInput
 import { UsernameStorage, getFingerprint } from '@/lib/usernameStorage';
 import { fetchGiftCatalog } from '@/lib/gifts';
 import { playSendMessageSound, playReceiveMessageSound } from '@/lib/sounds';
-import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Star, Bell, Spotlight, ChevronRight } from 'lucide-react';
+import { Settings, BadgeCheck, Crown, Gamepad2, MessageSquare, ArrowLeft, Reply, X, Gift, Eye, Radio, Star, Bell, Spotlight, ChevronRight, Video, Camera, Mic } from 'lucide-react';
 import { useChatWebSocket } from '@/hooks/useChatWebSocket';
 import { type RecordingMetadata } from '@/lib/waveform';
 import { consumeFreshNavigation, markChatVisited, hasChatBeenVisited, clearChatVisited } from '@/lib/modalState';
@@ -477,7 +477,7 @@ export default function ChatPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   // Room navigation — unified state for all views
-  type Room = 'main' | 'focus' | 'gifts' | 'highlight' | 'backroom';
+  type Room = 'main' | 'focus' | 'gifts' | 'highlight' | 'photo' | 'video' | 'audio' | 'backroom';
   const [currentRoom, setCurrentRoom] = useState<Room>('main');
   const [previousRoom, setPreviousRoom] = useState<Room>('main');
   const [roomLoading, setRoomLoading] = useState(false);
@@ -578,6 +578,7 @@ export default function ChatPage() {
   // Helper: get filter param for API calls (only chat filter rooms have a filter)
   const getRoomFilter = useCallback((room: Room): string | undefined => {
     if (room === 'focus' || room === 'gifts' || room === 'highlight') return room;
+    if (room === 'photo' || room === 'video' || room === 'audio') return room;
     return undefined;
   }, []);
 
@@ -591,10 +592,16 @@ export default function ChatPage() {
     if (target === 'focus') return 'Focusing...';
     if (target === 'gifts') return 'Gifting...';
     if (target === 'highlight') return 'Starring...';
+    if (target === 'photo') return 'Loading photos...';
+    if (target === 'video') return 'Loading videos...';
+    if (target === 'audio') return 'Loading audio...';
     if (target === 'backroom') return 'Gaming...';
     if (prev === 'focus') return 'Unfocusing...';
     if (prev === 'gifts') return 'Ungifting...';
     if (prev === 'highlight') return 'Unstarring...';
+    if (prev === 'photo') return 'Unloading photos...';
+    if (prev === 'video') return 'Unloading videos...';
+    if (prev === 'audio') return 'Unloading audio...';
     if (prev === 'backroom') return 'Ungaming...';
     return 'Loading...';
   }, []);
@@ -616,7 +623,7 @@ export default function ChatPage() {
 
   // Room notification indicators (has new messages since last viewed)
   const [roomNotifications, setRoomNotifications] = useState<Record<string, boolean>>({
-    highlight: false, focus: false, gifts: false
+    highlight: false, focus: false, gifts: false, photo: false, video: false, audio: false
   });
 
   // Shared mute-filter helper matching the rules in filteredMessages.applyMute.
@@ -672,7 +679,7 @@ export default function ChatPage() {
   // (anonymousParticipations, registeredDisplayName) are preserved.
   const resetIdentityState = useCallback(() => {
     setGiftQueue([]);
-    setRoomNotifications({ highlight: false, focus: false, gifts: false });
+    setRoomNotifications({ highlight: false, focus: false, gifts: false, photo: false, video: false, audio: false });
     setMutedUsernames(new Set());
     setMessageReactions({});
     setReplyingTo(null);
@@ -733,7 +740,8 @@ export default function ChatPage() {
     }
 
     const filterParam = getRoomFilter(target);
-    const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
+    // filter_username only needed for focus/gifts (highlight + media rooms are global)
+    const filterUser = filterParam === 'focus' || filterParam === 'gifts' ? username : undefined;
 
     if (target === 'main') {
       // Main room: fetch fresh with minimum loading delay
@@ -792,8 +800,17 @@ export default function ChatPage() {
         });
         const messageIds = new Set(filtered.map(m => m.id));
         const uniquePinnedMessages = pinnedMessages.filter(pm => !messageIds.has(pm.id));
+        // Highlight room is sorted by when the host starred each message
+        // (highlighted_at), not when it was sent. Other filter rooms sort by
+        // send time. Falls back to created_at if highlighted_at is missing.
+        const sortKey = (m: Message) => {
+          if (target === 'highlight' && m.highlighted_at) {
+            return new Date(m.highlighted_at).getTime();
+          }
+          return new Date(m.created_at).getTime();
+        };
         const allMessages = [...updatedMessages, ...uniquePinnedMessages].sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          (a, b) => sortKey(a) - sortKey(b)
         );
         setMessages(allMessages);
       } catch (err) {
@@ -889,6 +906,18 @@ export default function ChatPage() {
             message.reply_to_message?.username?.toLowerCase() === username?.toLowerCase() ||
             spotlightUsernamesRef.current.has(message.username)) {
           setRoomNotifications(prev => prev.focus ? prev : { ...prev, focus: true });
+        }
+      }
+      // Media rooms — non-gift messages with media fields populated
+      if (message.message_type !== 'gift') {
+        if (room !== 'photo' && message.photo_url) {
+          setRoomNotifications(prev => prev.photo ? prev : { ...prev, photo: true });
+        }
+        if (room !== 'video' && message.video_url) {
+          setRoomNotifications(prev => prev.video ? prev : { ...prev, video: true });
+        }
+        if (room !== 'audio' && message.voice_url) {
+          setRoomNotifications(prev => prev.audio ? prev : { ...prev, audio: true });
         }
       }
     }
@@ -1003,7 +1032,7 @@ export default function ChatPage() {
     if (message) {
       setMessages(prev => prev.map(msg =>
         msg.id === message.id
-          ? { ...msg, is_highlight: isHighlight }
+          ? { ...msg, is_highlight: isHighlight, highlighted_at: message.highlighted_at }
           : msg
       ));
     }
@@ -1617,7 +1646,7 @@ export default function ChatPage() {
       const currentSessionToken = localStorage.getItem(`chat_session_${code}`) || undefined;
       // Pass filter params when in focus/gifts room
       const filterParam = getRoomFilter(currentRoom);
-      const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
+      const filterUser = filterParam === 'focus' || filterParam === 'gifts' ? username : undefined;
       const { messages: msgs, pinnedMessages, broadcastMessage, roomNotifications: notifs } = await messageApi.getMessages(code, roomUsername, currentSessionToken, filterParam, filterUser);
 
       // Update room notification indicators from server (only on main room / initial load)
@@ -1648,8 +1677,16 @@ export default function ChatPage() {
       // Add any pinned messages not already in main array
       const messageIds = new Set(msgs.map(m => m.id));
       const uniquePinnedMessages = pinnedMessages.filter(pm => !messageIds.has(pm.id));
+      // Highlight room is sorted by when each message was starred
+      // (highlighted_at), not when it was sent. Other rooms sort by send time.
+      const sortKey = (m: Message) => {
+        if (currentRoom === 'highlight' && m.highlighted_at) {
+          return new Date(m.highlighted_at).getTime();
+        }
+        return new Date(m.created_at).getTime();
+      };
       const allMessages = [...updatedMessages, ...uniquePinnedMessages].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        (a, b) => sortKey(a) - sortKey(b)
       );
 
       setMessages(allMessages);
@@ -1710,7 +1747,7 @@ export default function ChatPage() {
 
       // Fetch older messages (async - user may scroll during this)
       const filterParam = getRoomFilter(currentRoom);
-      const filterUser = filterParam && filterParam !== 'highlight' ? username : undefined;
+      const filterUser = filterParam === 'focus' || filterParam === 'gifts' ? username : undefined;
       const { messages: olderMessages, hasMore } = await messageApi.getMessagesBefore(code, beforeTimestamp, 50, roomUsername, filterParam, filterUser);
 
       if (olderMessages.length > 0) {
@@ -2545,6 +2582,18 @@ export default function ChatPage() {
       return messages.filter(msg => msg.is_highlight).filter(applyMute);
     }
 
+    if (currentRoom === 'photo') {
+      return messages.filter(msg => msg.message_type !== 'gift' && !!msg.photo_url).filter(applyMute);
+    }
+
+    if (currentRoom === 'video') {
+      return messages.filter(msg => msg.message_type !== 'gift' && !!msg.video_url).filter(applyMute);
+    }
+
+    if (currentRoom === 'audio') {
+      return messages.filter(msg => msg.message_type !== 'gift' && !!msg.voice_url).filter(applyMute);
+    }
+
     return messages.filter(applyMute);
   }, [messages, currentRoom, roomLoading, username, mutedUsernames, spotlightUsernames]);
 
@@ -2947,9 +2996,9 @@ export default function ChatPage() {
                 cancelScrollAnimation={cancelScrollAnimation}
                 highlightMessage={highlightMessage}
                 handleReply={handleReply}
-                disableReply={currentRoom === 'gifts' || currentRoom === 'highlight'}
+                disableReply={currentRoom === 'gifts' || currentRoom === 'highlight' || currentRoom === 'photo' || currentRoom === 'video' || currentRoom === 'audio'}
                 filterLoading={roomLoading}
-                filterMode={currentRoom === 'main' ? 'all' : currentRoom as 'focus' | 'gifts' | 'highlight'}
+                filterMode={currentRoom === 'main' ? 'all' : currentRoom as 'focus' | 'gifts' | 'highlight' | 'photo' | 'video' | 'audio'}
                 filterLoadingText={getRoomLoadingText(currentRoom, previousRoom)}
                 handlePin={handlePin}
                 handleAddToPin={handleAddToPin}
@@ -3069,6 +3118,36 @@ export default function ChatPage() {
                 ariaLabel="Focus Mode"
                 design={'dark-mode'}
               />
+              {/* Photo Room */}
+              <FloatingActionButton
+                inline
+                icon={Camera}
+                onClick={() => switchRoom(currentRoom === 'photo' ? 'main' : 'photo')}
+                isToggled={currentRoom === 'photo'}
+                hasNotification={roomNotifications.photo}
+                ariaLabel="Photo Room"
+                design={'dark-mode'}
+              />
+              {/* Video Room */}
+              <FloatingActionButton
+                inline
+                icon={Video}
+                onClick={() => switchRoom(currentRoom === 'video' ? 'main' : 'video')}
+                isToggled={currentRoom === 'video'}
+                hasNotification={roomNotifications.video}
+                ariaLabel="Video Room"
+                design={'dark-mode'}
+              />
+              {/* Audio Room */}
+              <FloatingActionButton
+                inline
+                icon={Mic}
+                onClick={() => switchRoom(currentRoom === 'audio' ? 'main' : 'audio')}
+                isToggled={currentRoom === 'audio'}
+                hasNotification={roomNotifications.audio}
+                ariaLabel="Audio Room"
+                design={'dark-mode'}
+              />
               {/* Gift Filter */}
               <FloatingActionButton
                 inline
@@ -3111,7 +3190,7 @@ export default function ChatPage() {
       </div>
 
       {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms) */}
-      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && currentRoom !== 'gifts' && (
+      {!isSeparateViewRoom(currentRoom) && currentRoom !== 'highlight' && currentRoom !== 'gifts' && currentRoom !== 'photo' && currentRoom !== 'video' && currentRoom !== 'audio' && (
         <div className="relative">
           <div className={!hasJoined ? 'opacity-50' : ''}>
             <MessageInput

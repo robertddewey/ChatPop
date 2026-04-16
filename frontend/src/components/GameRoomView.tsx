@@ -26,7 +26,7 @@ export default function GameRoomView({
       {/* Static Content Area */}
       <div className="flex-1 overflow-y-auto p-4 relative z-10">
         <div className="h-full flex items-center justify-center">
-          {/* Static fixture - just the gaming background */}
+          <span className="text-sm text-zinc-400">Want to play a game?</span>
         </div>
       </div>
     </div>

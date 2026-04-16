@@ -260,6 +260,61 @@ class CacheMonitor:
             }
             self._log_event(event)
 
+    def log_hydration(self, chat_code: str, media_type: str, count: int, duration_ms: float):
+        """
+        Log a media-index hydration pass (cold-start population from PostgreSQL).
+
+        Args:
+            chat_code: Chat room code (or ID if code unavailable)
+            media_type: 'photo' | 'video' | 'audio'
+            count: Number of messages hydrated into the index
+            duration_ms: Wall-clock duration of the hydration pass
+        """
+        self._increment_ops_counter()
+        self._update_metrics('hydration', duration_ms)
+
+        if self._should_log_event():
+            event = {
+                'timestamp': time.time(),
+                'type': 'hydration',
+                'chat_code': chat_code,
+                'media_type': media_type,
+                'count': count,
+                'duration_ms': round(duration_ms, 2),
+            }
+            self._log_event(event)
+
+    def log_eviction(self, chat_code: str, evicted: int, protected_skipped: int,
+                     force_evicted: int, duration_ms: float):
+        """
+        Log a cache eviction pass.
+
+        Args:
+            chat_code: Chat room code (or ID if code unavailable)
+            evicted: Number of unprotected messages evicted normally
+            protected_skipped: Number of protected messages encountered and skipped
+            force_evicted: Number of protected messages force-evicted (scan window saturated)
+            duration_ms: Wall-clock duration of the eviction pass
+        """
+        self._increment_ops_counter()
+        self._update_metrics('eviction', duration_ms)
+        if force_evicted > 0:
+            # Force-evictions are a signal that the cache is saturated with protected
+            # content; track separately so it can be alerted on.
+            self._update_metrics('eviction_force', duration_ms)
+
+        if self._should_log_event():
+            event = {
+                'timestamp': time.time(),
+                'type': 'eviction',
+                'chat_code': chat_code,
+                'evicted': evicted,
+                'protected_skipped': protected_skipped,
+                'force_evicted': force_evicted,
+                'duration_ms': round(duration_ms, 2),
+            }
+            self._log_event(event)
+
     def log_hybrid_query(self, chat_code: str, cache_count: int, db_count: int,
                         total_duration_ms: float, cache_ms: float, db_ms: float):
         """

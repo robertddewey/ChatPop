@@ -352,26 +352,38 @@ class LoginTests(TestCase):
 | `chats/tests/tests_redis_cache.py` | 49 | Message cache (hash+index), filter indexes, pinned messages, reactions, eviction, cleanup |
 | `chats/tests/tests_partial_cache_hits.py` | 8 | Hybrid Redis+PostgreSQL queries |
 | `chats/tests/tests_message_deletion.py` | 22 | Soft delete, multi-layer cache invalidation |
+| `chats/tests/tests_factories.py` | 18 | Factory smoke tests (Phase 0 cache perf work) |
+| `chats/tests/tests_cache_regressions.py` | 10 | Regression guards for fixed bugs (Decimal serialization, _fetch_from_db missing fields, hydration completeness, ERROR-level logging) |
+| `chats/tests/tests_protected_set.py` | 15 | Protected SET correctness, highlight-toggle sync, eviction-via-SMEMBERS proof, behavior parity |
+| `chats/tests/tests_index_registry.py` | 10 | Index registry population per type, scan_iter elimination |
+| `chats/tests/tests_batch_eviction.py` | 7 | Batched trim threshold + ceiling invariant, protection still respected, RTT count bounded |
+| `chats/tests/tests_bulk_hydration.py` | 10 | Single-pipeline hydration of media indexes; cap, flag idempotency, performance |
+| `chats/tests/tests_redis_cache_load.py` | 8 | **`@tag('slow')`** — 5000-message load suite; sustained-load latency; concurrent writes; hydration at scale. Excluded from default `manage.py test`. |
 
-### Redis Cache Tests (`tests_redis_cache.py`)
+### Redis Cache Tests (`tests_redis_cache.py` and Phase 2 modules)
 
 Key areas covered:
-- **Hash + Index architecture:** Message add, update, get via timeline
-- **Filter indexes:** Focus mode routing (own messages, replies, host threads), gift index routing (sender + recipient), per-user gift indexes
-- **Eviction:** Timeline overflow triggers hash + index cleanup
-- **Pagination:** `get_messages_before()` across timeline and filter indexes
-- **Pinned messages:** Add, remove, ordering by amount paid
-- **Reactions:** Set, get, batch get, cache miss fallback
-- **Room cleanup:** `clear_room_cache()` removes all `room:{id}:*` keys
-- **Edge cases:** Empty rooms, duplicate messages, deleted messages
+- **Hash + Index architecture:** Message add, update, get via timeline.
+- **Filter indexes:** Focus mode routing, gift sender+recipient indexes, **highlight + photo + video + audio indexes** (added 2026-04-15 alongside the new filter rooms).
+- **Eviction:** Protected-aware (highlights/gifts/media skipped first), batched (only fires past `cap + 100`), uses **protected SET** instead of HGET+JSON for the protection check, uses **index registry** instead of `scan_iter` for index cleanup.
+- **Hydration:** Cold-start media indexes are seeded from PostgreSQL via a single-pipeline bulk write; one round-trip regardless of message count.
+- **Pagination:** `get_messages_before()` across timeline and filter indexes.
+- **Pinned messages:** Add, remove, ordering by amount paid.
+- **Reactions:** Set, get, batch get, cache miss fallback.
+- **Room cleanup:** `clear_room_cache()` removes all `room:{id}:*` keys.
+- **Regression guards:** `voice_duration` Decimal must serialize as float; `_fetch_from_db` must include all media fields; `add_message` failures must log at ERROR; hydration must seed from Postgres not just `msg_data`.
 
 ```bash
-# Run all cache tests
-./venv/bin/python manage.py test chats.tests.tests_redis_cache -v 2
+# Run all cache tests (default suite, excludes slow load tests)
+./venv/bin/python manage.py test chats.tests.tests_redis_cache chats.tests.tests_cache_regressions \
+    chats.tests.tests_factories chats.tests.tests_protected_set chats.tests.tests_index_registry \
+    chats.tests.tests_batch_eviction chats.tests.tests_bulk_hydration chats.tests.tests_partial_cache_hits
 
-# Run partial cache hit tests
-./venv/bin/python manage.py test chats.tests.tests_partial_cache_hits -v 2
+# Run the slow load suite (5000+ messages, ~95s)
+./venv/bin/python manage.py test chats.tests.tests_redis_cache_load --tag=slow
 ```
+
+For the architectural details these tests guard, see [docs/CACHING.md](CACHING.md) and [docs/CACHE_PERFORMANCE_PLAN.md](CACHE_PERFORMANCE_PLAN.md).
 
 ## Next Steps
 

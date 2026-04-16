@@ -323,7 +323,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'reply_to', 'reply_to_message',
             'is_pinned', 'pinned_at', 'sticky_until', 'pin_amount_paid', 'current_pin_amount',
             'is_from_host', 'username_is_reserved', 'time_until_unpin', 'avatar_url', 'created_at', 'is_deleted',
-            'gift_recipient', 'is_gift_acknowledged', 'is_highlight'
+            'gift_recipient', 'is_gift_acknowledged', 'is_highlight', 'highlighted_at'
         ]
         read_only_fields = [
             'id', 'user', 'message_type',
