@@ -27,7 +27,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { ChatRoom, Message, ReactionSummary, messageApi } from '@/lib/api';
 import MessageActionsModal from './MessageActionsModal';
 import MessageBubbleContent from './MessageBubbleContent';
@@ -148,8 +148,6 @@ export default function FocusMessagePanel({
   onMessageActionsOpenChange,
   slideIn,
 }: FocusMessagePanelProps) {
-  // Local cache of fetched messages — keyed by ID. Populated on demand for
-  // any focus-stack ID not in the in-memory list.
   const [fetched, setFetched] = useState<Record<string, Message>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -197,103 +195,39 @@ export default function FocusMessagePanel({
 
   return (
     <div
-      // Position absolute above the input wrapper (parent has position:relative).
-      // bottom-full → panel's bottom edge sits at input's top edge, so the panel
-      // floats just above the input regardless of input height. No layout shift,
-      // mirroring how the long-press modal mounts.
-      // No drawer chrome: the message bubble floats freely above the input on
-      // the dimmed/blurred backdrop, just like the long-press preview floats
-      // above the action sheet. Mode + close + back live in a small floating
-      // pill above the message — keeps the "Replying to @user" status hint
-      // without the heavy full-width drawer header.
-      // z-[70] → above the backdrop (z-[60]) so the panel renders on top.
       className="absolute left-0 right-0 bottom-full z-[70]"
-      // touch-action:none on the panel frame itself swallows drag gestures so
-      // they can't bubble up and pan the document / visual viewport. The body
-      // explicitly re-enables pan-y for its own internal scrolling.
-      //
-      // Slide-up: starts fully BELOW the input edge (calc(100% + input height))
-      // and slides to translateY(0) above the input. Without the input-height
-      // offset, translateY(100%) alone leaves the panel overlapping the input
-      // area on first frame.
-      // The --input-height CSS variable is set by the parent's ResizeObserver.
-      //
-      // No transition delay: backdrop and panel animate together (200ms each),
-      // matching the long-press sheet's flawless feel.
       style={{
-        touchAction: 'none',
-        transform: slideIn
-          ? 'translateY(0)'
-          : 'translateY(calc(100% + var(--input-height, 80px)))',
+        transform: slideIn ? 'translateY(0)' : 'translateY(calc(100% + var(--input-height, 80px)))',
         opacity: slideIn ? 1 : 0,
         transition: 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms ease',
       }}
     >
-      {/* Floating mode pill: Back? + mode label + Close, centered above the
-          message. rounded-full bg with backdrop-blur so it reads as a soft
-          floating chip rather than a full-width header bar. The chip itself
-          has touch-action: none to block the iOS visual-viewport-pan
-          fallback that body.chat-layout *'s `pan-x pan-y` would otherwise
-          allow on its descendants. */}
-      <div className="flex justify-center pb-2 px-4" style={{ touchAction: 'none' }}>
-        <div className="flex items-center gap-1 rounded-full bg-zinc-800/95 backdrop-blur-sm shadow-lg pl-1 pr-1 py-1 text-sm font-semibold text-zinc-100 max-w-full">
-          {canGoBack && (
-            <button
-              onClick={onBack}
-              className="flex-shrink-0 p-1 rounded-full hover:bg-zinc-700/60 transition-colors"
-              aria-label="Back to previous message"
-            >
-              <ArrowLeft size={16} />
-            </button>
-          )}
-          <span className="px-2 truncate">Replying to message</span>
+      {/* Back pill — only shown when chain-walking (depth ≥ 2). */}
+      {canGoBack && (
+        <div className="flex justify-start pb-2 px-4">
           <button
-            onClick={onClose}
-            className="flex-shrink-0 p-1 rounded-full hover:bg-zinc-700/60 transition-colors"
-            aria-label={isComposing ? 'Cancel reply' : 'Close'}
+            onClick={onBack}
+            className="flex items-center gap-1.5 rounded-full bg-zinc-800/95 backdrop-blur-sm shadow-lg pl-2.5 pr-3 py-1.5 text-sm font-semibold text-zinc-100 transition-colors hover:bg-zinc-700/80"
+            aria-label="Back to previous message"
           >
-            <X size={16} />
+            <ArrowLeft size={16} />
+            <span>Back</span>
           </button>
         </div>
-      </div>
+      )}
 
-      {/* Body. max-height = available space above the input minus the top
-          safe area minus a breathing gap. Lets tall content (long text, big
-          media) use as much vertical room as the chat area can spare while
-          still leaving a gap below the URL bar / notch and above the input.
-          The body still shrinks to fit short content (max-height isn't a
-          forced height). Previously had a 50dvh soft cap, removed so the
-          panel can use the full available space when content needs it.
-          --visible-height: visualViewport.height set by page.tsx, in px.
-            Tracks the actual visible area ABOVE the soft keyboard. dvh on
-            iOS Safari only adjusts for browser chrome (URL bar) and does
-            NOT shrink when the keyboard opens, so dvh alone wouldn't leave
-            a gap when typing a reply.
-          --input-height: input wrapper's offsetHeight, set by ResizeObserver
-            in page.tsx.
-          64px buffer = 24px top gap + 32px pill + 8px pill-to-body gap.
-          touch-action: pan-y + overflow-y: auto — body scrolls internally
-          when the message is tall (long text, big photo). overscroll-contain
-          keeps the scroll from chaining to the page.
-          The inner wrapper's `min-height: calc(100% + 1px)` is the trick
-          that prevents the iOS visual-viewport-pan fallback when the
-          keyboard is open. iOS Safari interprets pan-y on a non-overflowing
-          element as "no scroll target" and falls through to panning the
-          visual viewport (URL bar / panel / keyboard slide together).
-          Forcing the body to always overflow by 1px guarantees pan-y always
-          has a scroll target — even when the message content fits naturally.
-          The 1px is invisible (no scrollbar shows since we hide them
-          globally) and never reaches the user via overscroll because of
-          overscrollBehavior: contain. */}
+      {/* Body. overflow: hidden — swipe-down-to-dismiss on the outer
+          container takes priority over internal scrolling. Tall content is
+          clipped; user can long-press the message to see it in full.
+          max-height preserves a gap between the panel top and the safe area
+          when content is tall + keyboard is open. */}
       <div
-        className="overflow-y-auto px-4 py-3"
+        className="px-4 py-3"
         style={{
-          touchAction: 'pan-y',
-          overscrollBehavior: 'contain',
-          maxHeight: 'calc(var(--visible-height, 100dvh) - var(--input-height, 80px) - env(safe-area-inset-top, 0px) - 64px)',
+          overflow: 'hidden',
+          maxHeight: 'calc(var(--visible-height, 100dvh) - var(--input-height, 80px) - env(safe-area-inset-top, 0px) - 48px)',
         }}
       >
-        <div style={{ minHeight: 'calc(100% + 1px)' }}>
         {loading && (
           <div className="flex items-center justify-center py-8 text-zinc-400">
             <Loader2 size={20} className="animate-spin" />
@@ -406,7 +340,6 @@ export default function FocusMessagePanel({
             </div>
           </div>
         )}
-        </div>
       </div>
     </div>
   );

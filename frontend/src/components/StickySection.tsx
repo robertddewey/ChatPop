@@ -535,8 +535,8 @@ function StickySection({
 
                 return (
               <div
-                className={`${isHostMsg ? currentDesign.stickyHostMessage : currentDesign.stickyPinnedMessage} !py-1.5 w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
-                style={!isHostMsg ? { backgroundColor: '#0a1a2f', borderColor: '#1e3a5f' } : undefined}
+                className={`${currentDesign.stickyPinnedMessage} !py-1.5 w-full relative transition-opacity ${allowAnimations ? 'animate-bounce-in' : ''}`}
+                style={{ backgroundColor: '#0a1a2f', borderColor: '#1e3a5f' }}
               >
                 <div className="flex gap-3">
                   {/* Avatar */}

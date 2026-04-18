@@ -469,6 +469,7 @@ export default function ChatPage() {
   const [expandStickySignal, setExpandStickySignal] = useState(0);
   const headerTouchStartYRef = useRef<number | null>(null);
 
+
   // Message input state (message text is managed locally in MessageInput component)
   const messageInputRef = useRef<MessageInputHandle>(null);
   // Wrapper around MessageInput. Used as the positioning anchor for the
@@ -2448,6 +2449,9 @@ export default function ChatPage() {
   const closeFocusPanel = useCallback(() => {
     setFocusStack([]);
     setReplyingTo(null);
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
   }, []);
 
   const handleBlockUser = useCallback(async (username: string) => {
@@ -3148,29 +3152,20 @@ export default function ChatPage() {
 
       {/* Content Area Wrapper - View Router for Main Chat, Back Room, and future features */}
       <div className={`flex-1 relative overflow-hidden ${!hasJoined ? 'pointer-events-none' : ''}`}>
-        {/* Backdrop while the focus panel is open. Tap-to-close. Sits
-            inside the timeline container so the panel + input below remain
-            visible and interactive. z-[60] sits above the FAB strip (z-50)
-            so the action icons get dimmed/blurred too. Uses the theme's
-            shared overlay class (modalStyles.overlay) so the visual matches
-            the long-press sheet's backdrop exactly.
-            HIDDEN when MessageActionsModal's long-press sheet is open — the
-            action sheet has its own overlay covering the same area. */}
-        {focusStack.length > 0 && !messageActionsOpen && (
+        {/* Shared backdrop — one element that stays mounted whenever EITHER
+            the focus panel OR the long-press modal is open. Eliminates the
+            flash that occurred when transitioning between them (e.g., tapping
+            Reply in the long-press opened the focus panel, but the old
+            per-modal backdrops unmounted/mounted independently, briefly
+            revealing the chat). When the long-press portal (z-[9999]) is up,
+            clicks/touches land on the portal's outer div — never here — so
+            the focus-panel handlers below are inert during long-press.
+            z-[60] sits above the FAB strip (z-50). */}
+        {(focusStack.length > 0 || messageActionsOpen) && (
           <div
-            onClick={closeFocusPanel}
+            onClick={focusStack.length > 0 ? closeFocusPanel : undefined}
             className={`absolute inset-0 z-[60] ${currentDesign.modalStyles?.overlay || 'bg-black/60 backdrop-blur-md'}`}
-            // touchAction: 'none' — the backdrop covers the timeline area
-            // ABOVE the focus panel, including the gap between the panel's
-            // top edge and the safe area / URL bar. Without this, dragging
-            // anywhere in that gap inherits `pan-x pan-y` from chat-layout's
-            // universal selector and (with keyboard open) iOS Safari falls
-            // through to a visual viewport pan — sliding the entire UI.
-            style={{
-              opacity: focusPanelSlideIn ? 1 : 0,
-              transition: 'opacity 200ms ease',
-              touchAction: 'none',
-            }}
+            style={{ touchAction: 'none' }}
             aria-hidden="true"
           />
         )}

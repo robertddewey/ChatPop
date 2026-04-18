@@ -289,8 +289,6 @@ export default function MessageActionsModal({
   const [isClosing, setIsClosing] = useState(false);
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
   const [muteLockedHint, setMuteLockedHint] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
   const [slideIn, setSlideIn] = useState(false);
 
   // Local reaction state for optimistic updates while modal is open
@@ -341,7 +339,6 @@ export default function MessageActionsModal({
     });
   }, [onReact, message.id]);
 
-  const dragStartY = React.useRef(0);
   const actionsRef = React.useRef<HTMLDivElement>(null);
   const pinRef = React.useRef<HTMLDivElement>(null);
   const giftRef = React.useRef<HTMLDivElement>(null);
@@ -395,7 +392,6 @@ export default function MessageActionsModal({
   const handleOpen = () => {
     setIsOpen(true);
     onOpenChange?.(true);
-    setDragOffset(0);
     setIsClosing(false);
     setSlideIn(false);
 
@@ -414,7 +410,6 @@ export default function MessageActionsModal({
   const handleClose = (instant = false) => {
     setIsClosing(true);
     setSlideIn(false);
-    setIsDragging(false);
     setConfirmAction(null);
     setMuteLockedHint(false);
     onOpenChange?.(false);
@@ -427,7 +422,6 @@ export default function MessageActionsModal({
     setTimeout(() => {
       setIsOpen(false);
       setIsClosing(false);
-      setDragOffset(0);
       // Reset panel state
       setActivePanel('actions');
       setPinRequirements(null);
@@ -556,37 +550,6 @@ export default function MessageActionsModal({
     return `${hours} hour${hours !== 1 ? 's' : ''}`;
   };
 
-  const handleDragStart = (e: React.TouchEvent) => {
-    dragStartY.current = e.touches[0].clientY;
-    setIsDragging(true);
-  };
-
-  const handleDragMove = (e: React.TouchEvent) => {
-    if (!isDragging) return;
-
-    const currentY = e.touches[0].clientY;
-    const delta = currentY - dragStartY.current;
-
-    // Only allow dragging down (positive delta)
-    if (delta > 0) {
-      setDragOffset(delta);
-    }
-  };
-
-  const handleDragEnd = () => {
-    if (!isDragging) return;
-
-    setIsDragging(false);
-
-    // Close if dragged down more than 100px
-    if (dragOffset > 100) {
-      handleClose();
-    } else {
-      // Snap back to original position
-      setDragOffset(0);
-    }
-  };
-
   const handleAction = (action: () => void) => {
     action();
     handleClose();
@@ -623,10 +586,11 @@ export default function MessageActionsModal({
       label: 'Reply',
       action: () => {
         onReply(message);
-        // Instant close: skip the 200ms slide-out animation. The user wants
-        // to type immediately; the animation just delays the input becoming
-        // visible/usable behind the sheet.
-        handleClose(true);
+        // Normal close (300ms) so the long-press backdrop overlaps with the
+        // focus panel's backdrop fade-in. Instant close (0ms) left a visible
+        // gap — the long-press backdrop vanished before the reply panel's
+        // backdrop had time to appear (~32ms double-RAF + 200ms transition).
+        handleClose();
       },
     });
   }
@@ -825,29 +789,13 @@ export default function MessageActionsModal({
             WebkitTouchCallout: 'none',
           }}
         >
-          {/* Backdrop — starts BELOW the chat header so the header stays
-              visible. The outer click-catcher (above) still covers the entire
-              viewport at z-[9999], so tapping the back button (or anywhere
-              else outside the sheet) still closes the modal — the header is
-              visible, but the OUTER swallows clicks before they reach it.
-              Uses the same modalStyles.overlay class as every other modal
-              (and the FocusMessagePanel) so the dim level is consistent. */}
-          <div
-            className={`absolute left-0 right-0 bottom-0 ${modalStyles.overlay}`}
-            style={{ top: 'var(--chat-header-height, 0px)' }}
-          />
-
           {/* E4 Layout: Message docked above sheet, slides up as one unit */}
           <div
             className="relative w-full max-w-lg"
             style={{
-              transform: isDragging
-                ? `translateY(${dragOffset}px)`
-                : slideIn && !isClosing
-                  ? 'translateY(0)'
-                  : 'translateY(100%)',
+              transform: slideIn && !isClosing ? 'translateY(0)' : 'translateY(100%)',
               opacity: slideIn && !isClosing ? 1 : 0,
-              transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease',
+              transition: 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease',
             }}
           >
             {/* Floating Message Preview — docked above sheet. Renders the
@@ -947,16 +895,7 @@ export default function MessageActionsModal({
                 '--action-btn-border': themeModalStyles?.actionBtnBorder || '#3f3f46',
               } as React.CSSProperties}
             >
-              {/* Draggable handle area */}
-              <div
-                onTouchStart={handleDragStart}
-                onTouchMove={handleDragMove}
-                onTouchEnd={handleDragEnd}
-              >
-                <div className="pt-3 pb-2 flex justify-center">
-                  <div className={`w-12 h-1.5 ${modalStyles.dragHandle} rounded-full`} />
-                </div>
-              </div>
+              <div className="pt-3 pb-1" />
 
               {/* Actions / Pin Input — slide transition */}
               <div

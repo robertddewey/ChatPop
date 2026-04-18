@@ -134,12 +134,12 @@ export default function PhotoMessage({
 
         {/* Thumbnail in message */}
         <div
-          className={`relative rounded-lg overflow-hidden cursor-pointer group max-w-full ${className}`}
+          className={`relative rounded-lg overflow-hidden cursor-pointer group max-w-full bg-zinc-800 ${className}`}
           style={{ width: displayWidth, maxWidth: '100%', aspectRatio: `${displayWidth} / ${displayHeight}` }}
           onClick={openFullscreen}
         >
           {isLoading && (
-            <div className="absolute inset-0 bg-gray-100 dark:bg-zinc-800 animate-pulse" />
+            <div className="absolute inset-0 bg-zinc-800 animate-pulse" />
           )}
           <img
             src={photoUrl}
