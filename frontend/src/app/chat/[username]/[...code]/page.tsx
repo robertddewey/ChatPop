@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, startTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { api, chatApi, messageApi, authApi, backRoomApi, giftApi, isTokenExpiringSoon, isTokenMissingSessionKey, type ChatRoom, type ChatTheme, type Message, type ReactionSummary, type GiftNotification, type AnonymousParticipationInfo } from '@/lib/api';
@@ -533,10 +533,19 @@ export default function ChatPage() {
 
   // Track the input wrapper's height so the panel can start fully below it
   // (translateY(calc(100% + var(--input-height)))). Without this, translateY(100%)
-  // alone only shifts the panel by its own height, leaving it overlapping the
-  // input area — which made the slide visible OVER the input on first frame.
-  // Mirrors how the long-press sheet starts fully below the viewport edge.
+  // --input-height and --visible-height are ONLY consumed by the
+  // FocusMessagePanel's max-height and slide-in translateY. When the panel
+  // isn't open, these listeners are pure overhead — and expensive overhead:
+  // setting a CSS variable on <html> triggers a full document style recalc
+  // across every DOM node. On Android Chrome (Moto G Power), the
+  // visualViewport listener alone fires 5-15× during the keyboard animation,
+  // blocking the main thread for 500-1500ms and making the keyboard feel
+  // sluggish. Gating on focusStack.length > 0 means zero cost during normal
+  // chat interaction.
+  const panelIsOpen = focusStack.length > 0;
+
   useLayoutEffect(() => {
+    if (!panelIsOpen) return;
     const el = inputWrapperRef.current;
     if (!el) return;
     const update = () => {
@@ -546,58 +555,37 @@ export default function ChatPage() {
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [hasJoined, currentRoom]);
+  }, [panelIsOpen, hasJoined, currentRoom]);
 
-  // Expose the visual viewport height as a CSS variable on <html> so the
-  // FocusMessagePanel can cap its body height to fit ABOVE the soft keyboard.
-  // dvh (dynamic viewport height) on iOS Safari only accounts for browser
-  // chrome (URL bar) — it does NOT shrink when the soft keyboard opens. Without
-  // visualViewport tracking, the panel's max-height stays at full viewport when
-  // typing a reply, butting up against the URL bar / notch.
   useEffect(() => {
+    if (!panelIsOpen) return;
     const vv = window.visualViewport;
     if (!vv) {
-      // Pre-iOS-13 / very old browsers — fall back to innerHeight (no
-      // keyboard awareness, but at least respects window resizes).
       document.documentElement.style.setProperty('--visible-height', `${window.innerHeight}px`);
       return;
     }
-    let raf: number | null = null;
-    const update = () => {
-      raf = null;
-      document.documentElement.style.setProperty('--visible-height', `${vv.height}px`);
-    };
+    // Immediate initial measurement so the panel has a correct max-height
+    // on mount (before the slide-in animation makes it visible).
+    document.documentElement.style.setProperty('--visible-height', `${vv.height}px`);
+    // Subsequent updates are DEBOUNCED — one write after the keyboard
+    // animation settles, not one per frame (5-15×). Each write triggers a
+    // document-wide style recalc, which on budget Android blocked the main
+    // thread and made the keyboard feel sluggish. 150ms idle = fires once
+    // after the ~300ms keyboard animation completes.
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
-      if (raf !== null) return;
-      raf = requestAnimationFrame(update);
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        document.documentElement.style.setProperty('--visible-height', `${vv.height}px`);
+      }, 150);
     };
-    update();
     vv.addEventListener('resize', schedule, { passive: true });
     return () => {
-      if (raf !== null) cancelAnimationFrame(raf);
+      if (timer !== null) clearTimeout(timer);
       vv.removeEventListener('resize', schedule);
     };
-  }, []);
-
-  // Track the chat header's height as a CSS variable on <html> so portaled
-  // overlays (like MessageActionsModal's backdrop) can start their dim/blur
-  // BELOW the header instead of covering it. Keeps the header visible and
-  // makes the visible portion of the backdrop appear uniformly dark — without
-  // it, backdrop-blur-md averages the bright header with the dark chat below
-  // and the overlay reads as lighter than the FocusMessagePanel's backdrop
-  // (which only covers the chat area). The header may resize on iOS Safari
-  // when the URL bar position changes (chat-layout.css adjusts padding).
-  useEffect(() => {
-    const el = document.querySelector('[data-chat-header]') as HTMLElement | null;
-    if (!el) return;
-    const update = () => {
-      document.documentElement.style.setProperty('--chat-header-height', `${el.offsetHeight}px`);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [hasJoined, currentRoom]);
+  }, [panelIsOpen]);
 
   // Sticky height from MainChatView (for FAB strip positioning)
   // Debounce drops to 0 — room switches briefly clear sticky content but it reappears.
@@ -641,28 +629,24 @@ export default function ChatPage() {
 
   // FAB: disable pointer events while keyboard is open + closing to prevent
   // Android Chrome from routing taps to icons that slide into position during
-  // the keyboard close animation.
-  const [fabPointerEvents, setFabPointerEvents] = useState(true);
+  // the keyboard close animation. Uses direct DOM manipulation via ref instead
+  // of React state — avoids a full page re-render on every focus/blur event.
+  const fabContainerRef = useRef<HTMLDivElement>(null);
   const fabBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const handleFocus = (e: FocusEvent) => {
       if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
         if (fabBlurTimerRef.current) clearTimeout(fabBlurTimerRef.current);
-        setFabPointerEvents(false);
+        if (fabContainerRef.current) fabContainerRef.current.style.pointerEvents = 'none';
       }
     };
     const handleBlur = (e: FocusEvent) => {
       if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
-        // Was 400ms — overlapped Android Chrome's ~300ms keyboard close
-        // animation, so the FAB strip felt "stuck" disabled long after the
-        // keyboard finished animating. 120ms is enough to outlast the
-        // last few resize events without bleeding into post-animation idle.
-        fabBlurTimerRef.current = setTimeout(() => setFabPointerEvents(true), 120);
+        fabBlurTimerRef.current = setTimeout(() => {
+          if (fabContainerRef.current) fabContainerRef.current.style.pointerEvents = 'auto';
+        }, 120);
       }
     };
-    // passive:true lets the browser commit the focus gesture without
-    // waiting for our handler — meaningful on Android Chrome where the
-    // keyboard transition is GPU-bound.
     document.addEventListener('focusin', handleFocus, { passive: true });
     document.addEventListener('focusout', handleBlur, { passive: true });
     return () => {
@@ -2447,11 +2431,20 @@ export default function ChatPage() {
   // Single dismissal path for the docked panel. Clears stack AND any armed
   // reply target — the user is leaving this message context entirely.
   const closeFocusPanel = useCallback(() => {
-    setFocusStack([]);
-    setReplyingTo(null);
+    // Blur first — lets the browser start the keyboard-close animation
+    // immediately. The state changes (which trigger an expensive page
+    // re-render to unmount the panel/backdrop) are wrapped in
+    // startTransition so React processes them as non-urgent — the browser
+    // keeps painting the keyboard animation while React diffs in the
+    // background. Without this, the re-render blocked the main thread
+    // and the keyboard visibly froze on budget Android.
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
+    startTransition(() => {
+      setFocusStack([]);
+      setReplyingTo(null);
+    });
   }, []);
 
   const handleBlockUser = useCallback(async (username: string) => {
@@ -3277,22 +3270,17 @@ export default function ChatPage() {
         {/* FAB Scroll Strip - positioned inside content area, adjusts to sticky section */}
         {hasJoined && (
           <div
+            ref={fabContainerRef}
             className="absolute right-0 z-50"
             onTouchStart={() => { (document.activeElement as HTMLElement)?.blur(); }}
             style={{
               top: `${fabTopExpanded}px`,
               bottom: '8px',
-              // translate3d forces GPU layer pre-allocation on Android Chrome so the
-              // transition starts instantly instead of waiting for layer promotion.
               transform: stickyIsHidden
                 ? `translate3d(0, -${fabCollapseOffset}px, 0)`
                 : 'translate3d(0, 0, 0)',
               transition: 'transform 200ms ease-out',
               willChange: 'transform',
-              // Disable pointer events while keyboard is open + closing to prevent
-              // Android Chrome from routing taps to icons that slide into position
-              // during the keyboard close animation.
-              pointerEvents: fabPointerEvents ? 'auto' : 'none',
             }}
           >
             {/* Top fade — matches page background, icons dissolve into it */}

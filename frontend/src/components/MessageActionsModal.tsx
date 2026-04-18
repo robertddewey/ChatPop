@@ -805,19 +805,13 @@ export default function MessageActionsModal({
                 drifted from the timeline whenever theme fields or media
                 handling changed. */}
             <div
-              className="px-4 pb-3 overflow-y-auto"
+              className="px-4 pb-3"
               onClick={(e) => e.stopPropagation()}
               style={{
-                touchAction: 'pan-y',
-                overscrollBehavior: 'contain',
-                // Cap the preview so a tall photo doesn't push the sheet
-                // off-screen. ~400px is a generous estimate of the action
-                // sheet's height (drag handle + emoji row + 3 rows of action
-                // buttons + bottom safe-area padding).
-                maxHeight: 'calc(var(--visible-height, 100dvh) - 400px - env(safe-area-inset-top, 0px))',
+                overflow: 'hidden',
+                maxHeight: 'calc(100dvh - 400px - env(safe-area-inset-top, 0px))',
               }}
             >
-              <div style={{ minHeight: 'calc(100% + 1px)' }}>
                 <div className="flex">
                   <div className="w-10 flex-shrink-0 mr-3">
                     {message.avatar_url ? (
@@ -882,10 +876,9 @@ export default function MessageActionsModal({
                     </div>
                   </div>
                 </div>
-              </div>
             </div>
 
-            {/* Sheet */}
+            {/* Sheet — tap-to-close on backdrop handles dismiss */}
             <div
               className={`w-full ${modalStyles.container} rounded-t-3xl`}
               onClick={(e) => e.stopPropagation()}
