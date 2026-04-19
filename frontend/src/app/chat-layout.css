@@ -56,25 +56,20 @@ body.chat-layout .chat-root > * {
   background-image: none !important;
 }
 
-/* Applied to html when chat-layout is active. Replaced `:has()` selector
-   (expensive — browser walks entire tree) with a class set by the same JS
-   that adds .chat-layout to body (page.tsx). */
+/* Applied to html when chat-layout is active. */
 html.chat-layout-active {
   overflow: hidden;
   width: 100%;
   touch-action: none;
   overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
 }
 
-/* Prevent pinch-to-zoom and pull-to-refresh. Scoped to the chat container
-   and scrollable areas instead of the old `body.chat-layout *` which
-   matched ALL 500+ DOM nodes and forced style recalc + GPU scroll-layer
-   creation (-webkit-overflow-scrolling: touch) on every element. */
-body.chat-layout .chat-root {
-  touch-action: pan-x pan-y;
-}
-body.chat-layout .chat-root [data-messages-container],
-body.chat-layout .chat-root [data-messages-container] * {
+/* Prevent pinch-to-zoom and pull-to-refresh on all elements within chat.
+   touch-action: pan-x pan-y is lightweight (just declares allowed gestures).
+   The old rule also had -webkit-overflow-scrolling: touch which created a
+   GPU scroll layer on every element — that's removed. */
+body.chat-layout * {
   touch-action: pan-x pan-y;
 }
 

@@ -473,6 +473,26 @@ export default function ChatPage() {
   const previewHasReservedUsername = previewIdentity.hasReservedUsername;
   const previewIsHost = previewIdentity.isHost;
 
+
+  // iOS Safari: prevent visual viewport panning when the keyboard is open.
+  // iOS allows the user to drag the entire page up/down because the layout
+  // viewport (100dvh) extends behind the keyboard. Instead of resizing the
+  // container (which fights safe-area offsets), we block the touchmove
+  // gesture that causes the pan — but only outside scrollable areas (the
+  // messages container can still scroll). This is a no-op when the keyboard
+  // is closed (no active input = no prevention).
+  useEffect(() => {
+    const handler = (e: TouchEvent) => {
+      const active = document.activeElement;
+      if (!active || (active.tagName !== 'TEXTAREA' && active.tagName !== 'INPUT')) return;
+      const target = e.target as Element;
+      if (target.closest('[data-messages-container]')) return;
+      e.preventDefault();
+    };
+    document.addEventListener('touchmove', handler, { passive: false });
+    return () => document.removeEventListener('touchmove', handler);
+  }, []);
+
   // Scroll-to-bottom indicator
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [expandStickySignal, setExpandStickySignal] = useState(0);

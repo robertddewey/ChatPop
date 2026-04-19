@@ -48,9 +48,11 @@ export default function ChatLayout({
             }
 
             // Inject style tag to set body and all page containers immediately
-            // This targets body, Next.js root, and any divs with height/flex classes (the main container)
             const style = document.createElement('style');
-            style.innerHTML = 'html, body { background-color: ' + bgColor + ' !important; }';
+            var css = 'html, body { background-color: ' + bgColor + ' !important; }';
+
+
+            style.innerHTML = css;
             document.head.appendChild(style);
 
           })();
