@@ -544,6 +544,7 @@ function MainChatView({
       {/* no-scroll-anchor class disables browser scroll anchoring on container AND all descendants */}
       <div
         ref={messagesContainerRef}
+        data-messages-container
         onScroll={handleScroll}
         className={`${currentDesign.messagesArea} no-scroll-anchor`}
       >
@@ -663,7 +664,7 @@ function MainChatView({
                 {/* Avatar column - for all messages */}
                 <div className={`${avatarSize} flex-shrink-0 ${avatarSpacing}`}>
                   {showAvatar ? (
-                    <div className="relative" style={{ willChange: 'transform' }}>
+                    <div className="relative">
                       <img
                         src={message.avatar_url || getDiceBearUrl(avatarStyle, message.username, 80)}
                         alt={message.username}

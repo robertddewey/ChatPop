@@ -399,10 +399,12 @@ export default function ChatPage() {
   // Base chat URL without auth segments
   const baseChatUrl = `/chat/${roomUsername}/${code}`;
 
-  const openAuth = (mode: 'login' | 'signup') => {
+  const openAuth = useCallback((mode: 'login' | 'signup') => {
     setAuthModeState(mode === 'signup' ? 'register' : 'login');
     window.history.pushState(null, '', `${baseChatUrl}/${mode}`);
-  };
+  }, [baseChatUrl]);
+
+  const handleRequestSignup = useCallback(() => openAuth('signup'), [openAuth]);
 
   const switchAuth = (mode: 'login' | 'signup') => {
     setAuthModeState(mode === 'signup' ? 'register' : 'login');
@@ -431,6 +433,13 @@ export default function ChatPage() {
 
   const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Ref mirror of messages — lets useCallback handlers read the latest
+  // messages without including `messages` in their dependency array.
+  // Without this, handleToggleBroadcast had `messages` as a dep, which
+  // recreated the callback on every new WebSocket message and defeated
+  // React.memo on MainChatView (the heaviest child component).
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   const [hasReservedUsername, setHasReservedUsername] = useState(false);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
@@ -1328,6 +1337,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     document.body.classList.add('chat-layout');
+    document.documentElement.classList.add('chat-layout-active');
     // Inject a <style> tag to override the root layout's html background color.
     // React controls <html style={{ backgroundColor: '#0a0a0a' }}> and re-applies
     // it on hydration/re-renders, overwriting any document.documentElement.style
@@ -1341,6 +1351,7 @@ export default function ChatPage() {
     document.head.appendChild(styleEl);
     return () => {
       document.body.classList.remove('chat-layout');
+      document.documentElement.classList.remove('chat-layout-active');
       styleEl.remove();
     };
   }, []);
@@ -2576,10 +2587,9 @@ export default function ChatPage() {
 
   const handleToggleBroadcast = useCallback(async (messageId: string) => {
     if (!chatRoom || !currentUserId || chatRoom.host.id !== currentUserId) return;
-    // Optimistic update
     setStickyHostMessage(prev => {
-      if (prev?.id === messageId) return null; // Unbroadcast
-      const msg = messages.find(m => m.id === messageId);
+      if (prev?.id === messageId) return null;
+      const msg = messagesRef.current.find(m => m.id === messageId);
       return msg || prev;
     });
     try {
@@ -2587,7 +2597,7 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Failed to toggle broadcast:', error);
     }
-  }, [code, chatRoom, currentUserId, roomUsername, messages]);
+  }, [code, chatRoom, currentUserId, roomUsername]);
 
   const handleDeleteMessage = useCallback(async (messageId: string) => {
     // Only hosts can delete messages
@@ -2891,10 +2901,19 @@ export default function ChatPage() {
     // Only scroll if the LAST message changed (new message arrived)
     if (currentLastId === previousLastId) return;
 
-    if (shouldAutoScrollRef.current) {
+    // Pause auto-scroll while any panel is open — the user can't see the
+    // chat scrolling behind the backdrop, and on budget devices it's wasted
+    // CPU/GPU. Their scroll position is maintained; they can use the
+    // down-chevron to catch up after closing the panel.
+    if (shouldAutoScrollRef.current && !messageActionsOpenRef.current && focusStack.length === 0) {
       scrollToBottom();
     }
-  }, [messages.length, messageReactions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps — messageReactions
+  // intentionally excluded: emoji reactions don't add new messages so
+  // auto-scroll shouldn't fire. Including it caused the effect to re-run
+  // on every reaction event (10+/sec on busy chats). focusStack.length and
+  // messageActionsOpenRef are refs/stable — no need in deps.
+  }, [messages.length]);
 
   // Auto-refresh messages every 3 seconds (fallback polling when WebSocket is not connected)
   useEffect(() => {
@@ -3154,14 +3173,30 @@ export default function ChatPage() {
             clicks/touches land on the portal's outer div — never here — so
             the focus-panel handlers below are inert during long-press.
             z-[60] sits above the FAB strip (z-50). */}
+        {/* Shared backdrop — plain dark overlay, no backdrop-filter.
+            z-[60] sits above the blurred content layer. */}
         {(focusStack.length > 0 || messageActionsOpen) && (
           <div
             onClick={focusStack.length > 0 ? closeFocusPanel : undefined}
-            className={`absolute inset-0 z-[60] ${currentDesign.modalStyles?.overlay || 'bg-black/60 backdrop-blur-md'}`}
+            className="absolute inset-0 z-[60] bg-black/60"
             style={{ touchAction: 'none' }}
             aria-hidden="true"
           />
         )}
+        {/* Content blur layer — wraps all chat content (messages, FABs,
+            sticky, loading overlays). When a panel is open, filter:blur
+            is applied ONCE to this container and cached as a GPU texture.
+            Unlike backdrop-filter:blur on the overlay (which recomputes
+            per frame), this only recalculates when the content underneath
+            actually changes. The backdrop overlay sits OUTSIDE this wrapper
+            so it stays sharp. */}
+        <div
+          className="absolute inset-0"
+          style={{
+            filter: (focusStack.length > 0 || messageActionsOpen) ? 'blur(6px)' : 'none',
+            transition: 'filter 200ms ease',
+          }}
+        >
         {/* Page-level loading overlay for room transitions */}
         {roomLoading && isSeparateViewRoom(currentRoom) && (
           <div className={`absolute inset-0 z-40 flex items-center justify-center ${
@@ -3211,7 +3246,7 @@ export default function ChatPage() {
                 spotlightUsernames={spotlightUsernames}
                 onSpotlightAdd={handleSpotlightAdd}
                 onSpotlightRemove={handleSpotlightRemove}
-                onRequestSignup={() => openAuth('signup')}
+                onRequestSignup={handleRequestSignup}
                 handleTipUser={handleTipUser}
                 handleSendGift={handleSendGift}
                 handleThankGift={handleThankGift}
@@ -3252,7 +3287,7 @@ export default function ChatPage() {
                   onIdentityChange={handleIdentityChange}
                   onJoin={handleJoinChat}
                   onLogin={() => openAuth('login')}
-                  onSignup={() => openAuth('signup')}
+                  onSignup={handleRequestSignup}
                 />
               </div>
             )}
@@ -3383,6 +3418,7 @@ export default function ChatPage() {
             />
           </div>
         )}
+        </div>{/* end content blur layer */}
       </div>
 
       {/* Message Input - Only show in chat rooms (not separate views like backroom, not read-only rooms).
@@ -3427,7 +3463,7 @@ export default function ChatPage() {
             onUnmute={handleUnmuteUser}
             onSpotlightAdd={handleSpotlightAdd}
             onSpotlightRemove={handleSpotlightRemove}
-            onRequestSignup={() => openAuth('signup')}
+            onRequestSignup={handleRequestSignup}
             onTip={handleTipUser}
             onSendGift={handleSendGift}
             onThankGift={handleThankGift}

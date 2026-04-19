@@ -56,23 +56,26 @@ body.chat-layout .chat-root > * {
   background-image: none !important;
 }
 
-html:has(body.chat-layout) {
+/* Applied to html when chat-layout is active. Replaced `:has()` selector
+   (expensive — browser walks entire tree) with a class set by the same JS
+   that adds .chat-layout to body (page.tsx). */
+html.chat-layout-active {
   overflow: hidden;
   width: 100%;
-  /* No explicit height — let html naturally cover the full viewport
-     including safe areas (behind status bar and toolbar). Setting
-     height: 100dvh here constrained html to the safe area only,
-     causing iOS Safari's safe areas to show black instead of the
-     html background/gradient. */
   touch-action: none;
   overscroll-behavior: none;
-  -webkit-overflow-scrolling: auto;
 }
 
-/* Prevent pinch-to-zoom and pull-to-refresh on all elements within chat */
-body.chat-layout * {
+/* Prevent pinch-to-zoom and pull-to-refresh. Scoped to the chat container
+   and scrollable areas instead of the old `body.chat-layout *` which
+   matched ALL 500+ DOM nodes and forced style recalc + GPU scroll-layer
+   creation (-webkit-overflow-scrolling: touch) on every element. */
+body.chat-layout .chat-root {
   touch-action: pan-x pan-y;
-  -webkit-overflow-scrolling: touch;
+}
+body.chat-layout .chat-root [data-messages-container],
+body.chat-layout .chat-root [data-messages-container] * {
+  touch-action: pan-x pan-y;
 }
 
 
