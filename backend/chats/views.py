@@ -674,8 +674,10 @@ class ChatRoomJoinView(APIView):
         - Registered user using different username: direct storage URL
         - Anonymous user: direct storage URL
 
-        If avatar_seed is provided, it is used as the DiceBear seed instead of
-        the username, allowing users to choose a different avatar via the UI.
+        If avatar_seed is provided, it is used as the DiceBear seed. For
+        reserved-username users, the seed is honored ONLY when User.avatar_url
+        is empty — the reserved avatar is stable once set and must not be
+        overwritten by subsequent joins.
         """
         from chatpop.utils.media import generate_and_store_avatar
 
@@ -684,8 +686,9 @@ class ChatRoomJoinView(APIView):
         # If logged-in user using their reserved_username
         if user and user.reserved_username:
             if participation.username.lower() == user.reserved_username.lower():
-                # Generate avatar (always regenerate if custom seed provided)
-                if not user.avatar_url or avatar_seed:
+                # Only set User.avatar_url if none exists — reserved avatars are
+                # stable once chosen. Join flow never overwrites them.
+                if not user.avatar_url:
                     avatar_url = generate_and_store_avatar(seed)
                     if avatar_url:
                         user.avatar_url = avatar_url

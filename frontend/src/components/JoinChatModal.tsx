@@ -177,8 +177,17 @@ export default function JoinChatModal({
   );
   const [avatarIndex, setAvatarIndex] = useState(persisted.current?.avatarIndex || 0);
 
-  // Whether to show avatar chevrons (only for first-time users, not identity chooser)
-  const showAvatarChevrons = !hasJoinedBefore && !isReturningUser && !showIdentityChooser;
+  // Show the avatar picker only for anonymous identities on first join.
+  //   - Reserved username: never — backend auto-assigns a username-seeded
+  //     avatar if none is set. Editing happens in a (future) account editor.
+  //   - Existing anonymous identity: never — locked to first-chosen avatar.
+  //   - Pure anonymous first join: show picker.
+  const inReservedMode = showIdentityChooser
+    ? selectedIdentity === 'registered'
+    : isLoggedIn && hasReservedUsername;
+  const existingAnonIdentity = showIdentityChooser && selectedIdentity.startsWith('anonymous:');
+  const showAvatarChevrons =
+    !inReservedMode && !existingAnonIdentity && !hasJoinedBefore && !isReturningUser;
 
   // Get the current avatar URL
   const getCurrentAvatarUrl = (): string => {
