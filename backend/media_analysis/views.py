@@ -766,6 +766,7 @@ class MusicAnalysisViewSet(viewsets.GenericViewSet):
 
             # Get client identifiers for tracking
             user_id, session_key, ip_address = get_client_identifier(request)
+            fingerprint = request.data.get('fingerprint', '')
 
             # Extract external IDs
             external_ids = result.get("external_ids", {})
@@ -1206,6 +1207,7 @@ class LocationAnalysisViewSet(viewsets.GenericViewSet):
 
             # Get client identifiers for tracking
             user_id, session_key, ip_address = get_client_identifier(request)
+            fingerprint = request.data.get('fingerprint', '')
 
             # Get location suggestions (checks cache first, then API)
             # Pass client identifiers for rate limiting (only counts API calls, not cache hits)
