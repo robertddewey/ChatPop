@@ -3368,13 +3368,13 @@ export default function ChatPage() {
             className="absolute right-0 z-50"
             onTouchStart={() => { (document.activeElement as HTMLElement)?.blur(); }}
             style={{
-              top: `${fabTopExpanded}px`,
+              // Animate `top` directly (not transform) so the container
+              // actually grows when the sticky section hides. Otherwise
+              // clientHeight stays frozen and icons scroll even when
+              // there's room for all of them.
+              top: `${stickyIsHidden ? fabTopExpanded - fabCollapseOffset : fabTopExpanded}px`,
               bottom: '8px',
-              transform: stickyIsHidden
-                ? `translate3d(0, -${fabCollapseOffset}px, 0)`
-                : 'translate3d(0, 0, 0)',
-              transition: 'transform 200ms ease-out',
-              willChange: 'transform',
+              transition: 'top 200ms ease-out',
             }}
           >
             {/* Scrollable icon strip */}
