@@ -2,6 +2,7 @@
 
 // Tailwind safelist: dynamic theme classes from database that must be generated
 // bg-[#1f1f23] border-[#1f1f23] bg-zinc-800/40 border-zinc-800/40 border-transparent
+// bg-[#141418] bg-[#2a2a30] border-[#2a2a30]
 // bg-purple-900 border-purple-500/40 bg-purple-500/30
 // bg-gradient-to-t from-purple-500 to-blue-500
 // bg-zinc-900/95 bg-zinc-900/90 border-purple-500/30
