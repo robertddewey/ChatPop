@@ -16,9 +16,12 @@
         <a href="/admin/constance/config/" style="display: inline-block; padding: 12px 24px; background: #28a745; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; transition: background 0.2s;">
             ⚙️ Dynamic Settings
         </a>
+        <a href="{% url 'api_health_dashboard' %}" style="display: inline-block; padding: 12px 24px; background: #6f42c1; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; transition: background 0.2s;">
+            🩺 API Health Check
+        </a>
     </div>
     <p style="margin-top: 15px; margin-bottom: 0; color: #6c757d; font-size: 14px;">
-        Monitor real-time cache/database operations for chats and location suggestions, and configure system settings without restarting the server.
+        Monitor real-time cache/database operations, configure system settings without restarting the server, and verify external API keys are working.
     </p>
 </div>
 {% endblock %}

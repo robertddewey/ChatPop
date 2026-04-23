@@ -1,0 +1,209 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<style>
+    .health-container { max-width: 1100px; margin: 20px auto; padding: 20px; }
+    .health-intro { color: #6c757d; margin-bottom: 20px; line-height: 1.5; }
+
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+    .controls button {
+        padding: 8px 16px;
+        border: 1px solid #ced4da;
+        background: #fff;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        color: #212529;
+        font-weight: 500;
+    }
+    .controls button:hover { background: #f1f3f5; }
+    .controls button.primary { background: #007bff; border-color: #007bff; color: #fff; }
+    .controls button.primary:hover { background: #0056b3; }
+    .controls button:disabled { opacity: 0.6; cursor: wait; }
+
+    table.health-results {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    table.health-results th, table.health-results td {
+        padding: 10px 14px;
+        text-align: left;
+        border-bottom: 1px solid #e9ecef;
+        font-size: 13px;
+        vertical-align: top;
+    }
+    table.health-results th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #495057;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.4px;
+    }
+    table.health-results tr:last-child td { border-bottom: none; }
+
+    .status-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .status-ok              { background: #d4edda; color: #155724; }
+    .status-degraded        { background: #fff3cd; color: #856404; }
+    .status-down            { background: #f8d7da; color: #721c24; }
+    .status-not_configured  { background: #e2e3e5; color: #495057; }
+    .status-error           { background: #f8d7da; color: #721c24; }
+
+    .latency { color: #6c757d; font-variant-numeric: tabular-nums; }
+    .message { color: #212529; }
+    .detail-toggle {
+        color: #007bff; cursor: pointer; font-size: 11px;
+        text-decoration: underline; margin-left: 8px;
+    }
+    pre.detail {
+        margin: 8px 0 0; padding: 10px;
+        background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px;
+        font-size: 11px; overflow-x: auto; white-space: pre-wrap;
+    }
+
+    .empty-state { padding: 30px; text-align: center; color: #6c757d; }
+    .spinner {
+        display: inline-block;
+        width: 14px; height: 14px;
+        border: 2px solid #e9ecef;
+        border-top-color: #007bff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="health-container">
+    <h1>API Health Check</h1>
+    <p class="health-intro">
+        Runs live probes against external APIs. Each probe makes a real request
+        that exercises the configured API key. Expect 1&ndash;5 seconds per probe
+        (OpenAI vision is the slowest).
+    </p>
+
+    <div class="controls">
+        <button type="button" class="primary" data-selector="all">Run all</button>
+        {% for category in categories %}
+            <button type="button" data-selector="{{ category }}">{{ category|capfirst }}</button>
+        {% endfor %}
+        <span style="margin: 0 6px; color: #adb5bd;">|</span>
+        {% for provider in providers %}
+            <button type="button" data-selector="{{ provider }}">{{ provider }}</button>
+        {% endfor %}
+    </div>
+
+    <div id="status-line" style="min-height: 20px; color: #6c757d; font-size: 13px; margin-bottom: 10px;"></div>
+
+    <div id="results-container">
+        <div class="empty-state">Click <strong>Run all</strong> or a specific provider above to begin.</div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var resultsEl = document.getElementById('results-container');
+    var statusEl = document.getElementById('status-line');
+    var buttons = document.querySelectorAll('.controls button');
+
+    function setButtonsBusy(isBusy) {
+        buttons.forEach(function (b) { b.disabled = isBusy; });
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function renderResults(results) {
+        if (!results || results.length === 0) {
+            resultsEl.innerHTML = '<div class="empty-state">No results.</div>';
+            return;
+        }
+        var rows = results.map(function (r, idx) {
+            var hasDetail = r.detail && Object.keys(r.detail).length > 0;
+            var detailJson = hasDetail ? JSON.stringify(r.detail, null, 2) : '';
+            var latency = (r.latency_ms != null) ? (r.latency_ms + ' ms') : '&mdash;';
+            return (
+                '<tr>' +
+                    '<td>' + escapeHtml(r.service) + '</td>' +
+                    '<td><strong>' + escapeHtml(r.provider) + '</strong></td>' +
+                    '<td><span class="status-badge status-' + escapeHtml(r.status) + '">' + escapeHtml(r.status) + '</span></td>' +
+                    '<td class="latency">' + latency + '</td>' +
+                    '<td class="message">' + escapeHtml(r.message) +
+                        (hasDetail
+                            ? '<span class="detail-toggle" data-idx="' + idx + '">show detail</span>' +
+                              '<pre class="detail" id="detail-' + idx + '" style="display:none;">' + escapeHtml(detailJson) + '</pre>'
+                            : '') +
+                    '</td>' +
+                '</tr>'
+            );
+        }).join('');
+        resultsEl.innerHTML = (
+            '<table class="health-results">' +
+                '<thead><tr>' +
+                    '<th>Service</th><th>Provider</th><th>Status</th><th>Latency</th><th>Message</th>' +
+                '</tr></thead>' +
+                '<tbody>' + rows + '</tbody>' +
+            '</table>'
+        );
+        resultsEl.querySelectorAll('.detail-toggle').forEach(function (toggle) {
+            toggle.addEventListener('click', function () {
+                var pre = document.getElementById('detail-' + toggle.dataset.idx);
+                if (!pre) return;
+                var shown = pre.style.display !== 'none';
+                pre.style.display = shown ? 'none' : 'block';
+                toggle.textContent = shown ? 'show detail' : 'hide detail';
+            });
+        });
+    }
+
+    function runProbe(selector) {
+        setButtonsBusy(true);
+        statusEl.innerHTML = '<span class="spinner"></span>Running probe: <strong>' + escapeHtml(selector) + '</strong>&hellip;';
+        resultsEl.innerHTML = '<div class="empty-state"><span class="spinner"></span>Waiting for API responses&hellip;</div>';
+
+        var url = new URL(window.location.pathname + 'data/', window.location.origin);
+        url.searchParams.set('provider', selector);
+        fetch(url.toString(), { credentials: 'same-origin' })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                return resp.json();
+            })
+            .then(function (data) {
+                statusEl.textContent = 'Last run: ' + new Date().toLocaleTimeString() + ' (' + escapeHtml(selector) + ')';
+                renderResults(data.results || []);
+            })
+            .catch(function (err) {
+                statusEl.textContent = '';
+                resultsEl.innerHTML = '<div class="empty-state" style="color:#721c24;">Request failed: ' + escapeHtml(err.message) + '</div>';
+            })
+            .finally(function () { setButtonsBusy(false); });
+    }
+
+    buttons.forEach(function (btn) {
+        btn.addEventListener('click', function () { runProbe(btn.dataset.selector); });
+    });
+})();
+</script>
+{% endblock %}

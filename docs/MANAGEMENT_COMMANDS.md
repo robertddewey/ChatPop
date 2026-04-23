@@ -387,6 +387,66 @@ Requires an OpenAI API key (`OPENAI_API_KEY` in `backend/.env`) for the `text-em
 
 ---
 
+## External API Health Commands
+
+### `check_apis`
+
+Runs live health probes against the external APIs ChatPop depends on. Each probe makes a real request that exercises the configured API key, so this is the canonical way to verify a freshly configured environment or to diagnose an outage.
+
+```bash
+./venv/bin/python manage.py check_apis
+```
+
+**Default output** (table) — one line per provider with status, latency, and a human-readable message.
+
+**Selecting what to probe:**
+
+```bash
+# Run everything (default)
+./venv/bin/python manage.py check_apis
+./venv/bin/python manage.py check_apis --provider all
+
+# All providers in a category
+./venv/bin/python manage.py check_apis --provider location   # tomtom + google_places
+./venv/bin/python manage.py check_apis --provider audio      # acrcloud
+./venv/bin/python manage.py check_apis --provider image      # openai
+
+# A single provider
+./venv/bin/python manage.py check_apis --provider tomtom
+./venv/bin/python manage.py check_apis --provider google_places
+./venv/bin/python manage.py check_apis --provider acrcloud
+./venv/bin/python manage.py check_apis --provider openai
+
+# JSON output (for scripts)
+./venv/bin/python manage.py check_apis --json
+```
+
+**What each probe does:**
+
+| Provider | Call | What it validates |
+|---|---|---|
+| `tomtom` | Reverse-geocode Times Square | `TOMTOM_API_KEY`, network, response shape |
+| `google_places` | Geocode Times Square | `GOOGLE_PLACES_API_KEY`, network, response shape |
+| `acrcloud` | Identify a 3s 440Hz tone | `ACRCLOUD_ACCESS_KEY`/`SECRET_KEY`/`HOST`, HMAC signing |
+| `openai` | List models + 1×1 PNG vision call | `OPENAI_API_KEY`, `PHOTO_ANALYSIS_OPENAI_MODEL` access |
+
+**Status values:**
+
+- `ok` — responded, key works, response shape valid.
+- `degraded` — responded but returned unexpected shape or content.
+- `down` — request failed, timed out, or provider rejected the key.
+- `not_configured` — required settings/env vars are missing.
+
+The command exits non-zero if any probe returns `down`, which makes it usable in CI or shell scripts:
+
+```bash
+./venv/bin/python manage.py check_apis --provider openai || notify_team
+```
+
+There is also a web dashboard at `/admin/health/apis/` (staff-only) that runs the same probes from the browser with per-provider buttons. It's linked from the **Developer Tools** section on the admin home page.
+
+---
+
 ## Quick Reference
 
 | Command | App | Category | Purpose |
@@ -405,3 +465,4 @@ Requires an OpenAI API key (`OPENAI_API_KEY` in `backend/.env`) for the `text-em
 | `browse_suggestions` | media_analysis | Diagnostics | Browse suggestion database |
 | `inspect_suggestion_distances` | media_analysis | Diagnostics | Analyze embedding clustering thresholds |
 | `generate_room_embeddings` | media_analysis | Diagnostics | Generate embeddings for AI rooms |
+| `check_apis` | media_analysis | Health | Probe external APIs (TomTom, Google, ACRCloud, OpenAI) |

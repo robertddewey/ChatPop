@@ -43,6 +43,10 @@ urlpatterns = [
     path("admin/monitor/location-cache/analytics/point/<uuid:point_id>/", media_admin_views.location_analytics_point_details, name="location_analytics_point_details"),
     path("admin/monitor/location-cache/analytics/lod/", media_admin_views.location_analytics_lod, name="location_analytics_lod"),
 
+    # API Health Check
+    path("admin/health/apis/", media_admin_views.api_health_dashboard, name="api_health_dashboard"),
+    path("admin/health/apis/data/", media_admin_views.api_health_check, name="api_health_check"),
+
     # Legacy redirect (backwards compatibility)
     path("admin/monitoring/", admin_views.chat_cache_dashboard, name="monitoring_dashboard"),
     path("admin/monitoring/api/", admin_views.chat_cache_api, name="monitoring_api"),

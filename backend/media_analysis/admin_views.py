@@ -1053,3 +1053,35 @@ def location_cache_create(request):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+# ---------------------------------------------------------------------------
+# API Health Check dashboard
+# ---------------------------------------------------------------------------
+
+@staff_member_required
+def api_health_dashboard(request):
+    """HTML dashboard that runs external-API health probes on demand."""
+    from media_analysis.utils.health import CATEGORIES, PROVIDERS
+    context = {
+        'title': 'API Health Check',
+        'categories': list(CATEGORIES.keys()),
+        'providers': list(PROVIDERS),
+    }
+    return render(request, 'admin/api_health_dashboard.html', context)
+
+
+@staff_member_required
+def api_health_check(request):
+    """JSON endpoint that runs probes. Query ?provider=<selector>."""
+    from media_analysis.utils.health import run_probes
+    from media_analysis.utils.health.base import resolve_providers
+
+    selector = request.GET.get('provider', 'all')
+    try:
+        resolve_providers(selector)
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+    results = [r.to_dict() for r in run_probes(selector)]
+    return JsonResponse({'results': results})
