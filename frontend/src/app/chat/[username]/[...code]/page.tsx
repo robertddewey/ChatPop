@@ -685,26 +685,65 @@ export default function ChatPage() {
     };
   }, []);
 
-  // FAB scroll strip fade indicators
+  // FAB scroll strip — plain scroll container, no fade effects.
   const fabStripRef = useRef<HTMLDivElement>(null);
-  const [fabCanScrollUp, setFabCanScrollUp] = useState(false);
-  const [fabCanScrollDown, setFabCanScrollDown] = useState(false);
-  const updateFabScrollFades = useCallback(() => {
-    const el = fabStripRef.current;
-    if (!el) return;
-    setFabCanScrollUp(el.scrollTop > 4);
-    setFabCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
-  }, []);
 
-  // Initialize and update fade indicators when strip size changes
+  // On-join scroll hint: briefly peek one icon down and back to signal the
+  // strip is scrollable. Skipped if content fits without overflow. Cancels
+  // immediately on any user interaction.
   useEffect(() => {
+    if (!hasJoined) return;
     const el = fabStripRef.current;
     if (!el) return;
-    updateFabScrollFades();
-    const observer = new ResizeObserver(() => updateFabScrollFades());
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [updateFabScrollFades, hasJoined, stickyHeight]);
+
+    let rafId: number | null = null;
+    let cancelled = false;
+
+    const cancel = () => {
+      cancelled = true;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+
+    el.addEventListener('pointerdown', cancel);
+    el.addEventListener('wheel', cancel, { passive: true });
+    el.addEventListener('touchstart', cancel, { passive: true });
+
+    const startTimeout = window.setTimeout(() => {
+      if (cancelled) return;
+      if (el.scrollHeight <= el.clientHeight) return; // nothing to hint at
+
+      const peekDistance = 52; // ~one icon + gap
+      const totalMs = 700;
+      const startTime = performance.now();
+
+      const animate = (now: number) => {
+        if (cancelled) return;
+        const t = Math.min((now - startTime) / totalMs, 1);
+        // Triangle: 0 → 1 at midpoint → 0, then ease-in-out via sin.
+        const triangle = t < 0.5 ? t * 2 : (1 - t) * 2;
+        const eased = (1 - Math.cos(triangle * Math.PI)) / 2;
+        el.scrollTop = eased * peekDistance;
+        if (t < 1) {
+          rafId = requestAnimationFrame(animate);
+        } else {
+          el.scrollTop = 0;
+        }
+      };
+
+      rafId = requestAnimationFrame(animate);
+    }, 400);
+
+    return () => {
+      cancel();
+      clearTimeout(startTimeout);
+      el.removeEventListener('pointerdown', cancel);
+      el.removeEventListener('wheel', cancel);
+      el.removeEventListener('touchstart', cancel);
+    };
+  }, [hasJoined]);
 
   // Helper: get filter param for API calls (only chat filter rooms have a filter)
   const getRoomFilter = useCallback((room: Room): string | undefined => {
@@ -3338,15 +3377,9 @@ export default function ChatPage() {
               willChange: 'transform',
             }}
           >
-            {/* Top fade — matches page background, icons dissolve into it */}
-            <div className={`absolute top-0 left-0 right-0 h-10 z-10 pointer-events-none transition-opacity duration-200 ${fabCanScrollUp ? 'opacity-100' : 'opacity-0'}`}
-              style={{ background: 'linear-gradient(to bottom, #18181b 0%, #18181b 30%, transparent 100%)' }}
-            />
-
             {/* Scrollable icon strip */}
             <div
               ref={fabStripRef}
-              onScroll={updateFabScrollFades}
               className="h-full flex flex-col items-center gap-2 overflow-y-auto no-scrollbar px-1 py-1"
             >
               {/* Highlight Room */}
@@ -3431,11 +3464,6 @@ export default function ChatPage() {
                 design={'dark-mode'}
               />
             </div>
-
-            {/* Bottom fade — matches page background, icons dissolve into it */}
-            <div className={`absolute bottom-0 left-0 right-0 h-10 z-10 pointer-events-none transition-opacity duration-200 ${fabCanScrollDown ? 'opacity-100' : 'opacity-0'}`}
-              style={{ background: 'linear-gradient(to top, #18181b 0%, #18181b 30%, transparent 100%)' }}
-            />
           </div>
         )}
         </div>{/* end content blur layer */}
