@@ -1992,15 +1992,23 @@ class RoomNotificationCache:
     """
     Redis SET-based room notification indicators.
 
-    Per room type, stores a SET of participation_ids who have SEEN the latest content.
-    If participation_id is in the set → no notification. If not → notification.
+    Per room type, maintains two SETs of participation_ids:
+      - seen:    users who have seen the latest content (cleared on new content)
+      - visited: users who have ever opened this room (never cleared by new content)
+
+    Notification shown iff: user is in `visited` AND NOT in `seen`.
+    This suppresses markers for rooms a user has never opened — new joiners
+    only get notifications after they've actually visited a room and new
+    activity arrives.
 
     Uses ChatParticipation.id (UUID) as the stable identity — unlike session_key
     (which can change across page refreshes for anonymous users) or user_id
     (which is None for anonymous identities), participation_id is stable and
     unique per identity per chat room.
 
-    Keys: room:{room_id}:seen:{room_type}
+    Keys:
+      room:{room_id}:seen:{room_type}
+      room:{room_id}:visited:{room_type}
     TTL: 7 days (content older than that doesn't need notification)
     """
     # FAB-linked notification types
@@ -2014,6 +2022,10 @@ class RoomNotificationCache:
     @classmethod
     def _key(cls, room_id, room_type):
         return f'room:{room_id}:seen:{room_type}'
+
+    @classmethod
+    def _visited_key(cls, room_id, room_type):
+        return f'room:{room_id}:visited:{room_type}'
 
     @classmethod
     def _get_redis_client(cls):
@@ -2067,35 +2079,45 @@ class RoomNotificationCache:
 
     @classmethod
     def mark_seen(cls, room_id, room_type, user_id):
-        """User opened this room — they've seen the content."""
+        """User opened this room — they've seen the content and have visited it."""
         try:
             redis_client = cls._get_redis_client()
-            key = cls._key(room_id, room_type)
-            redis_client.sadd(key, str(user_id))
-            redis_client.expire(key, cls.TTL_SECONDS)
+            seen_key = cls._key(room_id, room_type)
+            visited_key = cls._visited_key(room_id, room_type)
+            pipe = redis_client.pipeline()
+            pipe.sadd(seen_key, str(user_id))
+            pipe.expire(seen_key, cls.TTL_SECONDS)
+            pipe.sadd(visited_key, str(user_id))
+            pipe.expire(visited_key, cls.TTL_SECONDS)
+            pipe.execute()
         except Exception as e:
             print(f"Redis cache error (mark_seen): {e}")
 
     @classmethod
     def has_unseen(cls, room_id, user_id, room_types=None):
         """Check rooms for unseen content — returns dict of booleans.
-        room_types defaults to FAB_ROOMS. Pass VALID_ROOMS to include general types."""
+
+        Returns True for a room iff the user has visited it AND is not in the
+        seen set. New joiners (no visit history) never get notifications until
+        they actually open a room.
+
+        room_types defaults to FAB_ROOMS. Pass VALID_ROOMS to include general types.
+        """
         if room_types is None:
             room_types = cls.FAB_ROOMS
         try:
             redis_client = cls._get_redis_client()
             pipe = redis_client.pipeline()
             for room_type in room_types:
-                key = cls._key(room_id, room_type)
-                pipe.exists(key)
-                pipe.sismember(key, str(user_id))
+                pipe.sismember(cls._visited_key(room_id, room_type), str(user_id))
+                pipe.sismember(cls._key(room_id, room_type), str(user_id))
             results = pipe.execute()
 
             notifications = {}
             for i, room_type in enumerate(room_types):
-                key_exists = results[i * 2]
-                is_member = results[i * 2 + 1]
-                notifications[room_type] = bool(key_exists and not is_member)
+                is_visited = results[i * 2]
+                is_seen = results[i * 2 + 1]
+                notifications[room_type] = bool(is_visited and not is_seen)
             return notifications
         except Exception as e:
             print(f"Redis cache error (has_unseen): {e}")
