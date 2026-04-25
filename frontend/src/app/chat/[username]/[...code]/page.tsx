@@ -869,16 +869,19 @@ export default function ChatPage() {
   // Room-wide state (spotlight, chatRoom, etc.) and registered-account data
   // (anonymousParticipations, registeredDisplayName) are preserved.
   const resetIdentityState = useCallback(() => {
+    // Identity-tied state — must be cleared when switching identities so a
+    // previous user's gifts, notifications, mute list, etc. don't leak.
     setGiftQueue([]);
     setRoomNotifications({ highlight: false, focus: false, gifts: false, photo: false, video: false, audio: false });
     setMutedUsernames(new Set());
     setMessageReactions({});
     setReplyingTo(null);
     setFocusStack([]);
-    setMessages([]);
-    setStickyHostMessage(null);
-    setStickyPinnedMsg(null);
     setCurrentRoom('main');
+    // Room-wide state (messages, stickies, pinned) is identical for every
+    // viewer, so we deliberately do NOT clear it here. Clearing caused a
+    // visible flash on initial join — the chat would blank out and reload.
+    // loadMessages() in the join handler will overwrite with fresh data.
   }, []);
 
   // WebSocket state
