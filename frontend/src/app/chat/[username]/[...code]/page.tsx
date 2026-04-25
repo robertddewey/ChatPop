@@ -884,6 +884,45 @@ export default function ChatPage() {
     // loadMessages() in the join handler will overwrite with fresh data.
   }, []);
 
+  // Re-fetch /my-participation/ and apply authoritative identity state for
+  // the *active* identity (passed in by the caller). The endpoint always
+  // returns the registered participation as primary for a logged-in user,
+  // so we have to pick out the right entry — either `participation` (if
+  // it matches activeUsername) or one of the anonymous_participations —
+  // and apply that one's avatar / reserved flag.
+  const refreshIdentityFromBackend = useCallback(async (activeUsername: string) => {
+    try {
+      const fpValue = await getFingerprint().catch(() => undefined);
+      const participation = await chatApi.getMyParticipation(code, fpValue, roomUsername);
+
+      const anonsList = participation.anonymous_participations
+        || (participation.anonymous_participation ? [participation.anonymous_participation] : []);
+      setAnonymousParticipations(anonsList);
+
+      const active = activeUsername.toLowerCase();
+      const matchesPrimary = participation.username && participation.username.toLowerCase() === active;
+      const matchingAnon = !matchesPrimary
+        ? anonsList.find((a) => a.username.toLowerCase() === active)
+        : null;
+
+      if (matchesPrimary) {
+        setHasReservedUsername(participation.username_is_reserved || false);
+        setUserAvatarUrl(participation.avatar_url || null);
+        setIsBlocked(participation.is_blocked || false);
+      } else if (matchingAnon) {
+        setHasReservedUsername(false);
+        setUserAvatarUrl(matchingAnon.avatar_url || null);
+        // is_blocked isn't returned per-anon in the list; leave existing value alone.
+      }
+      // If no match found, leave identity-related state untouched — the
+      // join handler already set it; we don't have better data to apply.
+
+      if (participation.theme) setParticipationTheme(participation.theme);
+    } catch (err) {
+      console.error('Failed to refresh identity from backend:', err);
+    }
+  }, [code, roomUsername]);
+
   // WebSocket state
   const [sessionToken, setSessionToken] = useState<string | null>(null);
 
@@ -1684,6 +1723,7 @@ export default function ChatPage() {
         setHasJoinedBefore(false);
         setAnonymousParticipations([]);
         setIsBlocked(false);
+        setPreviewIdentity({ username: null, avatarUrl: undefined, hasReservedUsername: null, isHost: null });
         setJoinModalKey((prev) => prev + 1);
         // Django's logout() flushed the session, wiping turnstile_verified server-side.
         // Re-run the human verification flow so the fresh session gets re-flagged
@@ -1723,6 +1763,7 @@ export default function ChatPage() {
           setHasJoined(false);
           setUsername('');
           setAnonymousParticipations([]);
+          setPreviewIdentity({ username: null, avatarUrl: undefined, hasReservedUsername: null, isHost: null });
           setJoinModalKey(prev => prev + 1);
 
           // Track anonymous participations for identity chooser
@@ -2031,8 +2072,18 @@ export default function ChatPage() {
       await UsernameStorage.saveUsername(code, username, isLoggedIn);
       setUsername(username);
       setHasJoined(true);
+      // Clear preview state so post-join renderers fall back to the
+      // authoritative `username` instead of a stale chooser preview.
+      setPreviewIdentity({ username: null, avatarUrl: undefined, hasReservedUsername: null, isHost: null });
       clearChatVisited(code); // Clear visit tracking since user joined
       fetchGiftCatalog(code, roomUsername); // Preload catalog + settings (fire-and-forget)
+      // Re-hydrate identity state from the backend so the input area's
+      // avatar/badge match the joined identity, and so the post-join
+      // anonymousParticipations list includes any anon we just created.
+      // Pass the joined username so we apply the right participation's
+      // data even when /my-participation/ returns the registered one as
+      // primary for a logged-in user.
+      await refreshIdentityFromBackend(username);
       await loadMessages();
 
       // Add history entry so back button shows join modal again
@@ -3299,7 +3350,7 @@ export default function ChatPage() {
                 hiddenMode={isSeparateViewRoom(currentRoom)}
                 chatRoom={chatRoom}
                 currentUserId={currentUserId ?? null}
-                username={username}
+                username={previewUsername ?? username}
                 hasJoined={hasJoined}
                 sessionToken={sessionToken}
                 filteredMessages={filteredMessages}
