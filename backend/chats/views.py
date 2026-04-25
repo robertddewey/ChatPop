@@ -585,24 +585,52 @@ class ChatRoomJoinView(APIView):
                 participation.save()
                 created = False
             else:
-                # Logged-in user — find/create their REGISTERED participation.
-                participation, created = ChatParticipation.objects.get_or_create(
-                    chat_room=chat_room,
-                    user=request.user,
-                    is_anonymous_identity=False,
-                    defaults={
-                        'username': username,
-                        'fingerprint': fingerprint,
-                        'session_key': session_key,
-                        'ip_address': ip_address,
-                    }
-                )
-                if not created:
-                    # Update last_seen, fingerprint, and session_key
-                    participation.fingerprint = fingerprint
-                    participation.session_key = session_key
-                    participation.ip_address = ip_address
-                    participation.save()
+                # Logged-in user without a matching anon record. Decide based
+                # on the username they're joining with:
+                #   - matches their reserved username → REGISTERED participation
+                #   - any other username → fresh ANONYMOUS identity owned by
+                #     this user (so a user can have multiple anons per chat)
+                reserved = (request.user.reserved_username or '').lower()
+                joining_as_reserved = bool(reserved) and username.lower() == reserved
+
+                if joining_as_reserved:
+                    participation, created = ChatParticipation.objects.get_or_create(
+                        chat_room=chat_room,
+                        user=request.user,
+                        is_anonymous_identity=False,
+                        defaults={
+                            'username': username,
+                            'fingerprint': fingerprint,
+                            'session_key': session_key,
+                            'ip_address': ip_address,
+                        }
+                    )
+                    if not created:
+                        participation.fingerprint = fingerprint
+                        participation.session_key = session_key
+                        participation.ip_address = ip_address
+                        participation.save()
+                else:
+                    # Joining anonymously. Clear session_key from any other
+                    # unclaimed anon in this chat with the same session_key
+                    # so the unique constraint doesn't fire.
+                    if session_key:
+                        ChatParticipation.objects.filter(
+                            chat_room=chat_room,
+                            session_key=session_key,
+                            user__isnull=True,
+                        ).update(session_key=None)
+                    participation = ChatParticipation.objects.create(
+                        chat_room=chat_room,
+                        user=request.user,
+                        is_anonymous_identity=True,
+                        username=username,
+                        fingerprint=fingerprint,
+                        session_key=session_key,
+                        ip_address=ip_address,
+                    )
+                    is_anonymous_identity = True
+                    created = True
 
                 # Generate avatar at join time for logged-in users
                 if created:
@@ -1996,7 +2024,20 @@ class MyParticipationView(APIView):
                         username=session_anon.username,
                         user=request.user,
                     )
-                    if not pre_blocked:
+                    if pre_blocked:
+                        # The anon being seen by this session is banned. Don't claim
+                        # it (the user would just see a banned identity in their
+                        # chooser), but DO back-fill blocked_user on any ChatBlock
+                        # matching this session so the ban applies to the user's
+                        # account in this chat going forward. Closes the evasion
+                        # path where a session-banned anon escapes by logging in
+                        # and posting under a registered (or other) identity.
+                        ChatBlock.objects.filter(
+                            chat_room=chat_room,
+                            blocked_user__isnull=True,
+                            blocked_session_key=session_anon.session_key,
+                        ).update(blocked_user=request.user)
+                    else:
                         session_anon.user = request.user
                         session_anon.is_anonymous_identity = True
                         session_anon.save(update_fields=['user', 'is_anonymous_identity'])
