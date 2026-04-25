@@ -688,9 +688,10 @@ export default function ChatPage() {
   // FAB scroll strip — plain scroll container, no fade effects.
   const fabStripRef = useRef<HTMLDivElement>(null);
 
-  // On-join scroll hint: briefly peek one icon down and back to signal the
-  // strip is scrollable. Skipped if content fits without overflow. Cancels
-  // immediately on any user interaction.
+  // On-join scroll-bounce hint: scrolls the FAB strip down in multiple
+  // decaying parabolic arcs (a real bouncing-ball motion via scrollTop) so
+  // the user sees there's more content to scroll to. Skipped if everything
+  // fits. Cancels immediately on user interaction.
   useEffect(() => {
     if (!hasJoined) return;
     const el = fabStripRef.current;
@@ -715,22 +716,42 @@ export default function ChatPage() {
       if (cancelled) return;
       if (el.scrollHeight <= el.clientHeight) return; // nothing to hint at
 
-      const peekDistance = 52; // ~one icon + gap
-      const totalMs = 700;
-      const startTime = performance.now();
+      // Multi-bounce parabola with damping. Each bounce's peak is e² of the
+      // previous; each arc's duration scales by e (since duration ∝ √h).
+      // Result: a bouncing-ball cadence — first bounce big and slow, last
+      // ones quick and tiny, until the energy is gone.
+      // Clamp the first peak to the actually scrollable distance so the
+      // bounce never hits the bottom and "pauses" against the wall.
+      const scrollableMax = el.scrollHeight - el.clientHeight;
+      const peakHeight = Math.min(100, scrollableMax);
+      const elasticity = 0.55;      // how much energy each bounce keeps
+      const numBounces = 3;
+      const firstArcMs = 380;
 
+      const peaks: number[] = [];
+      const durations: number[] = [];
+      for (let i = 0; i < numBounces; i++) {
+        peaks.push(peakHeight * Math.pow(elasticity * elasticity, i));
+        durations.push(firstArcMs * Math.pow(elasticity, i));
+      }
+
+      const startTime = performance.now();
       const animate = (now: number) => {
         if (cancelled) return;
-        const t = Math.min((now - startTime) / totalMs, 1);
-        // Triangle: 0 → 1 at midpoint → 0, then ease-in-out via sin.
-        const triangle = t < 0.5 ? t * 2 : (1 - t) * 2;
-        const eased = (1 - Math.cos(triangle * Math.PI)) / 2;
-        el.scrollTop = eased * peekDistance;
-        if (t < 1) {
-          rafId = requestAnimationFrame(animate);
-        } else {
-          el.scrollTop = 0;
+        let elapsed = now - startTime;
+        let arcIndex = -1;
+        for (let i = 0; i < numBounces; i++) {
+          if (elapsed < durations[i]) { arcIndex = i; break; }
+          elapsed -= durations[i];
         }
+        if (arcIndex === -1) {
+          el.scrollTop = 0;
+          return;
+        }
+        const t = elapsed / durations[arcIndex];
+        // Parabolic arc: 4t(1-t) gives 0 → 1 → 0 with peak at t=0.5.
+        el.scrollTop = peaks[arcIndex] * 4 * t * (1 - t);
+        rafId = requestAnimationFrame(animate);
       };
 
       rafId = requestAnimationFrame(animate);
