@@ -94,6 +94,31 @@ print(s.strip("_"))
 ' "$1"
 }
 
+# Reject inputs that clearly aren't developer names — most commonly someone
+# pasting AWS credentials at a "Developer name:" prompt by mistake. Better to
+# fail loudly here than to write garbage to .dev-identity (which then
+# poisons every subsequent chatpop invocation on that machine).
+validate_dev_name() {
+  local raw="$1"
+  [[ -n "$raw" ]] || err "Developer name cannot be empty."
+
+  # Exact AWS access key ID format: AKIA followed by 16 uppercase alphanumeric.
+  if [[ "$raw" =~ ^AKIA[A-Z0-9]{16}$ ]]; then
+    err "That's an AWS access key ID, not a developer name.
+Use a short identifier like 'alice' or 'robert'."
+  fi
+  # Embedded access key (paste accidents — multiple keys joined together).
+  if [[ "$raw" =~ AKIA[A-Z0-9]{16} ]]; then
+    err "Input contains what looks like an AWS access key.
+Please enter just a name like 'alice' or 'robert'."
+  fi
+  # Sanity length cap — real names are short.
+  if [[ ${#raw} -gt 32 ]]; then
+    err "Developer name is too long (${#raw} chars; max 32).
+Use a short identifier like 'alice' or 'robert'."
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # cmd: password
 #
@@ -966,6 +991,7 @@ cmd_join() {
     read -r -p "  Use this name? [Y/n] " confirm
     if [[ "${confirm:-}" =~ ^[Nn]$ ]]; then
       read -r -p "  Developer name: " dev_name
+      validate_dev_name "$dev_name"
     else
       dev_name="$existing"
     fi
@@ -973,6 +999,7 @@ cmd_join() {
     info "Your developer name namespaces your databases and S3 prefix."
     info "Your admin should have told you what name to use."
     read -r -p "  Developer name: " dev_name
+    validate_dev_name "$dev_name"
   fi
   dev_name=$(normalize "$dev_name")
   [[ -n "$dev_name" ]] || err "Empty developer name"
@@ -1044,50 +1071,81 @@ _join_prompt_aws_credentials() {
   fi
 }
 
-# Pull dev-<name> access key from terraform state and write to chatpop-dev
-# profile. Requires admin keys (terraform output of sensitive value uses the
-# admin AWS profile via the terraform provider).
+# Install dev-<name>'s access keys into the chatpop-dev profile.
+#
+# Tries terraform state first (works on the machine where infra was
+# originally provisioned). Falls back to manual paste when state isn't
+# locally available — the typical case on a 2nd admin machine, since
+# terraform state is local-file-backed and not synced across machines.
 _admin_install_dev_keys() {
   local name="${1:-}"
   [[ -n "$name" ]] || err "Usage: _admin_install_dev_keys <name>"
 
   require_aws_admin
 
-  info "Pulling dev-${name} access key from terraform state…"
-  local creds_json
-  creds_json=$(cd "$TF_DIR" && terraform output -json developer_credentials 2>/dev/null) \
-    || err "Cannot read terraform output. Is terraform initialized + applied?"
+  local creds_json=""
+  if creds_json=$(cd "$TF_DIR" && terraform output -json developer_credentials 2>/dev/null); then
+    : # terraform state available, will use it below
+  else
+    creds_json=""
+  fi
 
-  local akid secret
-  akid=$(NAME="$name" CREDS="$creds_json" python3 -c '
+  if [[ -n "$creds_json" ]]; then
+    info "Pulling dev-${name} access key from terraform state…"
+    local akid secret
+    akid=$(NAME="$name" CREDS="$creds_json" python3 -c '
 import os, json, sys
 data = json.loads(os.environ["CREDS"])
 n = os.environ["NAME"]
 if n not in data:
-    print(f"missing", file=sys.stderr); sys.exit(2)
+    sys.exit(2)
 print(data[n]["access_key_id"])
-')
-  if [[ -z "$akid" ]]; then
-    err "dev-${name} not in terraform state. Run: chatpop admin add ${name}"
-  fi
-  secret=$(NAME="$name" CREDS="$creds_json" python3 -c '
+' 2>/dev/null) || akid=""
+
+    if [[ -n "$akid" ]]; then
+      secret=$(NAME="$name" CREDS="$creds_json" python3 -c '
 import os, json
 data = json.loads(os.environ["CREDS"])
 print(data[os.environ["NAME"]]["secret_access_key"])
 ')
+      aws configure set aws_access_key_id     "$akid"     --profile "$AWS_PROFILE_NAME"
+      aws configure set aws_secret_access_key "$secret"   --profile "$AWS_PROFILE_NAME"
+      aws configure set region                "us-east-1" --profile "$AWS_PROFILE_NAME"
+      aws configure set output                "json"      --profile "$AWS_PROFILE_NAME"
+      unset secret
 
-  aws configure set aws_access_key_id     "$akid"     --profile "$AWS_PROFILE_NAME"
-  aws configure set aws_secret_access_key "$secret"   --profile "$AWS_PROFILE_NAME"
-  aws configure set region                "us-east-1" --profile "$AWS_PROFILE_NAME"
-  aws configure set output                "json"      --profile "$AWS_PROFILE_NAME"
-  unset secret
-
-  local arn
-  if arn=$(aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null); then
-    ok "Profile '${AWS_PROFILE_NAME}' configured for dev-${name}: $arn"
+      local arn
+      if arn=$(aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null); then
+        ok "Profile '${AWS_PROFILE_NAME}' configured for dev-${name}: $arn"
+        return 0
+      else
+        warn "Pulled dev-${name} keys from terraform but verification failed."
+        info "Falling back to manual paste."
+      fi
+    else
+      warn "dev-${name} not present in terraform state."
+      info "Either run 'chatpop admin add ${name}' first, or paste keys manually."
+    fi
   else
-    err "Failed to verify dev-${name} keys"
+    warn "Terraform state not available locally."
+    info "(This is expected on a 2nd admin machine — state is local-file-backed.)"
   fi
+
+  # ---- Fallback: manual paste --------------------------------------------
+  cat <<EOF
+
+Paste dev-${name}'s AWS keys manually. You can get them from:
+  • Your password manager (1Password, etc.) if you saved them when the
+    user was first provisioned via 'chatpop admin add ${name}'.
+  • A different admin machine that has terraform state — there:
+      cd infra/terraform && terraform output -json developer_credentials \\
+        | jq '.${name}'
+  • If keys are LOST, rotate via 'chatpop admin add ${name}' on a machine
+    that DOES have terraform state. (This invalidates whatever the user's
+    laptop currently has — they'd need to re-run chatpop join with new keys.)
+
+EOF
+  _join_prompt_aws_credentials "$AWS_PROFILE_NAME" "dev-${name}"
 }
 
 cmd_admin_install_dev_keys() {
@@ -1561,14 +1619,28 @@ EOF
   local dev_name=""
   if [[ -f "$IDENTITY_FILE" ]]; then
     dev_name=$(cat "$IDENTITY_FILE")
+    # Sanity-check the existing value: if .dev-identity got corrupted (e.g.
+    # someone pasted access keys into a Developer name prompt previously),
+    # discard it and ask fresh.
+    if [[ "$dev_name" =~ ^akia[a-z0-9]{16} ]] || [[ ${#dev_name} -gt 32 ]]; then
+      warn "Existing .dev-identity looks corrupted: '$dev_name'"
+      warn "(Probably an AWS access key was pasted into a name prompt at some point.)"
+      info "Discarding and prompting for a fresh name."
+      dev_name=""
+    fi
+  fi
+
+  if [[ -n "$dev_name" ]]; then
     info "Existing identity: '$dev_name'"
     read -r -p "  Use this name? [Y/n] " confirm
     if [[ "${confirm:-}" =~ ^[Nn]$ ]]; then
       read -r -p "  Developer name: " dev_name
+      validate_dev_name "$dev_name"
     fi
   else
     info "Your developer name namespaces your databases and S3 prefix."
     read -r -p "  Developer name: " dev_name
+    validate_dev_name "$dev_name"
   fi
   dev_name=$(normalize "$dev_name")
   [[ -n "$dev_name" ]] || err "Empty developer name"
