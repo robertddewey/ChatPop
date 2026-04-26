@@ -368,31 +368,37 @@ setup_ssl_certificates() {
 
 # Start Docker containers
 #
-# Architecture note (cloud-first):
+# Architecture (cloud-first):
 #   - Redis is REQUIRED at runtime — Django uses it for the WebSocket channel
 #     layer and cache. Always local; never moved to AWS.
-#   - Postgres is OPTIONAL day-to-day — daily development hits AWS RDS via
-#     Tailscale. Local Postgres is only used by `manage.py test` (the test
-#     runner needs CREATE DATABASE permission on a local instance).
+#   - Postgres is OPTIONAL — daily development hits AWS RDS via Tailscale.
+#     Postgres is in docker-compose.yml under the "local-tests" profile and
+#     only starts on demand (e.g., when running `manage.py test` locally
+#     or running `chatpop seed from-local`). Tests in CI run via GitHub
+#     Actions service containers — no local Postgres needed.
 #
-# We start both anyway so tests work out of the box. The Postgres container
-# can be safely stopped (`docker stop chatpop_postgres`) once you're set up.
+# This step starts only Redis. To bring up Postgres on demand:
+#   docker-compose --profile local-tests up -d postgres
 start_docker_containers() {
     print_header "Starting Docker Containers"
 
-    print_info "Starting Postgres (for tests) and Redis (required for app)..."
+    print_info "Starting Redis (required for the app)..."
     docker-compose up -d
 
-    print_info "Waiting for containers to be ready..."
-    sleep 10
+    print_info "Waiting for Redis to be ready..."
+    sleep 5
 
-    if docker ps --filter "name=chatpop" | grep -q chatpop; then
-        print_success "Docker containers are running"
+    if docker ps --filter "name=chatpop_redis" --format '{{.Names}}' | grep -q chatpop_redis; then
+        print_success "Redis is running"
         docker ps --filter "name=chatpop" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     else
-        print_error "Failed to start Docker containers"
+        print_error "Failed to start Redis"
         exit 1
     fi
+
+    echo ""
+    print_info "Postgres is OPTIONAL (only needed for: local 'manage.py test' or 'chatpop seed from-local')."
+    print_info "If/when you need it: ${YELLOW}docker-compose --profile local-tests up -d postgres${NC}"
 }
 
 # Setup backend

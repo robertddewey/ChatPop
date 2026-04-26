@@ -54,9 +54,16 @@ fi
 command -v psql >/dev/null 2>&1 || err "psql not found. Install with: brew install libpq"
 ok "psql:        $(psql --version | awk '{print $3}')"
 
-# Docker + local Postgres
-docker ps --format '{{.Names}}' | grep -q "^${LOCAL_PG_CONTAINER}\$" \
-  || err "Local Postgres container '${LOCAL_PG_CONTAINER}' not running. Start with: docker-compose up -d"
+# Docker + local Postgres. Postgres is OPTIONAL by default; this script
+# is one of the few places that requires it. Bring it up via the local-tests
+# profile if not already running.
+if ! docker ps --format '{{.Names}}' | grep -q "^${LOCAL_PG_CONTAINER}\$"; then
+  warn "Local Postgres container '${LOCAL_PG_CONTAINER}' not running."
+  warn "This script reads from local Postgres to push into RDS dev_seed."
+  echo "  Start it with:  docker-compose --profile local-tests up -d postgres"
+  echo "  Then re-run this script."
+  exit 1
+fi
 ok "local PG:    container '${LOCAL_PG_CONTAINER}' is running"
 
 # AWS profile

@@ -34,6 +34,21 @@ laptop ── Tailscale tunnel ──> EC2 subnet router ──> VPC ──> RDS
 
 Cloud-only by design. There is no `use local` toggle. If you need to develop against local Docker (rare; only when AWS is genuinely unreachable), edit `backend/.env` by hand. Daily development assumes Tailscale is up and RDS is reachable.
 
+### Local Docker — Redis only by default
+
+Only `chatpop_redis` starts with `docker-compose up -d` (Django needs it for the WebSocket channel layer + cache). `chatpop_postgres` is in `docker-compose.yml` under the `local-tests` profile and only starts when explicitly requested:
+
+```bash
+docker-compose --profile local-tests up -d postgres
+```
+
+You only need local Postgres for:
+
+- **`manage.py test`** — Django's test runner needs `CREATE DATABASE` and pgvector locally to spin up an ephemeral test database. (CI uses an ephemeral Postgres+pgvector container in the workflow runner — see `.github/workflows/test.yml`.)
+- **`chatpop seed from-local`** — admin baselining `dev_seed` from a curated local Postgres snapshot. Rare.
+
+For everything else (daily dev, branch operations, `chatpop sync-secrets`, etc.) Postgres data lives on AWS RDS. The local Postgres container is dead weight unless you're running tests or doing the rare admin baseline.
+
 ### Two AWS profiles (least-privilege model)
 
 Every machine has at least one AWS profile; admin machines have both:

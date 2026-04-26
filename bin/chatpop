@@ -336,15 +336,15 @@ cmd_status() {
 
   echo
   printf "${BOLD}Local services${NC}\n"
-  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^chatpop_postgres$'; then
-    label "Docker Postgres:" "running"
-  else
-    label "Docker Postgres:" "(stopped)"
-  fi
   if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^chatpop_redis$'; then
-    label "Docker Redis:" "running"
+    label "Docker Redis:" "running (required)"
   else
-    label "Docker Redis:" "(stopped)"
+    label "Docker Redis:" "(stopped — required for the app)"
+  fi
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^chatpop_postgres$'; then
+    label "Docker Postgres:" "running (optional — for local tests / seed)"
+  else
+    label "Docker Postgres:" "(stopped — optional)"
   fi
 
   if PID=$(lsof -ti:9000 -sTCP:LISTEN 2>/dev/null | head -1); then

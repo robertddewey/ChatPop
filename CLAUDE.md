@@ -177,6 +177,8 @@ Frontend: https://localhost:4000
 
 The default development mode runs Django against **AWS RDS** (Postgres + pgvector) and **S3** (media). Each developer has their own per-branch database and S3 prefix, isolated from other developers.
 
+**Local Docker:** only Redis runs by default (required for cache + WebSockets). Postgres is in `docker-compose.yml` under the `local-tests` profile and only starts on demand for `manage.py test` or `chatpop seed from-local`. Daily dev never touches local Postgres. Tests in CI run via GitHub Actions service containers.
+
 ```
 laptop ── Tailscale tunnel ──> EC2 subnet router ──> VPC ──> RDS Postgres
                                                        └──> S3 (media)
