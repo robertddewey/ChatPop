@@ -256,9 +256,6 @@ updates = {
     "AWS_STORAGE_BUCKET_NAME": os.environ["BUCKET"],
     "AWS_S3_REGION_NAME":     os.environ["REGION"],
     "AWS_LOCATION":           os.environ["S3_PREFIX"],
-    # Wipe any old static keys that may be sitting in the file
-    "AWS_ACCESS_KEY_ID":      "",
-    "AWS_SECRET_ACCESS_KEY":  "",
 }
 
 env_path = Path(os.environ["ENV_FILE"])
