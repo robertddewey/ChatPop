@@ -68,6 +68,133 @@ detect_lan_ip() {
     echo "$lan_ip"
 }
 
+# Auto-install missing dependencies via Homebrew (macOS only).
+#
+# Detects what's missing, asks for confirmation once, then installs everything
+# in one batch. Falls back to manual instructions on Linux.
+ensure_dependencies() {
+    print_header "Auto-installing Dependencies"
+
+    # Linux: print manual install commands and bail.
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        print_warning "Auto-install only supports macOS. On Linux, install manually:"
+        echo "  Debian/Ubuntu:"
+        echo "    sudo apt install git python3 python3-venv nodejs npm postgresql-client mkcert awscli"
+        echo "    (terraform: see https://developer.hashicorp.com/terraform/install)"
+        echo "    (tailscale: see https://tailscale.com/download/linux)"
+        return 0
+    fi
+
+    # Ensure Homebrew itself first.
+    if ! command_exists brew; then
+        print_warning "Homebrew not installed."
+        read -p "Install Homebrew now? (Y/n): " -r confirm
+        if [[ "${confirm:-}" =~ ^[Nn]$ ]]; then
+            print_error "Cannot install dependencies on macOS without Homebrew."
+            print_info "Manual install: https://brew.sh"
+            exit 1
+        fi
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+            || { print_error "Homebrew install failed."; exit 1; }
+
+        # Add brew to PATH for this session (Apple Silicon path)
+        if [[ -x "/opt/homebrew/bin/brew" ]]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        elif [[ -x "/usr/local/bin/brew" ]]; then
+            eval "$(/usr/local/bin/brew shellenv)"
+        fi
+    fi
+    print_success "Homebrew: $(brew --version | head -1)"
+
+    # Detect missing tools. Tracked in three categories because the install
+    # commands are different (formula / cask / tap).
+    local -a missing_brew=()
+    local -a missing_cask=()
+    local install_terraform=0
+
+    command_exists git     || missing_brew+=("git")
+    command_exists python3 || missing_brew+=("python")
+    command_exists node    || missing_brew+=("node")
+    command_exists mkcert  || missing_brew+=("mkcert")
+    command_exists aws     || missing_brew+=("awscli")
+    # libpq's psql lives at /opt/homebrew/opt/libpq/bin (keg-only).
+    if [[ ! -x "/opt/homebrew/opt/libpq/bin/psql" ]] && ! command_exists psql; then
+        missing_brew+=("libpq")
+    fi
+    command_exists terraform || install_terraform=1
+
+    [[ -d "/Applications/Docker.app" ]]    || missing_cask+=("docker")
+    [[ -d "/Applications/Tailscale.app" ]] || missing_cask+=("tailscale")
+
+    local total=$((${#missing_brew[@]} + ${#missing_cask[@]} + install_terraform))
+    if [[ $total -eq 0 ]]; then
+        print_success "All dependencies already installed."
+        return 0
+    fi
+
+    echo
+    print_info "Missing dependencies ($total):"
+    for f in "${missing_brew[@]}"; do echo "  • $f"; done
+    for c in "${missing_cask[@]}"; do echo "  • $c (GUI app)"; done
+    [[ "$install_terraform" == "1" ]] && echo "  • terraform (HashiCorp tap)"
+    echo
+    read -p "Install these now via Homebrew? (Y/n): " -r confirm
+    if [[ "${confirm:-}" =~ ^[Nn]$ ]]; then
+        print_warning "Skipping installs. You'll need these for cloud development."
+        return 0
+    fi
+
+    # Install formulae (regular brew packages).
+    if [[ ${#missing_brew[@]} -gt 0 ]]; then
+        print_info "Installing: ${missing_brew[*]}"
+        brew install "${missing_brew[@]}" || { print_error "brew install failed."; exit 1; }
+    fi
+
+    # Install casks (GUI apps).
+    if [[ ${#missing_cask[@]} -gt 0 ]]; then
+        print_info "Installing GUI apps: ${missing_cask[*]}"
+        brew install --cask "${missing_cask[@]}" || { print_error "brew install --cask failed."; exit 1; }
+    fi
+
+    # Terraform from HashiCorp tap (BSL license — not in default formulae).
+    if [[ "$install_terraform" == "1" ]]; then
+        print_info "Installing terraform (HashiCorp tap)"
+        brew tap hashicorp/tap >/dev/null 2>&1
+        brew install hashicorp/tap/terraform || { print_error "terraform install failed."; exit 1; }
+    fi
+
+    # Post-install hooks for tools that need extra setup.
+
+    # mkcert: install the local CA into the system trust store.
+    if printf '%s\n' "${missing_brew[@]}" | grep -qx mkcert; then
+        print_info "Installing mkcert local CA (may prompt for sudo)..."
+        mkcert -install || print_warning "mkcert -install failed; rerun manually."
+    fi
+
+    # libpq is keg-only — add to PATH for this session and tell user about ~/.zshrc.
+    if printf '%s\n' "${missing_brew[@]}" | grep -qx libpq; then
+        export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
+        print_info "libpq added to PATH for this session. Persist with:"
+        echo "  echo 'export PATH=\"/opt/homebrew/opt/libpq/bin:\$PATH\"' >> ~/.zshrc"
+    fi
+
+    # Docker Desktop (cask) needs to be opened manually for the daemon to start.
+    if printf '%s\n' "${missing_cask[@]}" | grep -qx docker; then
+        print_warning "Docker Desktop installed but daemon isn't running yet."
+        print_info "Open the Docker app from /Applications, accept the prompts, then re-run install.sh."
+        print_info "If you'd rather continue without docker now, press Enter — we'll skip Docker steps."
+        read -p "Open Docker Desktop and press Enter (or Ctrl+C to exit): " -r
+    fi
+
+    # Tailscale .app: needs sign-in via the menu-bar app, but install.sh's
+    # later step (chatpop admin recover or chatpop join) walks through that.
+    if printf '%s\n' "${missing_cask[@]}" | grep -qx tailscale; then
+        print_info "Tailscale installed. You'll sign in during the cloud-onboarding step."
+    fi
+
+    print_success "Dependencies installed."
+}
+
 # Check prerequisites
 check_prerequisites() {
     print_header "Checking Prerequisites"
@@ -887,7 +1014,8 @@ main() {
     fi
 
     # Run installation steps
-    check_prerequisites
+    ensure_dependencies      # Auto-install missing tools via Homebrew (macOS)
+    check_prerequisites      # Verify everything is now in place
     setup_ssl_certificates
     start_docker_containers
     setup_backend
