@@ -191,11 +191,13 @@ Once infrastructure exists, new developers run a much smaller flow on each machi
 
 What `chatpop join` walks through:
 1. AWS credentials (paste from the admin's secure share)
-2. Tailscale (install + sign in to the team's tailnet)
+2. Tailscale — install (if missing) + prompt you to sign in to the team's tailnet, then automatically run `tailscale set --accept-routes=true` so this device opts into the VPC subnet route. Verifies the tunnel by probing RDS:5432.
 3. Developer identity (your name, written to `.dev-identity`)
 4. Cloud config (clones `<your-name>_main` from `dev_seed` if first time on this machine)
 5. Sync shared API keys from Secrets Manager
 6. Activate git hooks
+
+> **Tailscale subnet routes.** Tailscale clients default to *not* accepting advertised subnet routes — every device opts in explicitly. `chatpop join` runs `tailscale set --accept-routes=true` for you, so you don't need to touch that flag manually. The subnet route itself (`172.31.0.0/16`) must be approved one-time on the admin side at https://login.tailscale.com/admin/machines (find `chatpop-dev-router`, edit route settings, check the box). If RDS connectivity fails after sign-in, that admin-side approval is the most likely cause.
 
 ---
 

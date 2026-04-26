@@ -17,6 +17,15 @@ TF_DIR="${PROJECT_ROOT}/infra/terraform"
 ENV_FILE="${PROJECT_ROOT}/backend/.env"
 IDENTITY_FILE="${PROJECT_ROOT}/.dev-identity"
 AWS_PROFILE_NAME="chatpop-dev"
+AWS_PROFILE_ADMIN_NAME="chatpop-dev-admin"
+
+# Deterministic resource naming derived from terraform's
+# `${var.project}-${var.environment}` (defaults: chatpop-dev). Used as fallback
+# values when terraform state isn't on this machine (e.g., 2nd admin laptop).
+NAME_PREFIX_DEFAULT="chatpop-dev"
+RDS_INSTANCE_ID_DEFAULT="${NAME_PREFIX_DEFAULT}-postgres"
+SECRET_NAME_DEFAULT="${NAME_PREFIX_DEFAULT}/rds/master"
+REGION_DEFAULT="us-east-1"
 
 RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; BLUE=$'\033[0;34m'; BOLD=$'\033[1m'; NC=$'\033[0m'
 err()  { printf "${RED}error:${NC} %s\n" "$*" >&2; exit 1; }
@@ -77,17 +86,72 @@ aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity >/dev/null 2>&1 \
 ok "AWS profile authenticated"
 
 # --- Pull values from AWS / terraform --------------------------------------
+#
+# Try terraform first (fast path on the admin's primary machine). Fall back
+# to AWS API queries when state isn't available locally — the case on a 2nd
+# admin laptop or any developer machine that's never run terraform.
 
-cd "$TF_DIR"
-RDS_HOST=$(terraform output -raw rds_address 2>/dev/null)        || err "Cannot read terraform output rds_address"
-RDS_PORT=$(terraform output -raw rds_port 2>/dev/null)           || err "Cannot read terraform output rds_port"
-SECRET_NAME=$(terraform output -raw rds_master_secret_name 2>/dev/null) || err "Cannot read terraform output rds_master_secret_name"
-BUCKET=$(terraform output -raw media_bucket_name 2>/dev/null)    || err "Cannot read terraform output media_bucket_name"
-REGION=$(terraform output -raw aws_region 2>/dev/null)           || err "Cannot read terraform output aws_region"
-cd - >/dev/null
+tf_get() {
+  (cd "$TF_DIR" 2>/dev/null && terraform output -raw "$1" 2>/dev/null)
+}
+
+RDS_HOST=$(tf_get rds_address)              || RDS_HOST=""
+RDS_PORT=$(tf_get rds_port)                 || RDS_PORT=""
+SECRET_NAME=$(tf_get rds_master_secret_name) || SECRET_NAME=""
+BUCKET=$(tf_get media_bucket_name)          || BUCKET=""
+REGION=$(tf_get aws_region)                 || REGION=""
+
+# RDS endpoint via AWS API (dev IAM has rds:DescribeDBInstances).
+if [[ -z "$RDS_HOST" || -z "$RDS_PORT" ]]; then
+  info "Reading RDS endpoint from AWS API (no terraform state on this machine)…"
+  RDS_JSON=$(aws --profile "$AWS_PROFILE_NAME" rds describe-db-instances \
+    --db-instance-identifier "$RDS_INSTANCE_ID_DEFAULT" \
+    --query 'DBInstances[0].Endpoint' --output json 2>/dev/null) \
+    || err "Cannot find RDS instance '${RDS_INSTANCE_ID_DEFAULT}'. Has terraform been applied?"
+  RDS_HOST=$(echo "$RDS_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['Address'])")
+  RDS_PORT=$(echo "$RDS_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['Port'])")
+  unset RDS_JSON
+fi
+
+# Master DB password secret name (deterministic from naming convention).
+if [[ -z "$SECRET_NAME" ]]; then
+  SECRET_NAME="$SECRET_NAME_DEFAULT"
+fi
+
+# AWS region: prefer the dev profile's configured region, fall back to default.
+if [[ -z "$REGION" ]]; then
+  REGION=$(aws --profile "$AWS_PROFILE_NAME" configure get region 2>/dev/null || echo "")
+  [[ -n "$REGION" ]] || REGION="$REGION_DEFAULT"
+fi
+
+# S3 bucket name (random hex suffix — not deterministic). Order of preference:
+#   1. terraform output (handled above)
+#   2. existing AWS_STORAGE_BUCKET_NAME in backend/.env (recovery on a machine
+#      that previously ran configure-env.sh successfully)
+#   3. ListAllMyBuckets via admin profile (only available during admin recovery)
+if [[ -z "$BUCKET" ]]; then
+  BUCKET=$(grep -E '^AWS_STORAGE_BUCKET_NAME=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)
+fi
+if [[ -z "$BUCKET" ]]; then
+  if aws --profile "$AWS_PROFILE_ADMIN_NAME" sts get-caller-identity >/dev/null 2>&1; then
+    info "Locating S3 media bucket via admin profile…"
+    BUCKET=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" s3api list-buckets \
+      --query "Buckets[?starts_with(Name, '${NAME_PREFIX_DEFAULT}-media-')].Name | [0]" \
+      --output text 2>/dev/null || echo "")
+    [[ "$BUCKET" == "None" ]] && BUCKET=""
+  fi
+fi
+if [[ -z "$BUCKET" ]]; then
+  err "Cannot locate the S3 media bucket. Without terraform state, you need either:
+  • the admin profile (chatpop-dev-admin) configured locally, or
+  • a previous AWS_STORAGE_BUCKET_NAME entry in backend/.env
+Ask an admin for the exact bucket name (it's chatpop-dev-media-<hex>) and add it
+to backend/.env, then rerun this script."
+fi
 
 ok "RDS:         ${RDS_HOST}:${RDS_PORT}"
 ok "S3 bucket:   ${BUCKET}"
+ok "Region:      ${REGION}"
 
 SECRET_JSON=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
   --secret-id "$SECRET_NAME" --query 'SecretString' --output text) \

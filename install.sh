@@ -188,8 +188,11 @@ ensure_dependencies() {
 
     # Tailscale .app: needs sign-in via the menu-bar app, but install.sh's
     # later step (chatpop admin recover or chatpop join) walks through that.
+    # Subnet route acceptance (--accept-routes=true) is also handled
+    # automatically by chatpop join — no manual `tailscale set` needed.
     if printf '%s\n' "${missing_cask[@]}" | grep -qx tailscale; then
-        print_info "Tailscale installed. You'll sign in during the cloud-onboarding step."
+        print_info "Tailscale installed. You'll sign in during the cloud-onboarding step;"
+        print_info "subnet route acceptance is enabled automatically (no manual config)."
     fi
 
     print_success "Dependencies installed."

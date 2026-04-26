@@ -68,7 +68,9 @@ gh auth login                                     # easiest if you have gh
 # 4. install.sh will then automatically run 'chatpop join' which prompts for:
 #    - Your AWS access key ID + secret (from your admin's secure share)
 #    - Your developer name (e.g., 'alice')
-#    Tailscale needs to be signed in interactively (browser will open)
+#    Tailscale needs to be signed in interactively (browser will open).
+#    chatpop join then automatically opts this device into the VPC subnet route
+#    (tailscale set --accept-routes=true) — no manual config needed.
 
 # 5. Verify
 chatpop status
@@ -120,7 +122,8 @@ chatpop admin add robert                # creates dev-robert in IAM
 # Step 5: Install dev-robert keys into your chatpop-dev profile
 chatpop admin install-dev-keys robert
 
-# Step 6: Tailscale signin, identity file, cloud .env config, git hooks
+# Step 6: Tailscale signin (auto-enables --accept-routes), identity file,
+#         cloud .env config, git hooks
 chatpop join
 
 # Step 7: Populate dev_seed (migrations + fixtures) so per-dev clones inherit it
@@ -171,7 +174,8 @@ chatpop admin recover
 # Step A: paste admin keys (from 1Password) → chatpop-dev-admin profile
 # Step B: confirm/enter your dev name (e.g. robert)
 # Step C: dev-robert keys auto-pulled from terraform → chatpop-dev profile
-# Step D: Tailscale signin + cloud config + hooks (delegates to chatpop join)
+# Step D: Tailscale signin (auto-enables --accept-routes) + cloud config + hooks
+#         (delegates to chatpop join)
 
 # Verify
 chatpop status

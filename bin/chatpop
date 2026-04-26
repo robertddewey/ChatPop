@@ -964,6 +964,18 @@ cmd_join() {
     read -r -p "  Press Enter once signed in… "
   fi
 
+  # Tailscale clients default to NOT accepting advertised subnet routes —
+  # each device explicitly opts in. Our app needs 172.31.0.0/16 (the VPC)
+  # to reach RDS, so set it explicitly and idempotently.
+  info "Enabling subnet route acceptance for the VPC…"
+  if "$ts_bin" set --accept-routes=true 2>/dev/null; then
+    ok "Set --accept-routes=true on this device"
+    sleep 2  # let routing tables settle
+  else
+    warn "Couldn't run 'tailscale set --accept-routes=true' — try manually:"
+    warn "  $ts_bin set --accept-routes=true"
+  fi
+
   # Verify subnet routing actually works.
   info "Testing connectivity to RDS over Tailscale…"
   local rds_host
@@ -971,9 +983,13 @@ cmd_join() {
   if [[ -n "$rds_host" ]] && nc -zv -G 5 "$rds_host" 5432 >/dev/null 2>&1; then
     ok "RDS reachable via Tailscale"
   else
-    warn "Cannot reach RDS yet."
-    warn "Check: are you signed in to the right tailnet, and have you accepted subnet routes?"
-    warn "Subnet routes auto-accept on most clients. If not, toggle Tailscale off/on."
+    warn "Cannot reach RDS yet. Verify:"
+    warn "  - Signed in to the right tailnet:"
+    warn "      $ts_bin status"
+    warn "    Should list 'chatpop-dev-router' as a peer."
+    warn "  - Admin approved the subnet route at:"
+    warn "      https://login.tailscale.com/admin/machines"
+    warn "    Find chatpop-dev-router → Edit route settings → 172.31.0.0/16 must be checked."
     read -r -p "  Continue anyway? [y/N] " confirm
     [[ "${confirm:-}" =~ ^[Yy]$ ]] || return 1
   fi
