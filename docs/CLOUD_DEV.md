@@ -40,6 +40,23 @@ Cloud-only by design. There is no `use local` toggle. If you need to develop aga
 
 There is **no local Postgres container.** All Postgres data lives on AWS RDS, accessed via Tailscale. Tests run via CI (`.github/workflows/test.yml`) using ephemeral Postgres + pgvector service containers in the runner — not locally.
 
+### Connecting a database client (DBeaver, psql, etc)
+
+`chatpop status` now prints a "Database Connection" section with everything except the password. To plug into DBeaver:
+
+```
+Host:      chatpop-dev-postgres.ckbkui2yghxp.us-east-1.rds.amazonaws.com
+Port:      5432
+Database:  <whichever shows in `chatpop status`>
+Username:  chatpop_admin
+SSL Mode:  require   (RDS enforces force_ssl=1)
+Password:  chatpop password    ← copies to clipboard; paste into DBeaver
+```
+
+Tailscale must be up — RDS has no public endpoint. `chatpop check` confirms the tunnel is working before you try DBeaver.
+
+In DBeaver, you can either create one connection per branch DB or connect to the `postgres` maintenance DB and navigate to whichever you need from the database tree. The chatpop_admin user has full Postgres access (no per-dev role isolation today — see CLAUDE.md), so be careful not to operate on someone else's `<name>_main`.
+
 ### Two AWS profiles (least-privilege model)
 
 Every machine has at least one AWS profile; admin machines have both:
@@ -93,6 +110,7 @@ A single entry point at `bin/chatpop` exposes every dev operation as a subcomman
 |---|---|
 | `chatpop status` | Show current dev/branch/DB/S3/services state (passive — reads .env / processes) |
 | `chatpop check` | Active health checks: AWS auth, Tailscale, RDS connect, S3 read/write, pgvector, hooks, Daphne response |
+| `chatpop password` | Copy RDS Postgres password to clipboard (for DBeaver / psql / etc). `--print` writes to stdout instead. |
 | `chatpop join` | Interactive: paste AWS creds + Tailscale sign-in + DB+S3 + hooks (joiner / second machine) |
 | `chatpop setup` | Activate hooks only (subset of `join`) |
 | `chatpop use cloud [name]` | Configure `backend/.env` for AWS on current branch |

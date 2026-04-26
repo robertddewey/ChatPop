@@ -95,6 +95,57 @@ print(s.strip("_"))
 }
 
 # ---------------------------------------------------------------------------
+# cmd: password
+#
+# Surface the RDS Postgres password (POSTGRES_PASSWORD from backend/.env) for
+# pasting into a database client (DBeaver, psql, etc).
+#
+# Default: copies to macOS clipboard via pbcopy. Pass --print to dump to
+# stdout instead (useful for piping). Safe to leave in shell history.
+# ---------------------------------------------------------------------------
+
+cmd_password() {
+  local print_mode=0
+  for arg in "$@"; do
+    case "$arg" in
+      --print|-p) print_mode=1 ;;
+      -h|--help)
+        cat <<EOF
+Usage: chatpop password [--print|-p]
+
+Copies the RDS Postgres password (POSTGRES_PASSWORD from backend/.env)
+to the clipboard. Use --print to write to stdout instead.
+
+To paste into DBeaver, set the password field to anything, hit Connect,
+DBeaver prompts you to update — or just edit Connection settings →
+Main → Password and paste with Cmd+V.
+EOF
+        return 0
+        ;;
+    esac
+  done
+
+  [[ -f "$ENV_FILE" ]] || err "$ENV_FILE not found. Run: chatpop use cloud"
+  local pwd
+  pwd=$(grep "^POSTGRES_PASSWORD=" "$ENV_FILE" | head -1 | cut -d= -f2-)
+  [[ -n "$pwd" ]] || err "POSTGRES_PASSWORD is empty in $ENV_FILE. Run: chatpop use cloud"
+
+  if [[ "$print_mode" == "1" ]]; then
+    printf '%s\n' "$pwd"
+    return 0
+  fi
+
+  if command -v pbcopy >/dev/null 2>&1; then
+    printf '%s' "$pwd" | pbcopy
+    ok "RDS password copied to clipboard (${#pwd} chars)"
+    info "Paste into DBeaver / psql / wherever. Clipboard is not auto-cleared."
+  else
+    warn "pbcopy not found (macOS-only). Falling back to stdout:"
+    printf '%s\n' "$pwd"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # cmd: check
 #
 # Active health checks against every layer: AWS, Terraform, Tailscale, RDS,
@@ -325,9 +376,28 @@ cmd_status() {
 
   if [[ -f "$ENV_FILE" ]]; then
     echo
-    printf "${BOLD}Backend .env${NC}\n"
-    for key in POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_SSLMODE \
-               AWS_PROFILE AWS_STORAGE_BUCKET_NAME AWS_LOCATION; do
+    printf "${BOLD}Database Connection${NC} (DBeaver / psql)\n"
+    local pg_host pg_port pg_db pg_user pg_ssl pg_pass
+    pg_host=$(grep "^POSTGRES_HOST="     "$ENV_FILE" | head -1 | cut -d= -f2-)
+    pg_port=$(grep "^POSTGRES_PORT="     "$ENV_FILE" | head -1 | cut -d= -f2-)
+    pg_db=$(  grep "^POSTGRES_DB="       "$ENV_FILE" | head -1 | cut -d= -f2-)
+    pg_user=$(grep "^POSTGRES_USER="     "$ENV_FILE" | head -1 | cut -d= -f2-)
+    pg_ssl=$( grep "^POSTGRES_SSLMODE="  "$ENV_FILE" | head -1 | cut -d= -f2-)
+    pg_pass=$(grep "^POSTGRES_PASSWORD=" "$ENV_FILE" | head -1 | cut -d= -f2-)
+    label "Host:"     "${pg_host:-${DIM}(empty)${NC}}"
+    label "Port:"     "${pg_port:-${DIM}(empty)${NC}}"
+    label "Database:" "${pg_db:-${DIM}(empty)${NC}}"
+    label "Username:" "${pg_user:-${DIM}(empty)${NC}}"
+    label "SSL Mode:" "${pg_ssl:-${DIM}(empty)${NC}}"
+    if [[ -n "$pg_pass" ]]; then
+      label "Password:" "${DIM}(hidden — \`chatpop password\` copies to clipboard)${NC}"
+    else
+      label "Password:" "${DIM}(empty — run: chatpop use cloud)${NC}"
+    fi
+
+    echo
+    printf "${BOLD}AWS / S3${NC}\n"
+    for key in AWS_PROFILE AWS_STORAGE_BUCKET_NAME AWS_LOCATION; do
       val=$(grep "^${key}=" "$ENV_FILE" | head -1 | cut -d= -f2- || true)
       label "$key:" "${val:-${DIM}(empty)${NC}}"
     done
@@ -1517,6 +1587,7 @@ USAGE
 COMMANDS — Daily
     status                Show current dev / branch / DB / S3 / services (passive)
     check                 Active health checks across the whole stack
+    password [--print]    Copy RDS Postgres password to clipboard (for DBeaver/psql)
     use cloud [name]      Configure backend/.env for AWS for current branch
     clean [--apply]       Sweep orphan branch DBs and S3 prefixes
 
@@ -1627,6 +1698,7 @@ EOF
 case "${1:-}" in
   status)        shift; cmd_status "$@" ;;
   check)         shift; cmd_check "$@" ;;
+  password)      shift; cmd_password "$@" ;;
   setup)         shift; cmd_setup "$@" ;;
   join)          shift; cmd_join "$@" ;;
   use)           shift; cmd_use "$@" ;;
