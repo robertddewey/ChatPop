@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # ChatPop AWS bootstrap (path b: console-then-profile-config)
 #
-# Configures a local AWS CLI profile named "chatpop-dev" using credentials
-# you generate in the AWS Console for the IAM user "chatpop-dev-deploy".
+# Configures a local AWS CLI profile named "chatpop-dev-admin" using
+# credentials you generate in the AWS Console for the IAM user
+# "chatpop-dev-deploy" (AdministratorAccess).
+#
+# This is for the FIRST-TIME ADMIN setting up cloud infrastructure. Other
+# developers (joiners) get scoped per-developer keys and use chatpop join.
 #
 # This script is one-shot. After it succeeds, it has no further role.
 # All subsequent infra work uses Terraform under infra/terraform/.
 
 set -euo pipefail
 
-PROFILE="chatpop-dev"
+PROFILE="chatpop-dev-admin"
 EXPECTED_ACCOUNT="090719695164"
 EXPECTED_USER_NAME="chatpop-dev-deploy"
 DEFAULT_REGION="us-east-1"
@@ -69,7 +73,7 @@ ${BOLD}Step 2 — Generate an access key for that user${NC}
   9.  Click the 'Security credentials' tab.
   10. Under 'Access keys', click 'Create access key'.
   11. Choose 'Command Line Interface (CLI)', acknowledge the recommendation, click Next.
-  12. (Optional) Description tag: "chatpop-dev local bootstrap"
+  12. (Optional) Description tag: "chatpop-dev-admin local bootstrap"
   13. Click 'Create access key'.
   14. KEEP THIS PAGE OPEN. You'll need:
         - Access key ID
@@ -137,9 +141,15 @@ cat <<EOF
 ${GREEN}${BOLD}✓ Bootstrap complete.${NC}
 
 Profile '${PROFILE}' is configured at ~/.aws/credentials and ~/.aws/config.
+This is the ADMIN profile (chatpop-dev-deploy keys with AdministratorAccess).
+Used by terraform and chatpop admin operations.
 
   Test:        aws --profile ${PROFILE} sts get-caller-identity
-  Terraform:   provider "aws" { profile = "${PROFILE}"; region = "${DEFAULT_REGION}" }
+  Terraform:   uses var.aws_profile = "${PROFILE}" by default
+
+After 'terraform apply', run 'chatpop admin add <your-name>' followed by
+'chatpop admin install-dev-keys <your-name>' to set up your developer
+profile (chatpop-dev) for daily work.
 
 ${YELLOW}${BOLD}IMPORTANT:${NC} Do not paste this terminal output anywhere — including
 to AI assistants or chat tools. Even though the secret was hidden during

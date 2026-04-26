@@ -440,39 +440,51 @@ EOF
     print_success "Frontend setup completed"
 }
 
-# Cloud onboarding: hands off to `chatpop join`, which is the canonical
-# joiner / second-machine flow. Skippable for users exploring the code
-# without AWS access — they can run `chatpop join` later.
+# Cloud onboarding: hands off to `chatpop join` (developer) or
+# `chatpop admin recover` (admin). Skippable for users exploring the code
+# without AWS access — they can run the appropriate command later.
 setup_cloud() {
     print_header "Cloud Development Setup"
 
     echo "ChatPop runs against AWS RDS (Postgres) and S3 (media) in development."
-    echo "An admin should have given you:"
-    echo "  • AWS access key ID + secret (via 1Password / Signal / encrypted email)"
-    echo "  • A Tailscale invite to the team's tailnet"
-    echo "  • Your developer name (e.g. 'alice')"
     echo ""
-    echo "If you don't have these yet, skip this step and the admin can run"
-    echo "  ${YELLOW}./bin/chatpop admin add <your-name>${NC}"
-    echo "to provision them for you."
+    echo -e "${BLUE}Are you joining the team as a developer, or are you the team admin?${NC}"
     echo ""
-    read -p "Run cloud onboarding now? (Y/n): " -n 1 -r
+    echo "  [d] Developer — admin gave you AWS keys, Tailscale invite, dev name"
+    echo "  [a] Admin     — recovering on a new machine; you have the chatpop-dev-deploy"
+    echo "                  admin keys (from your password manager) and want to set up"
+    echo "                  BOTH chatpop-dev-admin and chatpop-dev profiles."
+    echo "  [s] Skip      — exploring the code; will set up cloud later."
+    echo ""
+    read -p "Choice [d/a/s] (default d): " -r choice
     echo
-    if [[ $REPLY =~ ^[Nn]$ ]]; then
-        print_info "Skipping cloud onboarding."
-        echo ""
-        echo -e "  When ready: ${YELLOW}./bin/chatpop join${NC}"
-        echo ""
-        return 0
-    fi
 
-    ./bin/chatpop join || {
-        print_warning "chatpop join did not complete. Re-run any time:"
-        echo -e "  ${YELLOW}./bin/chatpop join${NC}"
-        return 0
-    }
-
-    print_success "Cloud onboarding complete"
+    case "${choice:-d}" in
+        a|A)
+            ./bin/chatpop admin recover || {
+                print_warning "chatpop admin recover did not complete. Re-run any time:"
+                echo -e "  ${YELLOW}./bin/chatpop admin recover${NC}"
+                return 0
+            }
+            print_success "Admin onboarding complete"
+            ;;
+        s|S)
+            print_info "Skipping cloud onboarding."
+            echo ""
+            echo -e "  Developer: ${YELLOW}./bin/chatpop join${NC}"
+            echo -e "  Admin:     ${YELLOW}./bin/chatpop admin recover${NC}"
+            echo ""
+            return 0
+            ;;
+        *)
+            ./bin/chatpop join || {
+                print_warning "chatpop join did not complete. Re-run any time:"
+                echo -e "  ${YELLOW}./bin/chatpop join${NC}"
+                return 0
+            }
+            print_success "Developer onboarding complete"
+            ;;
+    esac
 }
 
 # Print completion message
@@ -835,10 +847,10 @@ main() {
     echo -e "${NC}"
     echo -e "${BLUE}Automated Installation Script for macOS/Linux${NC}"
     echo ""
-    echo -e "${BLUE}This script is intended for developers JOINING an existing team.${NC}"
-    echo -e "  • New dev?           Continue — you'll be prompted for your AWS keys + dev name"
-    echo -e "  • New machine, dev?  Continue — works the same"
-    echo -e "  • New machine, ${YELLOW}admin${NC}? Use ${YELLOW}./bin/chatpop admin recover${NC} instead"
+    echo -e "${BLUE}This script onboards developers AND admins on existing infrastructure.${NC}"
+    echo -e "  • New dev?           Continue — pick 'd' at the cloud-setup step"
+    echo -e "  • New machine, dev?  Continue — pick 'd' at the cloud-setup step"
+    echo -e "  • New machine, admin? Continue — pick 'a' at the cloud-setup step"
     echo -e "  • First-time admin?  See README.md → 'First-time admin setting up infrastructure'"
     echo ""
 

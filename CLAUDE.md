@@ -213,11 +213,16 @@ For the current team size, IAM-only is acceptable. When answering questions abou
 
 #### Where credentials live (and don't)
 
-- **AWS profile** at `~/.aws/credentials` (set by `chatpop bootstrap aws` or `chatpop join`). Never in `backend/.env`, never in the repo.
-- **RDS master password** in AWS Secrets Manager (`chatpop-dev/rds/master`). Pulled by `configure-env.sh` and written to `backend/.env` for psycopg2 (which doesn't read AWS creds directly).
-- **Shared third-party API keys** (OpenAI, Stripe, etc.) in AWS Secrets Manager (`chatpop-dev/api-keys`). Pulled by `chatpop sync-secrets` and written to `backend/.env`. In production (`ENV=production`), Django reads them directly from Secrets Manager via boto3.
+- **Two AWS profiles in `~/.aws/credentials`** (least-privilege model):
+  - `chatpop-dev` — scoped per-developer keys (`dev-<name>`). Used by Django runtime, branch hooks, daily chatpop ops. Every dev machine has this.
+  - `chatpop-dev-admin` — `chatpop-dev-deploy` admin keys. Used by terraform and admin operations (`chatpop admin add/remove/set-secret/import-env`, `seed refresh`, `seed from-local`). **Only admin machines have this profile.**
+- Setup: `chatpop join` (developer) → writes `chatpop-dev`. `chatpop admin recover` (admin) → writes both profiles. `chatpop bootstrap aws` (very first admin) → writes `chatpop-dev-admin`.
+- **RDS master password** in AWS Secrets Manager (`chatpop-dev/rds/master`). Pulled by `configure-env.sh` and written to `backend/.env` for psycopg2 (which doesn't read AWS creds directly). Both profiles have `GetSecretValue` here.
+- **Shared third-party API keys** (OpenAI, Stripe, etc.) in AWS Secrets Manager (`chatpop-dev/api-keys`). Pulled by `chatpop sync-secrets` (uses dev profile, read-only). Updated by `chatpop admin set-secret` (uses admin profile, `PutSecretValue`). In production (`ENV=production`), Django reads them directly from Secrets Manager via boto3.
 - **Tailscale auth key** for the EC2 router in `infra/terraform/secrets.auto.tfvars` (gitignored, `chmod 600`). Captured by `chatpop bootstrap tailscale`.
-- **Boto3** uses the AWS profile via `AWS_PROFILE=chatpop-dev` in `.env`. No static AWS access keys in `.env`.
+- **Boto3** in Django uses `AWS_PROFILE=chatpop-dev` in `.env` — *always the scoped dev profile*, never admin. No static AWS access keys in `.env`.
+
+**When writing chatpop subcommand code:** call `require_aws` for read-only / dev-scope operations and `require_aws_admin` for operations that need IAM, `PutSecretValue`, or write to other developers' resources. The script defines both profile constants — `AWS_PROFILE_NAME` and `AWS_PROFILE_ADMIN_NAME` — and `aws --profile` calls should use the matching one explicitly.
 
 ### Repository Structure
 - Monorepo containing both backend and frontend

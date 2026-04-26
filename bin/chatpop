@@ -17,7 +17,17 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 TF_DIR="${REPO_ROOT}/infra/terraform"
 ENV_FILE="${REPO_ROOT}/backend/.env"
 IDENTITY_FILE="${REPO_ROOT}/.dev-identity"
+
+# Two AWS profiles (least-privilege model):
+#   chatpop-dev        — per-developer scoped keys (dev-<name>). Used by
+#                        Django runtime, branch hooks, and read-only chatpop
+#                        operations. EVERY dev machine has this.
+#   chatpop-dev-admin  — chatpop-dev-deploy (AdministratorAccess). Used by
+#                        terraform and admin operations (admin add/remove,
+#                        set-secret, import-env, seed refresh, seed from-local).
+#                        Only ADMIN machines have this profile.
 AWS_PROFILE_NAME="chatpop-dev"
+AWS_PROFILE_ADMIN_NAME="chatpop-dev-admin"
 
 # ---------------------------------------------------------------------------
 # Color + logging helpers
@@ -48,7 +58,15 @@ require_libpq() {
 
 require_aws() {
   aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity >/dev/null 2>&1 \
-    || err "AWS profile '${AWS_PROFILE_NAME}' not authenticated. Run: chatpop bootstrap aws"
+    || err "AWS profile '${AWS_PROFILE_NAME}' not authenticated. Run: chatpop join (or chatpop admin recover)"
+}
+
+require_aws_admin() {
+  aws --profile "$AWS_PROFILE_ADMIN_NAME" sts get-caller-identity >/dev/null 2>&1 \
+    || err "AWS profile '${AWS_PROFILE_ADMIN_NAME}' not configured.
+This command requires admin credentials.
+  - If you ARE the admin: chatpop admin recover  (sets up both profiles)
+  - If you are NOT the admin: this operation requires admin credentials you don't have."
 }
 
 tf_output() {
@@ -457,7 +475,8 @@ cmd_seed_refresh() {
   [[ -f "$ENV_FILE" ]] || err "$ENV_FILE not found"
   grep -q "^AWS_PROFILE=chatpop" "$ENV_FILE" || err ".env not in cloud mode (run: chatpop use cloud)"
 
-  require_aws
+  # Refreshing dev_seed modifies the team's canonical state — admin only.
+  require_aws_admin
   require_libpq
 
   local rds_host rds_port
@@ -807,24 +826,88 @@ EOF
 }
 
 _join_prompt_aws_credentials() {
+  # Args: $1 = profile name (default: AWS_PROFILE_NAME)
+  #       $2 = label for the user prompt (default: empty)
+  local target_profile="${1:-$AWS_PROFILE_NAME}"
+  local label="${2:-}"
+
   local key secret
+  if [[ -n "$label" ]]; then
+    info "Paste ${label} AWS credentials:"
+  fi
   read -r -p "  Access key ID:        " key
   [[ -n "$key" ]] || err "Empty access key ID"
   read -r -s -p "  Secret access key (hidden): " secret
   echo
   [[ -n "$secret" ]] || err "Empty secret access key"
 
-  aws configure set aws_access_key_id     "$key"    --profile "$AWS_PROFILE_NAME"
-  aws configure set aws_secret_access_key "$secret" --profile "$AWS_PROFILE_NAME"
-  aws configure set region                "us-east-1" --profile "$AWS_PROFILE_NAME"
-  aws configure set output                "json"      --profile "$AWS_PROFILE_NAME"
+  aws configure set aws_access_key_id     "$key"      --profile "$target_profile"
+  aws configure set aws_secret_access_key "$secret"   --profile "$target_profile"
+  aws configure set region                "us-east-1" --profile "$target_profile"
+  aws configure set output                "json"      --profile "$target_profile"
   unset key secret
 
-  if arn=$(aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity --query Arn --output text 2>&1); then
-    ok "Verified: $arn"
+  if arn=$(aws --profile "$target_profile" sts get-caller-identity --query Arn --output text 2>&1); then
+    ok "Profile '${target_profile}' verified: $arn"
   else
     err "Verification failed: $arn"
   fi
+}
+
+# Pull dev-<name> access key from terraform state and write to chatpop-dev
+# profile. Requires admin keys (terraform output of sensitive value uses the
+# admin AWS profile via the terraform provider).
+_admin_install_dev_keys() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || err "Usage: _admin_install_dev_keys <name>"
+
+  require_aws_admin
+
+  info "Pulling dev-${name} access key from terraform state…"
+  local creds_json
+  creds_json=$(cd "$TF_DIR" && terraform output -json developer_credentials 2>/dev/null) \
+    || err "Cannot read terraform output. Is terraform initialized + applied?"
+
+  local akid secret
+  akid=$(NAME="$name" CREDS="$creds_json" python3 -c '
+import os, json, sys
+data = json.loads(os.environ["CREDS"])
+n = os.environ["NAME"]
+if n not in data:
+    print(f"missing", file=sys.stderr); sys.exit(2)
+print(data[n]["access_key_id"])
+')
+  if [[ -z "$akid" ]]; then
+    err "dev-${name} not in terraform state. Run: chatpop admin add ${name}"
+  fi
+  secret=$(NAME="$name" CREDS="$creds_json" python3 -c '
+import os, json
+data = json.loads(os.environ["CREDS"])
+print(data[os.environ["NAME"]]["secret_access_key"])
+')
+
+  aws configure set aws_access_key_id     "$akid"     --profile "$AWS_PROFILE_NAME"
+  aws configure set aws_secret_access_key "$secret"   --profile "$AWS_PROFILE_NAME"
+  aws configure set region                "us-east-1" --profile "$AWS_PROFILE_NAME"
+  aws configure set output                "json"      --profile "$AWS_PROFILE_NAME"
+  unset secret
+
+  local arn
+  if arn=$(aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null); then
+    ok "Profile '${AWS_PROFILE_NAME}' configured for dev-${name}: $arn"
+  else
+    err "Failed to verify dev-${name} keys"
+  fi
+}
+
+cmd_admin_install_dev_keys() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || {
+    [[ -f "$IDENTITY_FILE" ]] && name=$(cat "$IDENTITY_FILE") || \
+      err "Usage: chatpop admin install-dev-keys <name>"
+  }
+  printf "${BOLD}Install dev-${name} keys into chatpop-dev profile${NC}\n\n"
+  _admin_install_dev_keys "$name"
 }
 
 # ---------------------------------------------------------------------------
@@ -943,7 +1026,7 @@ cmd_admin_set_secret() {
   [[ -n "$key" ]] || err "Usage: chatpop admin set-secret <KEY_NAME>"
   printf "${BOLD}Set secret: ${key}${NC}\n\n"
 
-  require_aws
+  require_aws_admin
   local secret_name; secret_name=$(tf_output api_keys_secret_name)
 
   warn "Input is hidden. Paste the value, press Enter."
@@ -952,9 +1035,9 @@ cmd_admin_set_secret() {
   echo
   [[ -n "$value" ]] || err "Empty value"
 
-  # Fetch current JSON, merge, write back
+  # Fetch current JSON, merge, write back (admin profile — needs PutSecretValue)
   local current
-  current=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+  current=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" secretsmanager get-secret-value \
     --secret-id "$secret_name" --query SecretString --output text 2>/dev/null || echo "{}")
   [[ "$current" == "None" ]] && current="{}"
 
@@ -967,23 +1050,23 @@ print(json.dumps(data))
 ')
   unset value
 
-  if aws --profile "$AWS_PROFILE_NAME" secretsmanager put-secret-value \
+  if aws --profile "$AWS_PROFILE_ADMIN_NAME" secretsmanager put-secret-value \
     --secret-id "$secret_name" --secret-string "$new_json" >/dev/null 2>&1; then
     ok "Updated $key in $secret_name"
     info "Tell the team:  chatpop sync-secrets  (then restart Daphne)"
   else
-    err "Failed to update secret. Are you using admin credentials?"
+    err "Failed to update secret."
   fi
   unset new_json
 }
 
 cmd_admin_list_secrets() {
-  require_aws
+  require_aws_admin
   local secret_name; secret_name=$(tf_output api_keys_secret_name)
 
   printf "${BOLD}Secrets in ${secret_name}${NC}\n\n"
   local current
-  current=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+  current=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" secretsmanager get-secret-value \
     --secret-id "$secret_name" --query SecretString --output text 2>/dev/null || echo "{}")
 
   if [[ -z "$current" || "$current" == "{}" || "$current" == "None" ]]; then
@@ -1013,14 +1096,14 @@ cmd_admin_import_env() {
   read -r -p "Continue? [y/N] " confirm
   [[ "${confirm:-}" =~ ^[Yy]$ ]] || { info "Aborted."; return 0; }
 
-  require_aws
+  require_aws_admin
   [[ -f "$ENV_FILE" ]] || err "$ENV_FILE not found"
 
   local secret_name; secret_name=$(tf_output api_keys_secret_name)
 
   # Build merged JSON: existing + values from .env (.env wins where present)
   local existing
-  existing=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+  existing=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" secretsmanager get-secret-value \
     --secret-id "$secret_name" --query SecretString --output text 2>/dev/null || echo "{}")
   [[ "$existing" == "None" || -z "$existing" ]] && existing="{}"
 
@@ -1046,13 +1129,13 @@ detail = "\n".join("    - " + k for k in sorted(imported))
 print(f"  imported {len(imported)}:\n{detail}", file=sys.stderr)
 ')
 
-  if aws --profile "$AWS_PROFILE_NAME" secretsmanager put-secret-value \
+  if aws --profile "$AWS_PROFILE_ADMIN_NAME" secretsmanager put-secret-value \
     --secret-id "$secret_name" --secret-string "$new_json" >/dev/null 2>&1; then
     ok "Secret updated"
     info "Verify:  chatpop admin list-secrets"
     info "Devs:    chatpop sync-secrets  (after you broadcast the change)"
   else
-    err "Failed to update secret. Are you using admin credentials?"
+    err "Failed to update secret."
   fi
   unset new_json
 }
@@ -1066,29 +1149,34 @@ print(f"  imported {len(imported)}:\n{detail}", file=sys.stderr)
 
 cmd_admin() {
   case "${1:-}" in
-    add)          shift; cmd_admin_add "$@" ;;
-    remove)       shift; cmd_admin_remove "$@" ;;
-    list)         shift; cmd_admin_list "$@" ;;
-    recover)      shift; cmd_admin_recover "$@" ;;
-    set-secret)   shift; cmd_admin_set_secret "$@" ;;
-    list-secrets) shift; cmd_admin_list_secrets "$@" ;;
-    import-env)   shift; cmd_admin_import_env "$@" ;;
+    add)              shift; cmd_admin_add "$@" ;;
+    remove)           shift; cmd_admin_remove "$@" ;;
+    list)             shift; cmd_admin_list "$@" ;;
+    recover)          shift; cmd_admin_recover "$@" ;;
+    set-secret)       shift; cmd_admin_set_secret "$@" ;;
+    list-secrets)     shift; cmd_admin_list_secrets "$@" ;;
+    import-env)       shift; cmd_admin_import_env "$@" ;;
+    install-dev-keys) shift; cmd_admin_install_dev_keys "$@" ;;
     -h|--help|"")
       cat <<EOF
 Usage: chatpop admin <subcommand>
 
 Developer roster:
-  add <name>           Provision IAM user dev-<name>, print credentials.
-  remove <name>        Drop dev's databases + S3 + IAM user. Requires confirm.
-  list                 Show all developers configured for the team.
-  recover              Set up an admin's machine after a wipe / on a new laptop.
+  add <name>             Provision IAM user dev-<name>, print credentials.
+  remove <name>          Drop dev's databases + S3 + IAM user. Requires confirm.
+  list                   Show all developers configured for the team.
+  recover                Set up an admin's machine after a wipe / on a new laptop.
+                         Configures BOTH chatpop-dev-admin and chatpop-dev profiles.
+  install-dev-keys [N]   Pull dev-<name> keys from terraform state into the
+                         chatpop-dev profile. Defaults to .dev-identity name.
 
 Shared secrets (api-keys):
-  list-secrets         List shared API key names (values masked).
-  set-secret <KEY>     Set/update one key in the shared secret (silent input).
-  import-env           One-time: push current backend/.env shared keys to AWS.
+  list-secrets           List shared API key names (values masked).
+  set-secret <KEY>       Set/update one key in the shared secret (silent input).
+  import-env             One-time: push current backend/.env shared keys to AWS.
 
-All admin operations require admin credentials (chatpop-dev-deploy).
+All admin operations require admin credentials (chatpop-dev-deploy in the
+chatpop-dev-admin profile).
 EOF
       ;;
     *) err "Unknown 'admin' subcommand: $1" ;;
@@ -1112,41 +1200,85 @@ users via 'chatpop admin add/remove', and has access to dev_seed).
 
 For per-developer setup, the right command is ${BOLD}chatpop join${NC}.
 
+This sets up TWO AWS profiles on this machine:
+  • ${BOLD}${AWS_PROFILE_ADMIN_NAME}${NC} — chatpop-dev-deploy admin keys (paste from 1Password)
+  • ${BOLD}${AWS_PROFILE_NAME}${NC}       — dev-<your-name> keys (auto-pulled from terraform)
+
 You will need:
-  • Your ${BOLD}chatpop-dev-deploy${NC} admin keys.
-    Stored in your password manager? Have them ready.
+  • Your ${BOLD}chatpop-dev-deploy${NC} admin keys (from 1Password).
     Lost them? Regenerate first:
       ${YELLOW}https://console.aws.amazon.com/iam/home#/users/details/chatpop-dev-deploy${NC}
       Security credentials → Deactivate old key → Create access key.
-  • Tailscale account credentials (sign-in only — your tailnet still exists).
+  • Tailscale account access (sign-in only — your tailnet still exists).
   • Your developer name (typically the same one you used before).
 
 EOF
   read -r -p "Continue? [Y/n] " confirm
-  if [[ "${confirm:-}" =~ ^[Nn]$ ]]; then
-    info "Aborted."
-    return 0
-  fi
+  [[ "${confirm:-}" =~ ^[Nn]$ ]] && { info "Aborted."; return 0; }
   echo
 
-  # Delegate to the join flow — same plumbing, plus a post-flow ARN check.
+  # Step A: Set up the ADMIN profile (chatpop-dev-admin).
+  printf "${BOLD}Step A${NC} — Admin AWS credentials\n"
+  if arn=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null); then
+    ok "Admin profile '${AWS_PROFILE_ADMIN_NAME}' already configured: $arn"
+    read -r -p "  Reconfigure with new admin credentials? [y/N] " confirm
+    if [[ "${confirm:-}" =~ ^[Yy]$ ]]; then
+      _join_prompt_aws_credentials "$AWS_PROFILE_ADMIN_NAME" "admin (chatpop-dev-deploy)"
+    fi
+  else
+    _join_prompt_aws_credentials "$AWS_PROFILE_ADMIN_NAME" "admin (chatpop-dev-deploy)"
+  fi
+
+  # Sanity check: the keys you pasted should actually be the admin user.
+  arn=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null || echo "")
+  if [[ "$arn" != *"user/chatpop-dev-deploy"* ]]; then
+    warn "The keys you pasted don't look like the chatpop-dev-deploy admin user."
+    warn "ARN: $arn"
+    warn "Admin operations will fail. Re-run 'chatpop admin recover' with the correct keys."
+    return 1
+  fi
+
+  # Step B: Determine developer name for installing dev keys.
+  echo
+  printf "${BOLD}Step B${NC} — Developer identity\n"
+  local dev_name=""
+  if [[ -f "$IDENTITY_FILE" ]]; then
+    dev_name=$(cat "$IDENTITY_FILE")
+    info "Existing identity: '$dev_name'"
+    read -r -p "  Use this name? [Y/n] " confirm
+    if [[ "${confirm:-}" =~ ^[Nn]$ ]]; then
+      read -r -p "  Developer name: " dev_name
+    fi
+  else
+    info "Your developer name namespaces your databases and S3 prefix."
+    read -r -p "  Developer name: " dev_name
+  fi
+  dev_name=$(normalize "$dev_name")
+  [[ -n "$dev_name" ]] || err "Empty developer name"
+  echo "$dev_name" > "$IDENTITY_FILE"
+  ok "Identity: $dev_name"
+
+  # Step C: Install dev-<name> keys into chatpop-dev profile.
+  echo
+  printf "${BOLD}Step C${NC} — Install developer credentials\n"
+  _admin_install_dev_keys "$dev_name"
+
+  # Step D: Run the regular join flow for everything else (Tailscale,
+  # cloud-config writes to .env, hooks). cmd_join detects that chatpop-dev
+  # is already configured and skips the credential prompt.
+  echo
+  printf "${BOLD}Step D${NC} — Tailscale, cloud config, hooks\n"
   cmd_join
 
-  # Verify the keys we ended up with are actually admin.
-  if arn=$(aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null); then
-    if [[ "$arn" == *"user/chatpop-dev-deploy"* ]]; then
-      echo
-      ok "Confirmed: admin credentials in '$AWS_PROFILE_NAME' profile."
-      info "You can now run admin ops: chatpop admin add/remove/list, chatpop seed refresh."
-    else
-      echo
-      warn "The keys in '$AWS_PROFILE_NAME' don't look like admin keys."
-      warn "ARN: $arn"
-      warn "If you intended admin recovery, re-run with admin keys:"
-      warn "  chatpop admin recover"
-      warn "Otherwise this is fine — you're set up as a regular developer."
-    fi
-  fi
+  cat <<EOF
+
+${GREEN}${BOLD}✓ Admin recovery complete.${NC}
+
+  Admin profile: ${AWS_PROFILE_ADMIN_NAME}  (used by terraform + admin ops)
+  Dev profile:   ${AWS_PROFILE_NAME}        (used by Django runtime + daily ops)
+
+Verify:  ${BOLD}chatpop check${NC}
+EOF
 }
 
 # Read the developers list from developers.auto.tfvars into the
@@ -1198,7 +1330,7 @@ cmd_admin_add() {
 
   printf "${BOLD}Add developer: ${name}${NC}\n\n"
 
-  require_aws
+  require_aws_admin
 
   _admin_read_devs
   for d in "${CURRENT_DEVS[@]}"; do
@@ -1261,7 +1393,7 @@ cmd_admin_remove() {
 
   printf "${BOLD}Remove developer: ${name}${NC}\n\n"
 
-  require_aws
+  require_aws_admin
   require_libpq
 
   _admin_read_devs
@@ -1282,7 +1414,7 @@ cmd_admin_remove() {
   rds_host=$(tf_output rds_address)
   rds_port=$(tf_output rds_port)
   bucket=$(tf_output media_bucket_name)
-  fetch_db_credentials
+  fetch_db_credentials   # dev keys can read the secret too — no need for admin here
 
   echo
   info "Dropping ${name}_* databases…"
@@ -1300,7 +1432,8 @@ cmd_admin_remove() {
 
   echo
   info "Removing s3://${bucket}/${name}/…"
-  aws --profile "$AWS_PROFILE_NAME" s3 rm --recursive "s3://${bucket}/${name}/" --quiet >/dev/null 2>&1 || true
+  # Use ADMIN profile — dev keys can only delete their own prefix.
+  aws --profile "$AWS_PROFILE_ADMIN_NAME" s3 rm --recursive "s3://${bucket}/${name}/" --quiet >/dev/null 2>&1 || true
   ok "S3 prefix cleared"
 
   echo
@@ -1328,7 +1461,7 @@ EOF
 }
 
 cmd_admin_list() {
-  require_aws
+  require_aws_admin
   _admin_read_devs
 
   if [[ ${#CURRENT_DEVS[@]} -eq 0 ]]; then

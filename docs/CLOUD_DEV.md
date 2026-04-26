@@ -34,6 +34,19 @@ laptop ── Tailscale tunnel ──> EC2 subnet router ──> VPC ──> RDS
 
 Cloud-only by design. There is no `use local` toggle. If you need to develop against local Docker (rare; only when AWS is genuinely unreachable), edit `backend/.env` by hand. Daily development assumes Tailscale is up and RDS is reachable.
 
+### Two AWS profiles (least-privilege model)
+
+Every machine has at least one AWS profile; admin machines have both:
+
+| Profile | Keys it holds | Used by |
+|---|---|---|
+| `chatpop-dev` | `dev-<name>` (scoped per-developer) | Django runtime (boto3), branch hooks (read master DB password, S3 read/write own prefix), most chatpop subcommands |
+| `chatpop-dev-admin` | `chatpop-dev-deploy` (AdministratorAccess) | Terraform, `chatpop admin *`, `chatpop seed refresh`, `chatpop seed from-local` |
+
+This means **Django runs with scoped keys**, not admin keys. If the laptop is compromised, the blast radius is the developer's own DBs and S3 prefix — not the whole AWS account.
+
+Non-admin developers (Alice) only have `chatpop-dev`. If they try to run an admin command, they get a clear error: "AWS profile chatpop-dev-admin not configured. This command requires admin credentials."
+
 ---
 
 ## Daily workflow
@@ -85,7 +98,8 @@ A single entry point at `bin/chatpop` exposes every dev operation as a subcomman
 | `chatpop admin list` | Show team roster (IAM users + access key IDs) |
 | `chatpop admin add <name>` | Provision IAM user `dev-<name>`, print credentials once |
 | `chatpop admin remove <name>` | Drop dev's databases + S3 + IAM user (typed confirm) |
-| `chatpop admin recover` | Set up admin's machine after a wipe / on a new laptop (uses admin keys) |
+| `chatpop admin recover` | Set up admin's machine after a wipe / on a new laptop. Configures BOTH profiles (chatpop-dev-admin + chatpop-dev). |
+| `chatpop admin install-dev-keys [name]` | Pull dev-`<name>` keys from terraform state and write to `chatpop-dev` profile. Used during admin recovery and one-shot setups. |
 | `chatpop admin set-secret <K>` | Set/update one shared API key (silent input) |
 | `chatpop admin list-secrets` | List shared API keys (values masked) |
 | `chatpop admin import-env` | One-time: push current `backend/.env` shared keys to Secrets Manager |
@@ -104,19 +118,21 @@ A single entry point at `bin/chatpop` exposes every dev operation as a subcomman
 This is **one-time per AWS account** when standing up the cloud environment for the first time. After this, future developers use the joiner flow below.
 
 ```bash
-./bin/chatpop bootstrap aws          # Create admin IAM user + configure AWS CLI
+./bin/chatpop bootstrap aws          # Configure chatpop-dev-admin profile (admin keys)
 ./bin/chatpop bootstrap tailscale    # Install Tailscale + capture EC2 router auth key
 cd infra/terraform && terraform init && terraform apply
-./bin/chatpop seed from-local        # Push local DB+media into dev_seed
+./bin/chatpop seed from-local        # Push local DB+media into dev_seed (admin op)
 ./bin/chatpop admin add <your-name>  # Create per-dev IAM user (yourself)
-./bin/chatpop join                   # Set up your machine using your dev creds
-./bin/chatpop admin import-env       # Push current backend/.env shared keys to Secrets Manager
+./bin/chatpop admin install-dev-keys <your-name>  # Install dev keys into chatpop-dev
+./bin/chatpop join                   # Tailscale signin, identity, cloud config, hooks
+./bin/chatpop admin import-env       # Push current backend/.env shared keys to AWS
 ```
 
 After this, you have:
 - AWS account fully provisioned for the team
 - Canonical `dev_seed` everyone clones from
-- Your own per-dev IAM user (e.g., `dev-robert`) for daily work
+- Your own per-dev IAM user (e.g., `dev-robert`) — its keys live in `chatpop-dev` profile
+- Admin keys (`chatpop-dev-deploy`) — live in `chatpop-dev-admin` profile
 - Shared API keys (Stripe, OpenAI, etc.) centralized in Secrets Manager
 
 ---

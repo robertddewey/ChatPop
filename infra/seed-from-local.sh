@@ -17,7 +17,7 @@ set -euo pipefail
 # --- Config ----------------------------------------------------------------
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AWS_PROFILE_NAME="chatpop-dev"
+AWS_PROFILE_NAME="chatpop-dev-admin"  # writes to dev_seed/ S3 prefix — admin only
 TF_DIR="${PROJECT_ROOT}/infra/terraform"
 
 LOCAL_PG_CONTAINER="chatpop_postgres"
