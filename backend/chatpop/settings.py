@@ -18,6 +18,48 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+
+# ---------------------------------------------------------------------------
+# Shared API keys
+#
+# Two retrieval paths:
+#
+# - DEV (default):
+#     Keys come from backend/.env via load_dotenv() above. The .env is
+#     populated/refreshed by `./bin/chatpop sync-secrets`, which pulls
+#     from AWS Secrets Manager (chatpop-dev/api-keys).
+#
+# - PROD (set ENV=production):
+#     Keys come directly from AWS Secrets Manager at process start.
+#     No local .env file, no sync step. Each instance fetches once and
+#     caches in memory; rotating a key requires a rolling restart.
+#     The aws-secretsmanager-caching library auto-refreshes after the
+#     configured TTL, so a rotation propagates within ~1 hour even
+#     without restart, in case the rolling deploy is delayed.
+#
+# All downstream code uses os.getenv() — this block just decides where
+# the values come from.
+# ---------------------------------------------------------------------------
+if os.getenv("ENV") == "production":
+    import json
+    _api_keys_secret_name = os.getenv("API_KEYS_SECRET_NAME", "chatpop-prod/api-keys")
+    try:
+        # Preferred: caching library, refreshes every hour in background
+        from aws_secretsmanager_caching import SecretCache, SecretCacheConfig
+        _cache = SecretCache(config=SecretCacheConfig(secret_refresh_interval=3600))
+        _api_keys_json = _cache.get_secret_string(_api_keys_secret_name)
+    except ImportError:
+        # Fallback to plain boto3 — fetches once at startup, never refreshes
+        import boto3
+        _sm = boto3.client("secretsmanager")
+        _api_keys_json = _sm.get_secret_value(SecretId=_api_keys_secret_name)["SecretString"]
+
+    # Merge into os.environ. setdefault means explicit env vars win
+    # (useful for ECS task overrides and test runners).
+    for _k, _v in json.loads(_api_keys_json).items():
+        os.environ.setdefault(_k, _v)
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -108,6 +150,12 @@ DATABASES = {
         "PASSWORD": os.getenv("POSTGRES_PASSWORD", "chatpop_pass"),
         "HOST": os.getenv("POSTGRES_HOST", "localhost"),
         "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        "OPTIONS": {
+            # "prefer" = encrypt if server supports it, plain otherwise.
+            # Local Docker Postgres: connects unencrypted (no SSL configured).
+            # AWS RDS (rds.force_ssl=1): requires SSL — set POSTGRES_SSLMODE=require in .env.
+            "sslmode": os.getenv("POSTGRES_SSLMODE", "prefer"),
+        },
     }
 }
 
@@ -685,22 +733,27 @@ CLOUDFLARE_TURNSTILE_SECRET_KEY = "" if "test" in sys.argv else os.getenv("CLOUD
 MEDIA_ANALYSIS_PERFORMANCE_TRACKING = os.getenv("MEDIA_ANALYSIS_PERFORMANCE_TRACKING", "False") == "True"
 
 # Media Storage Settings
-# AWS S3 Configuration (optional - uses local storage if not configured)
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+# S3 is used iff AWS_STORAGE_BUCKET_NAME is set. Credentials come from
+# boto3's default chain: env vars, AWS_PROFILE (~/.aws/credentials), or
+# (in production) the EC2 instance role. We deliberately do NOT read
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY from env into the Django
+# settings — that would leak admin keys via .env into project state.
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
 AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
 AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN", "")
+# AWS_LOCATION is the S3 key prefix for per-developer / per-branch isolation.
+# Example: "robert/main" → files saved at s3://bucket/robert/main/<file>.
+AWS_LOCATION = os.getenv("AWS_LOCATION", "")
+# Tell django-storages which named profile to use (passed to boto3.Session).
+# Empty falls through to boto3's default credential chain.
+AWS_S3_SESSION_PROFILE = os.getenv("AWS_PROFILE", "")
 
-# Determine storage backend based on AWS configuration
-if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and AWS_STORAGE_BUCKET_NAME:
-    # Use S3 storage when AWS credentials are configured
+if AWS_STORAGE_BUCKET_NAME:
     DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
     AWS_S3_FILE_OVERWRITE = False
-    AWS_DEFAULT_ACL = "private"  # Files are private by default
-    AWS_QUERYSTRING_AUTH = False  # Don't add query string auth (we use Django proxy)
+    AWS_DEFAULT_ACL = "private"   # Private by default; Django proxies access.
+    AWS_QUERYSTRING_AUTH = False  # No signed URLs; Django serves via /media/.
 else:
-    # Use local filesystem storage when AWS credentials are not configured
     DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
     MEDIA_ROOT = BASE_DIR / "media"
     MEDIA_URL = "/media/"

@@ -1,0 +1,237 @@
+# Cloud Development
+
+ChatPop's development environment runs against AWS RDS (Postgres) and S3 (media), connected via Tailscale. This document covers the workflows for everyday use, onboarding new developers, admin operations, and managing shared secrets.
+
+For the high-level architecture and decisions ("why these tools?"), see [CLAUDE.md](../CLAUDE.md). For getting started, see the [README](../README.md).
+
+---
+
+## Table of contents
+
+- [Architecture](#architecture)
+- [Daily workflow](#daily-workflow)
+- [The `chatpop` CLI](#the-chatpop-cli)
+- [First-dev infrastructure setup](#first-dev-infrastructure-setup)
+- [Joining an existing team](#joining-an-existing-team)
+- [Admin operations — managing the team roster](#admin-operations--managing-the-team-roster)
+- [Shared API keys (Secrets Manager)](#shared-api-keys-secrets-manager)
+- [CI / GitHub Actions](#ci--github-actions)
+- [Cost](#cost)
+
+---
+
+## Architecture
+
+```
+laptop ── Tailscale tunnel ──> EC2 subnet router ──> VPC ──> RDS Postgres
+                                                       └──> S3 (media)
+```
+
+- **No public RDS endpoint.** Connection is via Tailscale through a tiny EC2 router in the VPC.
+- **Per-developer isolation:** databases and S3 prefixes are namespaced as `<dev>_<branch>` / `<dev>/<branch>/`.
+- **Per-branch isolation:** every git branch gets its own DB (cloned from `<dev>_main` via Postgres `CREATE DATABASE … TEMPLATE`, ~1-3 seconds) and its own S3 prefix.
+- **`dev_seed`** is the canonical clone source — refreshed whenever the team agrees on a known-good baseline.
+
+Cloud-only by design. There is no `use local` toggle. If you need to develop against local Docker (rare; only when AWS is genuinely unreachable), edit `backend/.env` by hand. Daily development assumes Tailscale is up and RDS is reachable.
+
+---
+
+## Daily workflow
+
+Branch operations are automatic via git hooks (`post-checkout`, `post-merge`):
+
+```bash
+git checkout -b feat/something
+# [hook] cloning robert_main → robert_feat_something
+# [hook] s3 sync .../robert/main/ → .../robert/feat_something/
+# [hook] backend/.env updated; Daphne killed (restart it)
+
+git pull origin main
+# [post-merge] migrate runs if migration files changed
+# [post-merge] loaddata runs if fixture files changed
+
+git checkout main
+# [hook] .env switches back; Daphne killed
+
+git branch -D feat/something
+# Branch deleted; DB+S3 become orphans (cleanup with `chatpop clean`)
+```
+
+**Periodic cleanup** of orphan DBs and S3 prefixes for branches you've deleted:
+
+```bash
+./bin/chatpop clean              # Dry-run: list orphans
+./bin/chatpop clean --apply      # Drop them
+```
+
+---
+
+## The `chatpop` CLI
+
+A single entry point at `bin/chatpop` exposes every dev operation as a subcommand. Run with no args from a TTY for an interactive menu.
+
+| Subcommand | Purpose |
+|---|---|
+| `chatpop status` | Show current dev/branch/DB/S3/services state (passive — reads .env / processes) |
+| `chatpop check` | Active health checks: AWS auth, Tailscale, RDS connect, S3 read/write, pgvector, hooks, Daphne response |
+| `chatpop join` | Interactive: paste AWS creds + Tailscale sign-in + DB+S3 + hooks (joiner / second machine) |
+| `chatpop setup` | Activate hooks only (subset of `join`) |
+| `chatpop use cloud [name]` | Configure `backend/.env` for AWS on current branch |
+| `chatpop seed refresh` | Rebuild `dev_seed` from current branch's migrations + fixtures (run from `main`) |
+| `chatpop seed from-local` | Push your local Postgres + media into `dev_seed` (curated baseline) |
+| `chatpop fixtures load` | Load `fixtures/*.json` into current branch's DB |
+| `chatpop sync-secrets` | Pull team's shared API keys from Secrets Manager into `backend/.env` |
+| `chatpop clean [--apply]` | Find/drop orphan branch DBs and S3 prefixes |
+| `chatpop admin list` | Show team roster (IAM users + access key IDs) |
+| `chatpop admin add <name>` | Provision IAM user `dev-<name>`, print credentials once |
+| `chatpop admin remove <name>` | Drop dev's databases + S3 + IAM user (typed confirm) |
+| `chatpop admin recover` | Set up admin's machine after a wipe / on a new laptop (uses admin keys) |
+| `chatpop admin set-secret <K>` | Set/update one shared API key (silent input) |
+| `chatpop admin list-secrets` | List shared API keys (values masked) |
+| `chatpop admin import-env` | One-time: push current `backend/.env` shared keys to Secrets Manager |
+| `chatpop bootstrap aws` | Configure admin AWS CLI profile (first dev only) |
+| `chatpop bootstrap tailscale` | Capture EC2 router auth key (first dev only) |
+
+`seed refresh` vs `seed from-local`:
+
+- **`seed refresh`** rebuilds `dev_seed` from migrations + fixtures only. Clean schema, no curated test data. Use after merging schema changes; designed to eventually run via GitHub Actions on every push to `main`.
+- **`seed from-local`** dumps your local Postgres + media into `dev_seed`. Preserves hand-curated test data. Use when you want to baseline the team on a specific snapshot.
+
+---
+
+## First-dev infrastructure setup
+
+This is **one-time per AWS account** when standing up the cloud environment for the first time. After this, future developers use the joiner flow below.
+
+```bash
+./bin/chatpop bootstrap aws          # Create admin IAM user + configure AWS CLI
+./bin/chatpop bootstrap tailscale    # Install Tailscale + capture EC2 router auth key
+cd infra/terraform && terraform init && terraform apply
+./bin/chatpop seed from-local        # Push local DB+media into dev_seed
+./bin/chatpop admin add <your-name>  # Create per-dev IAM user (yourself)
+./bin/chatpop join                   # Set up your machine using your dev creds
+./bin/chatpop admin import-env       # Push current backend/.env shared keys to Secrets Manager
+```
+
+After this, you have:
+- AWS account fully provisioned for the team
+- Canonical `dev_seed` everyone clones from
+- Your own per-dev IAM user (e.g., `dev-robert`) for daily work
+- Shared API keys (Stripe, OpenAI, etc.) centralized in Secrets Manager
+
+---
+
+## Joining an existing team
+
+Once infrastructure exists, new developers run a much smaller flow on each machine:
+
+```bash
+./install.sh                         # Prerequisites + workspace prep, then calls chatpop join
+```
+
+`chatpop join` is idempotent. Use it for the same flow on a second machine — it detects existing DBs/S3 prefixes and reuses them rather than recreating.
+
+What `chatpop join` walks through:
+1. AWS credentials (paste from the admin's secure share)
+2. Tailscale (install + sign in to the team's tailnet)
+3. Developer identity (your name, written to `.dev-identity`)
+4. Cloud config (clones `<your-name>_main` from `dev_seed` if first time on this machine)
+5. Sync shared API keys from Secrets Manager
+6. Activate git hooks
+
+---
+
+## Admin operations — managing the team roster
+
+The `chatpop admin` subcommands manage IAM users for the team:
+
+| Command | What it does |
+|---|---|
+| `chatpop admin list` | Show team roster (IAM users + access key IDs) |
+| `chatpop admin add <name>` | Provision IAM user `dev-<name>` with scoped policies; print credentials once for secure handoff |
+| `chatpop admin remove <name>` | Drop all `<name>_*` databases, delete `s3://.../<name>/`, destroy IAM user. Requires typed confirmation. |
+| `chatpop admin recover` | Set up admin's machine after a wipe / on a new laptop. Like `chatpop join` but uses the `chatpop-dev-deploy` admin keys (so admin ops keep working). |
+
+Each developer's IAM user has scoped permissions:
+
+- Read/write S3 only under `<name>/*`
+- Read-only on `dev_seed/*`
+- Read the master DB password from Secrets Manager — but Postgres-level isolation is *not* enforced; see [CLAUDE.md → Layered authentication](../CLAUDE.md).
+
+After `admin add`, send the new dev:
+
+1. Their access key + secret (via 1Password, Signal, encrypted email — never plain Slack/email)
+2. A Tailscale invite from https://login.tailscale.com/admin/users
+3. Their developer name (matches what you typed into `admin add`)
+
+---
+
+## Shared API keys (Secrets Manager)
+
+Third-party API keys (OpenAI, Stripe, Google Places, etc.) are stored centrally in AWS Secrets Manager (`chatpop-dev/api-keys`) as a single JSON blob. Devs pull them into their local `backend/.env`; rotation is one admin action + a team-wide sync.
+
+### Initial setup (admin, one-time)
+
+```bash
+chatpop admin import-env       # Push current backend/.env shared keys to Secrets Manager
+chatpop admin list-secrets     # Verify (values are masked)
+```
+
+### Onboarding a new dev
+
+Automatic — `chatpop join` runs `sync-secrets` as part of the flow. Their `.env` is populated from Secrets Manager without anyone having to share keys directly.
+
+### Rotating a key
+
+```bash
+# Admin
+chatpop admin set-secret OPENAI_API_KEY    # Silent input, push to Secrets Manager
+# Tell the team:
+#   chatpop sync-secrets
+#   restart Daphne
+```
+
+`sync-secrets` shows a masked diff for any key whose local `.env` value differs from the cloud value, so devs notice if they had a local edit they wanted to preserve:
+
+```
+⚠  1 key(s) overwritten (your local value -> cloud value):
+  OPENAI_API_KEY: my-l...lue -> sk-c...oud
+```
+
+### Production retrieval (when prod exists)
+
+`backend/chatpop/settings.py` detects `ENV=production` and pulls keys directly from Secrets Manager via `boto3` (no `.env` on prod hosts). The `aws-secretsmanager-caching` library refreshes every hour automatically; rolling restarts pick up rotation immediately. Same secret name pattern — `chatpop-prod/api-keys` instead of `chatpop-dev/api-keys`.
+
+### Which keys are shared
+
+The shared API keys are listed in `bin/chatpop` as `SHARED_KEYS`. Per-environment / per-developer values (`ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `NGROK_DOMAIN`, etc.) stay in local `.env` and don't go to Secrets Manager.
+
+---
+
+## CI / GitHub Actions
+
+Workflow files live in `.github/workflows/` with a `.disabled` suffix — committed but inactive. Rename to enable when the team grows. See `.github/workflows/README.md` for setup steps. Two workflows are scaffolded:
+
+- **`refresh-dev-seed.yml.disabled`** — On push to `main`, refreshes `dev_seed` on RDS via Tailscale + AWS OIDC.
+- **`test.yml.disabled`** — On PR, runs the test suite against an ephemeral Postgres+pgvector container in the runner.
+
+Until enabled, `chatpop seed refresh` and local `manage.py test` are the manual equivalents.
+
+---
+
+## Cost
+
+Monthly AWS spend for a small team:
+
+| Item | Monthly |
+|---|---|
+| RDS db.t4g.small (Postgres + pgvector) | ~$25 |
+| RDS storage 20GB gp3 | ~$2.30 |
+| RDS automated backups (7-day retention) | ~$1.50 |
+| EC2 t4g.nano (Tailscale router) + 8GB EBS | ~$3.80 |
+| Secrets Manager (2 secrets: rds/master + api-keys) | ~$0.80 |
+| S3 (media, ~500MB total) | <$0.05 |
+| Data transfer | ~$1 |
+| **Total** | **~$35/month** |
+
+Tailscale itself is free for up to 3 users / 100 devices on the personal plan.

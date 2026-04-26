@@ -4,8 +4,9 @@
 > This includes Python code, Django templates (HTML), and any other files served by Daphne.
 > Unlike Django's runserver, Daphne does NOT auto-reload on file changes. Run:
 > ```bash
-> lsof -ti:9000 | xargs kill 2>/dev/null; sleep 1 && cd /Users/robertdewey/GitProjects/ChatPop/backend && ./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
+> lsof -ti:9000 -sTCP:LISTEN | xargs kill 2>/dev/null; sleep 1 && cd /Users/robertdewey/GitProjects/ChatPop/backend && ./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
 > ```
+> Note the `-sTCP:LISTEN` filter: without it, `lsof` also matches the frontend's outbound proxy connection to port 9000 and `xargs kill` kills both processes.
 
 ---
 
@@ -167,6 +168,56 @@ Frontend: https://localhost:4000
 - **WebSocket Security:** Secure WebSocket (WSS) connections require HTTPS
 - **Mobile Testing:** iOS Safari requires HTTPS for microphone access
 - **Production Parity:** Matches production environment configuration
+
+### Cloud Development (AWS RDS + S3)
+
+> **For workflow walkthroughs, command reference, onboarding, admin operations, and secrets management — see [docs/CLOUD_DEV.md](docs/CLOUD_DEV.md).**
+>
+> This section is the architectural summary Claude needs to reason correctly about the codebase. Anything more detailed lives in `docs/CLOUD_DEV.md` or the [README](README.md).
+
+The default development mode runs Django against **AWS RDS** (Postgres + pgvector) and **S3** (media). Each developer has their own per-branch database and S3 prefix, isolated from other developers.
+
+```
+laptop ── Tailscale tunnel ──> EC2 subnet router ──> VPC ──> RDS Postgres
+                                                       └──> S3 (media)
+```
+
+- **No public RDS endpoint.** Connection is via Tailscale through a tiny EC2 router in the VPC.
+- **Per-developer namespacing:** databases as `<dev>_<branch>`, S3 prefixes as `<dev>/<branch>/`.
+- **Per-branch DBs:** every git branch gets its own DB (cloned from `<dev>_main` via `CREATE DATABASE … TEMPLATE`, ~1-3 seconds) and its own S3 prefix.
+- **`dev_seed`** is the canonical clone source for new branches and new devs.
+- **Single CLI:** `bin/chatpop` is the unified entry point. Run `chatpop --help` for all commands or `chatpop` (bare) for an interactive menu.
+- **Git hooks:** `.githooks/post-checkout` auto-clones branch DB+S3 and updates `.env`; `.githooks/post-merge` auto-runs `migrate` and `loaddata` after pulls. Activated by `chatpop setup`.
+- **Cloud-only by design.** There is no `use local` toggle. If you need local-only dev (genuinely rare — AWS is unreachable), hand-edit `backend/.env` to point at local Docker.
+
+#### Identity file
+
+`.dev-identity` (gitignored) holds the developer's name. Set on first run of `chatpop use cloud <name>` or `chatpop join`. The hooks and helper scripts read it to namespace databases and S3 prefixes.
+
+#### Migration discipline (FOLLOW THIS when writing migrations)
+
+Per-branch DBs isolate *data*, not *migrations*. To avoid breaking other developers:
+
+1. **Migrations must be backward-compatible.** Don't add `NOT NULL` without a default to a table with rows. Don't drop columns code still references.
+2. **Push migrations early.** The longer a migration sits unpushed, the more likely a number conflict (`0022_alice` vs `0022_bob`) with another dev. Resolution: `manage.py makemigrations --merge`.
+3. **Pull main into long-lived branches frequently.** Catches conflicts while small.
+
+#### Layered authentication
+
+Two layers of auth are at play; only the first is enforced today:
+
+1. **AWS IAM (active):** scoped per-developer. `dev-alice` cannot read `s3://.../bob/*`.
+2. **Postgres roles (not active):** all developers connect to RDS as `chatpop_admin` using the master password fetched from Secrets Manager. At the database level there is no per-dev isolation — Alice could `\c bob_main` and read Bob's data.
+
+For the current team size, IAM-only is acceptable. When answering questions about access control, do not assume Postgres-level isolation exists.
+
+#### Where credentials live (and don't)
+
+- **AWS profile** at `~/.aws/credentials` (set by `chatpop bootstrap aws` or `chatpop join`). Never in `backend/.env`, never in the repo.
+- **RDS master password** in AWS Secrets Manager (`chatpop-dev/rds/master`). Pulled by `configure-env.sh` and written to `backend/.env` for psycopg2 (which doesn't read AWS creds directly).
+- **Shared third-party API keys** (OpenAI, Stripe, etc.) in AWS Secrets Manager (`chatpop-dev/api-keys`). Pulled by `chatpop sync-secrets` and written to `backend/.env`. In production (`ENV=production`), Django reads them directly from Secrets Manager via boto3.
+- **Tailscale auth key** for the EC2 router in `infra/terraform/secrets.auto.tfvars` (gitignored, `chmod 600`). Captured by `chatpop bootstrap tailscale`.
+- **Boto3** uses the AWS profile via `AWS_PROFILE=chatpop-dev` in `.env`. No static AWS access keys in `.env`.
 
 ### Repository Structure
 - Monorepo containing both backend and frontend
@@ -577,7 +628,7 @@ Before merging a theme with SVG background:
 | File | Model | Count | Purpose |
 |------|-------|-------|---------|
 | `fixtures/theme.json` | `chats.ChatTheme` | 1 | Chat theme definitions (colors, styles) |
-| `fixtures/config.json` | `constance.Constance` | 63 | Runtime config settings (rate limits, cache TTLs, etc.) |
+| `fixtures/config.json` | `constance.Constance` | 60 | Runtime config settings (rate limits, cache TTLs, etc.) |
 | `fixtures/gifts.json` | `chats.GiftCatalogItem` | 50 | Gift catalog (emoji, prices, categories) |
 
 ### Adding New Reference Data

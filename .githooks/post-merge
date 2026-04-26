@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# post-merge — fires after `git merge` and `git pull`.
+#
+# If new migration files appeared in the merge, runs `migrate` against the
+# current branch's DB so the schema stays in sync with code.
+#
+# Skips silently when:
+#   - cloud mode isn't configured
+#   - no migration files changed in the merge
+
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+ENV_FILE="${REPO_ROOT}/backend/.env"
+
+[[ -f "$ENV_FILE" ]] || exit 0
+grep -q "^AWS_PROFILE=chatpop" "$ENV_FILE" 2>/dev/null || exit 0
+
+# ORIG_HEAD is set by git to the previous HEAD before the merge.
+# If unavailable, skip — we have nothing to compare against.
+git rev-parse --verify ORIG_HEAD >/dev/null 2>&1 || exit 0
+
+CHANGED_MIGRATIONS=$(git diff --name-only ORIG_HEAD HEAD -- 'backend/*/migrations/*.py')
+CHANGED_FIXTURES=$(git diff --name-only ORIG_HEAD HEAD -- 'fixtures/*.json')
+
+# Fast exit if nothing relevant changed.
+[[ -z "$CHANGED_MIGRATIONS" && -z "$CHANGED_FIXTURES" ]] && exit 0
+
+cd "$REPO_ROOT/backend"
+
+# Apply schema changes first.
+if [[ -n "$CHANGED_MIGRATIONS" ]]; then
+  COUNT=$(echo "$CHANGED_MIGRATIONS" | wc -l | tr -d ' ')
+  printf "\n\033[1;34m[post-merge]\033[0m %s migration file(s) changed; running migrate\n" "$COUNT"
+  ./venv/bin/python manage.py migrate --no-input
+fi
+
+# Then load any updated reference fixtures (themes, gifts, constance).
+if [[ -n "$CHANGED_FIXTURES" ]]; then
+  COUNT=$(echo "$CHANGED_FIXTURES" | wc -l | tr -d ' ')
+  printf "\n\033[1;34m[post-merge]\033[0m %s fixture file(s) changed; running loaddata\n" "$COUNT"
+  while IFS= read -r fixture; do
+    [[ -f "$REPO_ROOT/$fixture" ]] || continue
+    printf "  → %s\n" "$fixture"
+    ./venv/bin/python manage.py loaddata "$REPO_ROOT/$fixture" 2>&1 | tail -1
+  done <<< "$CHANGED_FIXTURES"
+fi

@@ -11,291 +11,199 @@ A platform that allows users to create and join chat rooms with various customiz
 - **Payments:** Stripe
 - **Infrastructure:** Docker (PostgreSQL & Redis)
 
-## Installation Guide
+## Installation
 
-**Quick Setup:** Run `./install.sh` (macOS/Linux) or follow the manual steps below.
+ChatPop's development environment runs against **AWS RDS** (Postgres + pgvector) and **S3** (media), connected via **Tailscale**. Each developer has their own per-branch databases and S3 prefix, isolated from other developers. Local Docker is used only for Redis (chat WebSocket coordination) and as an optional test database.
 
-### Prerequisites
+There are three onboarding paths depending on your role:
 
-- Python 3.11+
-- Node.js 18+
-- Docker & Docker Compose
-- **mkcert** - For generating SSL certificates (required for voice messages)
-- **ngrok** (optional) - For mobile device testing via public tunnel
+- 🏃 **[New developer joining the team](#-new-developer-joining-the-team-alice)** (most common)
+- 👑 **[First-time admin setting up infrastructure](#-first-time-admin-setting-up-infrastructure)** (one-time, you only do this once for the entire team)
+- 🛟 **[Admin returning to a wiped or new machine](#-admin-returning-to-a-wiped-or-new-machine)**
 
-#### Install mkcert (One-Time Setup)
+All three converge on the **`chatpop` CLI** for daily operations.
 
-```bash
-# macOS
-brew install mkcert
-mkcert -install
-
-# Linux
-sudo apt install mkcert  # Debian/Ubuntu
-# or
-sudo yum install mkcert  # RedHat/CentOS
-mkcert -install
-```
-
-#### Install ngrok (Optional - for Mobile Testing)
+### Prerequisites (all paths)
 
 ```bash
 # macOS
-brew install ngrok
-
-# Linux
-snap install ngrok
+brew install git python node mkcert awscli libpq
+brew install --cask docker tailscale
+brew tap hashicorp/tap && brew install hashicorp/tap/terraform
+mkcert -install
 ```
 
-Sign up and connect your authtoken at https://dashboard.ngrok.com
+| Tool | Purpose |
+|---|---|
+| `git`, `python`, `node` | Source control + backend + frontend runtimes |
+| `docker` | Local Redis (required); local Postgres for tests (optional) |
+| `mkcert` | Locally-trusted SSL certs (required for voice messages) |
+| `awscli` | Talk to AWS services |
+| `libpq` | `psql` and `pg_dump` for branch-DB cloning |
+| `terraform` | AWS infrastructure provisioning |
+| `tailscale` | Encrypted tunnel to the AWS VPC |
+
+`ngrok` is optional — only needed if you'll test the app from a mobile device over the internet.
 
 ---
 
-### 1. Clone the Repository
+### 🏃 New developer joining the team (`alice`)
+
+Your admin will give you (out of band — 1Password, Signal, etc.):
+- AWS access key ID + secret access key
+- A Tailscale invite to the team's tailnet (separate email)
+- Your developer name (e.g., `alice`)
+- The repository URL (and access to it)
 
 ```bash
-git clone <your-repo-url>
+# 1. Authenticate with GitHub (any of these works)
+gh auth login                                     # easiest if you have gh
+# OR set up an SSH key on github.com
+# OR generate a Personal Access Token at github.com/settings/tokens
+
+# 2. Run the installer (it will clone the repo)
+./install.sh
+
+# 3. When prompted, accept defaults (or paste a different repo URL)
+# 4. install.sh will then automatically run 'chatpop join' which prompts for:
+#    - Your AWS access key ID + secret (from your admin's secure share)
+#    - Your developer name (e.g., 'alice')
+#    Tailscale needs to be signed in interactively (browser will open)
+
+# 5. Verify
+chatpop status
+```
+
+After that, start the servers in two terminals:
+
+```bash
+# Backend (Daphne, SSL on port 9000)
+cd backend
+./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
+
+# Frontend (Next.js, SSL on port 4000)
+cd frontend
+npm run dev:https
+```
+
+Visit https://localhost:4000.
+
+**Day-to-day from here:** the git hooks handle per-branch DB and S3 cloning automatically. `git checkout -b feat/foo` creates `<your-name>_feat_foo` on RDS and `s3://…/<your-name>/feat_foo/`. `git pull` runs `migrate` if migrations changed. See [docs/CLOUD_DEV.md](docs/CLOUD_DEV.md) for the full workflow.
+
+---
+
+### 👑 First-time admin setting up infrastructure
+
+This is **one-time per AWS account** — you only do this when standing up the cloud environment for the first time. After this, future developers use the joiner flow above.
+
+```bash
+# Install prerequisites (same list as above)
+
+# Clone the repo
+git clone <repo-url>
 cd ChatPop
+
+# Step 1: AWS admin profile (chatpop-dev-deploy IAM user)
+chatpop bootstrap aws
+
+# Step 2: Tailscale on your laptop + EC2 router auth key
+chatpop bootstrap tailscale
+
+# Step 3: Provision AWS infrastructure (RDS, S3, EC2 router, Secrets Manager, IAM)
+cd infra/terraform
+terraform init && terraform apply
+cd ../..
+
+# Step 4: Bake your local Postgres + media into the team's dev_seed
+docker-compose up -d postgres redis
+# (run local migrations / load fixtures into local DB if not already)
+chatpop seed from-local
+
+# Step 5: Provision your own per-developer IAM user
+chatpop admin add robert            # use your own name; prints credentials
+
+# Step 6: Configure your machine using the per-dev credentials just printed
+chatpop join
+
+# Step 7: Push current backend/.env shared API keys to AWS Secrets Manager
+chatpop admin import-env
+
+# Verify everything is wired up
+chatpop status
+chatpop check
+```
+
+Once this is done, you've got:
+- An AWS account fully provisioned for the team
+- A canonical `dev_seed` everyone clones from
+- Your own per-dev IAM user (`dev-robert`) for daily work
+- Shared API keys (Stripe, OpenAI, etc.) centralized in Secrets Manager
+
+To onboard the next developer (Alice), just:
+
+```bash
+chatpop admin add alice
+# Send Alice the printed credentials (1Password share, Signal, etc.)
+# Invite alice@email.com to your tailnet at https://login.tailscale.com/admin/users
+# Tell Alice: install.sh + chatpop join (the joiner flow above)
 ```
 
 ---
 
-### 2. Generate SSL Certificates
+### 🛟 Admin returning to a wiped or new machine
 
-**⚠️ REQUIRED:** Voice message recording requires HTTPS due to browser MediaRecorder API security policies.
+Your IAM user (`chatpop-dev-deploy`) and infrastructure still exist in AWS — you just need to set up *this machine* to talk to them.
 
 ```bash
-# Create certificates directory
-mkdir -p certs
-cd certs
+# Install prerequisites (same list as above)
 
-# Generate SSL certificates for localhost
-mkcert localhost 127.0.0.1 10.0.0.135 ::1
+# Clone the repo
+git clone <repo-url>
+cd ChatPop
 
-# Rename files to match project expectations
-mv localhost+3.pem localhost+3.pem
-mv localhost+3-key.pem localhost+3-key.pem
+# Recover — paste your admin keys (from 1Password)
+chatpop admin recover
 
-cd ..
+# Verify
+chatpop status
+chatpop check
 ```
 
-**Result:** You should now have:
-- `certs/localhost+3.pem` (certificate)
-- `certs/localhost+3-key.pem` (private key)
+If you've lost your admin keys, regenerate them in the AWS Console first:
+https://console.aws.amazon.com/iam/home#/users/details/chatpop-dev-deploy → Security credentials → Deactivate old key → Create access key. Then run `chatpop admin recover`.
 
 ---
 
-### 3. Start Docker Containers
-
-Start PostgreSQL and Redis containers:
+### `chatpop` CLI quick reference
 
 ```bash
-docker-compose up -d
+chatpop                  # interactive menu (TTY)
+chatpop status           # current dev / branch / DB / S3 / services
+chatpop check            # active health checks across the stack
+chatpop --help           # all commands
 ```
 
-Verify containers are running:
-```bash
-docker ps --filter "name=chatpop"
-```
+| Command | When |
+|---|---|
+| `chatpop status` | Show current state (passive read of `.env` + processes) |
+| `chatpop check` | Active probes: AWS auth, Tailscale, RDS, S3 read/write, hooks, Daphne |
+| `chatpop join` | Set up a developer machine (joiner / second machine) |
+| `chatpop admin recover` | Set up an admin machine (wiped / new laptop) |
+| `chatpop admin add <name>` | Provision a new developer (admin only) |
+| `chatpop admin remove <name>` | Tear down a developer's resources (admin only) |
+| `chatpop admin list` | Show team roster |
+| `chatpop admin set-secret <K>` | Update a shared API key in Secrets Manager (admin) |
+| `chatpop admin list-secrets` | List shared API keys (values masked) |
+| `chatpop sync-secrets` | Pull latest shared API keys into local `.env` |
+| `chatpop seed refresh` | Rebuild `dev_seed` from current branch (admin) |
+| `chatpop seed from-local` | Push local Postgres + media into `dev_seed` (admin) |
+| `chatpop fixtures load` | Re-load all `fixtures/*.json` into current DB |
+| `chatpop clean [--apply]` | Sweep orphan branch DBs and S3 prefixes |
+| `chatpop setup` | Activate git hooks (subset of `join`) |
+| `chatpop bootstrap aws` | Initial admin AWS profile (first-time-admin only) |
+| `chatpop bootstrap tailscale` | Capture EC2 router Tailscale key (first-time-admin only) |
 
-You should see:
-- `chatpop_postgres` on port **5435**
-- `chatpop_redis` on port **6381**
-
----
-
-### 4. Backend Setup (Django)
-
-Navigate to backend directory:
-```bash
-cd backend
-```
-
-#### Create Virtual Environment and Install Dependencies
-
-```bash
-# Create virtual environment
-python3 -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate  # macOS/Linux
-# OR
-venv\Scripts\activate  # Windows
-
-# Install Python dependencies
-pip install -r requirements.txt
-```
-
-#### Configure Environment Variables
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env if needed (defaults should work for local development)
-```
-
-#### Run Database Migrations
-
-```bash
-./venv/bin/python manage.py migrate
-```
-
-#### Load Fixtures and Initialize
-
-```bash
-# Load chat themes, config settings, and gift catalog
-./venv/bin/python manage.py loaddata fixtures/theme.json
-./venv/bin/python manage.py loaddata fixtures/config.json
-./venv/bin/python manage.py loaddata fixtures/gifts.json
-
-# Create system user (required for AI-generated discover rooms)
-./venv/bin/python manage.py create_system_user
-```
-
-#### Create Test Data (Optional)
-
-```bash
-# Creates admin user (admin@chatpop.app / demo123), test users, and sample chat rooms
-./venv/bin/python manage.py create_test_data
-```
-
-#### Create a Superuser (Optional)
-
-```bash
-./venv/bin/python manage.py createsuperuser
-```
-
-#### Collect Static Files
-
-```bash
-./venv/bin/python manage.py collectstatic --noinput
-```
-
-#### Start the Backend Server (with SSL)
-
-**⚠️ IMPORTANT:** Use Daphne with SSL, not `runserver`. Voice messages require HTTPS.
-
-```bash
-./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
-```
-
-ALLOWED_HOSTS and CORS_ALLOWED_ORIGINS are configured in `backend/.env`. The defaults work for localhost. For LAN/mobile testing, add your LAN IP to both settings in `.env`.
-
-Backend API will be available at: **https://localhost:9000** (note HTTPS)
-
----
-
-### 5. Frontend Setup (Next.js)
-
-Open a new terminal and navigate to frontend directory:
-```bash
-cd frontend
-```
-
-#### Install Dependencies
-
-```bash
-npm install
-```
-
-#### Configure Environment Variables
-
-```bash
-# Copy environment template
-cp .env.example .env.local
-
-# Edit .env.local if needed (defaults should work for local development)
-```
-
-**Note:** If `.env.example` doesn't exist, create `.env.local` with:
-```bash
-# Backend API URL (use https for SSL)
-NEXT_PUBLIC_API_URL=https://localhost:9000
-
-# WebSocket URL (use wss for secure websockets)
-NEXT_PUBLIC_WS_URL=wss://localhost:9000
-
-# Frontend server port (MUST be 4000 per project standards)
-PORT=4000
-```
-
-#### Start the Frontend Server (with HTTPS)
-
-**⚠️ IMPORTANT:** Frontend must also use HTTPS to match the backend.
-
-```bash
-npm run dev:https
-```
-
-Frontend will be available at: **https://localhost:4000** (note HTTPS)
-
----
-
-### 6. Access the Application
-
-- **Frontend:** https://localhost:4000
-- **Backend API:** https://localhost:9000
-- **Django Admin:** https://localhost:9000/admin
-
-**Browser Security Warning:** You may see a security warning because mkcert uses a self-signed certificate. Click "Advanced" → "Proceed to localhost" to continue. This is safe for local development.
-
----
-
-### 7. Mobile Testing with ngrok (Optional)
-
-ngrok creates a public HTTPS tunnel to your local frontend, allowing you to test on mobile devices without LAN configuration.
-
-```bash
-# With a static domain (configured in backend/.env)
-ngrok http https://localhost:4000 --url=your-domain.ngrok-free.app
-
-# Without a static domain (ngrok assigns a random URL)
-ngrok http https://localhost:4000
-```
-
-Get a free static domain at https://dashboard.ngrok.com/cloud-edge/domains
-
-See [NGROK-README.txt](NGROK-README.txt) for quick reference.
-
----
-
-### Quick Start Summary
-
-For experienced developers, here's the quick version:
-
-```bash
-# 1. Install mkcert and generate certificates
-brew install mkcert && mkcert -install
-mkdir -p certs && cd certs && mkcert localhost 127.0.0.1 ::1 && cd ..
-
-# 2. Start Docker services
-docker-compose up -d
-
-# 3. Backend setup
-cd backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-./venv/bin/python manage.py migrate
-./venv/bin/python manage.py loaddata fixtures/theme.json
-./venv/bin/python manage.py loaddata fixtures/config.json
-./venv/bin/python manage.py loaddata fixtures/gifts.json
-./venv/bin/python manage.py create_system_user
-./venv/bin/python manage.py collectstatic --noinput
-
-# 4. Frontend setup (in new terminal)
-cd frontend
-npm install
-cp .env.example .env.local  # Create if doesn't exist
-
-# 5. Start servers (in separate terminals)
-# Terminal 1 - Backend
-./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application
-
-# Terminal 2 - Frontend
-npm run dev:https
-```
+See [docs/CLOUD_DEV.md](docs/CLOUD_DEV.md) for the full workflow guide. [CLAUDE.md](CLAUDE.md) has the architectural decisions and the conventions that guide AI assistant behavior.
 
 ---
 
@@ -312,7 +220,7 @@ npm run dev:https
 ```
 ChatPop/
 ├── backend/              # Django backend
-│   ├── chatpop/         # Main Django project
+│   ├── chatpop/         # Main Django project (settings.py with prod-aware secrets)
 │   ├── chats/           # Chat app (models, views, WebSocket consumers)
 │   ├── fixtures/        # Reference data (themes, config, gifts)
 │   ├── .env             # Backend environment variables
@@ -326,35 +234,79 @@ ChatPop/
 │   ├── server.js        # Custom HTTPS server with WebSocket proxy
 │   ├── .env.local       # Frontend environment variables
 │   └── package.json
+├── bin/                 # Daily-use CLI
+│   └── chatpop          # Unified CLI for status / join / admin / clean / etc.
+├── infra/               # Infrastructure tooling
+│   ├── bootstrap.sh             # First-dev: AWS admin profile setup
+│   ├── bootstrap-tailscale.sh   # First-dev: capture EC2 router auth key
+│   ├── configure-env.sh         # Cloud .env writer (called by chatpop + hooks)
+│   ├── seed-from-local.sh       # Push local Postgres+media into dev_seed
+│   └── terraform/               # AWS infrastructure as code
+│       ├── network.tf, database.tf, tailscale.tf, media.tf, developers.tf
+│       └── developers.auto.tfvars  # Team roster (committed)
+├── .githooks/           # Git hooks (post-checkout / post-merge) — branch DB+S3 automation
+├── .github/workflows/   # GitHub Actions (refresh-dev-seed, tests — currently .disabled)
 ├── certs/               # SSL certificates (generated by mkcert)
 ├── docs/                # Documentation
-├── docker-compose.yml   # PostgreSQL & Redis
-├── install.sh           # Automated setup script
+├── docker-compose.yml   # Redis (required) + PostgreSQL (optional, for tests)
+├── install.sh           # Automated setup script (calls chatpop join)
 ├── NGROK-README.txt     # ngrok quick reference
-├── CLAUDE.md            # Project documentation for Claude
+├── CLAUDE.md            # Project documentation for Claude / detailed workflows
 └── README.md
 ```
 
 ## Environment Variables
 
-Environment files are already configured with defaults:
+Environment values are split between **local config** (in `.env` files) and **shared secrets** (in AWS Secrets Manager).
 
-**Backend:** `backend/.env` (created from `backend/.env.example`)
-**Frontend:** `frontend/.env.local`
+### Local config — `backend/.env` and `frontend/.env.local`
 
-Key variables:
-- `DJANGO_PORT=9000` - Django server port
-- `PORT=4000` - Next.js server port
-- `POSTGRES_PORT=5435` - PostgreSQL port
-- `REDIS_PORT=6381` - Redis port
-- `NGROK_DOMAIN` - Your ngrok static domain (optional, for mobile testing)
-- `STRIPE_SECRET_KEY` - Add your Stripe keys for payment features
-- `OPENAI_API_KEY` - For media analysis (photo descriptions)
-- `ACRCLOUD_ACCESS_KEY` / `ACRCLOUD_SECRET_KEY` - For music identification
+Per-developer / per-machine values that don't make sense to share:
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `POSTGRES_*` | backend | RDS connection (set automatically by `chatpop use cloud`) |
+| `AWS_PROFILE`, `AWS_STORAGE_BUCKET_NAME`, `AWS_LOCATION` | backend | S3 access (set by `chatpop use cloud`) |
+| `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS` | backend | Per-dev (your LAN IP for mobile testing) |
+| `NGROK_DOMAIN` | backend | Optional, your personal ngrok tunnel |
+| `NEXT_PUBLIC_API_URL`, `PORT` | frontend | URLs and ports |
+
+### Shared secrets — AWS Secrets Manager (`chatpop-dev/api-keys`)
+
+Third-party API keys shared across the team:
+
+| Variable | Source |
+|---|---|
+| `OPENAI_API_KEY` | Secrets Manager |
+| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` | Secrets Manager |
+| `GOOGLE_PLACES_API_KEY`, `TOMTOM_API_KEY` | Secrets Manager |
+| `SERPAPI_API_KEY` | Secrets Manager |
+| `ACRCLOUD_ACCESS_KEY`, `ACRCLOUD_SECRET_KEY`, `ACRCLOUD_HOST`, `ACRCLOUD_BEARER_TOKEN` | Secrets Manager |
+| `CLOUDFLARE_TURNSTILE_SECRET_KEY` | Secrets Manager |
+| `DJANGO_SECRET_KEY` | Secrets Manager |
+
+**Pulling them into your `.env`:**
+
+```bash
+chatpop sync-secrets   # writes them into backend/.env
+# (restart Daphne to pick up new values)
+```
+
+**Updating one (admin only):**
+
+```bash
+chatpop admin set-secret OPENAI_API_KEY    # silent input
+# Tell the team to run: chatpop sync-secrets
+```
+
+**In production:** Django reads these directly from Secrets Manager via `boto3` (no `.env` on prod hosts) — see `backend/chatpop/settings.py`. Same secret naming pattern, just `chatpop-prod/api-keys` instead of `chatpop-dev/api-keys`.
 
 ## Documentation
 
 Comprehensive documentation is organized in the `docs/` directory:
+
+### Cloud development (start here)
+- **[docs/CLOUD_DEV.md](docs/CLOUD_DEV.md)** - Cloud architecture, daily workflow, `chatpop` CLI reference, onboarding, admin operations, secrets management
 
 ### Core Documentation
 - **[docs/MANAGEMENT_COMMANDS.md](docs/MANAGEMENT_COMMANDS.md)** - All 13 manage.py commands with examples
@@ -369,7 +321,7 @@ Comprehensive documentation is organized in the `docs/` directory:
 - **[docs/AWS_DEPLOYMENT_SCALING.md](docs/AWS_DEPLOYMENT_SCALING.md)** - AWS ECS Fargate deployment and scaling guide
 
 ### Project Documentation
-- **[CLAUDE.md](CLAUDE.md)** - Complete project documentation for AI assistants
+- **[CLAUDE.md](CLAUDE.md)** - Conventions and architecture context that guide AI assistant behavior
 
 ## Stopping Services
 

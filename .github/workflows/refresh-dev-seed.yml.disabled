@@ -1,0 +1,87 @@
+# Refresh dev_seed on every push to main.
+#
+# DISABLED by default. To enable:
+#   1. Rename this file to refresh-dev-seed.yml (drop the .disabled suffix)
+#   2. Complete the prerequisites (see "Prerequisites" below)
+#   3. Commit and push
+#
+# Prerequisites (one-time setup before enabling):
+#
+#   A. Create AWS IAM role for GitHub OIDC
+#      - In infra/terraform, add a github_actions.tf module with:
+#          aws_iam_openid_connect_provider for token.actions.githubusercontent.com
+#          aws_iam_role with trust policy for this repo's main branch
+#          IAM policy: secretsmanager:GetSecretValue on chatpop-dev/rds/master
+#      - terraform apply, capture role ARN as output
+#
+#   B. Tailscale OAuth client (so the runner can reach RDS)
+#      - https://login.tailscale.com/admin/settings/oauth → Generate client
+#      - Scope: devices:write
+#      - Tag for ephemeral CI nodes: tag:ci (must be defined in Tailscale ACL)
+#
+#   C. GitHub repository secrets
+#      gh secret set AWS_ROLE_ARN --body "<arn from step A>"
+#      gh secret set TS_OAUTH_CLIENT_ID --body "<client id from step B>"
+#      gh secret set TS_OAUTH_SECRET --body "<client secret from step B>"
+#
+# Once those exist, this workflow will run on every push to main and keep
+# dev_seed reflecting current main's schema + fixtures.
+
+name: Refresh dev_seed
+
+on:
+  push:
+    branches: [main]
+    # Skip if the push touched only docs / non-runtime files.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'frontend/**'
+
+# Avoid overlapping refreshes if commits land in quick succession.
+concurrency:
+  group: refresh-dev-seed
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write    # for AWS OIDC
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-16
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install backend deps
+        working-directory: backend
+        run: |
+          python -m venv venv
+          ./venv/bin/pip install -r requirements.txt
+
+      - name: Refresh dev_seed
+        run: ./bin/chatpop seed refresh --force <<< 'y'

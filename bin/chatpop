@@ -1,0 +1,1522 @@
+#!/usr/bin/env bash
+# chatpop — unified CLI for the ChatPop dev environment.
+#
+# Usage:
+#   chatpop                    Interactive menu (when invoked from a TTY)
+#   chatpop <command> [args]   Direct command invocation
+#   chatpop --help             Show all commands
+#
+# Cloud-only by design: every subcommand assumes the dev is talking to AWS
+# RDS + S3 via Tailscale. Local-Docker mode was intentionally removed —
+# Docker Postgres / Redis are still used (Redis for chat, optional local
+# DB for `manage.py test`), but daily dev runs against cloud.
+
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+TF_DIR="${REPO_ROOT}/infra/terraform"
+ENV_FILE="${REPO_ROOT}/backend/.env"
+IDENTITY_FILE="${REPO_ROOT}/.dev-identity"
+AWS_PROFILE_NAME="chatpop-dev"
+
+# ---------------------------------------------------------------------------
+# Color + logging helpers
+# ---------------------------------------------------------------------------
+
+# $'...' (ANSI-C quoting) converts escape sequences at variable-set time.
+# This matters because cat <<EOF in heredocs does NOT interpret backslash
+# escapes — only the actual escape characters embedded in the variables.
+RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; BLUE=$'\033[0;34m'
+BOLD=$'\033[1m';   DIM=$'\033[2m';     NC=$'\033[0m'
+
+err()   { printf "${RED}error:${NC} %s\n" "$*" >&2; exit 1; }
+ok()    { printf "${GREEN}✓${NC} %s\n" "$*"; }
+info()  { printf "${BLUE}→${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}!${NC} %s\n" "$*"; }
+label() { printf "  %-22s %s\n" "$1" "$2"; }
+
+# ---------------------------------------------------------------------------
+# Shared helpers (used by multiple subcommands)
+# ---------------------------------------------------------------------------
+
+require_libpq() {
+  if [[ -d "/opt/homebrew/opt/libpq/bin" ]]; then
+    export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
+  fi
+  command -v psql >/dev/null 2>&1 || err "psql not found. Run: brew install libpq"
+}
+
+require_aws() {
+  aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity >/dev/null 2>&1 \
+    || err "AWS profile '${AWS_PROFILE_NAME}' not authenticated. Run: chatpop bootstrap aws"
+}
+
+tf_output() {
+  (cd "$TF_DIR" && terraform output -raw "$1" 2>/dev/null) \
+    || err "Cannot read terraform output '$1' — has terraform been applied?"
+}
+
+fetch_db_credentials() {
+  # Populates DB_USER and DB_PASS in caller scope. Caller MUST unset DB_PASS.
+  local secret_name secret_json
+  secret_name=$(tf_output rds_master_secret_name)
+  secret_json=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+    --secret-id "$secret_name" --query 'SecretString' --output text) \
+    || err "Failed to fetch RDS master credentials from Secrets Manager"
+  DB_USER=$(echo "$secret_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['username'])")
+  DB_PASS=$(echo "$secret_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['password'])")
+}
+
+normalize() {
+  python3 -c '
+import re, sys
+s = sys.argv[1].lower()
+s = re.sub(r"[^a-z0-9_]", "_", s)
+s = re.sub(r"_+", "_", s)
+print(s.strip("_"))
+' "$1"
+}
+
+# ---------------------------------------------------------------------------
+# cmd: check
+#
+# Active health checks against every layer: AWS, Terraform, Tailscale, RDS,
+# S3, hooks, optionally Daphne. Each check is read-only or makes a single
+# tiny test write that's immediately deleted. Safe to run anytime.
+# ---------------------------------------------------------------------------
+
+CHECK_PASSED=0
+CHECK_FAILED=0
+CHECK_SKIPPED=0
+
+_check_pass() {
+  printf "  ${GREEN}✓${NC} %-34s ${DIM}%s${NC}\n" "$1" "${2:-}"
+  CHECK_PASSED=$((CHECK_PASSED + 1))
+}
+_check_fail() {
+  printf "  ${RED}✗${NC} %-34s ${RED}%s${NC}\n" "$1" "${2:-}"
+  CHECK_FAILED=$((CHECK_FAILED + 1))
+}
+_check_skip() {
+  printf "  ${YELLOW}~${NC} %-34s ${DIM}skipped: %s${NC}\n" "$1" "${2:-}"
+  CHECK_SKIPPED=$((CHECK_SKIPPED + 1))
+}
+
+cmd_check() {
+  printf "${BOLD}chatpop check${NC} — health checks across the stack\n"
+  printf "===================================================\n\n"
+
+  # --- AWS ---------------------------------------------------------------
+  local aws_ok=0 aws_arn=""
+  if aws_arn=$(aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null); then
+    _check_pass "AWS profile authenticated" "$aws_arn"
+    aws_ok=1
+  else
+    _check_fail "AWS profile authenticated" "run: chatpop join"
+  fi
+
+  # --- Terraform state ---------------------------------------------------
+  local rds_host="" rds_port="" bucket="" secret_name=""
+  if [[ "$aws_ok" == "1" ]] && (cd "$TF_DIR" && terraform output rds_address >/dev/null 2>&1); then
+    rds_host=$(tf_output rds_address 2>/dev/null)
+    rds_port=$(tf_output rds_port 2>/dev/null)
+    bucket=$(tf_output media_bucket_name 2>/dev/null)
+    secret_name=$(tf_output rds_master_secret_name 2>/dev/null)
+    _check_pass "Terraform state readable" "RDS=${rds_host}, bucket=${bucket}"
+  elif [[ "$aws_ok" == "0" ]]; then
+    _check_skip "Terraform state readable" "AWS not authenticated"
+  else
+    _check_fail "Terraform state readable" "no outputs — run terraform apply"
+  fi
+
+  # --- Tailscale running -------------------------------------------------
+  local ts_bin="" ts_ok=0
+  [[ -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ]] && ts_bin="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+  [[ -z "$ts_bin" ]] && command -v tailscale >/dev/null 2>&1 && ts_bin="$(command -v tailscale)"
+
+  if [[ -n "$ts_bin" ]] && "$ts_bin" status >/dev/null 2>&1; then
+    local router_line
+    router_line=$("$ts_bin" status | grep -E "chatpop-.*-router" | head -1 || echo "")
+    if [[ -n "$router_line" ]]; then
+      _check_pass "Tailscale running" "router visible: $(echo "$router_line" | awk '{print $1}')"
+      ts_ok=1
+    else
+      _check_fail "Tailscale running" "EC2 router not visible — check tailnet"
+    fi
+  else
+    _check_fail "Tailscale running" "not signed in — open Tailscale app"
+  fi
+
+  # --- VPC subnet route --------------------------------------------------
+  local route_ok=0
+  if [[ "$ts_ok" == "1" && -n "$rds_host" ]]; then
+    if nc -zv -G 5 "$rds_host" 5432 >/dev/null 2>&1; then
+      _check_pass "VPC subnet route" "RDS reachable on tcp/5432"
+      route_ok=1
+    else
+      _check_fail "VPC subnet route" "cannot reach RDS — check Tailscale subnet routes accepted"
+    fi
+  else
+    _check_skip "VPC subnet route" "Tailscale or terraform not ready"
+  fi
+
+  # --- RDS authentication ------------------------------------------------
+  local rds_ok=0 db_user="" db_pass=""
+  if [[ "$route_ok" == "1" && -n "$secret_name" ]]; then
+    require_libpq 2>/dev/null
+    local secret_json
+    if secret_json=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+        --secret-id "$secret_name" --query SecretString --output text 2>/dev/null); then
+      db_user=$(echo "$secret_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['username'])")
+      db_pass=$(echo "$secret_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['password'])")
+      if PGPASSWORD="$db_pass" psql \
+          "host=${rds_host} port=${rds_port} dbname=postgres user=${db_user} sslmode=require" \
+          -tAc "SELECT 1" >/dev/null 2>&1; then
+        _check_pass "RDS authentication" "as ${db_user} via Secrets Manager"
+        rds_ok=1
+      else
+        _check_fail "RDS authentication" "psql connect failed (rds.force_ssl? wrong password?)"
+      fi
+    else
+      _check_fail "RDS authentication" "cannot read secret ${secret_name}"
+    fi
+  else
+    _check_skip "RDS authentication" "subnet route not working"
+  fi
+
+  # --- Branch DB exists + query + pgvector -------------------------------
+  local branch_db=""
+  if [[ "$rds_ok" == "1" ]]; then
+    branch_db=$(grep "^POSTGRES_DB=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)
+    if [[ -n "$branch_db" ]]; then
+      local exists
+      exists=$(PGPASSWORD="$db_pass" psql \
+        "host=${rds_host} port=${rds_port} dbname=postgres user=${db_user} sslmode=require" \
+        -tAc "SELECT 1 FROM pg_database WHERE datname='${branch_db}'" 2>/dev/null || echo "")
+      if [[ "$exists" == "1" ]]; then
+        local table_count vector_ver
+        table_count=$(PGPASSWORD="$db_pass" psql \
+          "host=${rds_host} port=${rds_port} dbname=${branch_db} user=${db_user} sslmode=require" \
+          -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ')
+        _check_pass "Branch DB query works" "${branch_db} (${table_count} tables)"
+
+        vector_ver=$(PGPASSWORD="$db_pass" psql \
+          "host=${rds_host} port=${rds_port} dbname=${branch_db} user=${db_user} sslmode=require" \
+          -tAc "SELECT extversion FROM pg_extension WHERE extname='vector'" 2>/dev/null | tr -d ' ')
+        if [[ -n "$vector_ver" ]]; then
+          _check_pass "pgvector installed" "v${vector_ver}"
+        else
+          _check_fail "pgvector installed" "extension missing — CREATE EXTENSION vector"
+        fi
+      else
+        _check_fail "Branch DB query works" "${branch_db} not found on RDS"
+        _check_skip "pgvector installed" "branch DB missing"
+      fi
+    else
+      _check_skip "Branch DB query works" "POSTGRES_DB not set in .env"
+      _check_skip "pgvector installed" "POSTGRES_DB not set in .env"
+    fi
+  else
+    _check_skip "Branch DB query works" "RDS auth failed"
+    _check_skip "pgvector installed" "RDS auth failed"
+  fi
+
+  # --- S3 read + write ---------------------------------------------------
+  local prefix=""
+  if [[ "$aws_ok" == "1" && -n "$bucket" ]]; then
+    prefix=$(grep "^AWS_LOCATION=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)
+    if [[ -n "$prefix" ]]; then
+      local obj_count
+      obj_count=$(aws --profile "$AWS_PROFILE_NAME" s3api list-objects-v2 \
+        --bucket "$bucket" --prefix "${prefix}/" --max-items 1 \
+        --query 'KeyCount' --output text 2>/dev/null || echo "0")
+      if [[ -n "$obj_count" && "$obj_count" != "None" ]]; then
+        _check_pass "S3 read" "s3://${bucket}/${prefix}/ accessible"
+      else
+        _check_fail "S3 read" "list-objects failed for prefix"
+      fi
+
+      local key="${prefix}/_chatpop_check_$(date +%s)_$$"
+      if echo "test" | aws --profile "$AWS_PROFILE_NAME" s3 cp - "s3://${bucket}/${key}" --quiet 2>/dev/null \
+         && aws --profile "$AWS_PROFILE_NAME" s3 rm "s3://${bucket}/${key}" --quiet >/dev/null 2>&1; then
+        _check_pass "S3 write" "PUT + DELETE roundtrip OK"
+      else
+        _check_fail "S3 write" "PUT/DELETE failed (IAM policy issue?)"
+      fi
+    else
+      _check_skip "S3 read"  "AWS_LOCATION not set in .env"
+      _check_skip "S3 write" "AWS_LOCATION not set in .env"
+    fi
+  else
+    _check_skip "S3 read"  "AWS / terraform not ready"
+    _check_skip "S3 write" "AWS / terraform not ready"
+  fi
+
+  # --- Git hooks ---------------------------------------------------------
+  local hp
+  hp=$(git -C "$REPO_ROOT" config --get core.hooksPath 2>/dev/null || echo "")
+  if [[ "$hp" == ".githooks" ]] && [[ -x "${REPO_ROOT}/.githooks/post-checkout" ]]; then
+    _check_pass "Git hooks active" "core.hooksPath = .githooks"
+  elif [[ -z "$hp" ]]; then
+    _check_fail "Git hooks active" "core.hooksPath unset — run: chatpop setup"
+  else
+    _check_fail "Git hooks active" "hooksPath is '$hp'; expected '.githooks'"
+  fi
+
+  # --- Daphne responding (optional) --------------------------------------
+  if PID=$(lsof -ti:9000 -sTCP:LISTEN 2>/dev/null | head -1); then
+    local code
+    code=$(curl -k -s -o /dev/null -w "%{http_code}" "https://localhost:9000/admin/login/" 2>/dev/null || echo "")
+    if [[ "$code" == "200" ]]; then
+      _check_pass "Daphne responding" "HTTP 200 from /admin/login/"
+    else
+      _check_fail "Daphne responding" "PID $PID up but returned HTTP ${code:-???}"
+    fi
+  else
+    _check_skip "Daphne responding" "not running (this is fine if you're not actively developing)"
+  fi
+
+  # Cleanup
+  unset db_pass PGPASSWORD
+
+  # --- Summary -----------------------------------------------------------
+  echo
+  printf "${BOLD}Summary:${NC} ${GREEN}%d passed${NC}, ${RED}%d failed${NC}, ${YELLOW}%d skipped${NC}\n" \
+    "$CHECK_PASSED" "$CHECK_FAILED" "$CHECK_SKIPPED"
+  if [[ "$CHECK_FAILED" -gt 0 ]]; then
+    echo
+    warn "Fix the first failure and re-run. Skipped checks usually clear once their dependency passes."
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# cmd: status
+# ---------------------------------------------------------------------------
+
+cmd_status() {
+  printf "${BOLD}chatpop status${NC}\n=================\n\n"
+
+  local dev_name branch hooks_path
+  dev_name=$([[ -f "$IDENTITY_FILE" ]] && cat "$IDENTITY_FILE" || echo "(unset)")
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "(detached)")
+  hooks_path=$(git config --get core.hooksPath 2>/dev/null || echo "(default — run chatpop setup)")
+
+  label "Developer:" "$dev_name"
+  label "Branch:" "$branch"
+  label "Hooks path:" "$hooks_path"
+
+  if [[ -f "$ENV_FILE" ]]; then
+    echo
+    printf "${BOLD}Backend .env${NC}\n"
+    for key in POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_SSLMODE \
+               AWS_PROFILE AWS_STORAGE_BUCKET_NAME AWS_LOCATION; do
+      val=$(grep "^${key}=" "$ENV_FILE" | head -1 | cut -d= -f2- || true)
+      label "$key:" "${val:-${DIM}(empty)${NC}}"
+    done
+  fi
+
+  echo
+  printf "${BOLD}Local services${NC}\n"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^chatpop_postgres$'; then
+    label "Docker Postgres:" "running"
+  else
+    label "Docker Postgres:" "(stopped)"
+  fi
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^chatpop_redis$'; then
+    label "Docker Redis:" "running"
+  else
+    label "Docker Redis:" "(stopped)"
+  fi
+
+  if PID=$(lsof -ti:9000 -sTCP:LISTEN 2>/dev/null | head -1); then
+    label "Daphne (9000):" "running (PID $PID)"
+  else
+    label "Daphne (9000):" "(stopped)"
+  fi
+  if PID=$(lsof -ti:4000 -sTCP:LISTEN 2>/dev/null | head -1); then
+    label "Frontend (4000):" "running (PID $PID)"
+  else
+    label "Frontend (4000):" "(stopped)"
+  fi
+
+  echo
+  printf "${BOLD}Tailscale${NC}\n"
+  local TS_BIN=""
+  [[ -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ]] && TS_BIN="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+  [[ -z "$TS_BIN" ]] && command -v tailscale >/dev/null 2>&1 && TS_BIN="$(command -v tailscale)"
+  if [[ -n "$TS_BIN" ]] && "$TS_BIN" status >/dev/null 2>&1; then
+    local router_line
+    router_line=$("$TS_BIN" status | grep -E "chatpop-.*-router" | head -1 || echo "")
+    if [[ -n "$router_line" ]]; then
+      label "Status:" "connected"
+      label "Router:" "$(echo "$router_line" | awk '{print $1, $2}')"
+    else
+      label "Status:" "connected (router not visible)"
+    fi
+  else
+    label "Status:" "(not running)"
+  fi
+  echo
+}
+
+# ---------------------------------------------------------------------------
+# cmd: setup
+# ---------------------------------------------------------------------------
+
+cmd_setup() {
+  printf "${BOLD}chatpop setup${NC}\n===============\n\n"
+  cd "$REPO_ROOT"
+
+  info "Activating .githooks/"
+  git config core.hooksPath ".githooks"
+  ok "core.hooksPath = .githooks"
+
+  for hook in post-checkout post-merge; do
+    if [[ -f ".githooks/$hook" ]]; then
+      chmod +x ".githooks/$hook"
+      ok ".githooks/$hook executable"
+    fi
+  done
+
+  echo
+  info "Checking prerequisites"
+  command -v aws       >/dev/null 2>&1 && ok "aws CLI installed"            || warn "aws CLI not installed (brew install awscli)"
+  command -v terraform >/dev/null 2>&1 && ok "terraform installed"          || warn "terraform not installed (brew install hashicorp/tap/terraform)"
+  [[ -d "/opt/homebrew/opt/libpq/bin" ]] && ok "libpq client tools available" || warn "libpq not installed (brew install libpq)"
+  ([[ -d "/Applications/Tailscale.app" ]] || command -v tailscale >/dev/null 2>&1) \
+    && ok "Tailscale installed" || warn "Tailscale not installed (run: chatpop bootstrap tailscale)"
+  aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity >/dev/null 2>&1 \
+    && ok "AWS profile '${AWS_PROFILE_NAME}' authenticated" \
+    || warn "AWS profile '${AWS_PROFILE_NAME}' not configured (run: chatpop bootstrap aws)"
+
+  echo
+  ok "Setup complete. Run ${BOLD}chatpop status${NC} to confirm state."
+}
+
+# ---------------------------------------------------------------------------
+# cmd: use cloud
+# ---------------------------------------------------------------------------
+
+cmd_use() {
+  case "${1:-}" in
+    cloud) shift; "$REPO_ROOT/infra/configure-env.sh" "$@" ;;
+    -h|--help|"")
+      cat <<EOF
+Usage: chatpop use cloud [name]
+
+Configure backend/.env for AWS RDS + S3 on the current branch.
+On first run, optionally set the developer name (saved to .dev-identity).
+This is what the post-checkout hook calls automatically on branch switch.
+EOF
+      ;;
+    *) err "Unknown 'use' target: $1. Try: chatpop use cloud" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# cmd: seed (refresh / from-local)
+# ---------------------------------------------------------------------------
+
+cmd_seed() {
+  case "${1:-}" in
+    refresh)    shift; cmd_seed_refresh "$@" ;;
+    from-local) shift; "$REPO_ROOT/infra/seed-from-local.sh" "$@" ;;
+    -h|--help|"")
+      cat <<EOF
+Usage: chatpop seed <subcommand>
+
+Subcommands:
+  refresh       Rebuild dev_seed from current branch's migrations + fixtures.
+                Run from main after schema changes merge. CI equivalent in
+                .github/workflows/refresh-dev-seed.yml.disabled.
+
+  from-local    Push your local Postgres + media into dev_seed.
+                Use to baseline the team on a hand-curated snapshot.
+EOF
+      ;;
+    *) err "Unknown 'seed' subcommand: $1. Try: chatpop seed --help" ;;
+  esac
+}
+
+cmd_seed_refresh() {
+  local force=0
+  for arg in "$@"; do [[ "$arg" == "--force" ]] && force=1; done
+
+  printf "${BOLD}Refresh dev_seed from current branch${NC}\n=====================================\n\n"
+
+  local branch
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "(detached)")
+  if [[ "$branch" != "main" && "$force" != "1" ]]; then
+    warn "You are on '$branch', not main."
+    warn "Re-run with --force to refresh dev_seed from a feature branch."
+    exit 1
+  fi
+  ok "Branch: $branch"
+
+  [[ -f "$ENV_FILE" ]] || err "$ENV_FILE not found"
+  grep -q "^AWS_PROFILE=chatpop" "$ENV_FILE" || err ".env not in cloud mode (run: chatpop use cloud)"
+
+  require_aws
+  require_libpq
+
+  local rds_host rds_port
+  rds_host=$(tf_output rds_address)
+  rds_port=$(tf_output rds_port)
+  fetch_db_credentials
+  ok "RDS: $rds_host:$rds_port"
+
+  cat <<EOF
+
+This will:
+  1. DROP DATABASE dev_seed (forced)
+  2. CREATE DATABASE dev_seed
+  3. CREATE EXTENSION vector
+  4. Run migrations from branch '$branch'
+  5. Load fixtures (theme.json, config.json, gifts.json)
+
+EOF
+  read -p "Continue? [y/N] " confirm
+  [[ "${confirm:-}" =~ ^[Yy]$ ]] || { unset DB_PASS; info "Aborted."; exit 0; }
+
+  echo
+  info "Dropping and recreating dev_seed"
+  PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+    -v ON_ERROR_STOP=1 \
+    -c "DROP DATABASE IF EXISTS dev_seed WITH (FORCE);" \
+    -c "CREATE DATABASE dev_seed;" >/dev/null
+
+  PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=dev_seed user=${DB_USER} sslmode=require" \
+    -v ON_ERROR_STOP=1 \
+    -c "CREATE EXTENSION IF NOT EXISTS vector;" >/dev/null
+  ok "dev_seed recreated; pgvector enabled"
+
+  info "Running migrations against dev_seed"
+  cd "$REPO_ROOT/backend"
+  POSTGRES_HOST="$rds_host" POSTGRES_PORT="$rds_port" POSTGRES_DB="dev_seed" \
+  POSTGRES_USER="$DB_USER" POSTGRES_PASSWORD="$DB_PASS" POSTGRES_SSLMODE="require" \
+    ./venv/bin/python manage.py migrate --no-input 2>&1 | tail -10
+  ok "Migrations applied"
+
+  info "Loading fixtures"
+  for fixture in fixtures/theme.json fixtures/config.json fixtures/gifts.json; do
+    POSTGRES_HOST="$rds_host" POSTGRES_PORT="$rds_port" POSTGRES_DB="dev_seed" \
+    POSTGRES_USER="$DB_USER" POSTGRES_PASSWORD="$DB_PASS" POSTGRES_SSLMODE="require" \
+      ./venv/bin/python manage.py loaddata "$fixture" 2>&1 | tail -1
+  done
+  ok "Fixtures loaded"
+
+  unset DB_PASS PGPASSWORD
+  echo
+  ok "${BOLD}dev_seed refreshed.${NC}"
+}
+
+# ---------------------------------------------------------------------------
+# cmd: fixtures load
+# ---------------------------------------------------------------------------
+
+cmd_fixtures() {
+  case "${1:-}" in
+    load) shift; cmd_fixtures_load "$@" ;;
+    -h|--help|"")
+      cat <<EOF
+Usage: chatpop fixtures load
+
+Load all fixtures/*.json into the current branch's database.
+Idempotent: loaddata merges by primary key.
+EOF
+      ;;
+    *) err "Unknown 'fixtures' subcommand: $1" ;;
+  esac
+}
+
+cmd_fixtures_load() {
+  cd "$REPO_ROOT/backend"
+  local current_db
+  current_db=$(grep "^POSTGRES_DB=" .env | head -1 | cut -d= -f2-)
+  printf "${BOLD}Loading fixtures into %s${NC}\n\n" "$current_db"
+  for fixture in "$REPO_ROOT"/fixtures/*.json; do
+    [[ -f "$fixture" ]] || continue
+    info "${fixture#$REPO_ROOT/}"
+    ./venv/bin/python manage.py loaddata "$fixture" 2>&1 | tail -1
+  done
+  ok "Done."
+}
+
+# ---------------------------------------------------------------------------
+# cmd: clean (orphan branch DBs and S3 prefixes)
+# ---------------------------------------------------------------------------
+
+cmd_clean() {
+  local apply=0
+  for arg in "$@"; do
+    case "$arg" in
+      --apply) apply=1 ;;
+      -h|--help)
+        cat <<EOF
+Usage: chatpop clean [--apply]
+
+Drop branch DBs and S3 prefixes for branches no longer in 'git branch'.
+Default is dry-run; pass --apply to actually delete.
+Never touches dev_seed or <dev>_main; only the current developer's resources.
+EOF
+        return 0
+        ;;
+    esac
+  done
+
+  [[ -f "$IDENTITY_FILE" ]] || err "No .dev-identity. Run: chatpop use cloud <your-name>"
+  local dev_name; dev_name=$(cat "$IDENTITY_FILE")
+
+  printf "${BOLD}clean (dev=%s)${NC} — " "$dev_name"
+  [[ "$apply" == "1" ]] && printf "${RED}APPLY${NC}\n\n" || printf "${BLUE}DRY-RUN${NC}\n\n"
+
+  require_aws
+  require_libpq
+
+  local rds_host rds_port bucket
+  rds_host=$(tf_output rds_address)
+  rds_port=$(tf_output rds_port)
+  bucket=$(tf_output media_bucket_name)
+  fetch_db_credentials
+
+  # Build expected list from git branches
+  local expected=()
+  while IFS= read -r b; do
+    expected+=("${dev_name}_$(normalize "$b")")
+  done < <(git for-each-ref --format='%(refname:short)' refs/heads/)
+  expected+=("${dev_name}_main")  # Always preserved
+
+  info "Scanning RDS databases…"
+  local dbs db_orphans=()
+  dbs=$(PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+    -tAc "SELECT datname FROM pg_database WHERE datname ~ '^${dev_name}_' ORDER BY datname")
+  while IFS= read -r db; do
+    [[ -z "$db" ]] && continue
+    local match=0
+    for e in "${expected[@]}"; do [[ "$db" == "$e" ]] && match=1 && break; done
+    [[ "$match" == "0" ]] && db_orphans+=("$db")
+  done <<< "$dbs"
+
+  if [[ ${#db_orphans[@]} -eq 0 ]]; then
+    ok "No orphaned DBs"
+  else
+    warn "Orphaned DBs (${#db_orphans[@]}):"
+    for db in "${db_orphans[@]}"; do echo "    - $db"; done
+  fi
+
+  echo
+  info "Scanning S3 prefixes…"
+  local s3_prefixes s3_orphans=()
+  s3_prefixes=$(aws --profile "$AWS_PROFILE_NAME" s3api list-objects-v2 \
+    --bucket "$bucket" --prefix "${dev_name}/" --delimiter "/" \
+    --query 'CommonPrefixes[].Prefix' --output text 2>/dev/null || echo "")
+  for p in $s3_prefixes; do
+    local branch_part="${p#${dev_name}/}"
+    branch_part="${branch_part%/}"
+    local expected_db="${dev_name}_${branch_part}"
+    local match=0
+    for e in "${expected[@]}"; do [[ "$expected_db" == "$e" ]] && match=1 && break; done
+    [[ "$match" == "0" ]] && s3_orphans+=("$p")
+  done
+
+  if [[ ${#s3_orphans[@]} -eq 0 ]]; then
+    ok "No orphaned S3 prefixes"
+  else
+    warn "Orphaned S3 prefixes (${#s3_orphans[@]}):"
+    for p in "${s3_orphans[@]}"; do echo "    - s3://${bucket}/${p}"; done
+  fi
+
+  if [[ "$apply" != "1" ]]; then
+    echo
+    [[ ${#db_orphans[@]} -gt 0 || ${#s3_orphans[@]} -gt 0 ]] \
+      && info "Re-run with --apply to delete the items above."
+    unset DB_PASS PGPASSWORD
+    return 0
+  fi
+
+  echo
+  read -p "Confirm: drop ${#db_orphans[@]} DB(s) and ${#s3_orphans[@]} S3 prefix(es)? [y/N] " confirm
+  [[ "${confirm:-}" =~ ^[Yy]$ ]] || { unset DB_PASS PGPASSWORD; info "Aborted."; return 0; }
+
+  for db in "${db_orphans[@]}"; do
+    PGPASSWORD="$DB_PASS" psql \
+      "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+      -c "DROP DATABASE IF EXISTS \"${db}\" WITH (FORCE);" >/dev/null
+    ok "Dropped DB ${db}"
+  done
+
+  for p in "${s3_orphans[@]}"; do
+    aws --profile "$AWS_PROFILE_NAME" s3 rm --recursive "s3://${bucket}/${p}" --quiet >/dev/null
+    ok "Cleared s3://${bucket}/${p}"
+  done
+
+  unset DB_PASS PGPASSWORD
+  echo
+  ok "${BOLD}Cleanup complete.${NC}"
+}
+
+# ---------------------------------------------------------------------------
+# cmd: join
+#
+# For developers joining a team that already has infrastructure, OR for an
+# existing developer setting up a new machine. Walks through:
+#   1. AWS profile (paste keys from admin)
+#   2. Tailscale install + sign-in
+#   3. Developer identity (.dev-identity)
+#   4. Cloud config (clone DB+S3 if first time, just update .env otherwise)
+#   5. Activate git hooks
+# ---------------------------------------------------------------------------
+
+cmd_join() {
+  printf "${BOLD}chatpop join${NC} — set up this developer machine\n"
+  printf "==================================================\n\n"
+  echo "Walks through 5 steps. Idempotent — safe to re-run."
+  echo
+
+  # ---- Step 1: AWS credentials --------------------------------------------
+
+  printf "${BOLD}Step 1 of 5${NC} — AWS credentials\n"
+
+  local current_arn=""
+  if current_arn=$(aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null); then
+    ok "Profile '$AWS_PROFILE_NAME' already configured: $current_arn"
+    read -r -p "  Reconfigure with new credentials? [y/N] " confirm
+    if [[ "${confirm:-}" =~ ^[Yy]$ ]]; then
+      _join_prompt_aws_credentials
+    fi
+  else
+    info "An admin should have given you AWS credentials (Access Key ID + Secret)."
+    info "Get them from your secure channel (1Password, Signal, encrypted email)."
+    echo
+    _join_prompt_aws_credentials
+  fi
+
+  # ---- Step 2: Tailscale --------------------------------------------------
+
+  echo
+  printf "${BOLD}Step 2 of 5${NC} — Tailscale\n"
+
+  local ts_bin=""
+  [[ -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ]] && ts_bin="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+  [[ -z "$ts_bin" ]] && command -v tailscale >/dev/null 2>&1 && ts_bin="$(command -v tailscale)"
+
+  if [[ -z "$ts_bin" ]]; then
+    info "Tailscale not detected."
+    if command -v brew >/dev/null 2>&1; then
+      read -r -p "  Install Tailscale via Homebrew? [Y/n] " confirm
+      if [[ ! "${confirm:-}" =~ ^[Nn]$ ]]; then
+        brew install --cask tailscale
+        ts_bin="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+      else
+        warn "  Install manually from https://tailscale.com/download/mac, then re-run."
+        return 1
+      fi
+    else
+      warn "  Homebrew not present. Install from https://tailscale.com/download/mac"
+      return 1
+    fi
+  fi
+
+  if "$ts_bin" status >/dev/null 2>&1; then
+    ok "Tailscale already running"
+  else
+    info "Open the Tailscale menu-bar app and sign in with the email your admin invited."
+    info "Until you sign in, the next step (RDS connectivity check) will fail."
+    echo
+    read -r -p "  Press Enter once signed in… "
+  fi
+
+  # Verify subnet routing actually works.
+  info "Testing connectivity to RDS over Tailscale…"
+  local rds_host
+  rds_host=$(tf_output rds_address 2>/dev/null) || true
+  if [[ -n "$rds_host" ]] && nc -zv -G 5 "$rds_host" 5432 >/dev/null 2>&1; then
+    ok "RDS reachable via Tailscale"
+  else
+    warn "Cannot reach RDS yet."
+    warn "Check: are you signed in to the right tailnet, and have you accepted subnet routes?"
+    warn "Subnet routes auto-accept on most clients. If not, toggle Tailscale off/on."
+    read -r -p "  Continue anyway? [y/N] " confirm
+    [[ "${confirm:-}" =~ ^[Yy]$ ]] || return 1
+  fi
+
+  # ---- Step 3: Developer identity -----------------------------------------
+
+  echo
+  printf "${BOLD}Step 3 of 5${NC} — Developer identity\n"
+
+  local dev_name=""
+  if [[ -f "$IDENTITY_FILE" ]]; then
+    local existing
+    existing=$(cat "$IDENTITY_FILE")
+    info "Existing identity: '$existing'"
+    read -r -p "  Use this name? [Y/n] " confirm
+    if [[ "${confirm:-}" =~ ^[Nn]$ ]]; then
+      read -r -p "  Developer name: " dev_name
+    else
+      dev_name="$existing"
+    fi
+  else
+    info "Your developer name namespaces your databases and S3 prefix."
+    info "Your admin should have told you what name to use."
+    read -r -p "  Developer name: " dev_name
+  fi
+  dev_name=$(normalize "$dev_name")
+  [[ -n "$dev_name" ]] || err "Empty developer name"
+  echo "$dev_name" > "$IDENTITY_FILE"
+  ok "Identity: $dev_name"
+
+  # ---- Step 4: Cloud config -----------------------------------------------
+
+  echo
+  printf "${BOLD}Step 4 of 5${NC} — Cloud config\n"
+  "$REPO_ROOT/infra/configure-env.sh" "$dev_name"
+
+  # ---- Step 4b: Pull shared API keys -------------------------------------
+
+  echo
+  printf "${BOLD}Step 4b of 5${NC} — Sync shared API keys\n"
+  if cmd_sync_secrets 2>&1 | tail -3; then
+    : # success message printed by cmd_sync_secrets
+  else
+    warn "Couldn't sync API keys — may not be set up yet."
+    warn "Continue without; admin can run 'chatpop admin import-env' once."
+  fi
+
+  # ---- Step 5: Git hooks --------------------------------------------------
+
+  echo
+  printf "${BOLD}Step 5 of 5${NC} — Activate git hooks\n"
+  cmd_setup
+
+  cat <<EOF
+
+${GREEN}${BOLD}✓ Joined!${NC}
+
+You're set up. Quick sanity check:
+  ${BOLD}chatpop status${NC}
+
+Day-to-day from here, the git hooks handle branch DB/S3 work automatically.
+You only need 'chatpop' for occasional things — see 'chatpop --help'.
+
+EOF
+}
+
+_join_prompt_aws_credentials() {
+  local key secret
+  read -r -p "  Access key ID:        " key
+  [[ -n "$key" ]] || err "Empty access key ID"
+  read -r -s -p "  Secret access key (hidden): " secret
+  echo
+  [[ -n "$secret" ]] || err "Empty secret access key"
+
+  aws configure set aws_access_key_id     "$key"    --profile "$AWS_PROFILE_NAME"
+  aws configure set aws_secret_access_key "$secret" --profile "$AWS_PROFILE_NAME"
+  aws configure set region                "us-east-1" --profile "$AWS_PROFILE_NAME"
+  aws configure set output                "json"      --profile "$AWS_PROFILE_NAME"
+  unset key secret
+
+  if arn=$(aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity --query Arn --output text 2>&1); then
+    ok "Verified: $arn"
+  else
+    err "Verification failed: $arn"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# cmd: sync-secrets
+#
+# Pull the team's shared API keys (chatpop-dev/api-keys JSON in Secrets
+# Manager) and merge them into backend/.env. Idempotent. Run after the
+# admin rotates a key, or as part of `chatpop join`.
+# ---------------------------------------------------------------------------
+
+# Names of keys we pull from the JSON secret into backend/.env.
+# Anything else in .env is left alone.
+SHARED_KEYS=(
+  OPENAI_API_KEY
+  SERPAPI_API_KEY
+  ACRCLOUD_ACCESS_KEY
+  ACRCLOUD_SECRET_KEY
+  ACRCLOUD_HOST
+  ACRCLOUD_BEARER_TOKEN
+  GOOGLE_PLACES_API_KEY
+  TOMTOM_API_KEY
+  STRIPE_SECRET_KEY
+  STRIPE_PUBLISHABLE_KEY
+  CLOUDFLARE_TURNSTILE_SECRET_KEY
+  DJANGO_SECRET_KEY
+)
+
+cmd_sync_secrets() {
+  printf "${BOLD}chatpop sync-secrets${NC} — pull shared API keys into backend/.env\n"
+  printf "===================================================================\n\n"
+
+  require_aws
+
+  local secret_name
+  secret_name=$(tf_output api_keys_secret_name 2>/dev/null) || err "Cannot read terraform output api_keys_secret_name"
+  ok "Secret: $secret_name"
+
+  local secret_json
+  if ! secret_json=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+      --secret-id "$secret_name" --query SecretString --output text 2>/dev/null); then
+    err "Cannot fetch secret. Either it has no value yet (run: chatpop admin import-env) or you lack permission."
+  fi
+
+  if [[ "$secret_json" == "{}" || -z "$secret_json" ]]; then
+    warn "Secret exists but is empty. Admin must run: chatpop admin import-env"
+    return 1
+  fi
+
+  # Hand the JSON + key list to Python; it merges into .env safely.
+  # On overwrites, prints a (masked) diff so you notice if you had local edits.
+  ENV_FILE="$ENV_FILE" SECRET_JSON="$secret_json" SHARED_KEYS="${SHARED_KEYS[*]}" \
+  python3 - <<'PYEOF'
+import os, re, json
+from pathlib import Path
+
+env_path  = Path(os.environ["ENV_FILE"])
+secret    = json.loads(os.environ["SECRET_JSON"])
+allowed   = set(os.environ["SHARED_KEYS"].split())
+content   = env_path.read_text() if env_path.exists() else ""
+
+def mask(v):
+    return (v[:4] + "..." + v[-3:]) if len(v) > 12 else "***"
+
+added, replaced, missing = [], [], []
+for key in sorted(allowed):
+    if key not in secret:
+        missing.append(key)
+        continue
+    val = secret[key]
+    pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
+    new_line = f"{key}={val}"
+    m = pattern.search(content)
+    if m:
+        existing_val = m.group(0).partition("=")[2]
+        if existing_val != val:
+            content = pattern.sub(lambda _m, _l=new_line: _l, content)
+            replaced.append((key, existing_val, val))
+    else:
+        if not content.endswith("\n"):
+            content += "\n"
+        content += new_line + "\n"
+        added.append(key)
+
+env_path.write_text(content)
+
+n_unchanged = len(allowed) - len(added) - len(replaced) - len(missing)
+
+if added:
+    print(f"  added ({len(added)}): {', '.join(added)}")
+
+if replaced:
+    print()
+    print(f"  ⚠  {len(replaced)} key(s) overwritten (your local value -> cloud value):")
+    for key, old_v, new_v in replaced:
+        print(f"    {key}: {mask(old_v)} -> {mask(new_v)}")
+
+if missing:
+    print(f"  missing from secret ({len(missing)}): {', '.join(missing)}")
+
+print(f"  unchanged: {n_unchanged}")
+PYEOF
+
+  echo
+  ok "Done. ${YELLOW}Restart Daphne${NC} to pick up new values."
+}
+
+# ---------------------------------------------------------------------------
+# cmd: admin set-secret / list-secrets / import-env
+#
+# Admin operations on the shared api-keys secret. Require admin (chatpop-
+# dev-deploy) credentials — devs lack secretsmanager:PutSecretValue.
+# ---------------------------------------------------------------------------
+
+cmd_admin_set_secret() {
+  local key="${1:-}"
+  [[ -n "$key" ]] || err "Usage: chatpop admin set-secret <KEY_NAME>"
+  printf "${BOLD}Set secret: ${key}${NC}\n\n"
+
+  require_aws
+  local secret_name; secret_name=$(tf_output api_keys_secret_name)
+
+  warn "Input is hidden. Paste the value, press Enter."
+  local value
+  read -r -s -p "  Value for ${key}: " value
+  echo
+  [[ -n "$value" ]] || err "Empty value"
+
+  # Fetch current JSON, merge, write back
+  local current
+  current=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+    --secret-id "$secret_name" --query SecretString --output text 2>/dev/null || echo "{}")
+  [[ "$current" == "None" ]] && current="{}"
+
+  local new_json
+  new_json=$(KEY="$key" VAL="$value" CURRENT="$current" python3 -c '
+import os, json, sys
+data = json.loads(os.environ["CURRENT"]) if os.environ["CURRENT"].strip() else {}
+data[os.environ["KEY"]] = os.environ["VAL"]
+print(json.dumps(data))
+')
+  unset value
+
+  if aws --profile "$AWS_PROFILE_NAME" secretsmanager put-secret-value \
+    --secret-id "$secret_name" --secret-string "$new_json" >/dev/null 2>&1; then
+    ok "Updated $key in $secret_name"
+    info "Tell the team:  chatpop sync-secrets  (then restart Daphne)"
+  else
+    err "Failed to update secret. Are you using admin credentials?"
+  fi
+  unset new_json
+}
+
+cmd_admin_list_secrets() {
+  require_aws
+  local secret_name; secret_name=$(tf_output api_keys_secret_name)
+
+  printf "${BOLD}Secrets in ${secret_name}${NC}\n\n"
+  local current
+  current=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+    --secret-id "$secret_name" --query SecretString --output text 2>/dev/null || echo "{}")
+
+  if [[ -z "$current" || "$current" == "{}" || "$current" == "None" ]]; then
+    info "Secret is empty. Run: chatpop admin import-env"
+    return 0
+  fi
+
+  echo "$current" | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+for key in sorted(data.keys()):
+    val = data[key]
+    masked = (val[:4] + "..." + val[-3:]) if len(val) > 12 else "***"
+    print(f"  {key:35s} {masked}  (len {len(val)})")
+'
+}
+
+cmd_admin_import_env() {
+  printf "${BOLD}Import current backend/.env shared keys into Secrets Manager${NC}\n"
+  printf "==============================================================\n\n"
+  echo "Pulls these keys from $ENV_FILE and uploads them to the api-keys secret:"
+  printf "  %s\n" "${SHARED_KEYS[@]}" | column -c 70
+  echo
+  echo "Existing values in the secret will be REPLACED for keys that are present"
+  echo "in your .env. Keys missing from .env are skipped (existing values kept)."
+  echo
+  read -r -p "Continue? [y/N] " confirm
+  [[ "${confirm:-}" =~ ^[Yy]$ ]] || { info "Aborted."; return 0; }
+
+  require_aws
+  [[ -f "$ENV_FILE" ]] || err "$ENV_FILE not found"
+
+  local secret_name; secret_name=$(tf_output api_keys_secret_name)
+
+  # Build merged JSON: existing + values from .env (.env wins where present)
+  local existing
+  existing=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+    --secret-id "$secret_name" --query SecretString --output text 2>/dev/null || echo "{}")
+  [[ "$existing" == "None" || -z "$existing" ]] && existing="{}"
+
+  # JSON to stdout, summary to stderr (visible to user but not in $new_json).
+  local new_json
+  new_json=$(EXISTING="$existing" ENV_FILE="$ENV_FILE" SHARED_KEYS="${SHARED_KEYS[*]}" python3 -c '
+import os, json, sys
+data = json.loads(os.environ["EXISTING"])
+allowed = set(os.environ["SHARED_KEYS"].split())
+imported = []
+with open(os.environ["ENV_FILE"]) as f:
+    for line in f:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k = k.strip()
+        if k in allowed and v.strip():
+            data[k] = v.strip()
+            imported.append(k)
+print(json.dumps(data))
+detail = "\n".join("    - " + k for k in sorted(imported))
+print(f"  imported {len(imported)}:\n{detail}", file=sys.stderr)
+')
+
+  if aws --profile "$AWS_PROFILE_NAME" secretsmanager put-secret-value \
+    --secret-id "$secret_name" --secret-string "$new_json" >/dev/null 2>&1; then
+    ok "Secret updated"
+    info "Verify:  chatpop admin list-secrets"
+    info "Devs:    chatpop sync-secrets  (after you broadcast the change)"
+  else
+    err "Failed to update secret. Are you using admin credentials?"
+  fi
+  unset new_json
+}
+
+# ---------------------------------------------------------------------------
+# cmd: admin (add / remove / list / recover / set-secret / list-secrets / import-env)
+#
+# Admin lifecycle: provisioning IAM users for new developers and tearing
+# them down when devs leave. Reads/writes infra/terraform/developers.auto.tfvars.
+# ---------------------------------------------------------------------------
+
+cmd_admin() {
+  case "${1:-}" in
+    add)          shift; cmd_admin_add "$@" ;;
+    remove)       shift; cmd_admin_remove "$@" ;;
+    list)         shift; cmd_admin_list "$@" ;;
+    recover)      shift; cmd_admin_recover "$@" ;;
+    set-secret)   shift; cmd_admin_set_secret "$@" ;;
+    list-secrets) shift; cmd_admin_list_secrets "$@" ;;
+    import-env)   shift; cmd_admin_import_env "$@" ;;
+    -h|--help|"")
+      cat <<EOF
+Usage: chatpop admin <subcommand>
+
+Developer roster:
+  add <name>           Provision IAM user dev-<name>, print credentials.
+  remove <name>        Drop dev's databases + S3 + IAM user. Requires confirm.
+  list                 Show all developers configured for the team.
+  recover              Set up an admin's machine after a wipe / on a new laptop.
+
+Shared secrets (api-keys):
+  list-secrets         List shared API key names (values masked).
+  set-secret <KEY>     Set/update one key in the shared secret (silent input).
+  import-env           One-time: push current backend/.env shared keys to AWS.
+
+All admin operations require admin credentials (chatpop-dev-deploy).
+EOF
+      ;;
+    *) err "Unknown 'admin' subcommand: $1" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# cmd: admin recover
+#
+# For the admin returning to a wiped or new machine. Uses the same plumbing
+# as `chatpop join`, but with admin-flavored intro and a stronger key check
+# (warns if the pasted keys aren't the admin user).
+# ---------------------------------------------------------------------------
+
+cmd_admin_recover() {
+  printf "${BOLD}Admin recovery${NC} — set up this machine as an admin\n"
+  printf "==================================================\n\n"
+  cat <<EOF
+This is for the team admin (the person who runs terraform, manages IAM
+users via 'chatpop admin add/remove', and has access to dev_seed).
+
+For per-developer setup, the right command is ${BOLD}chatpop join${NC}.
+
+You will need:
+  • Your ${BOLD}chatpop-dev-deploy${NC} admin keys.
+    Stored in your password manager? Have them ready.
+    Lost them? Regenerate first:
+      ${YELLOW}https://console.aws.amazon.com/iam/home#/users/details/chatpop-dev-deploy${NC}
+      Security credentials → Deactivate old key → Create access key.
+  • Tailscale account credentials (sign-in only — your tailnet still exists).
+  • Your developer name (typically the same one you used before).
+
+EOF
+  read -r -p "Continue? [Y/n] " confirm
+  if [[ "${confirm:-}" =~ ^[Nn]$ ]]; then
+    info "Aborted."
+    return 0
+  fi
+  echo
+
+  # Delegate to the join flow — same plumbing, plus a post-flow ARN check.
+  cmd_join
+
+  # Verify the keys we ended up with are actually admin.
+  if arn=$(aws --profile "$AWS_PROFILE_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null); then
+    if [[ "$arn" == *"user/chatpop-dev-deploy"* ]]; then
+      echo
+      ok "Confirmed: admin credentials in '$AWS_PROFILE_NAME' profile."
+      info "You can now run admin ops: chatpop admin add/remove/list, chatpop seed refresh."
+    else
+      echo
+      warn "The keys in '$AWS_PROFILE_NAME' don't look like admin keys."
+      warn "ARN: $arn"
+      warn "If you intended admin recovery, re-run with admin keys:"
+      warn "  chatpop admin recover"
+      warn "Otherwise this is fine — you're set up as a regular developer."
+    fi
+  fi
+}
+
+# Read the developers list from developers.auto.tfvars into the
+# CURRENT_DEVS array (caller's scope).
+_admin_read_devs() {
+  CURRENT_DEVS=()
+  local tfvars="$TF_DIR/developers.auto.tfvars"
+  [[ -f "$tfvars" ]] || return 0
+  while IFS= read -r line; do
+    CURRENT_DEVS+=("$line")
+  done < <(python3 -c '
+import re, sys
+with open(sys.argv[1]) as f:
+    content = f.read()
+m = re.search(r"developers\s*=\s*\[(.*?)\]", content, re.DOTALL)
+if not m: sys.exit(0)
+for entry in re.findall(r"\"([^\"]+)\"", m.group(1)):
+    print(entry)
+' "$tfvars")
+}
+
+# Write the developers list back to developers.auto.tfvars.
+# Args: each developer name as separate positional args.
+_admin_write_devs() {
+  local tfvars="$TF_DIR/developers.auto.tfvars"
+  python3 -c '
+import sys
+devs = sorted(sys.argv[1:])
+print("# Managed by `chatpop admin add` / `chatpop admin remove`.")
+print("# Edit by hand only if you know what you are doing.")
+print("#")
+print("# This file IS committed to git — it is the team roster. Credentials for")
+print("# each developer live in terraform state (sensitive) and are never written")
+print("# to disk outside of state.")
+print()
+print("developers = [")
+for d in devs:
+    print(f"  \"{d}\",")
+print("]")
+' "$@" > "$tfvars"
+}
+
+cmd_admin_add() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || err "Usage: chatpop admin add <name>"
+  local norm
+  norm=$(normalize "$name")
+  [[ "$norm" == "$name" ]] || err "Name must be lowercase a-z 0-9 _ (you gave: $name)"
+
+  printf "${BOLD}Add developer: ${name}${NC}\n\n"
+
+  require_aws
+
+  _admin_read_devs
+  for d in "${CURRENT_DEVS[@]}"; do
+    [[ "$d" == "$name" ]] && err "Developer '$name' already exists. Use 'chatpop admin list' to confirm."
+  done
+
+  info "Updating developers.auto.tfvars"
+  CURRENT_DEVS+=("$name")
+  _admin_write_devs "${CURRENT_DEVS[@]}"
+  ok "Roster updated"
+
+  echo
+  info "Running terraform apply (only the new developer's resources)"
+  (cd "$TF_DIR" && terraform apply -auto-approve \
+    -target="aws_iam_user.developer[\"$name\"]" \
+    -target="aws_iam_access_key.developer[\"$name\"]" \
+    -target="aws_iam_user_policy.developer[\"$name\"]" \
+    >/dev/null) || err "terraform apply failed"
+  ok "IAM user dev-$name created with scoped policy"
+
+  # Pull credentials from terraform state (only way without re-creating).
+  local creds_json akid secret
+  creds_json=$(cd "$TF_DIR" && terraform output -json developer_credentials)
+  akid=$(echo "$creds_json"  | python3 -c "import sys,json; print(json.load(sys.stdin)['$name']['access_key_id'])")
+  secret=$(echo "$creds_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['$name']['secret_access_key'])")
+
+  cat <<EOF
+
+${YELLOW}${BOLD}═══════════════════════════════════════════════════════════════${NC}
+${YELLOW}${BOLD}  Credentials for ${name} — share via secure channel only${NC}
+${YELLOW}${BOLD}═══════════════════════════════════════════════════════════════${NC}
+
+  Access key ID:      ${BOLD}${akid}${NC}
+  Secret access key:  ${BOLD}${secret}${NC}
+
+${YELLOW}${BOLD}═══════════════════════════════════════════════════════════════${NC}
+
+${BOLD}Send to ${name}:${NC}
+  • These credentials                — via 1Password / Signal / encrypted email
+                                       (NOT email body, NOT Slack DM)
+  • Tailscale invite to your tailnet  — https://login.tailscale.com/admin/users
+  • Their developer name              — ${BOLD}${name}${NC}
+  • Repository URL
+
+${BOLD}They run on their machine:${NC}
+  ./install.sh        # installs prerequisites + workspace
+  chatpop join        # interactive setup
+
+${RED}${BOLD}WARNING:${NC} Credentials above will not be shown again. To re-issue, run:
+  chatpop admin rotate-keys ${name}     # (not yet implemented; recreate via remove + add)
+
+EOF
+
+  unset secret
+}
+
+cmd_admin_remove() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || err "Usage: chatpop admin remove <name>"
+
+  printf "${BOLD}Remove developer: ${name}${NC}\n\n"
+
+  require_aws
+  require_libpq
+
+  _admin_read_devs
+  local found=0
+  for d in "${CURRENT_DEVS[@]}"; do [[ "$d" == "$name" ]] && found=1; done
+  [[ "$found" == "1" ]] || err "Developer '$name' not in roster"
+
+  warn "This will permanently destroy ${name}'s data:"
+  echo "  1. DROP all ${name}_* databases on RDS (their data — gone forever)"
+  echo "  2. Delete s3://<bucket>/${name}/ recursively (their media — gone)"
+  echo "  3. Delete IAM user dev-${name} (revokes API access)"
+  echo "  4. Print Tailscale removal reminder (manual step)"
+  echo
+  read -r -p "Type '${name}' to confirm: " confirm
+  [[ "$confirm" == "$name" ]] || { info "Aborted."; return 0; }
+
+  local rds_host rds_port bucket
+  rds_host=$(tf_output rds_address)
+  rds_port=$(tf_output rds_port)
+  bucket=$(tf_output media_bucket_name)
+  fetch_db_credentials
+
+  echo
+  info "Dropping ${name}_* databases…"
+  local dbs
+  dbs=$(PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+    -tAc "SELECT datname FROM pg_database WHERE datname ~ '^${name}_' ORDER BY datname")
+  while IFS= read -r db; do
+    [[ -z "$db" ]] && continue
+    PGPASSWORD="$DB_PASS" psql \
+      "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+      -c "DROP DATABASE IF EXISTS \"${db}\" WITH (FORCE);" >/dev/null
+    ok "Dropped ${db}"
+  done <<< "$dbs"
+
+  echo
+  info "Removing s3://${bucket}/${name}/…"
+  aws --profile "$AWS_PROFILE_NAME" s3 rm --recursive "s3://${bucket}/${name}/" --quiet >/dev/null 2>&1 || true
+  ok "S3 prefix cleared"
+
+  echo
+  info "Removing IAM user (terraform destroy)…"
+  # Remove from roster first so terraform's for_each shrinks
+  local new_devs=()
+  for d in "${CURRENT_DEVS[@]}"; do
+    [[ "$d" != "$name" ]] && new_devs+=("$d")
+  done
+  _admin_write_devs "${new_devs[@]}"
+  (cd "$TF_DIR" && terraform apply -auto-approve >/dev/null) || warn "terraform apply reported issues"
+  ok "IAM user dev-${name} removed"
+
+  unset DB_PASS PGPASSWORD
+
+  cat <<EOF
+
+${GREEN}${BOLD}✓ Removed.${NC}
+
+${YELLOW}One manual step remaining:${NC}
+  Revoke ${name}'s access in Tailscale admin:
+  https://login.tailscale.com/admin/users
+
+EOF
+}
+
+cmd_admin_list() {
+  require_aws
+  _admin_read_devs
+
+  if [[ ${#CURRENT_DEVS[@]} -eq 0 ]]; then
+    info "No developers configured."
+    return 0
+  fi
+
+  local creds_json
+  creds_json=$(cd "$TF_DIR" && terraform output -json developer_credentials 2>/dev/null || echo "{}")
+
+  printf "${BOLD}%-15s %-20s %s${NC}\n" "DEVELOPER" "IAM USER" "ACCESS KEY ID"
+  for name in "${CURRENT_DEVS[@]}"; do
+    local akid
+    akid=$(echo "$creds_json" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('$name', {}).get('access_key_id', '?'))
+except Exception:
+    print('?')
+")
+    printf "%-15s %-20s %s\n" "$name" "dev-${name}" "$akid"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# cmd: bootstrap
+# ---------------------------------------------------------------------------
+
+cmd_bootstrap() {
+  case "${1:-}" in
+    aws)       shift; "$REPO_ROOT/infra/bootstrap.sh" "$@" ;;
+    tailscale) shift; "$REPO_ROOT/infra/bootstrap-tailscale.sh" "$@" ;;
+    -h|--help|"")
+      cat <<EOF
+Usage: chatpop bootstrap <target>
+
+Targets:
+  aws         Create AWS IAM user (chatpop-dev-deploy) and configure CLI profile.
+              One-time per AWS account; subsequent devs just need their own keys.
+
+  tailscale   Install Tailscale, sign in, capture a reusable auth key for the
+              EC2 subnet router. One-time per machine.
+EOF
+      ;;
+    *) err "Unknown 'bootstrap' target: $1" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Help screen
+# ---------------------------------------------------------------------------
+
+show_help() {
+  cat <<EOF
+${BOLD}chatpop${NC} — ChatPop dev environment
+
+USAGE
+    chatpop                            Interactive menu (TTY only)
+    chatpop <command> [args]           Direct command invocation
+    chatpop -h | --help                This screen
+
+COMMANDS — Daily
+    status                Show current dev / branch / DB / S3 / services (passive)
+    check                 Active health checks across the whole stack
+    use cloud [name]      Configure backend/.env for AWS for current branch
+    clean [--apply]       Sweep orphan branch DBs and S3 prefixes
+
+COMMANDS — Onboarding
+    join                  Join the team (or set up a new machine for an existing dev)
+    setup                 One-time per-machine setup (activate hooks, verify env)
+    fixtures load         Load all fixtures/*.json into current branch's DB
+
+COMMANDS — Periodic / maintenance
+    seed refresh          Rebuild dev_seed from current branch (run from main)
+    seed from-local       Push local Postgres + media into dev_seed (baseline)
+    sync-secrets          Pull team's shared API keys from AWS Secrets Manager into .env
+
+COMMANDS — Admin (managing the team roster + secrets)
+    admin add <name>      Provision IAM user dev-<name>, print credentials
+    admin remove <name>   Drop dev's databases + S3 + IAM user
+    admin list            Show all developers configured for the team
+    admin recover         Set up admin's machine after wipe / on new laptop
+    admin set-secret <K>  Set/update one shared API key (silent input)
+    admin list-secrets    List shared API keys (values masked)
+    admin import-env      One-time: push backend/.env shared keys to AWS
+
+COMMANDS — Initial infrastructure (first dev only)
+    bootstrap aws         Configure admin AWS CLI profile
+    bootstrap tailscale   Capture EC2 router's Tailscale auth key
+
+EXAMPLES
+    chatpop status
+    chatpop join
+    chatpop admin add alice
+    chatpop seed refresh
+
+Run 'chatpop <command> --help' for details on a specific command.
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Interactive menu
+# ---------------------------------------------------------------------------
+
+show_menu() {
+  cat <<EOF
+
+${BOLD}chatpop${NC} — ChatPop dev environment
+
+  ${BOLD}Daily${NC}
+    1)  status                Show current dev / branch / DB / S3 / services
+    2)  check                 Active health checks across the stack
+    3)  use cloud             Refresh cloud config for current branch
+    4)  clean                 Sweep orphan branch DBs / S3 prefixes (dry-run)
+    5)  clean --apply         Sweep + delete orphans (destructive)
+
+  ${BOLD}Onboarding${NC}
+    6)  join                  Set up this machine (joiner / second machine)
+    7)  setup                 Activate git hooks
+    8)  fixtures load         Load fixtures into current DB
+
+  ${BOLD}Periodic${NC}
+    9)  seed refresh          Rebuild dev_seed from current branch
+   10)  seed from-local       Push local state to dev_seed
+   11)  sync-secrets          Pull shared API keys from Secrets Manager
+
+  ${BOLD}Admin${NC}
+   12)  admin list            Show team roster
+   13)  admin add <name>      Provision IAM user for new developer
+   14)  admin remove <name>   Tear down a developer's resources
+   15)  admin recover         Set up admin's machine (wiped / new laptop)
+   16)  admin list-secrets    List shared API keys (masked)
+   17)  admin set-secret <K>  Set/update one shared API key
+   18)  admin import-env      One-time: push .env shared keys to AWS
+
+  ${BOLD}First-dev infra setup${NC}
+   19)  bootstrap aws         Admin AWS CLI profile
+   20)  bootstrap tailscale   EC2 router Tailscale key
+
+   q)   quit
+
+EOF
+  read -r -p "> " choice
+  echo
+  case "${choice:-}" in
+    1)  cmd_status ;;
+    2)  cmd_check ;;
+    3)  cmd_use cloud ;;
+    4)  cmd_clean ;;
+    5)  cmd_clean --apply ;;
+    6)  cmd_join ;;
+    7)  cmd_setup ;;
+    8)  cmd_fixtures_load ;;
+    9)  cmd_seed_refresh ;;
+    10) "$REPO_ROOT/infra/seed-from-local.sh" ;;
+    11) cmd_sync_secrets ;;
+    12) cmd_admin_list ;;
+    13) read -r -p "Developer name: " n && cmd_admin_add "$n" ;;
+    14) read -r -p "Developer name: " n && cmd_admin_remove "$n" ;;
+    15) cmd_admin_recover ;;
+    16) cmd_admin_list_secrets ;;
+    17) read -r -p "Key name: " k && cmd_admin_set_secret "$k" ;;
+    18) cmd_admin_import_env ;;
+    19) "$REPO_ROOT/infra/bootstrap.sh" ;;
+    20) "$REPO_ROOT/infra/bootstrap-tailscale.sh" ;;
+    q|Q|"") exit 0 ;;
+    *)  warn "Invalid selection: $choice"; exit 1 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+
+case "${1:-}" in
+  status)        shift; cmd_status "$@" ;;
+  check)         shift; cmd_check "$@" ;;
+  setup)         shift; cmd_setup "$@" ;;
+  join)          shift; cmd_join "$@" ;;
+  use)           shift; cmd_use "$@" ;;
+  seed)          shift; cmd_seed "$@" ;;
+  sync-secrets)  shift; cmd_sync_secrets "$@" ;;
+  fixtures)      shift; cmd_fixtures "$@" ;;
+  clean)         shift; cmd_clean "$@" ;;
+  bootstrap)     shift; cmd_bootstrap "$@" ;;
+  admin)         shift; cmd_admin "$@" ;;
+  -h|--help)     show_help ;;
+  "")            if [[ -t 0 ]]; then show_menu; else show_help; exit 1; fi ;;
+  *)             warn "Unknown command: $1"; echo; show_help; exit 1 ;;
+esac

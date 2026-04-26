@@ -1,0 +1,28 @@
+# Terraform local state — never commit
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Provider/module download cache
+.terraform/
+.terraform.tfstate.lock.info
+
+# Local override files (may contain secrets)
+*.tfvars
+*.tfvars.json
+# Exception: developers.auto.tfvars IS committed — it's the team roster
+# (just dev names, no secrets). Credentials live in terraform state.
+!developers.auto.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Plan output
+*.tfplan
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Note: .terraform.lock.hcl IS committed (locks provider versions across team).

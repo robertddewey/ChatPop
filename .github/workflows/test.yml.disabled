@@ -1,0 +1,92 @@
+# Run the test suite on every PR.
+#
+# DISABLED by default. To enable:
+#   1. Rename this file to test.yml (drop the .disabled suffix)
+#   2. Commit and push
+#
+# This workflow uses an ephemeral Postgres + pgvector container as a service
+# rather than the AWS RDS instance. Faster, simpler, and avoids RDS spend on
+# every PR. The migration+fixture path is exercised against fresh state every
+# run, which catches the same migration-correctness issues that an RDS-backed
+# CI would catch.
+#
+# If you later need RDS-backed CI (e.g., to test against actual RDS Postgres
+# behavior or pgvector versions), use the same Tailscale + OIDC pattern from
+# refresh-dev-seed.yml — but expect each PR run to clone an ephemeral DB on
+# RDS, which adds 10-30s and uses RDS connection slots.
+
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: chatpop_user
+          POSTGRES_PASSWORD: chatpop_pass
+          POSTGRES_DB: chatpop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chatpop_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_DB: chatpop_test
+      POSTGRES_USER: chatpop_user
+      POSTGRES_PASSWORD: chatpop_pass
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_SSLMODE: prefer
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      DJANGO_SECRET_KEY: ci-test-key-not-secret
+      DEBUG: 'False'
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install backend deps
+        working-directory: backend
+        run: |
+          python -m venv venv
+          ./venv/bin/pip install -r requirements.txt
+
+      - name: Run migrations
+        working-directory: backend
+        run: ./venv/bin/python manage.py migrate --no-input
+
+      - name: Run tests
+        working-directory: backend
+        run: ./venv/bin/python manage.py test -v 2

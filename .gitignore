@@ -30,6 +30,9 @@ staticfiles/
 .env
 .env.local
 
+# Per-developer identity (used by infra scripts to pick DB/S3 prefix)
+.dev-identity
+
 # Node
 node_modules/
 .next/

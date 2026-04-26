@@ -151,6 +151,35 @@ check_prerequisites() {
         missing_deps=1
     fi
 
+    # AWS CLI (required for cloud development against AWS RDS + S3)
+    if command_exists aws; then
+        AWS_VERSION=$(aws --version 2>&1 | awk '{print $1}')
+        print_success "$AWS_VERSION found"
+    else
+        print_warning "aws CLI not found - required for cloud development (AWS RDS + S3)"
+        echo "  macOS:  brew install awscli"
+        echo "  Linux:  see https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+    fi
+
+    # Terraform (required to provision/inspect AWS infrastructure state)
+    if command_exists terraform; then
+        TF_VERSION=$(terraform version | head -1 | awk '{print $2}')
+        print_success "Terraform $TF_VERSION found"
+    else
+        print_warning "terraform not found - required for cloud infrastructure"
+        echo "  macOS:  brew tap hashicorp/tap && brew install hashicorp/tap/terraform"
+        echo "  Linux:  see https://developer.hashicorp.com/terraform/install"
+    fi
+
+    # libpq (Postgres client tools — needed for branch-DB cloning hooks)
+    if [ -d "/opt/homebrew/opt/libpq/bin" ] || command_exists psql; then
+        print_success "libpq / psql found"
+    else
+        print_warning "libpq not found - required for branch-DB cloning"
+        echo "  macOS:  brew install libpq"
+        echo "  Linux:  sudo apt install postgresql-client"
+    fi
+
     if [ $missing_deps -eq 1 ]; then
         print_error "Some prerequisites are missing. Please install them and try again."
         exit 1
@@ -211,17 +240,25 @@ setup_ssl_certificates() {
 }
 
 # Start Docker containers
+#
+# Architecture note (cloud-first):
+#   - Redis is REQUIRED at runtime — Django uses it for the WebSocket channel
+#     layer and cache. Always local; never moved to AWS.
+#   - Postgres is OPTIONAL day-to-day — daily development hits AWS RDS via
+#     Tailscale. Local Postgres is only used by `manage.py test` (the test
+#     runner needs CREATE DATABASE permission on a local instance).
+#
+# We start both anyway so tests work out of the box. The Postgres container
+# can be safely stopped (`docker stop chatpop_postgres`) once you're set up.
 start_docker_containers() {
     print_header "Starting Docker Containers"
 
-    print_info "Starting PostgreSQL and Redis containers..."
+    print_info "Starting Postgres (for tests) and Redis (required for app)..."
     docker-compose up -d
 
-    # Wait for containers to be ready
     print_info "Waiting for containers to be ready..."
     sleep 10
 
-    # Check if containers are running
     if docker ps --filter "name=chatpop" | grep -q chatpop; then
         print_success "Docker containers are running"
         docker ps --filter "name=chatpop" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
@@ -311,60 +348,18 @@ setup_backend() {
         print_info "Skipping ngrok domain configuration (can be set later in backend/.env)"
     fi
 
-    # Run migrations
-    print_info "Running database migrations..."
-    ./venv/bin/python manage.py migrate
-    print_success "Database migrations completed"
+    # NOTE: We intentionally do NOT run migrations or load fixtures here.
+    # In cloud-first development, your per-developer database is cloned from
+    # the team's `dev_seed` (which already has migrations + fixtures applied).
+    # That happens during the cloud onboarding step further down, via:
+    #     chatpop use cloud <your-name>
+    #
+    # If you really need a populated local DB for offline dev, see CLAUDE.md
+    # — local mode requires hand-editing backend/.env.
 
-    # Load fixtures
-    load_fixture() {
-        local fixture_file="$1"
-        local description="$2"
-        if [ ! -f "$fixture_file" ]; then
-            print_warning "Fixture not found: $fixture_file"
-            return
-        fi
-        if [ "$FRESH_INSTALL" = true ]; then
-            print_info "Loading $description..."
-            ./venv/bin/python manage.py loaddata "$fixture_file"
-            print_success "$description loaded"
-        else
-            read -p "Load $description? (overwrites current data) (y/N): " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                print_info "Loading $description..."
-                ./venv/bin/python manage.py loaddata "$fixture_file"
-                print_success "$description loaded"
-            else
-                print_info "Skipping $description"
-            fi
-        fi
-    }
-
-    load_fixture "fixtures/theme.json" "chat themes"
-    load_fixture "fixtures/config.json" "config settings"
-    load_fixture "fixtures/gifts.json" "gift catalog"
-
-    # Create system user (needed for AI-generated discover rooms)
-    print_info "Creating system user (ChatPopDiscover)..."
-    ./venv/bin/python manage.py create_system_user 2>/dev/null || print_warning "System user may already exist"
-    print_success "System user ready"
-
-    # Optional: Create test data (admin, test users, sample chat rooms)
-    echo ""
-    read -p "Create test data? (admin user, test users, sample chats) (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_info "Creating test data..."
-        ./venv/bin/python manage.py create_test_data
-        print_success "Test data created (admin@chatpop.app / demo123)"
-    else
-        print_info "Skipping test data"
-    fi
-
-    # Collect static files for Django admin
+    # Collect static files for Django admin (uses STATICFILES_DIRS only)
     print_info "Collecting static files for Django admin..."
-    ./venv/bin/python manage.py collectstatic --noinput
+    ./venv/bin/python manage.py collectstatic --noinput 2>/dev/null || print_warning "collectstatic skipped (DB not yet configured)"
     print_success "Static files collected"
 
     # Optional: Pull Allure Docker image for test report viewing
@@ -445,56 +440,100 @@ EOF
     print_success "Frontend setup completed"
 }
 
+# Cloud onboarding: hands off to `chatpop join`, which is the canonical
+# joiner / second-machine flow. Skippable for users exploring the code
+# without AWS access — they can run `chatpop join` later.
+setup_cloud() {
+    print_header "Cloud Development Setup"
+
+    echo "ChatPop runs against AWS RDS (Postgres) and S3 (media) in development."
+    echo "An admin should have given you:"
+    echo "  • AWS access key ID + secret (via 1Password / Signal / encrypted email)"
+    echo "  • A Tailscale invite to the team's tailnet"
+    echo "  • Your developer name (e.g. 'alice')"
+    echo ""
+    echo "If you don't have these yet, skip this step and the admin can run"
+    echo "  ${YELLOW}./bin/chatpop admin add <your-name>${NC}"
+    echo "to provision them for you."
+    echo ""
+    read -p "Run cloud onboarding now? (Y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        print_info "Skipping cloud onboarding."
+        echo ""
+        echo -e "  When ready: ${YELLOW}./bin/chatpop join${NC}"
+        echo ""
+        return 0
+    fi
+
+    ./bin/chatpop join || {
+        print_warning "chatpop join did not complete. Re-run any time:"
+        echo -e "  ${YELLOW}./bin/chatpop join${NC}"
+        return 0
+    }
+
+    print_success "Cloud onboarding complete"
+}
+
 # Print completion message
 print_completion() {
     print_header "Installation Complete!"
 
-    # Detect LAN IP for completion message
     LAN_IP=$(detect_lan_ip)
 
-    echo -e "${GREEN}ChatPop.app is now installed and ready to use!${NC}\n"
+    echo -e "${GREEN}ChatPop.app is installed.${NC}\n"
 
-    echo -e "${BLUE}Next Steps:${NC}"
-    echo -e "1. Start the backend server (in a new terminal):"
-    echo -e "   ${YELLOW}cd backend${NC}"
-    echo -e "   ${YELLOW}ALLOWED_HOSTS=localhost,127.0.0.1,$LAN_IP \\${NC}"
-    echo -e "   ${YELLOW}CORS_ALLOWED_ORIGINS=\"http://localhost:4000,https://localhost:4000,http://$LAN_IP:4000,https://$LAN_IP:4000\" \\${NC}"
-    echo -e "   ${YELLOW}./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application${NC}"
+    echo -e "${BLUE}Verify your setup:${NC}"
+    echo -e "   ${YELLOW}./bin/chatpop status${NC}"
     echo ""
-    echo -e "2. Start the frontend server (in another new terminal):"
-    echo -e "   ${YELLOW}cd frontend${NC}"
-    echo -e "   ${YELLOW}npm run dev:https${NC}"
+    echo -e "   That should show a green-checked dev identity, branch, RDS endpoint,"
+    echo -e "   S3 bucket, and connected Tailscale router. Anything red means a step"
+    echo -e "   above didn't complete — re-run install.sh or the specific bootstrap."
     echo ""
-    echo -e "${BLUE}Access the application:${NC}"
+
+    echo -e "${BLUE}Start the servers (two terminals):${NC}"
+    echo ""
+    echo -e "  ${YELLOW}# Backend (Daphne, SSL on port 9000)${NC}"
+    echo -e "  ${YELLOW}cd backend${NC}"
+    echo -e "  ${YELLOW}./venv/bin/daphne -e ssl:9000:privateKey=../certs/localhost+3-key.pem:certKey=../certs/localhost+3.pem -b 0.0.0.0 chatpop.asgi:application${NC}"
+    echo ""
+    echo -e "  ${YELLOW}# Frontend (Next.js, SSL on port 4000)${NC}"
+    echo -e "  ${YELLOW}cd frontend${NC}"
+    echo -e "  ${YELLOW}npm run dev:https${NC}"
+    echo ""
+
+    echo -e "${BLUE}Access the app:${NC}"
     echo -e "   Frontend:     ${GREEN}https://localhost:4000${NC}"
     echo -e "   Backend API:  ${GREEN}https://localhost:9000${NC}"
     echo -e "   Django Admin: ${GREEN}https://localhost:9000/admin${NC}"
-
     if [ "$LAN_IP" != "127.0.0.1" ]; then
         echo ""
-        echo -e "${BLUE}Mobile/LAN Access (other devices on your network):${NC}"
+        echo -e "${BLUE}Mobile/LAN access:${NC}"
         echo -e "   Frontend:     ${GREEN}https://$LAN_IP:4000${NC}"
-        echo -e "   Backend API:  ${GREEN}https://$LAN_IP:9000${NC}"
     fi
+    echo ""
 
-    # ngrok section
+    echo -e "${BLUE}Daily workflow${NC} (git hooks handle the rest automatically):"
+    echo -e "   ${YELLOW}git checkout -b feat/something${NC}   creates a per-branch DB + S3 prefix"
+    echo -e "   ${YELLOW}git pull origin main${NC}             auto-runs migrate + loaddata if needed"
+    echo -e "   ${YELLOW}git branch -D feat/something${NC}     leaves an orphan DB; sweep later with"
+    echo -e "                                       ${YELLOW}./bin/chatpop clean${NC}"
+    echo ""
+
+    echo -e "${BLUE}All-in-one CLI:${NC}"
+    echo -e "   ${YELLOW}./bin/chatpop${NC}                    interactive menu"
+    echo -e "   ${YELLOW}./bin/chatpop --help${NC}             list all commands"
+    echo ""
+
     CONFIGURED_NGROK_DOMAIN=$(grep "^NGROK_DOMAIN=" backend/.env 2>/dev/null | cut -d= -f2)
-    echo ""
-    echo -e "${BLUE}Mobile Testing (ngrok):${NC}"
     if [ -n "$CONFIGURED_NGROK_DOMAIN" ]; then
+        echo -e "${BLUE}Mobile testing (ngrok):${NC}"
         echo -e "   ${YELLOW}ngrok http https://localhost:4000 --url=$CONFIGURED_NGROK_DOMAIN${NC}"
-    else
-        echo -e "   ${YELLOW}ngrok http https://localhost:4000${NC}"
-        echo -e "   (Set NGROK_DOMAIN in backend/.env for a static domain)"
+        echo ""
     fi
 
-    echo ""
-    echo -e "${YELLOW}Note:${NC} You may see a browser security warning about the self-signed certificate."
-    echo -e "      Click 'Advanced' → 'Proceed to localhost' to continue. This is safe for local development."
-    echo ""
-    echo -e "${BLUE}Optional:${NC} Create a Django superuser to access the admin panel:"
-    echo -e "   ${YELLOW}cd backend${NC}"
-    echo -e "   ${YELLOW}./venv/bin/python manage.py createsuperuser${NC}"
+    echo -e "${YELLOW}Note:${NC} Browser may warn about the self-signed certificate."
+    echo -e "      Click 'Advanced' → 'Proceed' on first visit."
     echo ""
 }
 
@@ -794,7 +833,14 @@ main() {
     echo "                                    | |   "
     echo "                                    |_|   "
     echo -e "${NC}"
-    echo -e "${BLUE}Automated Installation Script for macOS/Linux${NC}\n"
+    echo -e "${BLUE}Automated Installation Script for macOS/Linux${NC}"
+    echo ""
+    echo -e "${BLUE}This script is intended for developers JOINING an existing team.${NC}"
+    echo -e "  • New dev?           Continue — you'll be prompted for your AWS keys + dev name"
+    echo -e "  • New machine, dev?  Continue — works the same"
+    echo -e "  • New machine, ${YELLOW}admin${NC}? Use ${YELLOW}./bin/chatpop admin recover${NC} instead"
+    echo -e "  • First-time admin?  See README.md → 'First-time admin setting up infrastructure'"
+    echo ""
 
     # Check if git is installed
     if ! command_exists git; then
@@ -834,6 +880,7 @@ main() {
     start_docker_containers
     setup_backend
     setup_frontend
+    setup_cloud
     print_completion
 }
 
