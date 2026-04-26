@@ -28,11 +28,33 @@ CHANGED_FIXTURES=$(git diff --name-only ORIG_HEAD HEAD -- 'fixtures/*.json')
 
 cd "$REPO_ROOT/backend"
 
-# Apply schema changes first.
+# Apply schema changes first. If migrate fails with the most-common
+# multi-dev gotcha (two migrations off the same parent), surface a hint.
 if [[ -n "$CHANGED_MIGRATIONS" ]]; then
   COUNT=$(echo "$CHANGED_MIGRATIONS" | wc -l | tr -d ' ')
   printf "\n\033[1;34m[post-merge]\033[0m %s migration file(s) changed; running migrate\n" "$COUNT"
-  ./venv/bin/python manage.py migrate --no-input
+
+  if MIGRATE_OUTPUT=$(./venv/bin/python manage.py migrate --no-input 2>&1); then
+    echo "$MIGRATE_OUTPUT"
+  else
+    MIGRATE_EXIT=$?
+    echo "$MIGRATE_OUTPUT"
+
+    if echo "$MIGRATE_OUTPUT" | grep -q "InconsistentMigrationHistory"; then
+      printf "\n\033[1;33m[post-merge hint]\033[0m Migration conflict detected.\n"
+      printf "  Two migrations share the same parent — likely you and a teammate\n"
+      printf "  both added a migration off the same base. To resolve with an\n"
+      printf "  auto-generated merge migration:\n\n"
+      printf "    cd backend && ./venv/bin/python manage.py makemigrations --merge\n"
+      printf "    git add backend/*/migrations/*_merge_*.py\n"
+      printf "    ./venv/bin/python manage.py migrate\n\n"
+      printf "  Or, if you'd rather renumber YOUR migration to land after theirs:\n"
+      printf "    1. Rename your 00NN_yours.py → 00NN+1_yours.py\n"
+      printf "    2. Update 'dependencies = [...]' inside it to point at theirs\n"
+      printf "    3. Re-run migrate\n\n"
+    fi
+    exit "$MIGRATE_EXIT"
+  fi
 fi
 
 # Then load any updated reference fixtures (themes, gifts, constance).
