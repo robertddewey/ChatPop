@@ -1331,7 +1331,128 @@ print(f"  imported {len(imported)}:\n{detail}", file=sys.stderr)
 }
 
 # ---------------------------------------------------------------------------
-# cmd: admin (add / remove / list / recover / set-secret / list-secrets / import-env)
+# cmd: admin replace-seed
+#
+# Replace the team's canonical dev_seed (DB + S3 prefix) with the contents
+# of any source DB. Defaults to <dev>_main. Use when you want to baseline
+# the team on your current state — new developers onboarding will inherit
+# this state, and 'chatpop seed refresh' is no longer the only path to
+# populate dev_seed.
+#
+# Admin only — writes to dev_seed/ S3 prefix require the admin policy.
+# ---------------------------------------------------------------------------
+
+cmd_admin_replace_seed() {
+  local source_db="${1:-}"
+
+  # Default to <dev>_main when no arg given.
+  if [[ -z "$source_db" ]]; then
+    [[ -f "$IDENTITY_FILE" ]] || err "No .dev-identity. Pass an explicit source DB:
+  chatpop admin replace-seed <db_name>"
+    local dev_name; dev_name=$(cat "$IDENTITY_FILE")
+    source_db="${dev_name}_main"
+  fi
+
+  [[ "$source_db" == "dev_seed" ]] && err "Source can't be dev_seed (that would be a no-op)."
+  [[ "$source_db" == *_* ]] || err "Cannot determine S3 prefix from '${source_db}' (expected <dev>_<branch> format)."
+
+  # DB name → S3 prefix: split on first underscore.
+  #   robert_main          → robert/main
+  #   robert_feat_foo      → robert/feat_foo
+  #   alice_main           → alice/main
+  local source_s3="${source_db/_//}"
+
+  printf "${RED}${BOLD}REPLACE dev_seed${NC}\n"
+  printf "================\n\n"
+
+  require_aws_admin
+  require_libpq
+
+  local rds_host rds_port bucket
+  rds_host=$(tf_output rds_address)
+  rds_port=$(tf_output rds_port)
+  bucket=$(tf_output media_bucket_name)
+  fetch_db_credentials
+
+  # Verify source DB exists.
+  local exists
+  exists=$(PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+    -tAc "SELECT 1 FROM pg_database WHERE datname='${source_db}'" 2>/dev/null || echo "")
+  if [[ "$exists" != "1" ]]; then
+    unset DB_PASS PGPASSWORD
+    err "Source database '${source_db}' does not exist on RDS.
+Available DBs: query with 'psql ... -c \"SELECT datname FROM pg_database\"' or use chatpop admin list."
+  fi
+
+  cat <<EOF
+${YELLOW}This is destructive AND TEAM-WIDE.${NC} It will:
+
+  1. DROP DATABASE ${BOLD}dev_seed${NC} (the team's canonical seed)
+  2. CREATE DATABASE ${BOLD}dev_seed${NC} TEMPLATE ${BOLD}${source_db}${NC}
+       → dev_seed now mirrors ${source_db} (data, schema, history)
+  3. Replace s3://${bucket}/dev_seed/  with  s3://${bucket}/${source_s3}/
+
+After:
+  • dev_seed reflects ${source_db}'s state.
+  • New developers onboarding (chatpop join) will clone from the new dev_seed.
+  • Existing developers' <dev>_main DBs are NOT updated automatically — their
+    main was cloned from dev_seed at their onboarding; updates to dev_seed
+    don't propagate. They'd need to drop and re-clone <dev>_main to pick up.
+  • The source DB '${source_db}' is unchanged.
+
+EOF
+
+  read -r -p "Type 'dev_seed' to confirm: " confirm
+  if [[ "$confirm" != "dev_seed" ]]; then
+    unset DB_PASS PGPASSWORD
+    info "Aborted (input did not match)."
+    return 0
+  fi
+
+  echo
+  info "Dropping dev_seed…"
+  PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+    -v ON_ERROR_STOP=1 \
+    -c "DROP DATABASE IF EXISTS dev_seed WITH (FORCE);" >/dev/null
+  ok "dev_seed dropped"
+
+  info "Cloning ${source_db} → dev_seed…"
+  PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+    -v ON_ERROR_STOP=1 \
+    -c "CREATE DATABASE dev_seed TEMPLATE ${source_db};" >/dev/null
+  ok "dev_seed created from ${source_db}"
+
+  echo
+  info "Replacing S3 prefix s3://${bucket}/dev_seed/ from s3://${bucket}/${source_s3}/…"
+  # Admin profile required: writes to dev_seed/ aren't allowed by dev policy.
+  aws --profile "$AWS_PROFILE_ADMIN_NAME" s3 sync \
+    "s3://${bucket}/${source_s3}/" "s3://${bucket}/dev_seed/" \
+    --delete --no-progress >/dev/null
+  local count
+  count=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" s3 ls "s3://${bucket}/dev_seed/" --recursive 2>/dev/null | wc -l | tr -d ' ')
+  ok "S3 prefix replaced (${count} objects in dev_seed)"
+
+  unset DB_PASS PGPASSWORD
+
+  cat <<EOF
+
+${GREEN}${BOLD}✓ dev_seed replaced.${NC}
+
+  dev_seed now mirrors ${source_db} (DB + S3).
+  Source DB unchanged.
+
+${YELLOW}Note:${NC} existing developers' <dev>_main DBs were cloned from the OLD dev_seed
+when they onboarded. They are NOT automatically updated. To propagate the
+new state to a developer's <dev>_main, they would have to drop and re-clone
+their main DB (destructive on their side).
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# cmd: admin (add / remove / list / recover / set-secret / list-secrets / import-env / replace-seed)
 #
 # Admin lifecycle: provisioning IAM users for new developers and tearing
 # them down when devs leave. Reads/writes infra/terraform/developers.auto.tfvars.
@@ -1347,6 +1468,7 @@ cmd_admin() {
     list-secrets)     shift; cmd_admin_list_secrets "$@" ;;
     import-env)       shift; cmd_admin_import_env "$@" ;;
     install-dev-keys) shift; cmd_admin_install_dev_keys "$@" ;;
+    replace-seed)     shift; cmd_admin_replace_seed "$@" ;;
     -h|--help|"")
       cat <<EOF
 Usage: chatpop admin <subcommand>
@@ -1364,6 +1486,11 @@ Shared secrets (api-keys):
   list-secrets           List shared API key names (values masked).
   set-secret <KEY>       Set/update one key in the shared secret (silent input).
   import-env             One-time: push current backend/.env shared keys to AWS.
+
+Team baseline (DESTRUCTIVE):
+  replace-seed [DB]      Replace dev_seed (DB + S3) with the contents of any
+                         source DB. Defaults to <dev>_main. Source DB is not
+                         modified. Use to baseline new-dev onboarding state.
 
 All admin operations require admin credentials (chatpop-dev-deploy in the
 chatpop-dev-admin profile).
@@ -1741,6 +1868,7 @@ COMMANDS — Admin (managing the team roster + secrets)
     admin set-secret <K>  Set/update one shared API key (silent input)
     admin list-secrets    List shared API keys (values masked)
     admin import-env      One-time: push backend/.env shared keys to AWS
+    admin replace-seed [DB] DESTRUCTIVE: replace dev_seed with any source DB
 
 COMMANDS — Initial infrastructure (first dev only)
     bootstrap aws         Configure admin AWS CLI profile
@@ -1793,10 +1921,11 @@ ${BOLD}chatpop${NC} — ChatPop dev environment
    16)  admin list-secrets    List shared API keys (masked)
    17)  admin set-secret <K>  Set/update one shared API key
    18)  admin import-env      One-time: push .env shared keys to AWS
+   19)  admin replace-seed    ${RED}REPLACE dev_seed with any source DB (team-wide)${NC}
 
   ${BOLD}First-dev infra setup${NC}
-   19)  bootstrap aws         Admin AWS CLI profile
-   20)  bootstrap tailscale   EC2 router Tailscale key
+   20)  bootstrap aws         Admin AWS CLI profile
+   21)  bootstrap tailscale   EC2 router Tailscale key
 
    q)   quit
 
@@ -1822,8 +1951,9 @@ EOF
     16) cmd_admin_list_secrets ;;
     17) read -r -p "Key name: " k && cmd_admin_set_secret "$k" ;;
     18) cmd_admin_import_env ;;
-    19) "$REPO_ROOT/infra/bootstrap.sh" ;;
-    20) "$REPO_ROOT/infra/bootstrap-tailscale.sh" ;;
+    19) read -r -p "Source DB (Enter for <dev>_main): " d; cmd_admin_replace_seed "${d:-}" ;;
+    20) "$REPO_ROOT/infra/bootstrap.sh" ;;
+    21) "$REPO_ROOT/infra/bootstrap-tailscale.sh" ;;
     q|Q|"") exit 0 ;;
     *)  warn "Invalid selection: $choice"; exit 1 ;;
   esac

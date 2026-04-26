@@ -203,6 +203,7 @@ chatpop --help           # all commands
 | `chatpop admin add <name>` | Provision a new developer (admin only) |
 | `chatpop admin install-dev-keys [name]` | Pull dev-`<name>` keys from terraform into your `chatpop-dev` profile (admin only) |
 | `chatpop admin remove <name>` | Tear down a developer's resources (admin only) |
+| `chatpop admin replace-seed [DB]` | **Destructive, team-wide** — replace `dev_seed` (DB + S3) with contents of any source DB; defaults to `<dev>_main` (admin only) |
 | `chatpop admin list` | Show team roster |
 | `chatpop admin set-secret <K>` | Update a shared API key in Secrets Manager (admin) |
 | `chatpop admin list-secrets` | List shared API keys (values masked) |

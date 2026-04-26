@@ -144,6 +144,7 @@ A single entry point at `bin/chatpop` exposes every dev operation as a subcomman
 | `chatpop admin remove <name>` | Drop dev's databases + S3 + IAM user (typed confirm) |
 | `chatpop admin recover` | Set up admin's machine after a wipe / on a new laptop. Configures BOTH profiles (chatpop-dev-admin + chatpop-dev). |
 | `chatpop admin install-dev-keys [name]` | Pull dev-`<name>` keys from terraform state and write to `chatpop-dev` profile. Used during admin recovery and one-shot setups. |
+| `chatpop admin replace-seed [DB]` | **DESTRUCTIVE, team-wide.** Replace dev_seed (DB + S3 prefix) with the contents of any source DB. Defaults to `<dev>_main`. Use to baseline new-dev onboarding state. |
 | `chatpop admin set-secret <K>` | Set/update one shared API key (silent input) |
 | `chatpop admin list-secrets` | List shared API keys (values masked) |
 | `chatpop admin import-env` | One-time: push current `backend/.env` shared keys to Secrets Manager |
