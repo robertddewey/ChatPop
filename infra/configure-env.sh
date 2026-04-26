@@ -258,8 +258,19 @@ updates = {
     "AWS_LOCATION":           os.environ["S3_PREFIX"],
 }
 
+# Legacy keys to strip outright. boto3 falls through to AWS_PROFILE when
+# these env vars are absent, which is what we want — having them present
+# (even empty) is just noise, and any real values in them would override
+# the profile.
+deletions = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
+
 env_path = Path(os.environ["ENV_FILE"])
 content = env_path.read_text()
+
+for key in deletions:
+    # Match the line + trailing newline so the file doesn't grow blank lines.
+    pattern = re.compile(rf"^{re.escape(key)}=.*\n?", re.MULTILINE)
+    content = pattern.sub("", content)
 
 for key, val in updates.items():
     pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
