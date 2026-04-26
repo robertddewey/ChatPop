@@ -368,17 +368,9 @@ setup_ssl_certificates() {
 
 # Start Docker containers
 #
-# Architecture (cloud-first):
-#   - Redis is REQUIRED at runtime — Django uses it for the WebSocket channel
-#     layer and cache. Always local; never moved to AWS.
-#   - Postgres is OPTIONAL — daily development hits AWS RDS via Tailscale.
-#     Postgres is in docker-compose.yml under the "local-tests" profile and
-#     only starts on demand (e.g., when running `manage.py test` locally
-#     or running `chatpop seed from-local`). Tests in CI run via GitHub
-#     Actions service containers — no local Postgres needed.
-#
-# This step starts only Redis. To bring up Postgres on demand:
-#   docker-compose --profile local-tests up -d postgres
+# Cloud-first: Django talks to AWS RDS via Tailscale; the only local Docker
+# container is Redis (required for the WebSocket channel layer + cache).
+# Tests run via CI (GitHub Actions service containers) — no local Postgres.
 start_docker_containers() {
     print_header "Starting Docker Containers"
 
@@ -390,15 +382,11 @@ start_docker_containers() {
 
     if docker ps --filter "name=chatpop_redis" --format '{{.Names}}' | grep -q chatpop_redis; then
         print_success "Redis is running"
-        docker ps --filter "name=chatpop" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+        docker ps --filter "name=chatpop_redis" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     else
         print_error "Failed to start Redis"
         exit 1
     fi
-
-    echo ""
-    print_info "Postgres is OPTIONAL (only needed for: local 'manage.py test' or 'chatpop seed from-local')."
-    print_info "If/when you need it: ${YELLOW}docker-compose --profile local-tests up -d postgres${NC}"
 }
 
 # Setup backend
@@ -719,9 +707,10 @@ detect_previous_installation() {
         needs_cleanup=1
     fi
 
-    # Check for Docker volumes (even if stopped)
+    # Check for Docker volumes (even if stopped — including legacy
+    # chatpop_postgres_data from before Postgres was removed locally).
     if docker volume ls 2>/dev/null | grep -q chatpop; then
-        issues+=("Docker volumes with database data")
+        issues+=("Docker volumes (Redis cache; legacy Postgres data if present)")
         needs_cleanup=1
     fi
 

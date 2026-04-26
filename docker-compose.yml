@@ -1,6 +1,7 @@
 services:
   # Redis: required at runtime by Django (cache + WebSocket channel layer).
-  # Always starts with `docker-compose up -d`.
+  # No local Postgres — daily dev hits AWS RDS via Tailscale; tests run in CI
+  # via GitHub Actions service containers.
   redis:
     image: redis:7-alpine
     container_name: chatpop_redis
@@ -14,34 +15,5 @@ services:
       timeout: 5s
       retries: 5
 
-  # Postgres: OPTIONAL. Daily dev hits AWS RDS via Tailscale, not this
-  # container. Tagged with the "local-tests" profile so it only starts when
-  # explicitly requested:
-  #   docker-compose --profile local-tests up -d
-  # Use cases:
-  #   - Running `manage.py test` locally (test runner needs CREATE DATABASE
-  #     and pgvector locally).
-  #   - `chatpop seed from-local` (admin baselining dev_seed from a curated
-  #     local snapshot).
-  # Tests in CI run via .github/workflows/test.yml — no local Postgres needed.
-  postgres:
-    profiles: ["local-tests"]
-    image: pgvector/pgvector:pg16
-    container_name: chatpop_postgres
-    environment:
-      POSTGRES_DB: chatpop
-      POSTGRES_USER: chatpop_user
-      POSTGRES_PASSWORD: chatpop_pass
-    ports:
-      - "5435:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chatpop_user -d chatpop"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
-  postgres_data:
   redis_data:

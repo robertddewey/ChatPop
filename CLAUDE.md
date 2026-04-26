@@ -98,8 +98,8 @@
 **IMPORTANT:** This project uses custom ports to avoid conflicts with other projects:
 - **Frontend (Next.js):** Port **4000** (http://localhost:4000)
 - **Backend (Django):** Port **9000** (http://localhost:9000)
-- **PostgreSQL:** Port **5435** (localhost:5435)
-- **Redis:** Port **6381** (localhost:6381)
+- **Redis:** Port **6381** (localhost:6381) — required, runs locally in Docker
+- Postgres runs only on AWS RDS (accessed via Tailscale). No local Postgres.
 
 **STRICT ENFORCEMENT POLICY:**
 - These ports MUST be used at all times - no exceptions
@@ -110,14 +110,17 @@
 
 ### Starting the Development Servers
 
-**1. Start Docker Containers (PostgreSQL & Redis):**
+**1. Start Docker Containers (Redis only):**
+
 ```bash
 docker-compose up -d
 ```
 
-Verify containers are running:
+Only Redis runs locally — required for Django's WebSocket channel layer + cache. Postgres lives on AWS RDS (accessed via Tailscale); no local Postgres container exists. Tests run via CI service containers.
+
+Verify Redis is running:
 ```bash
-docker ps --filter "name=chatpop"
+docker ps --filter "name=chatpop_redis"
 ```
 
 **2. Start Backend (Django with SSL/HTTPS on port 9000):**
@@ -177,7 +180,7 @@ Frontend: https://localhost:4000
 
 The default development mode runs Django against **AWS RDS** (Postgres + pgvector) and **S3** (media). Each developer has their own per-branch database and S3 prefix, isolated from other developers.
 
-**Local Docker:** only Redis runs by default (required for cache + WebSockets). Postgres is in `docker-compose.yml` under the `local-tests` profile and only starts on demand for `manage.py test` or `chatpop seed from-local`. Daily dev never touches local Postgres. Tests in CI run via GitHub Actions service containers.
+**Local Docker:** only Redis. Postgres runs on AWS RDS (accessed via Tailscale); there is no local Postgres container. Tests run via GitHub Actions service containers.
 
 ```
 laptop ── Tailscale tunnel ──> EC2 subnet router ──> VPC ──> RDS Postgres
@@ -217,7 +220,7 @@ For the current team size, IAM-only is acceptable. When answering questions abou
 
 - **Two AWS profiles in `~/.aws/credentials`** (least-privilege model):
   - `chatpop-dev` — scoped per-developer keys (`dev-<name>`). Used by Django runtime, branch hooks, daily chatpop ops. Every dev machine has this.
-  - `chatpop-dev-admin` — `chatpop-dev-deploy` admin keys. Used by terraform and admin operations (`chatpop admin add/remove/set-secret/import-env`, `seed refresh`, `seed from-local`). **Only admin machines have this profile.**
+  - `chatpop-dev-admin` — `chatpop-dev-deploy` admin keys. Used by terraform and admin operations (`chatpop admin add/remove/set-secret/import-env`, `seed refresh`). **Only admin machines have this profile.**
 - Setup: `chatpop join` (developer) → writes `chatpop-dev`. `chatpop admin recover` (admin) → writes both profiles. `chatpop bootstrap aws` (very first admin) → writes `chatpop-dev-admin`.
 - **RDS master password** in AWS Secrets Manager (`chatpop-dev/rds/master`). Pulled by `configure-env.sh` and written to `backend/.env` for psycopg2 (which doesn't read AWS creds directly). Both profiles have `GetSecretValue` here.
 - **Shared third-party API keys** (OpenAI, Stripe, etc.) in AWS Secrets Manager (`chatpop-dev/api-keys`). Pulled by `chatpop sync-secrets` (uses dev profile, read-only). Updated by `chatpop admin set-secret` (uses admin profile, `PutSecretValue`). In production (`ENV=production`), Django reads them directly from Secrets Manager via boto3.

@@ -32,22 +32,13 @@ laptop ── Tailscale tunnel ──> EC2 subnet router ──> VPC ──> RDS
 - **Per-branch isolation:** every git branch gets its own DB (cloned from `<dev>_main` via Postgres `CREATE DATABASE … TEMPLATE`, ~1-3 seconds) and its own S3 prefix.
 - **`dev_seed`** is the canonical clone source — refreshed whenever the team agrees on a known-good baseline.
 
-Cloud-only by design. There is no `use local` toggle. If you need to develop against local Docker (rare; only when AWS is genuinely unreachable), edit `backend/.env` by hand. Daily development assumes Tailscale is up and RDS is reachable.
+Cloud-only by design. There is no `use local` toggle. If you need to develop against local Docker (rare; only when AWS is genuinely unreachable), the path requires manual setup outside the standard flow. Daily development assumes Tailscale is up and RDS is reachable.
 
-### Local Docker — Redis only by default
+### Local Docker — Redis only
 
-Only `chatpop_redis` starts with `docker-compose up -d` (Django needs it for the WebSocket channel layer + cache). `chatpop_postgres` is in `docker-compose.yml` under the `local-tests` profile and only starts when explicitly requested:
+`docker-compose up -d` starts a single container: `chatpop_redis`. Django needs it for the WebSocket channel layer + cache.
 
-```bash
-docker-compose --profile local-tests up -d postgres
-```
-
-You only need local Postgres for:
-
-- **`manage.py test`** — Django's test runner needs `CREATE DATABASE` and pgvector locally to spin up an ephemeral test database. (CI uses an ephemeral Postgres+pgvector container in the workflow runner — see `.github/workflows/test.yml`.)
-- **`chatpop seed from-local`** — admin baselining `dev_seed` from a curated local Postgres snapshot. Rare.
-
-For everything else (daily dev, branch operations, `chatpop sync-secrets`, etc.) Postgres data lives on AWS RDS. The local Postgres container is dead weight unless you're running tests or doing the rare admin baseline.
+There is **no local Postgres container.** All Postgres data lives on AWS RDS, accessed via Tailscale. Tests run via CI (`.github/workflows/test.yml`) using ephemeral Postgres + pgvector service containers in the runner — not locally.
 
 ### Two AWS profiles (least-privilege model)
 
@@ -56,7 +47,7 @@ Every machine has at least one AWS profile; admin machines have both:
 | Profile | Keys it holds | Used by |
 |---|---|---|
 | `chatpop-dev` | `dev-<name>` (scoped per-developer) | Django runtime (boto3), branch hooks (read master DB password, S3 read/write own prefix), most chatpop subcommands |
-| `chatpop-dev-admin` | `chatpop-dev-deploy` (AdministratorAccess) | Terraform, `chatpop admin *`, `chatpop seed refresh`, `chatpop seed from-local` |
+| `chatpop-dev-admin` | `chatpop-dev-deploy` (AdministratorAccess) | Terraform, `chatpop admin *`, `chatpop seed refresh` |
 
 This means **Django runs with scoped keys**, not admin keys. If the laptop is compromised, the blast radius is the developer's own DBs and S3 prefix — not the whole AWS account.
 
@@ -106,7 +97,6 @@ A single entry point at `bin/chatpop` exposes every dev operation as a subcomman
 | `chatpop setup` | Activate hooks only (subset of `join`) |
 | `chatpop use cloud [name]` | Configure `backend/.env` for AWS on current branch |
 | `chatpop seed refresh` | Rebuild `dev_seed` from current branch's migrations + fixtures (run from `main`) |
-| `chatpop seed from-local` | Push your local Postgres + media into `dev_seed` (curated baseline) |
 | `chatpop fixtures load` | Load `fixtures/*.json` into current branch's DB |
 | `chatpop sync-secrets` | Pull team's shared API keys from Secrets Manager into `backend/.env` |
 | `chatpop clean [--apply]` | Find/drop orphan branch DBs and S3 prefixes |
@@ -121,10 +111,7 @@ A single entry point at `bin/chatpop` exposes every dev operation as a subcomman
 | `chatpop bootstrap aws` | Configure admin AWS CLI profile (first dev only) |
 | `chatpop bootstrap tailscale` | Capture EC2 router auth key (first dev only) |
 
-`seed refresh` vs `seed from-local`:
-
-- **`seed refresh`** rebuilds `dev_seed` from migrations + fixtures only. Clean schema, no curated test data. Use after merging schema changes; designed to eventually run via GitHub Actions on every push to `main`.
-- **`seed from-local`** dumps your local Postgres + media into `dev_seed`. Preserves hand-curated test data. Use when you want to baseline the team on a specific snapshot.
+`seed refresh` rebuilds `dev_seed` from migrations + fixtures only — clean schema, reference data, no curated test data. Use after merging schema changes; designed to eventually run via GitHub Actions on every push to `main`. (There is no `seed from-local` anymore; local Postgres is no longer part of the dev environment.)
 
 ---
 
@@ -136,10 +123,10 @@ This is **one-time per AWS account** when standing up the cloud environment for 
 ./bin/chatpop bootstrap aws          # Configure chatpop-dev-admin profile (admin keys)
 ./bin/chatpop bootstrap tailscale    # Install Tailscale + capture EC2 router auth key
 cd infra/terraform && terraform init && terraform apply
-./bin/chatpop seed from-local        # Push local DB+media into dev_seed (admin op)
 ./bin/chatpop admin add <your-name>  # Create per-dev IAM user (yourself)
 ./bin/chatpop admin install-dev-keys <your-name>  # Install dev keys into chatpop-dev
 ./bin/chatpop join                   # Tailscale signin, identity, cloud config, hooks
+./bin/chatpop seed refresh --force   # Populate dev_seed from migrations + fixtures
 ./bin/chatpop admin import-env       # Push current backend/.env shared keys to AWS
 ```
 

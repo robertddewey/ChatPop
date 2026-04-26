@@ -7,9 +7,8 @@
 #   chatpop --help             Show all commands
 #
 # Cloud-only by design: every subcommand assumes the dev is talking to AWS
-# RDS + S3 via Tailscale. Local-Docker mode was intentionally removed —
-# Docker Postgres / Redis are still used (Redis for chat, optional local
-# DB for `manage.py test`), but daily dev runs against cloud.
+# RDS + S3 via Tailscale. Only Redis runs locally (Docker) for the WebSocket
+# channel layer. Tests run via CI (GitHub Actions service containers).
 
 set -euo pipefail
 
@@ -337,14 +336,9 @@ cmd_status() {
   echo
   printf "${BOLD}Local services${NC}\n"
   if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^chatpop_redis$'; then
-    label "Docker Redis:" "running (required)"
+    label "Docker Redis:" "running"
   else
     label "Docker Redis:" "(stopped — required for the app)"
-  fi
-  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^chatpop_postgres$'; then
-    label "Docker Postgres:" "running (optional — for local tests / seed)"
-  else
-    label "Docker Postgres:" "(stopped — optional)"
   fi
 
   if PID=$(lsof -ti:9000 -sTCP:LISTEN 2>/dev/null | head -1); then
@@ -438,8 +432,7 @@ EOF
 
 cmd_seed() {
   case "${1:-}" in
-    refresh)    shift; cmd_seed_refresh "$@" ;;
-    from-local) shift; "$REPO_ROOT/infra/seed-from-local.sh" "$@" ;;
+    refresh) shift; cmd_seed_refresh "$@" ;;
     -h|--help|"")
       cat <<EOF
 Usage: chatpop seed <subcommand>
@@ -448,9 +441,6 @@ Subcommands:
   refresh       Rebuild dev_seed from current branch's migrations + fixtures.
                 Run from main after schema changes merge. CI equivalent in
                 .github/workflows/refresh-dev-seed.yml.disabled.
-
-  from-local    Push your local Postgres + media into dev_seed.
-                Use to baseline the team on a hand-curated snapshot.
 EOF
       ;;
     *) err "Unknown 'seed' subcommand: $1. Try: chatpop seed --help" ;;
@@ -1537,7 +1527,6 @@ COMMANDS — Onboarding
 
 COMMANDS — Periodic / maintenance
     seed refresh          Rebuild dev_seed from current branch (run from main)
-    seed from-local       Push local Postgres + media into dev_seed (baseline)
     sync-secrets          Pull team's shared API keys from AWS Secrets Manager into .env
 
 COMMANDS — Admin (managing the team roster + secrets)
@@ -1586,21 +1575,20 @@ ${BOLD}chatpop${NC} — ChatPop dev environment
 
   ${BOLD}Periodic${NC}
     9)  seed refresh          Rebuild dev_seed from current branch
-   10)  seed from-local       Push local state to dev_seed
-   11)  sync-secrets          Pull shared API keys from Secrets Manager
+   10)  sync-secrets          Pull shared API keys from Secrets Manager
 
   ${BOLD}Admin${NC}
-   12)  admin list            Show team roster
-   13)  admin add <name>      Provision IAM user for new developer
-   14)  admin remove <name>   Tear down a developer's resources
-   15)  admin recover         Set up admin's machine (wiped / new laptop)
-   16)  admin list-secrets    List shared API keys (masked)
-   17)  admin set-secret <K>  Set/update one shared API key
-   18)  admin import-env      One-time: push .env shared keys to AWS
+   11)  admin list            Show team roster
+   12)  admin add <name>      Provision IAM user for new developer
+   13)  admin remove <name>   Tear down a developer's resources
+   14)  admin recover         Set up admin's machine (wiped / new laptop)
+   15)  admin list-secrets    List shared API keys (masked)
+   16)  admin set-secret <K>  Set/update one shared API key
+   17)  admin import-env      One-time: push .env shared keys to AWS
 
   ${BOLD}First-dev infra setup${NC}
-   19)  bootstrap aws         Admin AWS CLI profile
-   20)  bootstrap tailscale   EC2 router Tailscale key
+   18)  bootstrap aws         Admin AWS CLI profile
+   19)  bootstrap tailscale   EC2 router Tailscale key
 
    q)   quit
 
@@ -1617,17 +1605,16 @@ EOF
     7)  cmd_setup ;;
     8)  cmd_fixtures_load ;;
     9)  cmd_seed_refresh ;;
-    10) "$REPO_ROOT/infra/seed-from-local.sh" ;;
-    11) cmd_sync_secrets ;;
-    12) cmd_admin_list ;;
-    13) read -r -p "Developer name: " n && cmd_admin_add "$n" ;;
-    14) read -r -p "Developer name: " n && cmd_admin_remove "$n" ;;
-    15) cmd_admin_recover ;;
-    16) cmd_admin_list_secrets ;;
-    17) read -r -p "Key name: " k && cmd_admin_set_secret "$k" ;;
-    18) cmd_admin_import_env ;;
-    19) "$REPO_ROOT/infra/bootstrap.sh" ;;
-    20) "$REPO_ROOT/infra/bootstrap-tailscale.sh" ;;
+    10) cmd_sync_secrets ;;
+    11) cmd_admin_list ;;
+    12) read -r -p "Developer name: " n && cmd_admin_add "$n" ;;
+    13) read -r -p "Developer name: " n && cmd_admin_remove "$n" ;;
+    14) cmd_admin_recover ;;
+    15) cmd_admin_list_secrets ;;
+    16) read -r -p "Key name: " k && cmd_admin_set_secret "$k" ;;
+    17) cmd_admin_import_env ;;
+    18) "$REPO_ROOT/infra/bootstrap.sh" ;;
+    19) "$REPO_ROOT/infra/bootstrap-tailscale.sh" ;;
     q|Q|"") exit 0 ;;
     *)  warn "Invalid selection: $choice"; exit 1 ;;
   esac
