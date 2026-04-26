@@ -208,6 +208,7 @@ chatpop --help           # all commands
 | `chatpop admin list-secrets` | List shared API keys (values masked) |
 | `chatpop sync-secrets` | Pull latest shared API keys into local `.env` |
 | `chatpop seed refresh` | Rebuild `dev_seed` from current branch's migrations + fixtures (admin) |
+| `chatpop replace-main [BRANCH]` | **Destructive** — replace `<dev>_main` DB+S3 with a feature branch's contents. Use after a PR merge to keep the branch's test data |
 | `chatpop fixtures load` | Re-load all `fixtures/*.json` into current DB |
 | `chatpop clean [--apply]` | Sweep orphan branch DBs and S3 prefixes |
 | `chatpop setup` | Activate git hooks (subset of `join`) |

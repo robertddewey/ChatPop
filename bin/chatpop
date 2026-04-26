@@ -593,6 +593,136 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# cmd: replace-main
+#
+# Replaces <dev>_main with the contents of <dev>_<branch> — DB and S3 prefix.
+# Use after merging a feature branch into git main to bring that branch's
+# data and media forward. Destructive on the existing <dev>_main; the source
+# branch DB is PRESERVED (clean it up later with `chatpop clean`).
+#
+# Defaults to the current git branch. Refuses if you're already on main
+# (nothing to promote).
+# ---------------------------------------------------------------------------
+
+cmd_replace_main() {
+  local source_branch="${1:-}"
+
+  # Default to current git branch if no arg.
+  if [[ -z "$source_branch" ]]; then
+    source_branch=$(git -C "$REPO_ROOT" symbolic-ref --short HEAD 2>/dev/null || echo "")
+    [[ -n "$source_branch" ]] || err "Cannot determine current branch (detached HEAD?). Pass a branch name explicitly."
+  fi
+
+  if [[ "$source_branch" == "main" ]]; then
+    err "Cannot replace main with main. Pass the feature branch as an argument:
+  chatpop replace-main feat/your-branch"
+  fi
+
+  [[ -f "$IDENTITY_FILE" ]] || err "No .dev-identity. Run: chatpop join"
+  local dev_name; dev_name=$(cat "$IDENTITY_FILE")
+
+  local source_branch_safe; source_branch_safe=$(normalize "$source_branch")
+  local source_db="${dev_name}_${source_branch_safe}"
+  local target_db="${dev_name}_main"
+  local source_s3="${dev_name}/${source_branch_safe}"
+  local target_s3="${dev_name}/main"
+
+  printf "${RED}${BOLD}REPLACE MAIN DB${NC}\n"
+  printf "===============\n\n"
+
+  require_aws
+  require_libpq
+
+  local rds_host rds_port bucket
+  rds_host=$(tf_output rds_address)
+  rds_port=$(tf_output rds_port)
+  bucket=$(tf_output media_bucket_name)
+  fetch_db_credentials
+
+  # Verify source DB exists.
+  local exists
+  exists=$(PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+    -tAc "SELECT 1 FROM pg_database WHERE datname='${source_db}'" 2>/dev/null || echo "")
+  if [[ "$exists" != "1" ]]; then
+    unset DB_PASS PGPASSWORD
+    err "Source database '${source_db}' does not exist on RDS.
+Did you misspell the branch? Available: chatpop admin list (or query postgres directly)."
+  fi
+
+  cat <<EOF
+${YELLOW}This is destructive.${NC} It will:
+
+  1. DROP DATABASE ${BOLD}${target_db}${NC} (your developer main DB — all data, schema, history GONE)
+  2. CREATE DATABASE ${BOLD}${target_db}${NC} TEMPLATE ${BOLD}${source_db}${NC}
+       → ${target_db} now has everything from ${source_db}
+  3. Wipe s3://${bucket}/${target_s3}/  → sync from s3://${bucket}/${source_s3}/
+       → media in main becomes media from the branch
+
+After:
+  • ${target_db} has all the data, schema, and media from ${source_db}.
+  • ${source_db} is PRESERVED (drop manually with: chatpop clean --apply).
+  • Your local Daphne (if running) will be killed; restart it after.
+
+EOF
+
+  read -r -p "Type the target DB name '${target_db}' to confirm: " confirm
+  if [[ "$confirm" != "$target_db" ]]; then
+    unset DB_PASS PGPASSWORD
+    info "Aborted (input did not match)."
+    return 0
+  fi
+
+  # Kill Daphne to release any open connections to either DB.
+  if PID=$(lsof -ti:9000 -sTCP:LISTEN 2>/dev/null | head -1); then
+    if [[ -n "$PID" ]] && kill "$PID" 2>/dev/null; then
+      info "Killed Daphne (PID ${PID})"
+    fi
+  fi
+
+  # Drop + recreate via TEMPLATE (Postgres-native fast clone).
+  echo
+  info "Dropping ${target_db}…"
+  PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+    -v ON_ERROR_STOP=1 \
+    -c "DROP DATABASE IF EXISTS ${target_db} WITH (FORCE);" >/dev/null
+  ok "${target_db} dropped"
+
+  info "Cloning ${source_db} → ${target_db}…"
+  PGPASSWORD="$DB_PASS" psql \
+    "host=${rds_host} port=${rds_port} dbname=postgres user=${DB_USER} sslmode=require" \
+    -v ON_ERROR_STOP=1 \
+    -c "CREATE DATABASE ${target_db} TEMPLATE ${source_db};" >/dev/null
+  ok "${target_db} created from ${source_db}"
+
+  # S3: replace target prefix with source prefix.
+  echo
+  info "Replacing S3 prefix s3://${bucket}/${target_s3}/ from s3://${bucket}/${source_s3}/…"
+  aws --profile "$AWS_PROFILE_NAME" s3 sync \
+    "s3://${bucket}/${source_s3}/" "s3://${bucket}/${target_s3}/" \
+    --delete --no-progress >/dev/null
+  local count
+  count=$(aws --profile "$AWS_PROFILE_NAME" s3 ls "s3://${bucket}/${target_s3}/" --recursive 2>/dev/null | wc -l | tr -d ' ')
+  ok "S3 prefix replaced (${count} objects in target)"
+
+  unset DB_PASS PGPASSWORD
+
+  cat <<EOF
+
+${GREEN}${BOLD}✓ Replace complete.${NC}
+
+  ${target_db} now mirrors ${source_db}.
+  ${source_db} is preserved — drop with ${BOLD}chatpop clean --apply${NC} after deleting the git branch.
+
+If your .env was pointing at ${source_db}, switch git branches to refresh it:
+  ${BOLD}git checkout main${NC}    (.env will repoint to ${target_db})
+
+Restart Daphne to use the updated DB.
+EOF
+}
+
+# ---------------------------------------------------------------------------
 # cmd: fixtures load
 # ---------------------------------------------------------------------------
 
@@ -1599,6 +1729,9 @@ COMMANDS — Onboarding
 COMMANDS — Periodic / maintenance
     seed refresh          Rebuild dev_seed from current branch (run from main)
     sync-secrets          Pull team's shared API keys from AWS Secrets Manager into .env
+    replace-main [BRANCH] DESTRUCTIVE: replace your <dev>_main DB+S3 with the
+                          named branch's contents (use after merging a feature
+                          branch into git main to bring data forward). Default: current branch.
 
 COMMANDS — Admin (managing the team roster + secrets)
     admin add <name>      Provision IAM user dev-<name>, print credentials
@@ -1648,18 +1781,22 @@ ${BOLD}chatpop${NC} — ChatPop dev environment
     9)  seed refresh          Rebuild dev_seed from current branch
    10)  sync-secrets          Pull shared API keys from Secrets Manager
 
+  ${BOLD}${RED}Destructive${NC}
+   11)  replace-main          ${RED}REPLACE your <dev>_main DB+S3 with another branch's contents${NC}
+                              ${DIM}(use after merging a feature branch into git main)${NC}
+
   ${BOLD}Admin${NC}
-   11)  admin list            Show team roster
-   12)  admin add <name>      Provision IAM user for new developer
-   13)  admin remove <name>   Tear down a developer's resources
-   14)  admin recover         Set up admin's machine (wiped / new laptop)
-   15)  admin list-secrets    List shared API keys (masked)
-   16)  admin set-secret <K>  Set/update one shared API key
-   17)  admin import-env      One-time: push .env shared keys to AWS
+   12)  admin list            Show team roster
+   13)  admin add <name>      Provision IAM user for new developer
+   14)  admin remove <name>   Tear down a developer's resources
+   15)  admin recover         Set up admin's machine (wiped / new laptop)
+   16)  admin list-secrets    List shared API keys (masked)
+   17)  admin set-secret <K>  Set/update one shared API key
+   18)  admin import-env      One-time: push .env shared keys to AWS
 
   ${BOLD}First-dev infra setup${NC}
-   18)  bootstrap aws         Admin AWS CLI profile
-   19)  bootstrap tailscale   EC2 router Tailscale key
+   19)  bootstrap aws         Admin AWS CLI profile
+   20)  bootstrap tailscale   EC2 router Tailscale key
 
    q)   quit
 
@@ -1677,15 +1814,16 @@ EOF
     8)  cmd_fixtures_load ;;
     9)  cmd_seed_refresh ;;
     10) cmd_sync_secrets ;;
-    11) cmd_admin_list ;;
-    12) read -r -p "Developer name: " n && cmd_admin_add "$n" ;;
-    13) read -r -p "Developer name: " n && cmd_admin_remove "$n" ;;
-    14) cmd_admin_recover ;;
-    15) cmd_admin_list_secrets ;;
-    16) read -r -p "Key name: " k && cmd_admin_set_secret "$k" ;;
-    17) cmd_admin_import_env ;;
-    18) "$REPO_ROOT/infra/bootstrap.sh" ;;
-    19) "$REPO_ROOT/infra/bootstrap-tailscale.sh" ;;
+    11) read -r -p "Source branch (Enter for current): " b; cmd_replace_main "${b:-}" ;;
+    12) cmd_admin_list ;;
+    13) read -r -p "Developer name: " n && cmd_admin_add "$n" ;;
+    14) read -r -p "Developer name: " n && cmd_admin_remove "$n" ;;
+    15) cmd_admin_recover ;;
+    16) cmd_admin_list_secrets ;;
+    17) read -r -p "Key name: " k && cmd_admin_set_secret "$k" ;;
+    18) cmd_admin_import_env ;;
+    19) "$REPO_ROOT/infra/bootstrap.sh" ;;
+    20) "$REPO_ROOT/infra/bootstrap-tailscale.sh" ;;
     q|Q|"") exit 0 ;;
     *)  warn "Invalid selection: $choice"; exit 1 ;;
   esac
@@ -1704,6 +1842,7 @@ case "${1:-}" in
   use)           shift; cmd_use "$@" ;;
   seed)          shift; cmd_seed "$@" ;;
   sync-secrets)  shift; cmd_sync_secrets "$@" ;;
+  replace-main)  shift; cmd_replace_main "$@" ;;
   fixtures)      shift; cmd_fixtures "$@" ;;
   clean)         shift; cmd_clean "$@" ;;
   bootstrap)     shift; cmd_bootstrap "$@" ;;

@@ -85,6 +85,8 @@ git checkout -b feat/something
 git pull origin main
 # [post-merge] migrate runs if migration files changed
 # [post-merge] loaddata runs if fixture files changed
+# [post-merge hint] if HEAD is a merge commit and a feature branch was just
+#                   merged in, prints a hint about chatpop replace-main
 
 git checkout main
 # [hook] .env switches back; Daphne killed
@@ -92,6 +94,24 @@ git checkout main
 git branch -D feat/something
 # Branch deleted; DB+S3 become orphans (cleanup with `chatpop clean`)
 ```
+
+### Bringing branch data forward after a merge
+
+By design, **per-branch DBs isolate data** — your test rooms / users / messages on `feat/foo` live in `robert_feat_foo`, not in `robert_main`. When you merge `feat/foo` into git main, only the *code and migrations* go through git. The hand-built test data stays on the branch DB.
+
+If you want that data carried forward into `<dev>_main`:
+
+```bash
+# After PR merge has hit your local main
+git checkout main
+git pull
+# post-merge hook prints a hint suggesting replace-main if it sees the merge commit
+chatpop replace-main feat/foo
+# robert_main is now what was robert_feat_foo (data + schema + media).
+# robert_feat_foo is preserved; remove with `chatpop clean --apply` after deleting the branch.
+```
+
+`chatpop replace-main` is destructive — it requires you to type the target DB name (`<dev>_main`) to confirm. Use only when you specifically want the branch's data to BE your new main.
 
 **Periodic cleanup** of orphan DBs and S3 prefixes for branches you've deleted:
 
@@ -115,6 +135,7 @@ A single entry point at `bin/chatpop` exposes every dev operation as a subcomman
 | `chatpop setup` | Activate hooks only (subset of `join`) |
 | `chatpop use cloud [name]` | Configure `backend/.env` for AWS on current branch |
 | `chatpop seed refresh` | Rebuild `dev_seed` from current branch's migrations + fixtures (run from `main`) |
+| `chatpop replace-main [BRANCH]` | **DESTRUCTIVE.** Replace your `<dev>_main` DB and S3 prefix with a feature branch's contents. Use after merging a feature branch into git main when you want that branch's hand-built test data carried forward into your main. |
 | `chatpop fixtures load` | Load `fixtures/*.json` into current branch's DB |
 | `chatpop sync-secrets` | Pull team's shared API keys from Secrets Manager into `backend/.env` |
 | `chatpop clean [--apply]` | Find/drop orphan branch DBs and S3 prefixes |
