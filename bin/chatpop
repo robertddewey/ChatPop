@@ -28,6 +28,15 @@ IDENTITY_FILE="${REPO_ROOT}/.dev-identity"
 AWS_PROFILE_NAME="chatpop-dev"
 AWS_PROFILE_ADMIN_NAME="chatpop-dev-admin"
 
+# Deterministic resource naming — mirrors terraform's
+# `${var.project}-${var.environment}` (defaults: chatpop-dev). Used as a
+# fallback when terraform state isn't on this machine (2nd admin laptop, or
+# any developer machine that's never run terraform).
+NAME_PREFIX_DEFAULT="chatpop-dev"
+RDS_INSTANCE_ID_DEFAULT="${NAME_PREFIX_DEFAULT}-postgres"
+RDS_MASTER_SECRET_DEFAULT="${NAME_PREFIX_DEFAULT}/rds/master"
+API_KEYS_SECRET_DEFAULT="${NAME_PREFIX_DEFAULT}/api-keys"
+
 # ---------------------------------------------------------------------------
 # Color + logging helpers
 # ---------------------------------------------------------------------------
@@ -71,6 +80,68 @@ This command requires admin credentials.
 tf_output() {
   (cd "$TF_DIR" && terraform output -raw "$1" 2>/dev/null) \
     || err "Cannot read terraform output '$1' — has terraform been applied?"
+}
+
+# Like tf_output, but returns empty string instead of erroring when terraform
+# state isn't readable. For callers that want to fall back to AWS API.
+tf_output_soft() {
+  (cd "$TF_DIR" 2>/dev/null && terraform output -raw "$1" 2>/dev/null) || echo ""
+}
+
+# Resolve infrastructure metadata into caller-scope vars (INFRA_*). Tries
+# terraform state first, falls back to AWS API. Caller must have AWS profile
+# authenticated for the AWS-API path to work.
+#
+# On success, populates:
+#   INFRA_RDS_HOST, INFRA_RDS_PORT
+#   INFRA_BUCKET
+#   INFRA_MASTER_SECRET
+#   INFRA_API_KEYS_SECRET
+#   INFRA_REGION
+#
+# Any field that can't be resolved is left empty — callers handle that case.
+_resolve_infra() {
+  INFRA_RDS_HOST=$(tf_output_soft rds_address)
+  INFRA_RDS_PORT=$(tf_output_soft rds_port)
+  INFRA_BUCKET=$(tf_output_soft media_bucket_name)
+  INFRA_MASTER_SECRET=$(tf_output_soft rds_master_secret_name)
+  INFRA_API_KEYS_SECRET=$(tf_output_soft api_keys_secret_name)
+  INFRA_REGION=$(tf_output_soft aws_region)
+
+  # RDS endpoint via AWS API (dev IAM has rds:DescribeDBInstances).
+  if [[ -z "$INFRA_RDS_HOST" || -z "$INFRA_RDS_PORT" ]]; then
+    local rds_json
+    rds_json=$(aws --profile "$AWS_PROFILE_NAME" rds describe-db-instances \
+      --db-instance-identifier "$RDS_INSTANCE_ID_DEFAULT" \
+      --query 'DBInstances[0].Endpoint' --output json 2>/dev/null) || rds_json=""
+    if [[ -n "$rds_json" ]]; then
+      INFRA_RDS_HOST=$(echo "$rds_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['Address'])")
+      INFRA_RDS_PORT=$(echo "$rds_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['Port'])")
+    fi
+  fi
+
+  # Secret names are deterministic.
+  [[ -z "$INFRA_MASTER_SECRET"   ]] && INFRA_MASTER_SECRET="$RDS_MASTER_SECRET_DEFAULT"
+  [[ -z "$INFRA_API_KEYS_SECRET" ]] && INFRA_API_KEYS_SECRET="$API_KEYS_SECRET_DEFAULT"
+
+  # Region: profile config, then default.
+  if [[ -z "$INFRA_REGION" ]]; then
+    INFRA_REGION=$(aws --profile "$AWS_PROFILE_NAME" configure get region 2>/dev/null || echo "")
+    [[ -n "$INFRA_REGION" ]] || INFRA_REGION="us-east-1"
+  fi
+
+  # Bucket has a random hex suffix — try .env, then admin-profile bucket list.
+  if [[ -z "$INFRA_BUCKET" ]]; then
+    INFRA_BUCKET=$(grep -E '^AWS_STORAGE_BUCKET_NAME=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)
+  fi
+  if [[ -z "$INFRA_BUCKET" ]]; then
+    if aws --profile "$AWS_PROFILE_ADMIN_NAME" sts get-caller-identity >/dev/null 2>&1; then
+      INFRA_BUCKET=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" s3api list-buckets \
+        --query "Buckets[?starts_with(Name, '${NAME_PREFIX_DEFAULT}-media-')].Name | [0]" \
+        --output text 2>/dev/null || echo "")
+      [[ "$INFRA_BUCKET" == "None" ]] && INFRA_BUCKET=""
+    fi
+  fi
 }
 
 fetch_db_credentials() {
@@ -208,18 +279,26 @@ cmd_check() {
     _check_fail "AWS profile authenticated" "run: chatpop join"
   fi
 
-  # --- Terraform state ---------------------------------------------------
+  # --- Infrastructure metadata -------------------------------------------
+  # Try terraform state first; fall back to AWS API on machines that don't
+  # have the state file (2nd admin laptop, regular dev machines).
   local rds_host="" rds_port="" bucket="" secret_name=""
-  if [[ "$aws_ok" == "1" ]] && (cd "$TF_DIR" && terraform output rds_address >/dev/null 2>&1); then
-    rds_host=$(tf_output rds_address 2>/dev/null)
-    rds_port=$(tf_output rds_port 2>/dev/null)
-    bucket=$(tf_output media_bucket_name 2>/dev/null)
-    secret_name=$(tf_output rds_master_secret_name 2>/dev/null)
-    _check_pass "Terraform state readable" "RDS=${rds_host}, bucket=${bucket}"
-  elif [[ "$aws_ok" == "0" ]]; then
-    _check_skip "Terraform state readable" "AWS not authenticated"
+  local infra_source=""
+  if [[ "$aws_ok" == "1" ]]; then
+    if (cd "$TF_DIR" && terraform output rds_address >/dev/null 2>&1); then
+      infra_source="terraform"
+    fi
+    _resolve_infra
+    rds_host="$INFRA_RDS_HOST"; rds_port="$INFRA_RDS_PORT"
+    bucket="$INFRA_BUCKET";     secret_name="$INFRA_MASTER_SECRET"
+    if [[ -n "$rds_host" && -n "$bucket" ]]; then
+      [[ -n "$infra_source" ]] || infra_source="AWS API"
+      _check_pass "Infrastructure metadata" "via ${infra_source} — RDS=${rds_host}, bucket=${bucket}"
+    else
+      _check_fail "Infrastructure metadata" "couldn't resolve RDS or bucket — run terraform apply, or have admin run chatpop on this machine"
+    fi
   else
-    _check_fail "Terraform state readable" "no outputs — run terraform apply"
+    _check_skip "Infrastructure metadata" "AWS not authenticated"
   fi
 
   # --- Tailscale running -------------------------------------------------
@@ -976,12 +1055,18 @@ cmd_join() {
     warn "  $ts_bin set --accept-routes=true"
   fi
 
-  # Verify subnet routing actually works.
+  # Verify subnet routing actually works. Resolve RDS endpoint via terraform
+  # if available, AWS API otherwise — so this works on machines without
+  # terraform state.
   info "Testing connectivity to RDS over Tailscale…"
-  local rds_host
-  rds_host=$(tf_output rds_address 2>/dev/null) || true
+  local rds_host=""
+  _resolve_infra 2>/dev/null || true
+  rds_host="${INFRA_RDS_HOST:-}"
   if [[ -n "$rds_host" ]] && nc -zv -G 5 "$rds_host" 5432 >/dev/null 2>&1; then
-    ok "RDS reachable via Tailscale"
+    ok "RDS reachable via Tailscale ($rds_host:5432)"
+  elif [[ -z "$rds_host" ]]; then
+    warn "Couldn't resolve RDS endpoint (no terraform state, AWS API lookup failed)."
+    warn "Skipping connectivity test — Step 4 will retry the same lookup with more detail."
   else
     warn "Cannot reach RDS yet. Verify:"
     warn "  - Signed in to the right tailnet:"
@@ -1206,7 +1291,8 @@ cmd_sync_secrets() {
   require_aws
 
   local secret_name
-  secret_name=$(tf_output api_keys_secret_name 2>/dev/null) || err "Cannot read terraform output api_keys_secret_name"
+  secret_name=$(tf_output_soft api_keys_secret_name)
+  [[ -n "$secret_name" ]] || secret_name="$API_KEYS_SECRET_DEFAULT"
   ok "Secret: $secret_name"
 
   local secret_json
@@ -1291,7 +1377,9 @@ cmd_admin_set_secret() {
   printf "${BOLD}Set secret: ${key}${NC}\n\n"
 
   require_aws_admin
-  local secret_name; secret_name=$(tf_output api_keys_secret_name)
+  local secret_name
+  secret_name=$(tf_output_soft api_keys_secret_name)
+  [[ -n "$secret_name" ]] || secret_name="$API_KEYS_SECRET_DEFAULT"
 
   warn "Input is hidden. Paste the value, press Enter."
   local value
@@ -1326,7 +1414,9 @@ print(json.dumps(data))
 
 cmd_admin_list_secrets() {
   require_aws_admin
-  local secret_name; secret_name=$(tf_output api_keys_secret_name)
+  local secret_name
+  secret_name=$(tf_output_soft api_keys_secret_name)
+  [[ -n "$secret_name" ]] || secret_name="$API_KEYS_SECRET_DEFAULT"
 
   printf "${BOLD}Secrets in ${secret_name}${NC}\n\n"
   local current
@@ -1363,7 +1453,9 @@ cmd_admin_import_env() {
   require_aws_admin
   [[ -f "$ENV_FILE" ]] || err "$ENV_FILE not found"
 
-  local secret_name; secret_name=$(tf_output api_keys_secret_name)
+  local secret_name
+  secret_name=$(tf_output_soft api_keys_secret_name)
+  [[ -n "$secret_name" ]] || secret_name="$API_KEYS_SECRET_DEFAULT"
 
   # Build merged JSON: existing + values from .env (.env wins where present)
   local existing
