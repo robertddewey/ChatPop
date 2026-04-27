@@ -748,11 +748,24 @@ AWS_LOCATION = os.getenv("AWS_LOCATION", "")
 # Empty falls through to boto3's default credential chain.
 AWS_S3_SESSION_PROFILE = os.getenv("AWS_PROFILE", "")
 
+# CloudFront signed URLs. When AWS_CLOUDFRONT_KEY_ID + AWS_CLOUDFRONT_KEY_B64
+# are set, django-storages signs URLs with the CloudFront private key
+# (URLs expire per AWS_QUERYSTRING_EXPIRE). Otherwise it falls back to
+# S3 presigned URLs (signed via boto3 credentials).
+AWS_CLOUDFRONT_KEY_ID = os.getenv("AWS_CLOUDFRONT_KEY_ID", "")
+_cloudfront_key_b64 = os.getenv("AWS_CLOUDFRONT_KEY_B64", "")
+if _cloudfront_key_b64:
+    import base64
+    AWS_CLOUDFRONT_KEY = base64.b64decode(_cloudfront_key_b64)
+else:
+    AWS_CLOUDFRONT_KEY = b""
+
 if AWS_STORAGE_BUCKET_NAME:
     DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
     AWS_S3_FILE_OVERWRITE = False
-    AWS_DEFAULT_ACL = "private"   # Private by default; Django proxies access.
-    AWS_QUERYSTRING_AUTH = False  # No signed URLs; Django serves via /media/.
+    AWS_DEFAULT_ACL = "private"      # Bucket is private; CDN/presigned only.
+    AWS_QUERYSTRING_AUTH = True      # Sign URLs (CloudFront if configured, else S3).
+    AWS_QUERYSTRING_EXPIRE = 3600    # 1 hour TTL on signed URLs.
 else:
     DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
     MEDIA_ROOT = BASE_DIR / "media"

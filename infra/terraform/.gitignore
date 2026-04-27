@@ -13,6 +13,9 @@
 # Exception: developers.auto.tfvars IS committed — it's the team roster
 # (just dev names, no secrets). Credentials live in terraform state.
 !developers.auto.tfvars
+# Exception: cdn.auto.tfvars IS committed — apex_domain + cdn_subdomain
+# are public-facing config, not secrets.
+!cdn.auto.tfvars
 override.tf
 override.tf.json
 *_override.tf

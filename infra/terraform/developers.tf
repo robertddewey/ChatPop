@@ -72,13 +72,10 @@ resource "aws_iam_user_policy" "developer" {
         }
       },
       {
-        Sid    = "ReadSharedSecrets"
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-        Resource = [
-          aws_secretsmanager_secret.db_master.arn,
-          aws_secretsmanager_secret.api_keys.arn,
-        ]
+        Sid      = "ReadSharedSecrets"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Resource = local.shared_secret_arns
       },
       # Note: PutSecretValue is intentionally not granted. Setting/rotating
       # secrets is an admin operation; admins use the chatpop-dev-deploy

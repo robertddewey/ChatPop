@@ -226,6 +226,44 @@ else
   ok "Synced media to s3://${BUCKET}/${S3_PREFIX}/"
 fi
 
+# --- CDN config (CloudFront signing key + custom domain) -------------------
+#
+# Optional. If terraform was applied with var.apex_domain set, the CDN stack
+# exists and we pull:
+#   - AWS_S3_CUSTOM_DOMAIN  (cdn-dev.chatmie.com)
+#   - AWS_CLOUDFRONT_KEY_ID (CloudFront public-key ID, e.g. K2ABCDEF1234)
+#   - AWS_CLOUDFRONT_KEY_B64 (base64 of the RSA private key PEM)
+# When the stack isn't there, leave all three empty — django-storages falls
+# back to S3 presigned URLs.
+
+CDN_DOMAIN=$(tf_get cdn_domain)
+CDN_KEY_SECRET=$(tf_get cdn_signing_key_secret_name)
+
+# Deterministic fallback for the secret name.
+[[ -z "$CDN_KEY_SECRET" ]] && CDN_KEY_SECRET="${NAME_PREFIX_DEFAULT}/cdn/signing-key"
+
+CDN_KEY_ID=""
+CDN_KEY_B64=""
+if CDN_SECRET_JSON=$(aws --profile "$AWS_PROFILE_NAME" secretsmanager get-secret-value \
+    --secret-id "$CDN_KEY_SECRET" --query 'SecretString' --output text 2>/dev/null); then
+  CDN_KEY_ID=$(echo "$CDN_SECRET_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['key_id'])")
+  CDN_KEY_B64=$(echo "$CDN_SECRET_JSON" | python3 -c "
+import sys, json, base64
+data = json.load(sys.stdin)
+print(base64.b64encode(data['private_key'].encode()).decode())
+")
+  unset CDN_SECRET_JSON
+
+  # Ensure we have a domain to sign against. If terraform output wasn't
+  # available but the secret was, AWS_S3_CUSTOM_DOMAIN may already be in .env.
+  if [[ -z "$CDN_DOMAIN" ]]; then
+    CDN_DOMAIN=$(grep -E '^AWS_S3_CUSTOM_DOMAIN=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)
+  fi
+  ok "CDN:         ${CDN_DOMAIN:-<missing — set AWS_S3_CUSTOM_DOMAIN manually>}"
+else
+  info "CDN not configured (no signing-key secret found). Falling back to S3 presigned URLs."
+fi
+
 # --- Write .env ------------------------------------------------------------
 
 info "Updating ${ENV_FILE}"
@@ -240,6 +278,9 @@ BUCKET="$BUCKET" \
 REGION="$REGION" \
 S3_PREFIX="$S3_PREFIX" \
 AWS_PROFILE_NAME="$AWS_PROFILE_NAME" \
+CDN_DOMAIN="$CDN_DOMAIN" \
+CDN_KEY_ID="$CDN_KEY_ID" \
+CDN_KEY_B64="$CDN_KEY_B64" \
 ENV_FILE="$ENV_FILE" \
 python3 - <<'PYEOF'
 import os, re
@@ -256,6 +297,11 @@ updates = {
     "AWS_STORAGE_BUCKET_NAME": os.environ["BUCKET"],
     "AWS_S3_REGION_NAME":     os.environ["REGION"],
     "AWS_LOCATION":           os.environ["S3_PREFIX"],
+    # CDN — empty strings when CDN isn't provisioned (django-storages falls
+    # back to direct S3 presigned URLs).
+    "AWS_S3_CUSTOM_DOMAIN":   os.environ["CDN_DOMAIN"],
+    "AWS_CLOUDFRONT_KEY_ID":  os.environ["CDN_KEY_ID"],
+    "AWS_CLOUDFRONT_KEY_B64": os.environ["CDN_KEY_B64"],
 }
 
 # Legacy keys to strip outright. boto3 falls through to AWS_PROFILE when

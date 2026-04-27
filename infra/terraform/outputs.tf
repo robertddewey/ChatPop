@@ -86,3 +86,30 @@ output "api_keys_secret_name" {
   description = "Name of the shared API keys secret."
   value       = aws_secretsmanager_secret.api_keys.name
 }
+
+# --- CDN -------------------------------------------------------------------
+
+output "cdn_enabled" {
+  description = "Whether the CDN (CloudFront) stack is provisioned."
+  value       = local.cdn_enabled
+}
+
+output "cdn_domain" {
+  description = "Custom domain for the CDN (e.g. cdn-dev.chatmie.com). Empty when CDN is disabled."
+  value       = local.cdn_full_domain
+}
+
+output "cdn_distribution_id" {
+  description = "CloudFront distribution ID for the media CDN."
+  value       = local.cdn_enabled ? aws_cloudfront_distribution.media[0].id : ""
+}
+
+output "cdn_distribution_domain" {
+  description = "AWS-assigned CloudFront domain (xxxxxx.cloudfront.net). Used internally by Route 53 alias."
+  value       = local.cdn_enabled ? aws_cloudfront_distribution.media[0].domain_name : ""
+}
+
+output "cdn_signing_key_secret_name" {
+  description = "Secrets Manager secret name holding the CloudFront private key + key ID."
+  value       = local.cdn_enabled ? aws_secretsmanager_secret.cdn_signing_key[0].name : ""
+}
