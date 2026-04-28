@@ -1635,7 +1635,13 @@ export default function ChatPage() {
           // Logged-in user
           setCurrentUserId(currentUser.id);
           setRegisteredDisplayName(currentUser.reserved_username || '');
-          setRegisteredAvatarUrl(`/api/chats/media/avatars/user/${currentUser.id}`);
+          // currentUser.avatar_url is already a direct CDN-signed URL when
+          // S3+CloudFront are configured (UserSerializer resolves it server-
+          // side). Falls back to the proxy URL pattern keyed on user id so
+          // existing message-author avatars in the chat have something to
+          // resolve against if currentUser.avatar_url is missing.
+          const registeredAvatar = currentUser.avatar_url || `/api/chats/media/avatars/user/${currentUser.id}`;
+          setRegisteredAvatarUrl(registeredAvatar);
 
           // Track anonymous participations for identity chooser
           const anonsList = participation.anonymous_participations || (participation.anonymous_participation ? [participation.anonymous_participation] : []);
@@ -1962,16 +1968,21 @@ export default function ChatPage() {
       });
       setMessageReactions(reactions);
 
-      // Scroll to bottom after React renders
-      shouldAutoScrollRef.current = true;
-      initialScrollDoneRef.current = false; // Reset before scroll
-      requestAnimationFrame(() => {
-        const container = messagesContainerRef.current;
-        if (container) {
-          container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
-        }
-        initialScrollDoneRef.current = true; // Mark scroll complete
-      });
+      // Force scroll-to-bottom ONLY on the very first load. Subsequent calls
+      // (3s polling fallback when WS disconnects, visibility-change refetches,
+      // post-send refetches) must NOT yank the user's scroll position — the
+      // messages.length useEffect handles auto-scroll for those, gated by
+      // shouldAutoScrollRef which reflects whether the user is near bottom.
+      if (!initialScrollDoneRef.current) {
+        shouldAutoScrollRef.current = true;
+        requestAnimationFrame(() => {
+          const container = messagesContainerRef.current;
+          if (container) {
+            container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
+          }
+          initialScrollDoneRef.current = true; // Mark scroll complete
+        });
+      }
     } catch (err) {
       console.error('Failed to load messages:', err);
     } finally {
@@ -3049,15 +3060,44 @@ export default function ChatPage() {
   // messageActionsOpenRef are refs/stable — no need in deps.
   }, [messages.length]);
 
-  // Auto-refresh messages every 3 seconds (fallback polling when WebSocket is not connected)
+  // Auto-refresh messages every 3 seconds — fallback polling when the
+  // WebSocket isn't connected (rare in production: corporate proxies that
+  // block WS, ad-hoc reconnect race windows, etc.). Gated on visibility so
+  // hidden tabs don't poll. The WS hook closes the socket on hidden, which
+  // would otherwise flip isConnected=false and start polling on a tab that
+  // can't even run the timer reliably (browsers throttle setInterval in
+  // hidden tabs to ~1/min anyway).
   useEffect(() => {
-    if (!hasJoined || isConnected) return; // Don't poll if WebSocket is connected
+    if (!hasJoined || isConnected) return;
 
-    const interval = setInterval(() => {
-      loadMessages();
-    }, 3000);
+    let interval: ReturnType<typeof setInterval> | null = null;
 
-    return () => clearInterval(interval);
+    const start = () => {
+      if (interval !== null) return;
+      interval = setInterval(() => loadMessages(), 3000);
+    };
+    const stop = () => {
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    // Start only if visible right now.
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+      start();
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') start();
+      else stop();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [hasJoined, code, isConnected]);
 
   // Calculate theme dark mode setting (used by modals)

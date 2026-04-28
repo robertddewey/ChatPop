@@ -61,6 +61,19 @@ export function useChatWebSocket({
   const MAX_RECONNECT_ATTEMPTS = Infinity; // Infinite reconnection attempts with polling fallback
   const RECONNECT_DELAY = 2000;
 
+  // Heartbeat: prevents intermediaries (ngrok, load balancers, proxies) from
+  // idle-closing the WebSocket. ngrok specifically times out at ~60s of
+  // inactivity. 30s is a safe interval. Backend `chats/consumers.py` no-ops
+  // these.
+  const HEARTBEAT_INTERVAL_MS = 30000;
+  const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Marks intentional disconnects (component unmount / explicit disconnect()
+  // call) so the close handler can distinguish those from server-initiated
+  // closures. Without this, a server close (even with code 1000) would be
+  // treated as terminal and we'd never reconnect.
+  const intentionalDisconnectRef = useRef(false);
+
   // Use refs for callbacks to avoid stale closures in WebSocket handlers
   const onMessageRef = useRef(onMessage);
   const onUserBlockedRef = useRef(onUserBlocked);
@@ -123,6 +136,21 @@ export function useChatWebSocket({
       setIsConnected(true);
       setIsConnecting(false);
       reconnectAttemptsRef.current = 0;
+
+      // Start heartbeat. Sends a tiny ping frame every 30s on the same socket
+      // closure (the variable `socket`) — if a reconnect happens, that new
+      // socket gets its own onopen + its own heartbeat.
+      if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          try {
+            socket.send(JSON.stringify({ type: 'ping' }));
+          } catch {
+            // If sending fails, the socket will fire onclose; reconnect logic
+            // there will take over.
+          }
+        }
+      }, HEARTBEAT_INTERVAL_MS);
     };
 
     socket.onmessage = (event) => {
@@ -277,11 +305,28 @@ export function useChatWebSocket({
       setIsConnecting(false);
       ws.current = null;
 
-      // Attempt to reconnect if not a normal closure and we haven't exceeded max attempts
+      // Stop heartbeat for the now-closed socket; the next connect() will
+      // start a fresh one in onopen.
+      if (heartbeatTimerRef.current) {
+        clearInterval(heartbeatTimerRef.current);
+        heartbeatTimerRef.current = null;
+      }
+
+      // Reconnect on every server-side close. The previous logic skipped
+      // codes 1000 (normal close) and 1001 (going away), but ngrok and
+      // many production proxies send 1000 on idle timeout — that's exactly
+      // when we want to reconnect, not give up. The intentional-disconnect
+      // ref distinguishes "we initiated this" from "the network did".
+      // Backend-initiated 4xxx codes (auth fail, ban) intentionally don't
+      // reconnect — those have an unrecoverable cause.
+      const isAuthOrBanClose = event.code >= 4000 && event.code <= 4999;
+      const wasIntentional = intentionalDisconnectRef.current;
+      intentionalDisconnectRef.current = false; // reset for the next cycle
+
       if (
         enabled &&
-        event.code !== 1000 && // Normal closure
-        event.code !== 1001 && // Going away
+        !wasIntentional &&
+        !isAuthOrBanClose &&
         reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS
       ) {
         reconnectAttemptsRef.current += 1;
@@ -304,7 +349,14 @@ export function useChatWebSocket({
       reconnectTimeoutRef.current = null;
     }
 
+    if (heartbeatTimerRef.current) {
+      clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+
     if (ws.current) {
+      // Mark as intentional so the close handler doesn't trigger reconnect.
+      intentionalDisconnectRef.current = true;
       ws.current.close(1000, 'Client disconnect');
       ws.current = null;
     }
@@ -354,18 +406,35 @@ export function useChatWebSocket({
       const isVisible = document.visibilityState === 'visible';
 
       if (isVisible) {
-        // Page became visible - reconnect if needed and notify callback
+        // Page became visible — reconnect if needed and notify callback.
         if (ws.current?.readyState !== WebSocket.OPEN) {
           console.log('[WebSocket] Page visible, reconnecting...');
           connect();
         }
 
-        // Notify callback so page can refetch data
         if (onVisibilityChangeRef.current) {
           onVisibilityChangeRef.current(true);
         }
       } else {
-        // Page hidden - optionally notify callback
+        // Page hidden — actively close the socket and cancel timers so the
+        // backgrounded tab does no work. Mobile OSes throttle setInterval to
+        // ~1/min in hidden tabs, which would let our 30s heartbeat slip past
+        // ngrok's 60s idle timeout anyway. Cleaner to close ourselves and
+        // reconnect on visibility-return. The intentional flag prevents
+        // onclose from queueing a reconnect.
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+        if (heartbeatTimerRef.current) {
+          clearInterval(heartbeatTimerRef.current);
+          heartbeatTimerRef.current = null;
+        }
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          intentionalDisconnectRef.current = true;
+          ws.current.close(1000, 'Tab hidden');
+        }
+
         if (onVisibilityChangeRef.current) {
           onVisibilityChangeRef.current(false);
         }

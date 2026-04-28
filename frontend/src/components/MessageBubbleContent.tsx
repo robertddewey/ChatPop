@@ -439,7 +439,16 @@ export default function MessageBubbleContent({
         <div className="relative w-fit max-w-full">
         {message.voice_url ? (
           <VoiceMessagePlayer
-            voiceUrl={`${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+            // message.voice_url is already a direct CDN-signed URL when
+            // S3+CloudFront are configured (cache enricher overwrites the
+            // stored proxy URL on every read). When it's still a proxy
+            // URL (local-storage dev or signing failure), append the
+            // session_token so Daphne can validate before redirecting.
+            voiceUrl={
+              message.voice_url.startsWith('/api/chats/media/')
+                ? `${message.voice_url}${message.voice_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`
+                : message.voice_url
+            }
             duration={message.voice_duration || 0}
             waveformData={message.voice_waveform || []}
             isMyMessage={message.username.toLowerCase() === username.toLowerCase()}
@@ -500,15 +509,29 @@ export default function MessageBubbleContent({
           />
         ) : message.photo_url ? (
           <PhotoMessage
-            photoUrl={`${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
+            photoUrl={
+              message.photo_url.startsWith('/api/chats/media/')
+                ? `${message.photo_url}${message.photo_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`
+                : message.photo_url
+            }
             width={message.photo_width || 300}
             height={message.photo_height || 200}
             maxDisplayHeight={viewportHeight ? Math.min(320, Math.round(viewportHeight * 0.4)) : 320}
           />
         ) : message.video_url ? (
           <VideoMessage
-            videoUrl={`${message.video_url}${message.video_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`}
-            thumbnailUrl={message.video_thumbnail_url ? `${message.video_thumbnail_url}${message.video_thumbnail_url.includes('?') ? '&' : '?'}session_token=${sessionToken}` : ''}
+            videoUrl={
+              message.video_url.startsWith('/api/chats/media/')
+                ? `${message.video_url}${message.video_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`
+                : message.video_url
+            }
+            thumbnailUrl={
+              message.video_thumbnail_url
+                ? message.video_thumbnail_url.startsWith('/api/chats/media/')
+                  ? `${message.video_thumbnail_url}${message.video_thumbnail_url.includes('?') ? '&' : '?'}session_token=${sessionToken}`
+                  : message.video_thumbnail_url
+                : ''
+            }
             duration={message.video_duration || 0}
             width={message.video_width}
             height={message.video_height}

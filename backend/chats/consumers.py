@@ -118,10 +118,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data):
+        data = json.loads(text_data)
+
+        # Heartbeat — application-level keepalive sent by the client every
+        # ~30s to prevent intermediaries (ngrok, load balancers, etc.) from
+        # idle-closing the WebSocket. We don't need to reply; the inbound
+        # frame itself resets the idle timer on the path.
+        if data.get('type') == 'ping':
+            return
+
         if self.read_only:
             return  # Read-only connections cannot send messages
 
-        data = json.loads(text_data)
         message_text = data.get('message', '')
         reply_to_id = data.get('reply_to_id')  # Optional message ID to reply to
         voice_url = data.get('voice_url')  # Optional voice message URL

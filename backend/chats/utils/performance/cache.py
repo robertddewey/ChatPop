@@ -134,6 +134,31 @@ class MessageCache:
         return cache.client.get_client()
 
     @classmethod
+    def _enrich_with_cdn_urls(cls, msg: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Replace proxy URLs in a cached message dict with directly-fetchable
+        CloudFront-signed URLs. Mutates AND returns the dict.
+
+        Why at read time, not write time:
+        Cached entries can sit in Redis for hours; a CDN-signed URL stored in
+        cache would expire (1-hour TTL on signatures) and the next reader
+        would get 403s. Signing at read time guarantees fresh URLs.
+
+        Cost: one HMAC sign per non-empty media field per message read
+        (microseconds). Avatars in the /api/chats/media/avatars/user/<id>
+        form additionally require a single User lookup the first time we
+        sign for that user; otherwise zero DB hits.
+        """
+        from chatpop.utils.media.storage import MediaStorage
+
+        for field in ("avatar_url", "voice_url", "photo_url", "video_url", "video_thumbnail_url"):
+            cdn_url = MediaStorage.proxy_url_to_cdn_url(msg.get(field))
+            if cdn_url:
+                msg[field] = cdn_url
+
+        return msg
+
+    @classmethod
     def _get_avatar_url(cls, message: Message) -> str:
         """
         Get avatar URL for a message.
@@ -584,7 +609,9 @@ class MessageCache:
             raw = redis_client.hget(data_key, str(message_id))
             if raw is None:
                 return None
-            return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+            msg = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+            cls._enrich_with_cdn_urls(msg)
+            return msg
         except Exception:
             logger.exception(
                 "MessageCache.get_message_by_id failed for room=%s message=%s",
@@ -619,7 +646,12 @@ class MessageCache:
                 continue
             try:
                 raw = val.decode() if isinstance(val, bytes) else val
-                messages.append(json.loads(raw))
+                msg = json.loads(raw)
+                # Enrich with direct CDN URLs for media fields. Read-time
+                # signing keeps URLs fresh even when cache is older than the
+                # signature TTL.
+                cls._enrich_with_cdn_urls(msg)
+                messages.append(msg)
             except (json.JSONDecodeError, AttributeError):
                 continue
         return messages
@@ -1315,6 +1347,7 @@ class MessageCache:
                             expired_ids.append(mid)
                             continue
 
+                    cls._enrich_with_cdn_urls(msg_data)
                     messages.append(msg_data)
                 except (json.JSONDecodeError, ValueError):
                     expired_ids.append(mid)

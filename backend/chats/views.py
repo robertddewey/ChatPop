@@ -2091,11 +2091,17 @@ class MyParticipationView(APIView):
             else:
                 seen_intros = participation.seen_intros or {}
 
+            from chatpop.utils.media.storage import MediaStorage
+
+            def _avatar(proxy):
+                """Resolve to CDN-signed URL when possible, else return proxy."""
+                return MediaStorage.proxy_url_to_cdn_url(proxy) or proxy
+
             response_data = {
                 'has_joined': True,
                 'username': participation.username,
                 'username_is_reserved': username_is_reserved,
-                'avatar_url': participation.avatar_url,
+                'avatar_url': _avatar(participation.avatar_url),
                 'first_joined_at': participation.first_joined_at,
                 'last_seen_at': participation.last_seen_at,
                 'theme': theme_data,
@@ -2108,7 +2114,7 @@ class MyParticipationView(APIView):
             if extra_anons:
                 anon_list_payload = [{
                     'username': p.username,
-                    'avatar_url': p.avatar_url,
+                    'avatar_url': _avatar(p.avatar_url),
                     'first_joined_at': p.first_joined_at,
                     'participation_id': str(p.id),
                 } for p in extra_anons]
@@ -2121,6 +2127,7 @@ class MyParticipationView(APIView):
         # Authenticated user with only anonymous participation(s) (logged in after joining anonymously)
         if anonymous_participations_list:
             from .utils.security.blocking import check_if_blocked
+            from chatpop.utils.media.storage import MediaStorage
             is_blocked, _ = check_if_blocked(
                 chat_room=chat_room,
                 username=None,
@@ -2131,7 +2138,7 @@ class MyParticipationView(APIView):
             seen_intros = request.user.seen_intros or {}
             anon_list_payload = [{
                 'username': p.username,
-                'avatar_url': p.avatar_url,
+                'avatar_url': MediaStorage.proxy_url_to_cdn_url(p.avatar_url) or p.avatar_url,
                 'first_joined_at': p.first_joined_at,
                 'participation_id': str(p.id),
             } for p in anonymous_participations_list]
@@ -3050,6 +3057,23 @@ class VoiceStreamView(APIView):
                     'error': 'Invalid session token'
                 }, status=401)
 
+        # Fast path: when S3 storage is configured (with or without CloudFront),
+        # auth has already been validated above — now redirect to a signed
+        # storage URL so bytes flow browser → CDN/S3, not through Daphne.
+        # The signed URL inherits AWS_QUERYSTRING_EXPIRE (default 1 hour).
+        from django.conf import settings
+        from django.core.files.storage import default_storage
+        from django.http import HttpResponseRedirect
+        if getattr(settings, "AWS_STORAGE_BUCKET_NAME", ""):
+            try:
+                signed_url = default_storage.url(storage_path)
+                logger.info(f"🎵 [VoiceStream] Redirecting to CDN/S3: {storage_path}")
+                return HttpResponseRedirect(signed_url)
+            except Exception as e:
+                logger.warning(
+                    f"🎵 [VoiceStream] CDN redirect failed; falling back to proxy: {e}"
+                )
+
         try:
             # Check if file exists in storage
             if not MediaStorage.file_exists(storage_path):
@@ -3207,11 +3231,24 @@ class UserAvatarView(APIView):
         except User.DoesNotExist:
             raise Http404("User not found")
 
-        # If user has stored avatar, redirect to it
+        # If user has stored avatar, redirect to it.
+        # When S3 storage is configured (cloud + CDN), short-circuit the
+        # intermediate /api/chats/media/<...> proxy hop by signing a CDN URL
+        # directly. Otherwise, fall through to the stored proxy URL.
         if user.avatar_url:
-            # avatar_url is stored as relative path like /api/chats/media/avatars/uuid.svg
-            # Redirect to the actual file
-            return HttpResponseRedirect(user.avatar_url)
+            target = user.avatar_url
+            from django.conf import settings
+            from django.core.files.storage import default_storage
+            proxy_prefix = "/api/chats/media/"
+            if target.startswith(proxy_prefix) and getattr(settings, "AWS_STORAGE_BUCKET_NAME", ""):
+                storage_path = target[len(proxy_prefix):]
+                try:
+                    target = default_storage.url(storage_path)
+                except Exception:
+                    # If signing fails for any reason, fall back to the
+                    # original proxy URL so the avatar still loads.
+                    pass
+            return HttpResponseRedirect(target)
 
         # Fallback to DiceBear URL if no stored avatar
         if user.reserved_username:

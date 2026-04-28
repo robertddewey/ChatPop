@@ -92,6 +92,72 @@ class MediaStorage:
         return f"/api/chats/media/{storage_path}"
 
     @staticmethod
+    def proxy_url_to_cdn_url(proxy_url):
+        """
+        Convert a /api/chats/media/<...> proxy URL into a directly-fetchable
+        CloudFront-signed URL. Used by serializers/views that want to skip
+        the Daphne 302 hop.
+
+        URLs are stable within a 5-minute time bucket — every call inside
+        the bucket produces the *same* signed URL string. This matters for
+        the frontend: if the URL string changed on every API response, React
+        would diff <img src=...> as different and remount the element,
+        re-triggering the image fetch and a loading flash on every WebSocket
+        message. With time-bucketed URLs, src stays identical across
+        re-renders within the bucket, so React reuses the loaded image.
+
+        Returns None when:
+          - proxy_url is empty
+          - it's not a /api/chats/media/ proxy URL (e.g., external DiceBear URL)
+          - S3 storage isn't configured (local-storage dev mode)
+          - signing fails
+          - the URL is the user-id pattern but the user doesn't exist or has
+            no avatar
+
+        Caller falls back to the original proxy URL when this returns None.
+        """
+        import time
+        from django.conf import settings
+        from django.core.files.storage import default_storage
+
+        if not proxy_url:
+            return None
+        if not getattr(settings, "AWS_STORAGE_BUCKET_NAME", ""):
+            return None
+        prefix = "/api/chats/media/"
+        if not proxy_url.startswith(prefix):
+            return None  # external URL — leave as-is
+
+        path = proxy_url[len(prefix):]
+
+        # avatars/user/<user_id>: resolve user → storage path via single DB hit.
+        if path.startswith("avatars/user/"):
+            user_id = path[len("avatars/user/"):].rstrip("/")
+            try:
+                from accounts.models import User
+                user = User.objects.only("avatar_url").get(id=user_id)
+            except (User.DoesNotExist, ValueError):
+                return None
+            if not user.avatar_url or not user.avatar_url.startswith(prefix):
+                return None
+            path = user.avatar_url[len(prefix):]
+
+        # Time-bucket the Expires param so URLs are stable across reads in
+        # the same 5-minute window. The URL still has ~1 hour of validity
+        # past the bucket boundary, so a viewer mid-load doesn't get a 403
+        # if their request crosses a bucket edge.
+        BUCKET_SECONDS = 300       # URL string changes every 5 minutes
+        VALIDITY_SECONDS = 3600    # URL works for 1 hour from now
+        now = int(time.time())
+        absolute_expires = ((now + VALIDITY_SECONDS) // BUCKET_SECONDS) * BUCKET_SECONDS
+        expire_in = absolute_expires - now
+
+        try:
+            return default_storage.url(path, expire=expire_in)
+        except Exception:
+            return None
+
+    @staticmethod
     def get_file(storage_path: str) -> Optional[BinaryIO]:
         """
         Retrieve a file from storage.

@@ -10,6 +10,12 @@ class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model"""
     subscriber_count = serializers.SerializerMethodField()
     subscription_count = serializers.SerializerMethodField()
+    # Override the model's avatar_url with a method that resolves the proxy
+    # path stored in the DB to a directly-fetchable CloudFront-signed URL,
+    # skipping the Daphne 302 hop. Falls back to the proxy path if signing
+    # isn't possible (local-storage dev, etc.) or to a DiceBear URL if no
+    # avatar is stored.
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -26,6 +32,19 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_subscription_count(self, obj):
         return obj.subscriptions.count()
+
+    def get_avatar_url(self, obj):
+        from chatpop.utils.media.storage import MediaStorage
+        from chatpop.utils.media import get_fallback_dicebear_url
+
+        if obj.avatar_url:
+            cdn = MediaStorage.proxy_url_to_cdn_url(obj.avatar_url)
+            return cdn or obj.avatar_url
+
+        if obj.reserved_username:
+            return get_fallback_dicebear_url(obj.reserved_username)
+
+        return None
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
