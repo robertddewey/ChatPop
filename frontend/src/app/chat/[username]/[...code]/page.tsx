@@ -1344,6 +1344,30 @@ export default function ChatPage() {
       }
     }, [username, code]),
     onVisibilityChange: handleVisibilityChange,
+    // Reconnect handshake — pass the most-recent message id we have so the
+    // server can ship just the delta on (re)connect instead of forcing a
+    // full loadMessages refetch. lastMessageIdRef is updated by the
+    // messages.length useEffect every time the array changes, so it always
+    // reflects the newest visible message.
+    getLastSeenId: useCallback(() => lastMessageIdRef.current, []),
+    onBackfill: useCallback((newMessages: Message[]) => {
+      if (!newMessages.length) return;
+      // Append to existing messages, dedupe on id (a real-time message
+      // may have arrived in the same window).
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const additions = newMessages.filter(m => !existingIds.has(m.id));
+        if (additions.length === 0) return prev;
+        return [...prev, ...additions];
+      });
+    }, []),
+    onBackfillOverflow: useCallback(() => {
+      // Server can't compute the delta (last_seen_id evicted from cache,
+      // or too many messages missed). Fall back to the full refetch path.
+      if (loadMessagesRef.current) {
+        loadMessagesRef.current();
+      }
+    }, []),
     enabled: hasJoined || (!!chatRoom && chatRoom.access_mode === 'public'),
   });
 

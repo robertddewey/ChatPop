@@ -710,6 +710,81 @@ class MessageCache:
 
             return []
 
+    # Sentinel returned alongside an empty list when last_seen_id can't be
+    # found in the timeline cache (Redis evicted it, or it's unknown). The
+    # WS hello-handshake handler uses this to signal the client that the
+    # delta can't be computed and a full reload is needed.
+    BACKFILL_OVERFLOW = object()
+
+    @classmethod
+    def get_messages_after_id(
+        cls,
+        room_id: Union[str, UUID],
+        last_seen_id: str,
+        limit: int = 100,
+    ):
+        """
+        Get messages strictly newer than `last_seen_id`. Used by the WebSocket
+        reconnect handshake to send only the delta the client missed while
+        disconnected, rather than a full window refetch.
+
+        Returns one of:
+          - (messages, False)              normal: list of dicts (oldest first,
+                                            chronological), capped at `limit`
+          - (messages, True)               OVERFLOW: more than `limit` newer
+                                            messages exist; client should
+                                            full-reload instead of merging
+                                            (we still return the first `limit`
+                                            so the client can use them, but
+                                            the flag signals the overflow)
+          - (BACKFILL_OVERFLOW, True)      last_seen_id not in timeline (e.g.,
+                                            evicted from Redis); client must
+                                            full-reload — there's no anchor
+                                            to compute the delta from
+        """
+        start_time = time.time()
+        room_id_str = str(room_id)
+        try:
+            redis_client = cls._get_redis_client()
+            timeline_key = cls.TIMELINE_KEY.format(room_id=room_id_str)
+
+            # Find the timestamp of last_seen_id. ZSCORE returns None if the
+            # message isn't in the timeline cache.
+            last_seen_score = redis_client.zscore(timeline_key, last_seen_id)
+            if last_seen_score is None:
+                # Anchor not in cache → can't compute delta. Signal overflow.
+                return cls.BACKFILL_OVERFLOW, True
+
+            # Fetch one extra to detect overflow (more new messages than limit).
+            ids = redis_client.zrangebyscore(
+                timeline_key,
+                min=f'({last_seen_score}',  # exclusive — strictly newer
+                max='+inf',
+                start=0,
+                num=limit + 1,
+            )
+
+            overflow = len(ids) > limit
+            if overflow:
+                ids = ids[:limit]
+
+            messages = cls._fetch_by_ids(redis_client, room_id_str, ids)
+
+            duration_ms = (time.time() - start_time) * 1000
+            monitor.log_cache_read(
+                room_id_str,
+                hit=len(messages) > 0,
+                count=len(messages),
+                duration_ms=duration_ms,
+                source='redis',
+            )
+
+            return messages, overflow
+
+        except Exception as e:
+            logger.exception("MessageCache.get_messages_after_id failed: %s", e)
+            return cls.BACKFILL_OVERFLOW, True
+
     @classmethod
     def _get_ids_before(cls, redis_client, index_key: str, before_timestamp: float, limit: int) -> list:
         """

@@ -127,6 +127,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if data.get('type') == 'ping':
             return
 
+        # Reconnect handshake — client sends `{type:'hello', last_seen_id}`
+        # right after the socket opens (only if it has prior messages). We
+        # respond with at most BACKFILL_LIMIT messages strictly newer than
+        # `last_seen_id`. This replaces the per-reconnect full-window refetch
+        # the client would otherwise have to do via the messages API, dropping
+        # the load on the back-end at scale (1 sorted-set lookup vs N×serialize).
+        if data.get('type') == 'hello':
+            await self._handle_hello(data)
+            return
+
         if self.read_only:
             return  # Read-only connections cannot send messages
 
@@ -220,6 +230,52 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({
                 'error': 'Failed to send message'
             }))
+
+    BACKFILL_LIMIT = 100
+
+    async def _handle_hello(self, data):
+        """
+        Reconnect handshake. The client sends {type:'hello', last_seen_id}
+        right after the WebSocket opens. We send back the messages newer than
+        last_seen_id (up to BACKFILL_LIMIT) so the client doesn't have to do
+        a full message-list refetch.
+
+        Three response shapes:
+          - {type:'backfill', messages:[...]}     — 0 to BACKFILL_LIMIT new
+                                                    messages, client merges
+          - {type:'backfill_overflow'}            — too many missed (>limit)
+                                                    OR last_seen_id evicted
+                                                    from cache; client should
+                                                    do a full loadMessages()
+        """
+        last_seen_id = data.get('last_seen_id')
+        if not last_seen_id or self.chat_room_id is None:
+            return  # nothing to backfill against
+
+        # Sync wrapper around the cache helper — the helper itself uses
+        # synchronous Redis client (django-redis), so we run it off-thread.
+        result, overflow = await database_sync_to_async(
+            MessageCache.get_messages_after_id
+        )(self.chat_room_id, last_seen_id, self.BACKFILL_LIMIT)
+
+        if result is MessageCache.BACKFILL_OVERFLOW or overflow:
+            await self.send(text_data=json.dumps({
+                'type': 'backfill_overflow',
+            }))
+            return
+
+        # Normal path: filter blocked-by-this-user messages out of the
+        # backfill (mirrors the chat_message handler's filtering logic).
+        filtered = [
+            m for m in result
+            if m.get('username') not in self.blocked_usernames
+            or m.get('is_from_host')  # host broadcasts always shown
+        ]
+
+        await self.send(text_data=json.dumps({
+            'type': 'backfill',
+            'messages': filtered,
+        }))
 
     async def chat_message(self, event):
         # Filter messages from blocked users

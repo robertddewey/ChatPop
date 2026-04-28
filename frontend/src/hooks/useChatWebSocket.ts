@@ -28,6 +28,21 @@ interface UseChatWebSocketOptions {
   onSpotlightUpdate?: (action: 'add' | 'remove', username: string) => void;
   onError?: (error: Event) => void;
   onVisibilityChange?: (isVisible: boolean) => void;
+  // Reconnect-handshake hooks: the client tells the server its last_seen_id
+  // on (re)connect, server responds with only the messages newer than that.
+  // Avoids a full N-message refetch on every WS reconnect at scale.
+  // getLastSeenId is called by the WS hook each time the socket opens; if it
+  // returns a non-null id, a {type:'hello', last_seen_id} frame is sent.
+  // Returning null suppresses the hello (e.g., on first connect with no
+  // local messages yet — the initial loadMessages will populate everything).
+  getLastSeenId?: () => string | null | undefined;
+  // Server returned a delta (0..N messages strictly newer than last_seen_id).
+  // Caller merges into its message list (dedupe by id).
+  onBackfill?: (messages: Message[]) => void;
+  // Server can't compute a delta (last_seen_id evicted from cache OR more
+  // messages missed than we'll ship in one frame). Caller should fall back
+  // to a full loadMessages() refetch.
+  onBackfillOverflow?: () => void;
   enabled?: boolean;
 }
 
@@ -51,6 +66,9 @@ export function useChatWebSocket({
   onSpotlightUpdate,
   onError,
   onVisibilityChange,
+  getLastSeenId,
+  onBackfill,
+  onBackfillOverflow,
   enabled = true,
 }: UseChatWebSocketOptions) {
   const ws = useRef<WebSocket | null>(null);
@@ -92,6 +110,9 @@ export function useChatWebSocket({
   const onSpotlightUpdateRef = useRef(onSpotlightUpdate);
   const onErrorRef = useRef(onError);
   const onVisibilityChangeRef = useRef(onVisibilityChange);
+  const getLastSeenIdRef = useRef(getLastSeenId);
+  const onBackfillRef = useRef(onBackfill);
+  const onBackfillOverflowRef = useRef(onBackfillOverflow);
 
   // Keep refs up to date
   useEffect(() => { onMessageRef.current = onMessage; }, [onMessage]);
@@ -111,6 +132,9 @@ export function useChatWebSocket({
   useEffect(() => { onSpotlightUpdateRef.current = onSpotlightUpdate; }, [onSpotlightUpdate]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
   useEffect(() => { onVisibilityChangeRef.current = onVisibilityChange; }, [onVisibilityChange]);
+  useEffect(() => { getLastSeenIdRef.current = getLastSeenId; }, [getLastSeenId]);
+  useEffect(() => { onBackfillRef.current = onBackfill; }, [onBackfill]);
+  useEffect(() => { onBackfillOverflowRef.current = onBackfillOverflow; }, [onBackfillOverflow]);
 
   const connect = useCallback(() => {
     if (!enabled || ws.current?.readyState === WebSocket.OPEN) {
@@ -137,6 +161,21 @@ export function useChatWebSocket({
       setIsConnecting(false);
       reconnectAttemptsRef.current = 0;
 
+      // Reconnect handshake — if the caller provided a last_seen_id, ask
+      // the server for any messages newer than it. Skipped on first connect
+      // (when there's nothing to compare against) — the regular initial
+      // loadMessages() handles that case. The server's reply lands as a
+      // 'backfill' or 'backfill_overflow' event below.
+      try {
+        const lastSeenId = getLastSeenIdRef.current?.();
+        if (lastSeenId) {
+          socket.send(JSON.stringify({ type: 'hello', last_seen_id: lastSeenId }));
+        }
+      } catch {
+        // Non-fatal — if hello fails the user just doesn't get the delta;
+        // the next visibility-return loadMessages() will reconcile.
+      }
+
       // Start heartbeat. Sends a tiny ping frame every 30s on the same socket
       // closure (the variable `socket`) — if a reconnect happens, that new
       // socket gets its own onopen + its own heartbeat.
@@ -160,6 +199,25 @@ export function useChatWebSocket({
         // Handle error messages
         if (data.error) {
           console.error('[WebSocket] Error:', data.error);
+          return;
+        }
+
+        // Reconnect handshake response — server returned the delta of
+        // messages we missed since `last_seen_id`. May be empty.
+        if (data.type === 'backfill') {
+          if (onBackfillRef.current) {
+            onBackfillRef.current(data.messages || []);
+          }
+          return;
+        }
+
+        // Reconnect handshake overflow — server can't compute a delta
+        // (last_seen_id evicted, or > BACKFILL_LIMIT messages missed).
+        // Caller falls back to a full loadMessages().
+        if (data.type === 'backfill_overflow') {
+          if (onBackfillOverflowRef.current) {
+            onBackfillOverflowRef.current();
+          }
           return;
         }
 
