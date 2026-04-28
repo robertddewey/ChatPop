@@ -23,25 +23,6 @@ body.chat-layout {
   background-color: #18181b !important;
 }
 
-/* iOS Safari only: adjust header padding based on URL bar position.
-   --header-top-padding is set dynamically by JS (0px when URL bar at top,
-   12px when URL bar at bottom). Uses -webkit-touch-callout detection
-   which only matches iOS Safari. */
-@supports (-webkit-touch-callout: none) {
-  body.chat-layout [data-chat-header] {
-    padding: 0px 1rem 14px 1rem !important;
-  }
-  body.chat-layout [data-chat-header] .flex {
-    gap: 0.5rem;
-  }
-  body.chat-layout [data-chat-header] button {
-    padding: 0px !important;
-  }
-  body.chat-layout [data-chat-header] h1 {
-    line-height: 1 !important;
-  }
-}
-
 /* Force containers to be transparent so the body gradient shows through
    in iOS Safari safe areas. !important needed to beat Tailwind's bg-* classes
    which may use @layer with higher priority in Tailwind v4.

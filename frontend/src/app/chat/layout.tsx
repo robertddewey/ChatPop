@@ -59,35 +59,6 @@ export default function ChatLayout({
         `}
       </Script>
 
-      {/* iOS Safari: detect URL bar position and adjust header padding */}
-      <Script id="ios-header-padding" strategy="afterInteractive">
-        {`
-          (function() {
-            function updateHeaderPadding() {
-              var header = document.querySelector('[data-chat-header]');
-              if (!header) return;
-              var chromeHeight = screen.height - window.innerHeight;
-              // Small chrome = URL bar at bottom → add top padding for status bar clearance
-              var topPad = chromeHeight < 120 ? '12px' : '0px';
-              header.style.setProperty('padding-top', topPad, 'important');
-            }
-
-            // Run after DOM is ready and on resize
-            if (document.readyState === 'loading') {
-              document.addEventListener('DOMContentLoaded', updateHeaderPadding);
-            } else {
-              updateHeaderPadding();
-            }
-            window.addEventListener('resize', updateHeaderPadding);
-            // Also observe for the header appearing (SPA navigation)
-            var observer = new MutationObserver(function() {
-              if (document.querySelector('[data-chat-header]')) updateHeaderPadding();
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-          })();
-        `}
-      </Script>
-
       {/* theme-color meta tags removed — let browsers auto-detect from page content.
           Android Chrome samples the top background for the toolbar color.
           iOS Safari uses the page background for safe area tinting. */}
