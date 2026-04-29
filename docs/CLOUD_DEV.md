@@ -63,12 +63,12 @@ Every machine has at least one AWS profile; admin machines have both:
 
 | Profile | Keys it holds | Used by |
 |---|---|---|
-| `chatpop-dev` | `dev-<name>` (scoped per-developer) | Django runtime (boto3), branch hooks (read master DB password, S3 read/write own prefix), most chatpop subcommands |
-| `chatpop-dev-admin` | `chatpop-dev-deploy` (AdministratorAccess) | Terraform, `chatpop admin *`, `chatpop seed refresh` |
+| `chatmie-dev` | `dev-<name>` (scoped per-developer) | Django runtime (boto3), branch hooks (read master DB password, S3 read/write own prefix), most chatpop subcommands |
+| `chatmie-dev-admin` | `chatmie-dev-deploy` (AdministratorAccess) | Terraform, `chatpop admin *`, `chatpop seed refresh` |
 
 This means **Django runs with scoped keys**, not admin keys. If the laptop is compromised, the blast radius is the developer's own DBs and S3 prefix — not the whole AWS account.
 
-Non-admin developers (Alice) only have `chatpop-dev`. If they try to run an admin command, they get a clear error: "AWS profile chatpop-dev-admin not configured. This command requires admin credentials."
+Non-admin developers (Alice) only have `chatmie-dev`. If they try to run an admin command, they get a clear error: "AWS profile chatmie-dev-admin not configured. This command requires admin credentials."
 
 ---
 
@@ -142,8 +142,8 @@ A single entry point at `bin/chatpop` exposes every dev operation as a subcomman
 | `chatpop admin list` | Show team roster (IAM users + access key IDs) |
 | `chatpop admin add <name>` | Provision IAM user `dev-<name>`, print credentials once |
 | `chatpop admin remove <name>` | Drop dev's databases + S3 + IAM user (typed confirm) |
-| `chatpop admin recover` | Set up admin's machine after a wipe / on a new laptop. Configures BOTH profiles (chatpop-dev-admin + chatpop-dev). |
-| `chatpop admin install-dev-keys [name]` | Pull dev-`<name>` keys from terraform state and write to `chatpop-dev` profile. Used during admin recovery and one-shot setups. |
+| `chatpop admin recover` | Set up admin's machine after a wipe / on a new laptop. Configures BOTH profiles (chatmie-dev-admin + chatmie-dev). |
+| `chatpop admin install-dev-keys [name]` | Pull dev-`<name>` keys from terraform state and write to `chatmie-dev` profile. Used during admin recovery and one-shot setups. |
 | `chatpop admin replace-seed [DB]` | **DESTRUCTIVE, team-wide.** Replace dev_seed (DB + S3 prefix) with the contents of any source DB. Defaults to `<dev>_main`. Use to baseline new-dev onboarding state. |
 | `chatpop admin set-secret <K>` | Set/update one shared API key (silent input) |
 | `chatpop admin list-secrets` | List shared API keys (values masked) |
@@ -160,11 +160,11 @@ A single entry point at `bin/chatpop` exposes every dev operation as a subcomman
 This is **one-time per AWS account** when standing up the cloud environment for the first time. After this, future developers use the joiner flow below.
 
 ```bash
-./bin/chatpop bootstrap aws          # Configure chatpop-dev-admin profile (admin keys)
+./bin/chatpop bootstrap aws          # Configure chatmie-dev-admin profile (admin keys)
 ./bin/chatpop bootstrap tailscale    # Install Tailscale + capture EC2 router auth key
 cd infra/terraform && terraform init && terraform apply
 ./bin/chatpop admin add <your-name>  # Create per-dev IAM user (yourself)
-./bin/chatpop admin install-dev-keys <your-name>  # Install dev keys into chatpop-dev
+./bin/chatpop admin install-dev-keys <your-name>  # Install dev keys into chatmie-dev
 ./bin/chatpop join                   # Tailscale signin, identity, cloud config, hooks
 ./bin/chatpop seed refresh --force   # Populate dev_seed from migrations + fixtures
 ./bin/chatpop admin import-env       # Push current backend/.env shared keys to AWS
@@ -173,8 +173,8 @@ cd infra/terraform && terraform init && terraform apply
 After this, you have:
 - AWS account fully provisioned for the team
 - Canonical `dev_seed` everyone clones from
-- Your own per-dev IAM user (e.g., `dev-robert`) — its keys live in `chatpop-dev` profile
-- Admin keys (`chatpop-dev-deploy`) — live in `chatpop-dev-admin` profile
+- Your own per-dev IAM user (e.g., `dev-robert`) — its keys live in `chatmie-dev` profile
+- Admin keys (`chatmie-dev-deploy`) — live in `chatmie-dev-admin` profile
 - Shared API keys (Stripe, OpenAI, etc.) centralized in Secrets Manager
 
 ---
@@ -210,7 +210,7 @@ The `chatpop admin` subcommands manage IAM users for the team:
 | `chatpop admin list` | Show team roster (IAM users + access key IDs) |
 | `chatpop admin add <name>` | Provision IAM user `dev-<name>` with scoped policies; print credentials once for secure handoff |
 | `chatpop admin remove <name>` | Drop all `<name>_*` databases, delete `s3://.../<name>/`, destroy IAM user. Requires typed confirmation. |
-| `chatpop admin recover` | Set up admin's machine after a wipe / on a new laptop. Like `chatpop join` but uses the `chatpop-dev-deploy` admin keys (so admin ops keep working). |
+| `chatpop admin recover` | Set up admin's machine after a wipe / on a new laptop. Like `chatpop join` but uses the `chatmie-dev-deploy` admin keys (so admin ops keep working). |
 
 Each developer's IAM user has scoped permissions:
 

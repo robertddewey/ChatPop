@@ -11,14 +11,26 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 locals {
+  # Project tag is hardcoded to "chatmie" (the company/brand) so the AWS
+  # console shows the current brand. The infrastructure resource names below
+  # still use ${var.project}-${var.environment} (= "chatpop-dev") because
+  # AWS-side names on S3 buckets, RDS instances, and Secrets Manager secrets
+  # are immutable — renaming them is a destroy/recreate that's deferred to a
+  # planned migration window. End users never see the resource names; they
+  # see the CDN domain (cdn-dev.chatmie.com) which is already on the new brand.
   common_tags = {
-    Project     = var.project
+    Project     = "chatmie"
     Environment = var.environment
     ManagedBy   = "terraform"
   }
 
-  # Naming prefix used by per-environment resources, e.g. "chatpop-dev".
+  # Naming prefix for AWS-side resource identifiers (immutable). Stays as
+  # "chatpop-dev" until a future migration renames the underlying resources.
   name_prefix = "${var.project}-${var.environment}"
+
+  # Display prefix used in tags + console-visible descriptions only. Mutable;
+  # change this freely without touching any resource identifiers.
+  display_prefix = "chatmie-${var.environment}"
 
   # CDN — disabled when apex_domain is empty.
   cdn_enabled     = var.apex_domain != ""

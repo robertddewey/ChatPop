@@ -18,7 +18,7 @@ resource "aws_db_subnet_group" "dev" {
   subnet_ids = data.aws_subnets.default.ids
 
   tags = {
-    Name = "${local.name_prefix}-rds-subnet-group"
+    Name = "${local.display_prefix}-rds-subnet-group"
   }
 }
 
@@ -41,7 +41,7 @@ resource "aws_security_group" "tailscale_router" {
   }
 
   tags = {
-    Name = "${local.name_prefix}-tailscale-router"
+    Name = "${local.display_prefix}-tailscale-router"
   }
 }
 
@@ -67,6 +67,6 @@ resource "aws_security_group" "rds" {
   }
 
   tags = {
-    Name = "${local.name_prefix}-rds"
+    Name = "${local.display_prefix}-rds"
   }
 }

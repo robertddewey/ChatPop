@@ -1,7 +1,7 @@
 variable "aws_profile" {
   description = "Local AWS CLI profile used by terraform to authenticate. Must have AdministratorAccess (or equivalent) to provision IAM users, RDS, S3, EC2, etc."
   type        = string
-  default     = "chatpop-dev-admin"
+  default     = "chatmie-dev-admin"
 }
 
 variable "aws_region" {

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# ChatPop AWS bootstrap (path b: console-then-profile-config)
+# ChatMie AWS bootstrap (path b: console-then-profile-config)
 #
-# Configures a local AWS CLI profile named "chatpop-dev-admin" using
+# Configures a local AWS CLI profile named "chatmie-dev-admin" using
 # credentials you generate in the AWS Console for the IAM user
-# "chatpop-dev-deploy" (AdministratorAccess).
+# "chatmie-dev-deploy" (AdministratorAccess).
 #
 # This is for the FIRST-TIME ADMIN setting up cloud infrastructure. Other
 # developers (joiners) get scoped per-developer keys and use chatpop join.
@@ -13,9 +13,9 @@
 
 set -euo pipefail
 
-PROFILE="chatpop-dev-admin"
+PROFILE="chatmie-dev-admin"
 EXPECTED_ACCOUNT="090719695164"
-EXPECTED_USER_NAME="chatpop-dev-deploy"
+EXPECTED_USER_NAME="chatmie-dev-deploy"
 DEFAULT_REGION="us-east-1"
 
 RED=$'\033[0;31m'
@@ -30,7 +30,7 @@ ok()   { printf "${GREEN}✓${NC} %s\n" "$*"; }
 info() { printf "${BLUE}→${NC} %s\n" "$*"; }
 warn() { printf "${YELLOW}!${NC} %s\n" "$*"; }
 
-printf "${BOLD}ChatPop AWS bootstrap${NC}\n"
+printf "${BOLD}ChatMie AWS bootstrap${NC}\n"
 printf "=====================\n\n"
 
 # --- Preflight -------------------------------------------------------------
@@ -73,7 +73,7 @@ ${BOLD}Step 2 — Generate an access key for that user${NC}
   9.  Click the 'Security credentials' tab.
   10. Under 'Access keys', click 'Create access key'.
   11. Choose 'Command Line Interface (CLI)', acknowledge the recommendation, click Next.
-  12. (Optional) Description tag: "chatpop-dev-admin local bootstrap"
+  12. (Optional) Description tag: "chatmie-dev-admin local bootstrap"
   13. Click 'Create access key'.
   14. KEEP THIS PAGE OPEN. You'll need:
         - Access key ID

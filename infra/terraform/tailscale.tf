@@ -67,7 +67,7 @@ resource "aws_instance" "tailscale_router" {
   }
 
   tags = {
-    Name = "${local.name_prefix}-tailscale-router"
+    Name = "${local.display_prefix}-tailscale-router"
     Role = "tailscale-subnet-router"
   }
 }

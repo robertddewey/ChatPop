@@ -106,7 +106,7 @@ resource "aws_db_instance" "dev" {
   performance_insights_retention_period = 7
 
   tags = {
-    Name = "${local.name_prefix}-postgres"
+    Name = "${local.display_prefix}-postgres"
   }
 
   # The password lives in state (encrypted at rest in the local file) and

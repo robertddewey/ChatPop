@@ -105,7 +105,7 @@ This is **one-time per AWS account** — you only do this when standing up the c
 git clone <repo-url>
 cd ChatPop
 
-# Step 1: Admin AWS profile (chatpop-dev-admin → chatpop-dev-deploy IAM user)
+# Step 1: Admin AWS profile (chatmie-dev-admin → chatmie-dev-deploy IAM user)
 chatpop bootstrap aws
 
 # Step 2: Tailscale on your laptop + EC2 router auth key
@@ -119,7 +119,7 @@ cd ../..
 # Step 4: Provision your own per-developer IAM user
 chatpop admin add robert                # creates dev-robert in IAM
 
-# Step 5: Install dev-robert keys into your chatpop-dev profile
+# Step 5: Install dev-robert keys into your chatmie-dev profile
 chatpop admin install-dev-keys robert
 
 # Step 6: Tailscale signin (auto-enables --accept-routes), identity file,
@@ -138,8 +138,8 @@ chatpop check
 ```
 
 After this you have **two AWS profiles** on the machine:
-- `chatpop-dev-admin` (admin keys) — used by terraform and `chatpop admin *`
-- `chatpop-dev` (dev-robert scoped keys) — used by Django and daily ops
+- `chatmie-dev-admin` (admin keys) — used by terraform and `chatpop admin *`
+- `chatmie-dev` (dev-robert scoped keys) — used by Django and daily ops
 
 Once this is done, you've got:
 - An AWS account fully provisioned for the team
@@ -160,7 +160,7 @@ chatpop admin add alice
 
 ### 🛟 Admin returning to a wiped or new machine
 
-Your IAM users (`chatpop-dev-deploy` admin and `dev-robert` developer) and infrastructure still exist in AWS — you just need to set up *this machine* to talk to them.
+Your IAM users (`chatmie-dev-deploy` admin and `dev-robert` developer) and infrastructure still exist in AWS — you just need to set up *this machine* to talk to them.
 
 ```bash
 # Install prerequisites (same list as above)
@@ -169,11 +169,11 @@ Your IAM users (`chatpop-dev-deploy` admin and `dev-robert` developer) and infra
 git clone <repo-url>
 cd ChatPop
 
-# Recover — sets up BOTH chatpop-dev-admin and chatpop-dev profiles in one shot
+# Recover — sets up BOTH chatmie-dev-admin and chatmie-dev profiles in one shot
 chatpop admin recover
-# Step A: paste admin keys (from 1Password) → chatpop-dev-admin profile
+# Step A: paste admin keys (from 1Password) → chatmie-dev-admin profile
 # Step B: confirm/enter your dev name (e.g. robert)
-# Step C: dev-robert keys auto-pulled from terraform → chatpop-dev profile
+# Step C: dev-robert keys auto-pulled from terraform → chatmie-dev profile
 # Step D: Tailscale signin (auto-enables --accept-routes) + cloud config + hooks
 #         (delegates to chatpop join)
 
@@ -183,7 +183,7 @@ chatpop check
 ```
 
 If you've lost your admin keys, regenerate them in the AWS Console first:
-https://console.aws.amazon.com/iam/home#/users/details/chatpop-dev-deploy → Security credentials → Deactivate old key → Create access key. Then run `chatpop admin recover`.
+https://console.aws.amazon.com/iam/home#/users/details/chatmie-dev-deploy → Security credentials → Deactivate old key → Create access key. Then run `chatpop admin recover`.
 
 `install.sh` also offers admin recovery: when prompted "developer or admin?", pick `a`. It runs `chatpop admin recover` for you.
 
@@ -205,7 +205,7 @@ chatpop --help           # all commands
 | `chatpop join` | Set up a developer machine (joiner / second machine) |
 | `chatpop admin recover` | Set up an admin machine (wiped / new laptop) |
 | `chatpop admin add <name>` | Provision a new developer (admin only) |
-| `chatpop admin install-dev-keys [name]` | Pull dev-`<name>` keys from terraform into your `chatpop-dev` profile (admin only) |
+| `chatpop admin install-dev-keys [name]` | Pull dev-`<name>` keys from terraform into your `chatmie-dev` profile (admin only) |
 | `chatpop admin remove <name>` | Tear down a developer's resources (admin only) |
 | `chatpop admin replace-seed [DB]` | **Destructive, team-wide** — replace `dev_seed` (DB + S3) with contents of any source DB; defaults to `<dev>_main` (admin only) |
 | `chatpop admin list` | Show team roster |

@@ -216,16 +216,24 @@ Two layers of auth are at play; only the first is enforced today:
 
 For the current team size, IAM-only is acceptable. When answering questions about access control, do not assume Postgres-level isolation exists.
 
+#### Naming convention — `chatmie-` vs `chatpop-`
+
+The brand is **ChatMie** (going forward); the original repo and project name was **ChatPop**. AWS resource names, CLI profiles, IAM users, and tags use **`chatmie-dev-*`**. A few legacy AWS resource identifiers (`chatpop-dev-postgres` RDS instance, `chatpop-dev/api-keys` Secrets Manager paths, `chatpop-dev-media-<hex>` S3 bucket name, `chatpop-dev-router` Tailscale device) still carry the old prefix because AWS treats those names as immutable — renaming them requires destroy + recreate + data migration, deferred until a planned cutover. End users never see the resource names; they see `cdn-dev.chatmie.com`.
+
+When writing code or scripts, the convention is:
+- `AWS_PROFILE_NAME = "chatmie-dev"` and `AWS_PROFILE_ADMIN_NAME = "chatmie-dev-admin"` (current AWS profile names)
+- `NAME_PREFIX_DEFAULT = "chatpop-dev"` and similar resource-name constants stay as `chatpop-dev` because they need to match the actual AWS-side identifiers
+
 #### Where credentials live (and don't)
 
 - **Two AWS profiles in `~/.aws/credentials`** (least-privilege model):
-  - `chatpop-dev` — scoped per-developer keys (`dev-<name>`). Used by Django runtime, branch hooks, daily chatpop ops. Every dev machine has this.
-  - `chatpop-dev-admin` — `chatpop-dev-deploy` admin keys. Used by terraform and admin operations (`chatpop admin add/remove/set-secret/import-env`, `seed refresh`). **Only admin machines have this profile.**
-- Setup: `chatpop join` (developer) → writes `chatpop-dev`. `chatpop admin recover` (admin) → writes both profiles. `chatpop bootstrap aws` (very first admin) → writes `chatpop-dev-admin`.
+  - `chatmie-dev` — scoped per-developer keys (`dev-<name>`). Used by Django runtime, branch hooks, daily chatpop ops. Every dev machine has this.
+  - `chatmie-dev-admin` — `chatmie-dev-deploy` admin keys. Used by terraform and admin operations (`chatpop admin add/remove/set-secret/import-env`, `seed refresh`). **Only admin machines have this profile.**
+- Setup: `chatpop join` (developer) → writes `chatmie-dev`. `chatpop admin recover` (admin) → writes both profiles. `chatpop bootstrap aws` (very first admin) → writes `chatmie-dev-admin`.
 - **RDS master password** in AWS Secrets Manager (`chatpop-dev/rds/master`). Pulled by `configure-env.sh` and written to `backend/.env` for psycopg2 (which doesn't read AWS creds directly). Both profiles have `GetSecretValue` here.
 - **Shared third-party API keys** (OpenAI, Stripe, etc.) in AWS Secrets Manager (`chatpop-dev/api-keys`). Pulled by `chatpop sync-secrets` (uses dev profile, read-only). Updated by `chatpop admin set-secret` (uses admin profile, `PutSecretValue`). In production (`ENV=production`), Django reads them directly from Secrets Manager via boto3.
 - **Tailscale auth key** for the EC2 router in `infra/terraform/secrets.auto.tfvars` (gitignored, `chmod 600`). Captured by `chatpop bootstrap tailscale`.
-- **Boto3** in Django uses `AWS_PROFILE=chatpop-dev` in `.env` — *always the scoped dev profile*, never admin. No static AWS access keys in `.env`.
+- **Boto3** in Django uses `AWS_PROFILE=chatmie-dev` in `.env` — *always the scoped dev profile*, never admin. No static AWS access keys in `.env`.
 
 **When writing chatpop subcommand code:** call `require_aws` for read-only / dev-scope operations and `require_aws_admin` for operations that need IAM, `PutSecretValue`, or write to other developers' resources. The script defines both profile constants — `AWS_PROFILE_NAME` and `AWS_PROFILE_ADMIN_NAME` — and `aws --profile` calls should use the matching one explicitly.
 

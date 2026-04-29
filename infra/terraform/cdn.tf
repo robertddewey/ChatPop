@@ -36,7 +36,7 @@ resource "aws_acm_certificate" "cdn" {
   }
 
   tags = {
-    Name = "${local.name_prefix}-cdn-cert"
+    Name = "${local.display_prefix}-cdn-cert"
   }
 }
 
@@ -70,7 +70,7 @@ resource "aws_acm_certificate_validation" "cdn" {
 resource "aws_cloudfront_origin_access_control" "media" {
   count                             = local.cdn_enabled ? 1 : 0
   name                              = "${local.name_prefix}-media-oac"
-  description                       = "OAC for ${local.name_prefix} media bucket"
+  description                       = "OAC for ${local.display_prefix} media bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
@@ -89,14 +89,14 @@ resource "tls_private_key" "cdn_signer" {
 resource "aws_cloudfront_public_key" "cdn_signer" {
   count       = local.cdn_enabled ? 1 : 0
   name        = "${local.name_prefix}-cdn-signer"
-  comment     = "Public key for signing ${local.name_prefix} media URLs"
+  comment     = "Public key for signing ${local.display_prefix} media URLs"
   encoded_key = tls_private_key.cdn_signer[0].public_key_pem
 }
 
 resource "aws_cloudfront_key_group" "cdn_signers" {
   count   = local.cdn_enabled ? 1 : 0
   name    = "${local.name_prefix}-cdn-signers"
-  comment = "Trusted signers for ${local.name_prefix} media"
+  comment = "Trusted signers for ${local.display_prefix} media"
   items   = [aws_cloudfront_public_key.cdn_signer[0].id]
 }
 
@@ -125,7 +125,7 @@ resource "aws_cloudfront_distribution" "media" {
   count           = local.cdn_enabled ? 1 : 0
   enabled         = true
   is_ipv6_enabled = true
-  comment         = "${local.name_prefix} media CDN"
+  comment         = "${local.display_prefix} media CDN"
   aliases         = [local.cdn_full_domain]
   price_class     = "PriceClass_100" # US, Canada, Europe (cheapest)
 
@@ -163,7 +163,7 @@ resource "aws_cloudfront_distribution" "media" {
   }
 
   tags = {
-    Name = "${local.name_prefix}-media-cdn"
+    Name = "${local.display_prefix}-media-cdn"
   }
 }
 

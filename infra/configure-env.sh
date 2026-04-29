@@ -16,8 +16,8 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TF_DIR="${PROJECT_ROOT}/infra/terraform"
 ENV_FILE="${PROJECT_ROOT}/backend/.env"
 IDENTITY_FILE="${PROJECT_ROOT}/.dev-identity"
-AWS_PROFILE_NAME="chatpop-dev"
-AWS_PROFILE_ADMIN_NAME="chatpop-dev-admin"
+AWS_PROFILE_NAME="chatmie-dev"
+AWS_PROFILE_ADMIN_NAME="chatmie-dev-admin"
 
 # Deterministic resource naming derived from terraform's
 # `${var.project}-${var.environment}` (defaults: chatpop-dev). Used as fallback
@@ -143,7 +143,7 @@ if [[ -z "$BUCKET" ]]; then
 fi
 if [[ -z "$BUCKET" ]]; then
   err "Cannot locate the S3 media bucket. Without terraform state, you need either:
-  • the admin profile (chatpop-dev-admin) configured locally, or
+  • the admin profile (chatmie-dev-admin) configured locally, or
   • a previous AWS_STORAGE_BUCKET_NAME entry in backend/.env
 Ask an admin for the exact bucket name (it's chatpop-dev-media-<hex>) and add it
 to backend/.env, then rerun this script."

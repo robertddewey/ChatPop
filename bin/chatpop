@@ -18,15 +18,15 @@ ENV_FILE="${REPO_ROOT}/backend/.env"
 IDENTITY_FILE="${REPO_ROOT}/.dev-identity"
 
 # Two AWS profiles (least-privilege model):
-#   chatpop-dev        — per-developer scoped keys (dev-<name>). Used by
+#   chatmie-dev        — per-developer scoped keys (dev-<name>). Used by
 #                        Django runtime, branch hooks, and read-only chatpop
 #                        operations. EVERY dev machine has this.
-#   chatpop-dev-admin  — chatpop-dev-deploy (AdministratorAccess). Used by
+#   chatmie-dev-admin  — chatmie-dev-deploy (AdministratorAccess). Used by
 #                        terraform and admin operations (admin add/remove,
 #                        set-secret, import-env, seed refresh, seed from-local).
 #                        Only ADMIN machines have this profile.
-AWS_PROFILE_NAME="chatpop-dev"
-AWS_PROFILE_ADMIN_NAME="chatpop-dev-admin"
+AWS_PROFILE_NAME="chatmie-dev"
+AWS_PROFILE_ADMIN_NAME="chatmie-dev-admin"
 
 # Deterministic resource naming — mirrors terraform's
 # `${var.project}-${var.environment}` (defaults: chatpop-dev). Used as a
@@ -1172,7 +1172,7 @@ _join_prompt_aws_credentials() {
   fi
 }
 
-# Install dev-<name>'s access keys into the chatpop-dev profile.
+# Install dev-<name>'s access keys into the chatmie-dev profile.
 #
 # Tries terraform state first (works on the machine where infra was
 # originally provisioned). Falls back to manual paste when state isn't
@@ -1255,7 +1255,7 @@ cmd_admin_install_dev_keys() {
     [[ -f "$IDENTITY_FILE" ]] && name=$(cat "$IDENTITY_FILE") || \
       err "Usage: chatpop admin install-dev-keys <name>"
   }
-  printf "${BOLD}Install dev-${name} keys into chatpop-dev profile${NC}\n\n"
+  printf "${BOLD}Install dev-${name} keys into chatmie-dev profile${NC}\n\n"
   _admin_install_dev_keys "$name"
 }
 
@@ -1644,9 +1644,9 @@ Developer roster:
   remove <name>          Drop dev's databases + S3 + IAM user. Requires confirm.
   list                   Show all developers configured for the team.
   recover                Set up an admin's machine after a wipe / on a new laptop.
-                         Configures BOTH chatpop-dev-admin and chatpop-dev profiles.
+                         Configures BOTH chatmie-dev-admin and chatmie-dev profiles.
   install-dev-keys [N]   Pull dev-<name> keys from terraform state into the
-                         chatpop-dev profile. Defaults to .dev-identity name.
+                         chatmie-dev profile. Defaults to .dev-identity name.
 
 Shared secrets (api-keys):
   list-secrets           List shared API key names (values masked).
@@ -1658,8 +1658,8 @@ Team baseline (DESTRUCTIVE):
                          source DB. Defaults to <dev>_main. Source DB is not
                          modified. Use to baseline new-dev onboarding state.
 
-All admin operations require admin credentials (chatpop-dev-deploy in the
-chatpop-dev-admin profile).
+All admin operations require admin credentials (chatmie-dev-deploy in the
+chatmie-dev-admin profile).
 EOF
       ;;
     *) err "Unknown 'admin' subcommand: $1" ;;
@@ -1684,13 +1684,13 @@ users via 'chatpop admin add/remove', and has access to dev_seed).
 For per-developer setup, the right command is ${BOLD}chatpop join${NC}.
 
 This sets up TWO AWS profiles on this machine:
-  • ${BOLD}${AWS_PROFILE_ADMIN_NAME}${NC} — chatpop-dev-deploy admin keys (paste from 1Password)
+  • ${BOLD}${AWS_PROFILE_ADMIN_NAME}${NC} — chatmie-dev-deploy admin keys (paste from 1Password)
   • ${BOLD}${AWS_PROFILE_NAME}${NC}       — dev-<your-name> keys (auto-pulled from terraform)
 
 You will need:
-  • Your ${BOLD}chatpop-dev-deploy${NC} admin keys (from 1Password).
+  • Your ${BOLD}chatmie-dev-deploy${NC} admin keys (from 1Password).
     Lost them? Regenerate first:
-      ${YELLOW}https://console.aws.amazon.com/iam/home#/users/details/chatpop-dev-deploy${NC}
+      ${YELLOW}https://console.aws.amazon.com/iam/home#/users/details/chatmie-dev-deploy${NC}
       Security credentials → Deactivate old key → Create access key.
   • Tailscale account access (sign-in only — your tailnet still exists).
   • Your developer name (typically the same one you used before).
@@ -1700,22 +1700,22 @@ EOF
   [[ "${confirm:-}" =~ ^[Nn]$ ]] && { info "Aborted."; return 0; }
   echo
 
-  # Step A: Set up the ADMIN profile (chatpop-dev-admin).
+  # Step A: Set up the ADMIN profile (chatmie-dev-admin).
   printf "${BOLD}Step A${NC} — Admin AWS credentials\n"
   if arn=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null); then
     ok "Admin profile '${AWS_PROFILE_ADMIN_NAME}' already configured: $arn"
     read -r -p "  Reconfigure with new admin credentials? [y/N] " confirm
     if [[ "${confirm:-}" =~ ^[Yy]$ ]]; then
-      _join_prompt_aws_credentials "$AWS_PROFILE_ADMIN_NAME" "admin (chatpop-dev-deploy)"
+      _join_prompt_aws_credentials "$AWS_PROFILE_ADMIN_NAME" "admin (chatmie-dev-deploy)"
     fi
   else
-    _join_prompt_aws_credentials "$AWS_PROFILE_ADMIN_NAME" "admin (chatpop-dev-deploy)"
+    _join_prompt_aws_credentials "$AWS_PROFILE_ADMIN_NAME" "admin (chatmie-dev-deploy)"
   fi
 
   # Sanity check: the keys you pasted should actually be the admin user.
   arn=$(aws --profile "$AWS_PROFILE_ADMIN_NAME" sts get-caller-identity --query Arn --output text 2>/dev/null || echo "")
-  if [[ "$arn" != *"user/chatpop-dev-deploy"* ]]; then
-    warn "The keys you pasted don't look like the chatpop-dev-deploy admin user."
+  if [[ "$arn" != *"user/chatmie-dev-deploy"* ]]; then
+    warn "The keys you pasted don't look like the chatmie-dev-deploy admin user."
     warn "ARN: $arn"
     warn "Admin operations will fail. Re-run 'chatpop admin recover' with the correct keys."
     return 1
@@ -1755,13 +1755,13 @@ EOF
   echo "$dev_name" > "$IDENTITY_FILE"
   ok "Identity: $dev_name"
 
-  # Step C: Install dev-<name> keys into chatpop-dev profile.
+  # Step C: Install dev-<name> keys into chatmie-dev profile.
   echo
   printf "${BOLD}Step C${NC} — Install developer credentials\n"
   _admin_install_dev_keys "$dev_name"
 
   # Step D: Run the regular join flow for everything else (Tailscale,
-  # cloud-config writes to .env, hooks). cmd_join detects that chatpop-dev
+  # cloud-config writes to .env, hooks). cmd_join detects that chatmie-dev
   # is already configured and skips the credential prompt.
   echo
   printf "${BOLD}Step D${NC} — Tailscale, cloud config, hooks\n"
@@ -1997,7 +1997,7 @@ cmd_bootstrap() {
 Usage: chatpop bootstrap <target>
 
 Targets:
-  aws         Create AWS IAM user (chatpop-dev-deploy) and configure CLI profile.
+  aws         Create AWS IAM user (chatmie-dev-deploy) and configure CLI profile.
               One-time per AWS account; subsequent devs just need their own keys.
 
   tailscale   Install Tailscale, sign in, capture a reusable auth key for the

@@ -16,14 +16,14 @@
 # Example:
 #   infra/register-domain.sh chatmie.com
 #
-# Requires the chatpop-dev-admin AWS profile.
+# Requires the chatmie-dev-admin AWS profile.
 
 set -euo pipefail
 
 DOMAIN="${1:-}"
 [[ -n "$DOMAIN" ]] || { echo "Usage: $0 <domain>"; exit 1; }
 
-AWS_PROFILE_ADMIN="chatpop-dev-admin"
+AWS_PROFILE_ADMIN="chatmie-dev-admin"
 CONTACT_FILE="$(mktemp -t "$(echo "$DOMAIN" | tr '.' '-')-contact.XXXXXX.json")"
 
 # Always remove the contact file on exit — it has your address + phone.
