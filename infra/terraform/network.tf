@@ -14,6 +14,11 @@ data "aws_subnets" "default" {
 # RDS requires a subnet group spanning at least 2 AZs (even for single-AZ
 # deployments) so it has somewhere to fail over if you ever enable Multi-AZ.
 resource "aws_db_subnet_group" "dev" {
+  # Stays as chatpop-dev-rds — AWS RDS doesn't allow changing the subnet
+  # group of a running instance to one in the same VPC, and this dev env
+  # has only one VPC. Renaming would require a full RDS snapshot+restore.
+  # The Name TAG below shows chatmie-dev-rds-subnet-group in the console
+  # so the visual brand stays consistent.
   name       = "${local.name_prefix}-rds"
   subnet_ids = data.aws_subnets.default.ids
 
@@ -28,7 +33,7 @@ resource "aws_db_subnet_group" "dev" {
 # access is via Tailscale SSH (--ssh flag in user data), authenticated
 # through the tailnet.
 resource "aws_security_group" "tailscale_router" {
-  name        = "${local.name_prefix}-tailscale-router"
+  name        = "${local.display_prefix}-tailscale-router"
   description = "ChatPop dev - Tailscale subnet router. Outbound only."
   vpc_id      = data.aws_vpc.default.id
 
@@ -43,11 +48,17 @@ resource "aws_security_group" "tailscale_router" {
   tags = {
     Name = "${local.display_prefix}-tailscale-router"
   }
+
+  # See aws_db_subnet_group.dev — create new SG first so RDS can be re-attached
+  # before the old SG gets destroyed.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # RDS: inbound from the Tailscale router SG only. No public access.
 resource "aws_security_group" "rds" {
-  name        = "${local.name_prefix}-rds"
+  name        = "${local.display_prefix}-rds"
   description = "ChatPop dev - RDS. Inbound from Tailscale router SG only."
   vpc_id      = data.aws_vpc.default.id
 
@@ -68,5 +79,11 @@ resource "aws_security_group" "rds" {
 
   tags = {
     Name = "${local.display_prefix}-rds"
+  }
+
+  # See aws_db_subnet_group.dev — create new SG first so RDS can be re-attached
+  # before the old SG gets destroyed.
+  lifecycle {
+    create_before_destroy = true
   }
 }

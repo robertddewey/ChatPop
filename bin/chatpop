@@ -308,7 +308,7 @@ cmd_check() {
 
   if [[ -n "$ts_bin" ]] && "$ts_bin" status >/dev/null 2>&1; then
     local router_line
-    router_line=$("$ts_bin" status | grep -E "chatpop-.*-router" | head -1 || echo "")
+    router_line=$("$ts_bin" status | grep -E "(chatmie|chatpop)-.*-router" | head -1 || echo "")
     if [[ -n "$router_line" ]]; then
       _check_pass "Tailscale running" "router visible: $(echo "$router_line" | awk '{print $1}')"
       ts_ok=1
@@ -533,7 +533,7 @@ cmd_status() {
   [[ -z "$TS_BIN" ]] && command -v tailscale >/dev/null 2>&1 && TS_BIN="$(command -v tailscale)"
   if [[ -n "$TS_BIN" ]] && "$TS_BIN" status >/dev/null 2>&1; then
     local router_line
-    router_line=$("$TS_BIN" status | grep -E "chatpop-.*-router" | head -1 || echo "")
+    router_line=$("$TS_BIN" status | grep -E "(chatmie|chatpop)-.*-router" | head -1 || echo "")
     if [[ -n "$router_line" ]]; then
       label "Status:" "connected"
       label "Router:" "$(echo "$router_line" | awk '{print $1, $2}')"

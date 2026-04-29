@@ -11,7 +11,7 @@ data "aws_ssm_parameter" "al2023_arm64" {
 # can shell into the box from the AWS console as an emergency channel
 # (Tailscale SSH is the primary path).
 resource "aws_iam_role" "tailscale_router" {
-  name = "${local.name_prefix}-tailscale-router"
+  name = "${local.display_prefix}-tailscale-router"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -31,7 +31,7 @@ resource "aws_iam_role_policy_attachment" "tailscale_router_ssm" {
 }
 
 resource "aws_iam_instance_profile" "tailscale_router" {
-  name = "${local.name_prefix}-tailscale-router"
+  name = "${local.display_prefix}-tailscale-router"
   role = aws_iam_role.tailscale_router.name
 }
 
@@ -47,7 +47,7 @@ resource "aws_instance" "tailscale_router" {
   user_data = templatefile("${path.module}/templates/tailscale_router_userdata.sh.tftpl", {
     tailscale_auth_key = var.tailscale_auth_key
     advertise_routes   = data.aws_vpc.default.cidr_block
-    hostname           = "${local.name_prefix}-router"
+    hostname           = "${local.display_prefix}-router"
   })
 
   # If we change user_data later (e.g., to upgrade Tailscale or rotate the

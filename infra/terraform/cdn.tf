@@ -130,13 +130,17 @@ resource "aws_cloudfront_distribution" "media" {
   price_class     = "PriceClass_100" # US, Canada, Europe (cheapest)
 
   origin {
-    domain_name              = aws_s3_bucket.media.bucket_regional_domain_name
-    origin_id                = "s3-${aws_s3_bucket.media.id}"
+    # Migrated from aws_s3_bucket.media (chatpop-dev-media-c1492598) to the
+    # new chatmie-dev-media-c1492598 bucket. Hardcoded names so terraform
+    # doesn't drag aws_s3_bucket.media into the change graph; the old bucket
+    # is removed in Stage F after the grace period.
+    domain_name              = local.media_bucket_regional_domain_new
+    origin_id                = "s3-${local.media_bucket_id_new}"
     origin_access_control_id = aws_cloudfront_origin_access_control.media[0].id
   }
 
   default_cache_behavior {
-    target_origin_id       = "s3-${aws_s3_bucket.media.id}"
+    target_origin_id       = "s3-${local.media_bucket_id_new}"
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
@@ -172,8 +176,12 @@ resource "aws_cloudfront_distribution" "media" {
 # directly via boto3 with their per-dev IAM keys. CloudFront just gets read
 # access.
 resource "aws_s3_bucket_policy" "media_cloudfront" {
-  count  = local.cdn_enabled ? 1 : 0
-  bucket = aws_s3_bucket.media.id
+  count = local.cdn_enabled ? 1 : 0
+  # Migrated to the new chatmie-dev-media-c1492598 bucket. Resource is
+  # replaced (terraform deletes policy from old bucket, applies to new in
+  # the same apply). The new bucket already has an identical policy applied
+  # via CLI as part of the migration prep, so there's no read-access gap.
+  bucket = local.media_bucket_id_new
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -183,7 +191,7 @@ resource "aws_s3_bucket_policy" "media_cloudfront" {
         Effect    = "Allow"
         Principal = { Service = "cloudfront.amazonaws.com" }
         Action    = "s3:GetObject"
-        Resource  = "${aws_s3_bucket.media.arn}/*"
+        Resource  = "${local.media_bucket_arn_new}/*"
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.media[0].arn

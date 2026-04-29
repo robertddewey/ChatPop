@@ -53,7 +53,7 @@ resource "aws_secretsmanager_secret_version" "db_master" {
 
 # Custom parameter group: enforce SSL connections.
 resource "aws_db_parameter_group" "postgres" {
-  name        = "${local.name_prefix}-postgres"
+  name        = "${local.display_prefix}-postgres"
   family      = "postgres16"
   description = "ChatPop dev - Postgres 16 with SSL required."
 
@@ -61,10 +61,19 @@ resource "aws_db_parameter_group" "postgres" {
     name  = "rds.force_ssl"
     value = "1"
   }
+
+  # See aws_db_subnet_group.dev — create new param group first so RDS can be
+  # re-attached before the old gets destroyed.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_db_instance" "dev" {
-  identifier = "${local.name_prefix}-postgres"
+  # Migrated from "chatpop-dev-postgres" via AWS CLI in-place rename. Code
+  # updated to match so terraform refresh sees no diff. The chatpop-dev
+  # name is gone from AWS — instance now lives at chatmie-dev-postgres.<…>.
+  identifier = "${local.display_prefix}-postgres"
 
   # Engine
   engine               = "postgres"

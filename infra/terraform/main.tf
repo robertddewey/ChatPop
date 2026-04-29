@@ -32,17 +32,37 @@ locals {
   # change this freely without touching any resource identifiers.
   display_prefix = "chatmie-${var.environment}"
 
+  # ---- Migration: chatpop-* → chatmie-* infrastructure rename --------------
+  # New bucket created via AWS CLI alongside the old (data sync'd). After
+  # cutover, CloudFront origin and bucket policy below reference these new
+  # values; the old aws_s3_bucket.media resource is left in state for later
+  # cleanup (Stage F). Same pattern for Secrets Manager (new secrets created
+  # via CLI; ARNs hardcoded for IAM grants until terraform-import in Stage F).
+  media_bucket_id_new              = "chatmie-${var.environment}-media-c1492598"
+  media_bucket_regional_domain_new = "chatmie-${var.environment}-media-c1492598.s3.${var.aws_region}.amazonaws.com"
+  media_bucket_arn_new             = "arn:aws:s3:::chatmie-${var.environment}-media-c1492598"
+  rds_master_secret_arn_new        = "arn:aws:secretsmanager:${var.aws_region}:090719695164:secret:chatmie-${var.environment}/rds/master-qfB1m3"
+  api_keys_secret_arn_new          = "arn:aws:secretsmanager:${var.aws_region}:090719695164:secret:chatmie-${var.environment}/api-keys-uqMreg"
+  cdn_signing_key_secret_arn_new   = "arn:aws:secretsmanager:${var.aws_region}:090719695164:secret:chatmie-${var.environment}/cdn/signing-key-4yTMng"
+
   # CDN — disabled when apex_domain is empty.
   cdn_enabled     = var.apex_domain != ""
   cdn_full_domain = local.cdn_enabled ? "${var.cdn_subdomain}.${var.apex_domain}" : ""
 
-  # All Secrets Manager secrets that developers need read access to. The
-  # CDN signing-key secret only exists when the CDN is enabled.
+  # All Secrets Manager secrets that developers need read access to. During
+  # the chatpop → chatmie migration, grant access to BOTH old and new
+  # secrets so any caller (Django, scripts) can read whichever it's
+  # currently configured to look at. Old ARNs dropped in Stage F.
   shared_secret_arns = concat(
     [
       aws_secretsmanager_secret.db_master.arn,
       aws_secretsmanager_secret.api_keys.arn,
+      local.rds_master_secret_arn_new,
+      local.api_keys_secret_arn_new,
     ],
-    local.cdn_enabled ? [aws_secretsmanager_secret.cdn_signing_key[0].arn] : []
+    local.cdn_enabled ? [
+      aws_secretsmanager_secret.cdn_signing_key[0].arn,
+      local.cdn_signing_key_secret_arn_new,
+    ] : []
   )
 }

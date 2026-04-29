@@ -48,23 +48,34 @@ resource "aws_iam_user_policy" "developer" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      # During the chatpop → chatmie bucket migration, grant access to BOTH
+      # buckets. Old bucket is removed in Stage F after grace period.
       {
-        Sid      = "OwnPrefixReadWrite"
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-        Resource = "${aws_s3_bucket.media.arn}/${each.key}/*"
+        Sid    = "OwnPrefixReadWrite"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = [
+          "${aws_s3_bucket.media.arn}/${each.key}/*",
+          "${local.media_bucket_arn_new}/${each.key}/*",
+        ]
       },
       {
-        Sid      = "DevSeedReadOnly"
-        Effect   = "Allow"
-        Action   = ["s3:GetObject"]
-        Resource = "${aws_s3_bucket.media.arn}/dev_seed/*"
+        Sid    = "DevSeedReadOnly"
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = [
+          "${aws_s3_bucket.media.arn}/dev_seed/*",
+          "${local.media_bucket_arn_new}/dev_seed/*",
+        ]
       },
       {
-        Sid      = "ListBucketScoped"
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = aws_s3_bucket.media.arn
+        Sid    = "ListBucketScoped"
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = [
+          aws_s3_bucket.media.arn,
+          local.media_bucket_arn_new,
+        ]
         Condition = {
           StringLike = {
             "s3:prefix" = ["${each.key}/*", "dev_seed/*", ""]
@@ -78,7 +89,7 @@ resource "aws_iam_user_policy" "developer" {
         Resource = local.shared_secret_arns
       },
       # Note: PutSecretValue is intentionally not granted. Setting/rotating
-      # secrets is an admin operation; admins use the chatpop-dev-deploy
+      # secrets is an admin operation; admins use the chatmie-dev-deploy
       # AdministratorAccess profile via 'chatpop admin set-secret'.
       {
         Sid    = "ReadInfraOutputs"

@@ -14,18 +14,18 @@ output "name_prefix" {
 }
 
 output "media_bucket_name" {
-  description = "S3 bucket name for dev media."
-  value       = aws_s3_bucket.media.id
+  description = "S3 bucket name for dev media. Migrated to chatmie-dev-* during the cosmetic rename; aws_s3_bucket.media (the chatpop-dev-* bucket) is still in state for cleanup in Stage F."
+  value       = local.media_bucket_id_new
 }
 
 output "media_bucket_arn" {
   description = "S3 bucket ARN for dev media (for use in IAM policies)."
-  value       = aws_s3_bucket.media.arn
+  value       = local.media_bucket_arn_new
 }
 
 output "media_bucket_domain" {
   description = "Regional domain name of the media bucket."
-  value       = aws_s3_bucket.media.bucket_regional_domain_name
+  value       = local.media_bucket_regional_domain_new
 }
 
 # --- Tailscale router -----------------------------------------------------
